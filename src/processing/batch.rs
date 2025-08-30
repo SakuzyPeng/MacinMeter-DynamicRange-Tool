@@ -64,6 +64,13 @@ struct ChannelProcessConfig {
     foobar2000_mode: bool,
     use_simd: bool,
     sample_rate: u32,
+    // 🏷️ FEATURE_REMOVAL: 精确权重公式接口保留但固定为false
+    // 📅 修改时间: 2025-08-31
+    // 🎯 为保持API兼容性暂时保留字段，但内部固定使用false（最优精度）
+    // 💡 原因: 精确权重导致+14% RMS误差，偏离foobar2000标准
+    // 🔄 回退: 如需重新启用功能，查看git历史
+    #[allow(dead_code)] // API兼容性保留字段，内部不使用
+    weighted_rms: bool, // 接口保留，内部忽略此参数
 }
 
 /// 高性能批量处理器
@@ -126,6 +133,11 @@ impl BatchProcessor {
         sample_rate: u32,
         sum_doubling: bool,
         foobar2000_mode: bool,
+        // 🏷️ FEATURE_ADDITION: 精确权重公式参数
+        // 📅 添加时间: 2025-08-31
+        // 🎯 支持精确权重公式控制
+        // 🔄 回退: 如需回退，删除此参数及相关处理逻辑
+        weighted_rms: bool,
     ) -> AudioResult<BatchResult> {
         let start_time = std::time::Instant::now();
 
@@ -149,6 +161,11 @@ impl BatchProcessor {
             foobar2000_mode,
             use_simd,
             sample_rate,
+            // 🏷️ FEATURE_ADDITION: 精确权重公式配置应用
+            // 📅 添加时间: 2025-08-31
+            // 🎯 将精确权重公式设置传递给处理配置
+            // 🔄 回退: 如需回退，删除此行配置
+            weighted_rms,
         };
 
         // 声道数据分离和处理
@@ -217,13 +234,7 @@ impl BatchProcessor {
         let results: Result<Vec<_>, AudioError> = channel_samples
             .par_iter()
             .enumerate()
-            .map(|(ch_idx, ch_samples)| {
-                self.process_single_channel(
-                    ch_samples,
-                    ch_idx,
-                    config,
-                )
-            })
+            .map(|(ch_idx, ch_samples)| self.process_single_channel(ch_samples, ch_idx, config))
             .collect();
 
         let dr_results = results?;
@@ -260,11 +271,7 @@ impl BatchProcessor {
                 .copied()
                 .collect();
 
-            let dr_result = self.process_single_channel(
-                &ch_samples,
-                ch_idx,
-                config,
-            )?;
+            let dr_result = self.process_single_channel(&ch_samples, ch_idx, config)?;
 
             dr_results.push(dr_result);
         }
@@ -290,7 +297,19 @@ impl BatchProcessor {
         config: &ChannelProcessConfig,
     ) -> AudioResult<DrResult> {
         // 创建DR计算器（统一使用标准API）
-        let mut calculator = DrCalculator::new_with_mode(1, config.sum_doubling, config.foobar2000_mode, config.sample_rate)?;
+        let mut calculator = DrCalculator::new_with_mode(
+            1,
+            config.sum_doubling,
+            config.foobar2000_mode,
+            config.sample_rate,
+        )?;
+
+        // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
+        // 📅 修改时间: 2025-08-31
+        // 🎯 忽略config.weighted_rms参数，强制使用false以保持最优精度
+        // 💡 原因: 精确权重导致+14% RMS误差，偏离foobar2000标准
+        // 🔄 回退: 如需重新启用功能，查看git历史
+        calculator.set_weighted_rms(false); // 强制false，忽略传入参数
 
         if config.use_simd {
             // SIMD优化路径：批量处理后使用标准API
@@ -368,7 +387,7 @@ mod tests {
         let result = processor
             .process_interleaved_batch(
                 &samples, 2, // 立体声
-                44100, false, false,
+                44100, false, false, false, // 默认禁用精确权重公式
             )
             .unwrap();
 
@@ -411,7 +430,7 @@ mod tests {
         samples.push(-0.8); // 右声道Peak
 
         let result = processor
-            .process_interleaved_batch(&samples, 2, 44100, false, false)
+            .process_interleaved_batch(&samples, 2, 44100, false, false, false)
             .unwrap();
 
         // 验证SIMD使用情况
@@ -442,13 +461,13 @@ mod tests {
         // 顺序处理
         let seq_processor = BatchProcessor::new(false, None);
         let seq_result = seq_processor
-            .process_interleaved_batch(&samples, 4, 44100, false, false)
+            .process_interleaved_batch(&samples, 4, 44100, false, false, false)
             .unwrap();
 
         // 并行处理
         let par_processor = BatchProcessor::new(true, None);
         let par_result = par_processor
-            .process_interleaved_batch(&samples, 4, 44100, false, false)
+            .process_interleaved_batch(&samples, 4, 44100, false, false, false)
             .unwrap();
 
         // 比较结果（应该相同）

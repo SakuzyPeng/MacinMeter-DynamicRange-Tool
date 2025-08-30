@@ -66,9 +66,15 @@ pub struct DrCalculator {
 
     /// 每个声道的简单直方图分析器（仅在foobar2000模式下使用）
     histogram_analyzers: Option<Vec<SimpleHistogramAnalyzer>>,
-    
+
     /// 采样率（用于窗口大小计算）
     sample_rate: u32,
+
+    /// 🏷️ FEATURE_ADDITION: 精确权重实验控制开关
+    /// 📅 添加时间: 2025-08-31  
+    /// 🎯 目的: 控制是否使用精确权重公式计算20% RMS
+    /// 🔄 回退: 如需回退，删除此字段，相关逻辑改为直接使用简单算法
+    weighted_rms_enabled: bool,
 }
 
 /// Sum Doubling质量评估结果
@@ -148,13 +154,17 @@ impl DrCalculator {
         if channel_count > 32 {
             return Err(AudioError::InvalidInput("声道数量不能超过32".to_string()));
         }
-        
+
         if sample_rate == 0 {
             return Err(AudioError::InvalidInput("采样率必须大于0".to_string()));
         }
 
         let window_analyzers = if foobar2000_mode {
-            Some((0..channel_count).map(|_| SimpleHistogramAnalyzer::new(sample_rate)).collect())
+            Some(
+                (0..channel_count)
+                    .map(|_| SimpleHistogramAnalyzer::new(sample_rate))
+                    .collect(),
+            )
         } else {
             None
         };
@@ -166,6 +176,11 @@ impl DrCalculator {
             foobar2000_mode,
             histogram_analyzers: window_analyzers,
             sample_rate,
+            // 🏷️ FEATURE_ADDITION: 精确权重实验控制开关初始化
+            // 📅 添加时间: 2025-08-31
+            // 🎯 默认禁用精确权重公式，确保向后兼容性
+            // 🔄 回退: 如需回退，删除此行初始化
+            weighted_rms_enabled: false,
         })
     }
 
@@ -209,8 +224,9 @@ impl DrCalculator {
         let samples_per_channel = samples.len() / channel_count;
 
         // 分离交错数据为单声道数据
-        let mut channel_data: Vec<Vec<f32>> = vec![Vec::with_capacity(samples_per_channel); channel_count];
-        
+        let mut channel_data: Vec<Vec<f32>> =
+            vec![Vec::with_capacity(samples_per_channel); channel_count];
+
         for sample_idx in 0..samples_per_channel {
             for channel_idx in 0..channel_count {
                 let sample = samples[sample_idx * channel_count + channel_idx];
@@ -221,12 +237,12 @@ impl DrCalculator {
         // 处理每个声道的数据
         for channel_idx in 0..channel_count {
             let channel_samples = &channel_data[channel_idx];
-            
+
             // 基本样本处理（Peak检测和RMS累积）
             for &sample in channel_samples {
                 self.channels[channel_idx].process_sample(sample);
             }
-            
+
             // foobar2000模式：3秒窗口RMS分析
             if let Some(ref mut analyzers) = self.histogram_analyzers {
                 analyzers[channel_idx].process_channel(channel_samples);
@@ -285,7 +301,7 @@ impl DrCalculator {
             for &sample in samples {
                 self.channels[channel_idx].process_sample(sample);
             }
-            
+
             // foobar2000模式：3秒窗口RMS分析
             if let Some(ref mut analyzers) = self.histogram_analyzers {
                 analyzers[channel_idx].process_channel(samples);
@@ -396,8 +412,17 @@ impl DrCalculator {
             ));
         }
 
-        // 使用加权均值+开方的20%采样算法计算RMS值
-        let rms_20_percent = analyzer.calculate_20_percent_rms();
+        // 🏷️ FEATURE_ADDITION: 精确权重公式条件选择
+        // 📅 添加时间: 2025-08-31
+        // 🎯 根据weighted_rms_enabled标志选择RMS计算方法
+        // 🔄 回退: 如需回退，改为直接使用analyzer.calculate_20_percent_rms()
+        let rms_20_percent = if self.weighted_rms_enabled {
+            // 使用精确权重公式：0.00000001×index²
+            analyzer.calculate_weighted_20_percent_rms()
+        } else {
+            // 使用简化的20%采样算法（默认，与基线版本兼容）
+            analyzer.calculate_20_percent_rms()
+        };
 
         // 获取对应声道的Peak值（用于智能Sum Doubling评估）
         let peak = self.channels[channel_idx].get_effective_peak();
@@ -421,51 +446,22 @@ impl DrCalculator {
         Ok(compensated_rms)
     }
 
-    /// 智能DR计算（带Peak回退机制）
-    fn calculate_dr_value_with_fallback(&self, rms: f64, channel_data: &ChannelData) -> AudioResult<f64> {
-        // 首先尝试使用当前有效Peak值
-        let primary_peak = channel_data.get_effective_peak();
-        
-        // 尝试基础DR计算
-        match self.calculate_dr_value(rms, primary_peak) {
-            Ok(dr) if dr >= 0.0 => return Ok(dr),
-            Ok(dr) => {
-                // DR<0时，使用智能Peak验证系统回退
-                eprintln!("⚠️  DR<0 ({dr:.2})，尝试Peak回退机制");
-                
-                let (validated_peak, confidence) = channel_data.get_effective_peak_with_validation(
-                    self.sample_count, 
-                    16 // 假设16位深度作为默认值
-                );
-                
-                if confidence > 0.5 && validated_peak != primary_peak {
-                    eprintln!("🔄 使用验证Peak: {validated_peak:.6} (置信度: {confidence:.2})");
-                    return self.calculate_dr_value(rms, validated_peak);
-                }
-            },
-            Err(_) => {
-                // 基础计算失败，尝试智能回退
-                let (validated_peak, confidence) = channel_data.get_effective_peak_with_validation(
-                    self.sample_count,
-                    16
-                );
-                
-                if confidence > 0.3 {
-                    eprintln!("🔄 Peak计算失败，使用验证Peak: {validated_peak:.6}");
-                    return self.calculate_dr_value(rms, validated_peak);
-                }
-            }
-        }
-        
-        // 最后的保守回退：使用两个Peak中较小的
-        let conservative_peak = if channel_data.peak_secondary() > 0.0 && channel_data.peak_primary() > 0.0 {
-            channel_data.peak_primary().min(channel_data.peak_secondary())
-        } else {
-            primary_peak
-        };
-        
-        eprintln!("🛡️  使用保守Peak估计: {conservative_peak:.6}");
-        self.calculate_dr_value(rms, conservative_peak)
+    /// 简化DR计算（基础Peak选择）
+    ///
+    /// 🏷️ FEATURE_UPDATE: 简化Peak回退算法
+    /// 📅 修改时间: 2025-08-31
+    /// 🎯 移除复杂质量评估，依赖ChannelData内置的削波检测
+    /// 🔄 回退: 如需复杂回退逻辑，请查看git历史中的智能Peak验证系统
+    fn calculate_dr_value_with_fallback(
+        &self,
+        rms: f64,
+        channel_data: &ChannelData,
+    ) -> AudioResult<f64> {
+        // 使用简化的Peak选择（内置削波检测）
+        let effective_peak = channel_data.get_effective_peak();
+
+        // 直接计算DR，信任ChannelData的Peak选择
+        self.calculate_dr_value(rms, effective_peak)
     }
 
     /// 计算DR值：DR = log10(RMS / Peak) * -20.0
@@ -503,99 +499,44 @@ impl DrCalculator {
         Ok(dr_value)
     }
 
-    /// 智能Sum Doubling补偿系统
+    /// 简化Sum Doubling补偿系统
     ///
-    /// 基于音频特征分析，智能决定是否应用Sum Doubling补偿，
-    /// 并使用高精度常量确保与foobar2000的100%一致性。
+    /// 🏷️ FEATURE_UPDATE: 移除复杂质量评估逻辑
+    /// 📅 修改时间: 2025-08-31
+    /// 🎯 Early Version模式：禁用Sum Doubling，保持原始RMS
+    /// 🔄 回退: 如需复杂质量评估，查看git历史
     ///
     /// # 参数
     ///
     /// * `rms` - 原始RMS值
-    /// * `peak` - Peak值（用于质量评估）
-    /// * `sample_count` - 样本数量
+    /// * `_peak` - Peak值（未使用，保留接口兼容性）
+    /// * `_sample_count` - 样本数量（未使用，保留接口兼容性）
     ///
     /// # 返回值
     ///
-    /// 返回补偿后的RMS值和质量评估信息
+    /// 返回原始RMS值和默认质量信息
     fn apply_intelligent_sum_doubling(
         &self,
         rms: f64,
-        peak: f64,
-        sample_count: usize,
+        _peak: f64,
+        _sample_count: usize,
     ) -> (f64, SumDoublingQuality) {
-        // 如果Sum Doubling未启用，直接返回
-        if !self.sum_doubling_enabled {
-            return (
-                rms,
-                SumDoublingQuality {
-                    should_apply: false,
-                    confidence: 1.0,
-                    issues: SumDoublingIssues::default(),
-                },
-            );
-        }
-
-        // 评估Sum Doubling质量
-        let quality = self.evaluate_sum_doubling_quality(rms, peak, sample_count);
-
-        // 早期版本：不应用任何RMS补偿，始终返回原始RMS
-        (rms, quality)
+        // Early Version模式：始终禁用Sum Doubling，确保最高精度
+        (
+            rms,
+            SumDoublingQuality {
+                should_apply: false,
+                confidence: 1.0, // 对不使用Sum Doubling有最高信心
+                issues: SumDoublingIssues::default(),
+            },
+        )
     }
 
-    /// 评估Sum Doubling补偿的质量和适用性
-    ///
-    /// 综合考虑多个音频特征：
-    /// - 样本数量充足性
-    /// - RMS和Peak值的合理性
-    /// - 动态范围特征
-    fn evaluate_sum_doubling_quality(
-        &self,
-        rms: f64,
-        peak: f64,
-        sample_count: usize,
-    ) -> SumDoublingQuality {
-        let mut confidence = 1.0f64;
-        let mut issues = SumDoublingIssues::default();
-
-        // 1. 样本数量检查（早期版本：简化逻辑，使用硬编码阈值）
-        if sample_count < 100 {
-            confidence *= 0.5; // 样本不足，降低置信度
-            issues.insufficient_samples = true;
-        }
-
-        // 2. RMS值合理性检查
-        if rms <= 0.0 || !rms.is_finite() {
-            confidence *= 0.0; // 无效RMS，禁用Sum Doubling
-            issues.abnormal_rms = true;
-        } else if rms > peak {
-            confidence *= 0.3; // RMS > Peak，可能有问题
-            issues.abnormal_rms = true;
-        }
-
-        // 3. Peak值合理性检查
-        if peak <= 0.0 || !peak.is_finite() || peak > 1.2 {
-            confidence *= 0.4; // 异常Peak值
-            issues.abnormal_peak = true;
-        }
-
-        // 4. RMS/Peak比例检查
-        if peak > 0.0 {
-            let ratio = rms / peak;
-            if !(0.01..=0.95).contains(&ratio) {
-                confidence *= 0.7; // 异常比例可能影响Sum Doubling效果
-                issues.abnormal_rms = true;
-            }
-        }
-
-        // 决策：置信度高于阈值则建议应用
-        let should_apply = confidence >= 0.3;
-
-        SumDoublingQuality {
-            should_apply,
-            confidence: confidence.clamp(0.0, 1.0),
-            issues,
-        }
-    }
+    // 🏷️ FEATURE_REMOVAL: 复杂质量评估系统已移除
+    // 📅 移除时间: 2025-08-31
+    // 🎯 Early Version简化：移除evaluate_sum_doubling_quality()复杂逻辑
+    // 💡 原因: 用户要求只保留削波检测，移除复杂质量评估
+    // 🔄 回退: 如需复杂质量评估，查看git历史中的evaluate_sum_doubling_quality()方法
 
     /// 重置计算器状态，准备处理新的音频数据
     pub fn reset(&mut self) {
@@ -645,6 +586,38 @@ impl DrCalculator {
     /// 获取音频采样率
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    /// 🏷️ FEATURE_ADDITION: 精确权重公式控制方法
+    /// 📅 添加时间: 2025-08-31
+    /// 🎯 启用精确权重公式（0.00000001×index²）
+    /// 🔄 回退: 如需回退，删除此方法及相关调用
+    pub fn enable_weighted_rms(&mut self) {
+        self.weighted_rms_enabled = true;
+    }
+
+    /// 🏷️ FEATURE_ADDITION: 精确权重公式控制方法
+    /// 📅 添加时间: 2025-08-31
+    /// 🎯 禁用精确权重公式，回到简化算法
+    /// 🔄 回退: 如需回退，删除此方法及相关调用
+    pub fn disable_weighted_rms(&mut self) {
+        self.weighted_rms_enabled = false;
+    }
+
+    /// 🏷️ FEATURE_ADDITION: 精确权重公式状态查询
+    /// 📅 添加时间: 2025-08-31
+    /// 🎯 获取当前精确权重公式启用状态
+    /// 🔄 回退: 如需回退，删除此方法及相关调用
+    pub fn is_weighted_rms_enabled(&self) -> bool {
+        self.weighted_rms_enabled
+    }
+
+    /// 🏷️ FEATURE_ADDITION: 精确权重公式状态设置
+    /// 📅 添加时间: 2025-08-31
+    /// 🎯 直接设置精确权重公式启用状态
+    /// 🔄 回退: 如需回退，删除此方法及相关调用
+    pub fn set_weighted_rms(&mut self, enabled: bool) {
+        self.weighted_rms_enabled = enabled;
     }
 }
 
@@ -802,8 +775,8 @@ mod tests {
         // 验证智能Sum Doubling系统工作
         let base_rms = ((1000.0 * 0.3_f64.powi(2) + 0.8_f64.powi(2)) / 1001.0).sqrt();
 
-        // 测试智能系统是否应用了Sum Doubling
-        let _quality = calc.evaluate_sum_doubling_quality(base_rms, 0.8, 1001);
+        // 🏷️ FEATURE_UPDATE: 简化测试，移除质量评估调用
+        // 早期版本不使用复杂质量评估，直接验证RMS值
 
         // 早期版本：无论系统如何决定，都应该返回原始base_rms（不应用RMS补偿）
         assert!((result.rms - base_rms).abs() < 1e-6);
@@ -829,26 +802,11 @@ mod tests {
         assert!((result.rms - 0.5).abs() < 1e-10);
     }
 
-    #[test]
-    fn test_sum_doubling_quality_assessment() {
-        let calc = DrCalculator::new(1, true, 48000).unwrap();
-
-        // 测试正常情况
-        let quality = calc.evaluate_sum_doubling_quality(0.3, 0.8, 1000);
-        assert!(quality.should_apply);
-        assert!(quality.confidence > 0.8);
-        assert!(!quality.issues.insufficient_samples);
-
-        // 测试样本不足
-        let quality = calc.evaluate_sum_doubling_quality(0.3, 0.8, 50);
-        assert!(quality.confidence < 0.8); // 置信度降低
-        assert!(quality.issues.insufficient_samples);
-
-        // 测试异常RMS（RMS > Peak）
-        let quality = calc.evaluate_sum_doubling_quality(0.9, 0.5, 1000);
-        assert!(quality.confidence < 0.5);
-        assert!(quality.issues.abnormal_rms);
-    }
+    // 🏷️ FEATURE_REMOVAL: 质量评估测试已移除
+    // 📅 移除时间: 2025-08-31
+    // 🎯 Early Version简化：移除test_sum_doubling_quality_assessment()
+    // 💡 原因: 对应的evaluate_sum_doubling_quality()方法已被移除
+    // 🔄 回退: 如需测试质量评估，查看git历史
 
     #[test]
     fn test_no_rms_compensation_in_early_version() {
@@ -856,28 +814,14 @@ mod tests {
         let calc = DrCalculator::new(1, true, 48000).unwrap();
 
         let (result_rms, _) = calc.apply_intelligent_sum_doubling(0.5, 0.8, 1000);
-        
+
         // 早期版本应该返回原始RMS值，不应用任何补偿
         assert!((result_rms - 0.5).abs() < 1e-15);
     }
 
-    #[test]
-    fn test_sum_doubling_edge_cases() {
-        let calc = DrCalculator::new(1, true, 48000).unwrap();
-
-        // 零RMS
-        let quality = calc.evaluate_sum_doubling_quality(0.0, 0.5, 1000);
-        assert!(!quality.should_apply);
-        assert!(quality.issues.abnormal_rms);
-
-        // 无穷大RMS
-        let quality = calc.evaluate_sum_doubling_quality(f64::INFINITY, 0.5, 1000);
-        assert!(!quality.should_apply);
-        assert!(quality.issues.abnormal_rms);
-
-        // NaN RMS
-        let quality = calc.evaluate_sum_doubling_quality(f64::NAN, 0.5, 1000);
-        assert!(!quality.should_apply);
-        assert!(quality.issues.abnormal_rms);
-    }
+    // 🏷️ FEATURE_REMOVAL: 边界情况测试已移除
+    // 📅 移除时间: 2025-08-31
+    // 🎯 Early Version简化：移除test_sum_doubling_edge_cases()
+    // 💡 原因: 对应的evaluate_sum_doubling_quality()方法已被移除
+    // 🔄 回退: 如需测试边界情况，查看git历史
 }

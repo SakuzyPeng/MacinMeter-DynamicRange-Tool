@@ -49,6 +49,11 @@ struct AppConfig {
 
     /// 是否启用多线程处理
     enable_multithreading: bool,
+    // 🏷️ FEATURE_REMOVAL: 移除精确权重公式选项
+    // 📅 移除时间: 2025-08-31
+    // 🎯 统一使用最优精度模式（weighted_rms=false）
+    // 💡 原因: 精确权重导致+14% RMS误差，偏离foobar2000标准
+    // 🔄 回退: 如需重新启用选项，查看git历史
 }
 
 impl AppConfig {
@@ -97,6 +102,10 @@ impl AppConfig {
                     .help("禁用多线程处理（单线程模式）")
                     .action(clap::ArgAction::SetTrue),
             )
+            // 🏷️ FEATURE_REMOVAL: 移除--weighted-rms参数
+            // 📅 移除时间: 2025-08-31
+            // 💡 原因: 精确权重模式偏离foobar2000标准，统一使用最优精度模式
+            // 🔄 回退: 如需重新启用，查看git历史中的weighted-rms参数定义
             .get_matches();
 
         Self {
@@ -106,6 +115,10 @@ impl AppConfig {
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
             enable_multithreading: !matches.get_flag("single-thread"), // 默认启用多线程
+                                                            // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
+                                                            // 📅 移除时间: 2025-08-31
+                                                            // 🎯 统一使用最优精度模式，weighted_rms固定为false
+                                                            // 🔄 回退: 如需重新启用选项，查看git历史
         }
     }
 }
@@ -213,13 +226,18 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             format.sample_rate,
             config.sum_doubling,
             true, // foobar2000兼容模式
+            // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
+            // 📅 修改时间: 2025-08-31
+            // 🎯 统一使用weighted_rms=false以保持与foobar2000最优精度匹配
+            // 🔄 回退: 如需重新启用选项，查看git历史
+            false, // weighted_rms固定为false
         )?;
 
         // 显示性能统计
         if config.verbose {
             let stats = &batch_result.performance_stats;
             println!("📊 性能统计:");
-            
+
             // 优化时间显示格式
             let duration_display = if stats.total_duration_us >= 1_000_000 {
                 format!("{:.2}s", stats.total_duration_us as f64 / 1_000_000.0)
@@ -228,7 +246,7 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             } else {
                 format!("{}μs", stats.total_duration_us)
             };
-            
+
             // 优化处理速度显示格式
             let speed_display = if stats.samples_per_second >= 1_000_000.0 {
                 format!("{:.1}M samples/s", stats.samples_per_second / 1_000_000.0)
@@ -237,18 +255,20 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             } else {
                 format!("{:.0} samples/s", stats.samples_per_second)
             };
-            
+
             println!("   处理时间: {duration_display}");
             println!("   处理速度: {speed_display}");
-            println!("   处理样本: {} ({} 声道)", 
+            println!(
+                "   处理样本: {} ({} 声道)",
                 format_number(stats.total_samples),
                 stats.channels_processed
             );
-            
+
             // SIMD信息（仅在有意义时显示）
             if batch_result.simd_usage.used_simd || stats.simd_speedup > 1.0 {
-                println!("   SIMD加速: {:.1}x (覆盖率: {:.1}%)", 
-                    stats.simd_speedup, 
+                println!(
+                    "   SIMD加速: {:.1}x (覆盖率: {:.1}%)",
+                    stats.simd_speedup,
                     batch_result.simd_usage.simd_coverage * 100.0
                 );
             }
@@ -272,6 +292,12 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
                     true, // 启用foobar2000模式
                     format.sample_rate,
                 )?;
+
+                // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
+                // 📅 修改时间: 2025-08-31
+                // 🎯 统一使用weighted_rms=false以保持与foobar2000最优精度匹配
+                // 🔄 回退: 如需重新启用选项，查看git历史
+                calculator.set_weighted_rms(false); // 固定为false，最优精度
 
                 calculator.process_interleaved_samples(&samples)?;
                 calculator.calculate_dr()

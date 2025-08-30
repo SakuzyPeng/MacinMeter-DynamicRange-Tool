@@ -1,0 +1,17 @@
+=====================================
+   MacinMeter DR Analysis Report
+=====================================
+
+文件: /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/audio/Ver2-adm-master-from-DAW-spatialmix-noreverb-peaklimited-0-2025-08-29-00-00-55.flac
+Sum Doubling: 禁用
+SIMD优化: 启用
+多线程处理: 启用
+
+动态范围 (DR) 结果:
+-------------------------------------
+声道 1: DR9 (RMS:0.303811, Peak:0.833845)
+声道 2: DR10 (RMS:0.299939, Peak:0.918527)
+
+平均DR值: DR9
+
+生成工具: MacinMeter DR Tool v0.1.0

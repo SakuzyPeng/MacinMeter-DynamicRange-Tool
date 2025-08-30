@@ -249,11 +249,32 @@ impl ChannelData {
     /// assert_eq!(data.get_effective_peak(), 0.5);
     /// ```
     pub fn get_effective_peak(&self) -> f64 {
-        // 早期版本：简单使用最大Peak值，不使用复杂的第二大Peak逻辑
+        // 🏷️ FEATURE_UPDATE: 简化Sample Peak削波回退算法
+        // 📅 修改时间: 2025-08-31
+        // 🎯 只在Sample Peak削波时才回退，最大化动态范围利用
+        // 🔄 回退: 如需回退到复杂质量评估版本，请查看git历史
+
         if self.peak_primary > 0.0 {
-            self.peak_primary
+            // 检测Sample Peak是否达到数字削波阈值
+            // 使用严格的1.0阈值（只有真正的满幅削波才回退）
+            if self.peak_primary >= 1.0
+                && self.peak_secondary > 0.0
+                && self.peak_secondary < self.peak_primary
+            {
+                // 主Peak削波，但只有当次Peak足够大时才回退（避免RMS>Peak的不合理情况）
+                // 要求次Peak至少是主Peak的30%以上
+                if self.peak_secondary >= self.peak_primary * 0.3 {
+                    self.peak_secondary
+                } else {
+                    // 次Peak太小，仍使用主Peak（即使削波）
+                    self.peak_primary
+                }
+            } else {
+                // 主Peak健康，使用主Peak（支持母带师的极限动态优化）
+                self.peak_primary
+            }
         } else if self.peak_secondary > 0.0 {
-            // 如果primary为0，回退到secondary
+            // 主Peak无效，回退到次Peak
             self.peak_secondary
         } else {
             0.0
