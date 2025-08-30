@@ -249,13 +249,12 @@ impl ChannelData {
     /// assert_eq!(data.get_effective_peak(), 0.5);
     /// ```
     pub fn get_effective_peak(&self) -> f64 {
-        // 🎯 **PDF文档修正**：DR计算使用"第二大Peak值"（PK_2nd）！
-        // 这与foobar2000的实际行为一致 - 使用第二大值避免瞬时峰值影响
-        if self.peak_secondary > 0.0 {
-            self.peak_secondary
-        } else if self.peak_primary > 0.0 {
-            // 只有一个Peak时，回退到primary（此时secondary为0）
+        // 早期版本：简单使用最大Peak值，不使用复杂的第二大Peak逻辑
+        if self.peak_primary > 0.0 {
             self.peak_primary
+        } else if self.peak_secondary > 0.0 {
+            // 如果primary为0，回退到secondary
+            self.peak_secondary
         } else {
             0.0
         }

@@ -2,22 +2,10 @@
 //!
 //! 实现foobar2000 DR Meter的核心算法：DR = log10(RMS / Peak) * -20.0
 
-use super::{ChannelData, WindowRmsAnalyzer};
+use super::{ChannelData, SimpleHistogramAnalyzer};
 use crate::error::{AudioError, AudioResult};
 
-/// Sum Doubling补偿常量：sqrt(2) 的高精度值
-///
-/// 基于foobar2000 DR Meter逆向分析的精确浮点数值，
-/// 确保与foobar2000计算结果100%一致。不使用std::f64::consts::SQRT_2
-/// 以保持与foobar2000的精确匹配。
-#[allow(clippy::approx_constant)]
-const SUM_DOUBLING_FACTOR: f64 = 1.414_213_562_373_095_1;
-
-/// Sum Doubling补偿阈值：样本数量
-///
-/// 当样本数量过少时，Sum Doubling可能引入不必要的噪声，
-/// 基于经验值设定最小样本数阈值
-const MIN_SAMPLES_FOR_SUM_DOUBLING: usize = 100;
+// 早期版本：已移除Sum Doubling相关常量，不再使用RMS补偿机制
 
 /// DR计算结果
 #[derive(Debug, Clone, PartialEq)]
@@ -76,8 +64,8 @@ pub struct DrCalculator {
     /// 是否启用foobar2000兼容模式（20%采样算法）
     foobar2000_mode: bool,
 
-    /// 每个声道的3秒窗口RMS分析器（仅在foobar2000模式下使用）
-    window_analyzers: Option<Vec<WindowRmsAnalyzer>>,
+    /// 每个声道的简单直方图分析器（仅在foobar2000模式下使用）
+    histogram_analyzers: Option<Vec<SimpleHistogramAnalyzer>>,
     
     /// 采样率（用于窗口大小计算）
     sample_rate: u32,
@@ -166,7 +154,7 @@ impl DrCalculator {
         }
 
         let window_analyzers = if foobar2000_mode {
-            Some((0..channel_count).map(|_| WindowRmsAnalyzer::new(sample_rate)).collect())
+            Some((0..channel_count).map(|_| SimpleHistogramAnalyzer::new(sample_rate)).collect())
         } else {
             None
         };
@@ -176,7 +164,7 @@ impl DrCalculator {
             sample_count: 0,
             sum_doubling_enabled: sum_doubling,
             foobar2000_mode,
-            window_analyzers,
+            histogram_analyzers: window_analyzers,
             sample_rate,
         })
     }
@@ -240,7 +228,7 @@ impl DrCalculator {
             }
             
             // foobar2000模式：3秒窗口RMS分析
-            if let Some(ref mut analyzers) = self.window_analyzers {
+            if let Some(ref mut analyzers) = self.histogram_analyzers {
                 analyzers[channel_idx].process_channel(channel_samples);
             }
         }
@@ -299,7 +287,7 @@ impl DrCalculator {
             }
             
             // foobar2000模式：3秒窗口RMS分析
-            if let Some(ref mut analyzers) = self.window_analyzers {
+            if let Some(ref mut analyzers) = self.histogram_analyzers {
                 analyzers[channel_idx].process_channel(samples);
             }
         }
@@ -389,7 +377,7 @@ impl DrCalculator {
     /// 使用10001-bin直方图的20%采样算法，实现与foobar2000完全一致的精度。
     /// 这是foobar2000 "最响20%样本"算法的核心实现。
     fn calculate_channel_rms_foobar2000(&self, channel_idx: usize) -> AudioResult<f64> {
-        let analyzers = self.window_analyzers.as_ref().ok_or_else(|| {
+        let analyzers = self.histogram_analyzers.as_ref().ok_or_else(|| {
             AudioError::CalculationError("foobar2000模式下未初始化窗口分析器".to_string())
         })?;
 
@@ -402,7 +390,7 @@ impl DrCalculator {
         let analyzer = &analyzers[channel_idx];
 
         // 检查窗口数据可用性
-        if analyzer.total_windows() == 0 {
+        if analyzer.total_samples() == 0 {
             return Err(AudioError::CalculationError(
                 "未检测到任何窗口数据，可能样本数不足".to_string(),
             ));
@@ -550,14 +538,8 @@ impl DrCalculator {
         // 评估Sum Doubling质量
         let quality = self.evaluate_sum_doubling_quality(rms, peak, sample_count);
 
-        if quality.should_apply {
-            // 应用高精度Sum Doubling补偿
-            let compensated_rms = rms * SUM_DOUBLING_FACTOR;
-            (compensated_rms, quality)
-        } else {
-            // 不建议应用，返回原始RMS
-            (rms, quality)
-        }
+        // 早期版本：不应用任何RMS补偿，始终返回原始RMS
+        (rms, quality)
     }
 
     /// 评估Sum Doubling补偿的质量和适用性
@@ -575,8 +557,8 @@ impl DrCalculator {
         let mut confidence = 1.0f64;
         let mut issues = SumDoublingIssues::default();
 
-        // 1. 样本数量检查
-        if sample_count < MIN_SAMPLES_FOR_SUM_DOUBLING {
+        // 1. 样本数量检查（早期版本：简化逻辑，使用硬编码阈值）
+        if sample_count < 100 {
             confidence *= 0.5; // 样本不足，降低置信度
             issues.insufficient_samples = true;
         }
@@ -623,7 +605,7 @@ impl DrCalculator {
         self.sample_count = 0;
 
         // 重置直方图（如果有）
-        if let Some(ref mut analyzers) = self.window_analyzers {
+        if let Some(ref mut analyzers) = self.histogram_analyzers {
             for analyzer in analyzers.iter_mut() {
                 analyzer.clear();
             }
@@ -651,8 +633,8 @@ impl DrCalculator {
     }
 
     /// 获取指定声道的直方图统计信息（仅foobar2000模式）
-    pub fn get_window_stats(&self, channel_idx: usize) -> Option<crate::core::WindowStats> {
-        if let Some(ref analyzers) = self.window_analyzers {
+    pub fn get_histogram_stats(&self, channel_idx: usize) -> Option<crate::core::SimpleStats> {
+        if let Some(ref analyzers) = self.histogram_analyzers {
             if channel_idx < analyzers.len() {
                 return Some(analyzers[channel_idx].get_statistics());
             }
@@ -672,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_new_calculator() {
-        let calc = DrCalculator::new(2, true).unwrap();
+        let calc = DrCalculator::new(2, true, 48000).unwrap();
         assert_eq!(calc.channel_count(), 2);
         assert_eq!(calc.sample_count(), 0);
         assert!(calc.sum_doubling_enabled());
@@ -680,13 +662,13 @@ mod tests {
 
     #[test]
     fn test_invalid_channel_count() {
-        assert!(DrCalculator::new(0, false).is_err());
-        assert!(DrCalculator::new(33, false).is_err());
+        assert!(DrCalculator::new(0, false, 48000).is_err());
+        assert!(DrCalculator::new(33, false, 48000).is_err());
     }
 
     #[test]
     fn test_process_interleaved_samples() {
-        let mut calc = DrCalculator::new(2, false).unwrap();
+        let mut calc = DrCalculator::new(2, false, 48000).unwrap();
         let samples = vec![0.5, -0.3, 0.7, -0.1]; // L1, R1, L2, R2
 
         let processed = calc.process_interleaved_samples(&samples).unwrap();
@@ -696,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_invalid_interleaved_data() {
-        let mut calc = DrCalculator::new(2, false).unwrap();
+        let mut calc = DrCalculator::new(2, false, 48000).unwrap();
         let samples = vec![0.5, -0.3, 0.7]; // 不是2的倍数
 
         assert!(calc.process_interleaved_samples(&samples).is_err());
@@ -704,7 +686,7 @@ mod tests {
 
     #[test]
     fn test_process_channel_samples() {
-        let mut calc = DrCalculator::new(2, false).unwrap();
+        let mut calc = DrCalculator::new(2, false, 48000).unwrap();
         let channel_samples = vec![
             vec![0.5, 0.7],   // 左声道
             vec![-0.3, -0.1], // 右声道
@@ -717,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_basic() {
-        let mut calc = DrCalculator::new(1, false).unwrap();
+        let mut calc = DrCalculator::new(1, false, 48000).unwrap();
         let samples = vec![0.5]; // 单声道，单样本
 
         calc.process_interleaved_samples(&samples).unwrap();
@@ -734,7 +716,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_with_sum_doubling() {
-        let mut calc = DrCalculator::new(1, true).unwrap();
+        let mut calc = DrCalculator::new(1, true, 48000).unwrap();
         // 使用更合理的测试数据：小RMS，正常Peak
         let samples = vec![
             0.05, 0.05, 0.05, 0.05, // 小信号
@@ -748,7 +730,8 @@ mod tests {
 
         // 基础RMS计算：sqrt((4*0.05^2 + 1*1.0^2) / 5) = sqrt(0.202) ≈ 0.449
         let base_rms = ((4.0 * 0.05_f64.powi(2) + 1.0_f64.powi(2)) / 5.0).sqrt();
-        let expected_rms = base_rms * SUM_DOUBLING_FACTOR; // Sum Doubling补偿
+        // 早期版本：不应用RMS补偿，期待原始RMS值
+        let expected_rms = base_rms;
 
         assert!((result.rms - expected_rms).abs() < 1e-6);
         assert!((result.peak - 1.0).abs() < 1e-10); // Peak不受Sum Doubling影响
@@ -758,7 +741,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_no_data() {
-        let calc = DrCalculator::new(2, false).unwrap();
+        let calc = DrCalculator::new(2, false, 48000).unwrap();
         assert!(calc.calculate_dr().is_err());
     }
 
@@ -773,7 +756,7 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let mut calc = DrCalculator::new(2, false).unwrap();
+        let mut calc = DrCalculator::new(2, false, 48000).unwrap();
         let samples = vec![0.5, -0.3, 0.7, -0.1];
 
         calc.process_interleaved_samples(&samples).unwrap();
@@ -785,7 +768,7 @@ mod tests {
 
     #[test]
     fn test_realistic_dr_calculation() {
-        let mut calc = DrCalculator::new(1, false).unwrap();
+        let mut calc = DrCalculator::new(1, false, 48000).unwrap();
 
         // 模拟实际音频：较小的RMS，较大的Peak（典型的动态范围情况）
         let samples = vec![
@@ -805,7 +788,7 @@ mod tests {
 
     #[test]
     fn test_intelligent_sum_doubling_normal_case() {
-        let mut calc = DrCalculator::new(1, true).unwrap();
+        let mut calc = DrCalculator::new(1, true, 48000).unwrap();
 
         // 正常音频样本
         for _ in 0..1000 {
@@ -820,16 +803,10 @@ mod tests {
         let base_rms = ((1000.0 * 0.3_f64.powi(2) + 0.8_f64.powi(2)) / 1001.0).sqrt();
 
         // 测试智能系统是否应用了Sum Doubling
-        let quality = calc.evaluate_sum_doubling_quality(base_rms, 0.8, 1001);
+        let _quality = calc.evaluate_sum_doubling_quality(base_rms, 0.8, 1001);
 
-        if quality.should_apply {
-            // 如果系统决定应用，验证应用了高精度常量
-            let expected_rms = base_rms * SUM_DOUBLING_FACTOR;
-            assert!((result.rms - expected_rms).abs() < 1e-6); // 宽松一些的精度
-        } else {
-            // 如果系统决定不应用，RMS应该是基础值
-            assert!((result.rms - base_rms).abs() < 1e-6);
-        }
+        // 早期版本：无论系统如何决定，都应该返回原始base_rms（不应用RMS补偿）
+        assert!((result.rms - base_rms).abs() < 1e-6);
 
         // 基本约束仍应满足
         assert!(result.rms > 0.0);
@@ -839,7 +816,7 @@ mod tests {
 
     #[test]
     fn test_intelligent_sum_doubling_disabled() {
-        let mut calc = DrCalculator::new(1, false).unwrap();
+        let mut calc = DrCalculator::new(1, false, 48000).unwrap();
 
         for _ in 0..100 {
             calc.process_interleaved_samples(&[0.5]).unwrap();
@@ -854,7 +831,7 @@ mod tests {
 
     #[test]
     fn test_sum_doubling_quality_assessment() {
-        let calc = DrCalculator::new(1, true).unwrap();
+        let calc = DrCalculator::new(1, true, 48000).unwrap();
 
         // 测试正常情况
         let quality = calc.evaluate_sum_doubling_quality(0.3, 0.8, 1000);
@@ -874,26 +851,19 @@ mod tests {
     }
 
     #[test]
-    fn test_sum_doubling_constant_precision() {
-        // 验证高精度常量的使用
-        let calc = DrCalculator::new(1, true).unwrap();
+    fn test_no_rms_compensation_in_early_version() {
+        // 早期版本：验证不应用任何RMS补偿
+        let calc = DrCalculator::new(1, true, 48000).unwrap();
 
-        let (compensated, _) = calc.apply_intelligent_sum_doubling(0.5, 0.8, 1000);
-        let expected = 0.5 * SUM_DOUBLING_FACTOR;
-
-        assert!((compensated - expected).abs() < 1e-15); // 高精度比较
-
-        // 验证与旧实现的差异（应该更精确）
-        let old_factor = 2.0_f64.sqrt();
-        let old_result = 0.5 * old_factor;
-
-        // 新实现应该更精确（可能有微小差异）
-        assert!((compensated - old_result).abs() < 1e-10);
+        let (result_rms, _) = calc.apply_intelligent_sum_doubling(0.5, 0.8, 1000);
+        
+        // 早期版本应该返回原始RMS值，不应用任何补偿
+        assert!((result_rms - 0.5).abs() < 1e-15);
     }
 
     #[test]
     fn test_sum_doubling_edge_cases() {
-        let calc = DrCalculator::new(1, true).unwrap();
+        let calc = DrCalculator::new(1, true, 48000).unwrap();
 
         // 零RMS
         let quality = calc.evaluate_sum_doubling_quality(0.0, 0.5, 1000);

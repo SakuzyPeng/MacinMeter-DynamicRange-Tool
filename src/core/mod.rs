@@ -9,4 +9,4 @@ pub mod histogram;
 // 重新导出公共接口
 pub use channel_data::{ChannelData, PeakQuality, PeakQualityFlags};
 pub use dr_calculator::{DrCalculator, DrResult, SumDoublingIssues, SumDoublingQuality};
-pub use histogram::{WindowRmsAnalyzer, WindowStats};
+pub use histogram::{SimpleHistogramAnalyzer, SimpleStats};
