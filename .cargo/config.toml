@@ -1,0 +1,36 @@
+# Cargo配置文件 - 针对Apple M4 Pro优化
+
+[build]
+# 设置默认target为本机架构
+target = "aarch64-apple-darwin"
+
+# ARM64 (Apple Silicon) 特定优化
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",        # 使用本机CPU特性（Apple M4 Pro）
+    "-C", "target-feature=+neon",     # 显式启用NEON SIMD
+    "-C", "target-feature=+fp16",     # 启用半精度浮点支持
+    "-C", "target-feature=+dotprod",  # 启用向量点积指令
+    "-C", "target-feature=+aes",      # 启用AES加密指令
+    "-C", "target-feature=+sha2",     # 启用SHA2指令
+    "-C", "llvm-args=--ffast-math",   # 启用快速数学模式（修正参数格式）
+]
+
+# 通用x86_64优化（备用）
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma",
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native", 
+    "-C", "target-feature=+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma",
+]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma",
+]

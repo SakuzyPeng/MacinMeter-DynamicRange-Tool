@@ -23,6 +23,8 @@ rayon = "1.10"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"           # 更激进的LTO优化
 codegen-units = 1
 panic = "abort"
+strip = true          # 去除调试符号，减小二进制大小
+overflow-checks = false   # 在release模式禁用溢出检查（提升性能）

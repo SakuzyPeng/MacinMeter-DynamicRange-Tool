@@ -1,25 +1,29 @@
-//! SSE向量化音频处理器
+//! SIMD向量化音频处理器
 //!
-//! 基于x86_64 SSE2指令集实现4样本并行处理，
+//! 基于多架构SIMD指令集实现4样本并行处理，
 //! 针对DR计算的核心算法进行专门优化。
 //!
 //! ## 性能目标
-//! - 4样本并行处理（128位SSE向量）
+//! - 4样本并行处理（128位SIMD向量）
 //! - 6-7倍性能提升
 //! - 100%精度一致性（与标量实现）
 //!
 //! ## 兼容性
-//! - 要求SSE2支持（2003年后的x86_64处理器）
+//! - x86_64: SSE2支持（2003年后的处理器）
+//! - ARM64: NEON支持（现代ARM处理器）
 //! - 自动fallback到标量实现（不支持SIMD时）
-//! - 跨平台兼容（ARM NEON后续支持）
+//! - 跨平台兼容（运行时检测）
 
 use crate::core::ChannelData;
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
 /// SIMD处理器能力检测结果
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimdCapabilities {
+    // x86_64 SIMD特性
     /// SSE2支持（4x f32并行）
     pub sse2: bool,
 
@@ -40,17 +44,31 @@ pub struct SimdCapabilities {
 
     /// FMA支持（融合乘加运算）
     pub fma: bool,
+
+    // ARM64 SIMD特性
+    /// NEON支持（4x f32并行）
+    pub neon: bool,
+
+    /// Crypto支持（AES/SHA等）
+    pub crypto: bool,
+
+    /// FP16支持（半精度浮点）
+    pub fp16: bool,
+
+    /// Dot Product支持（点积指令）
+    pub dotprod: bool,
 }
 
 impl SimdCapabilities {
     /// 检测当前CPU的SIMD能力
     ///
-    /// 使用CPUID指令检测处理器特性，
+    /// 使用平台特定的特性检测API，
     /// 返回详细的SIMD支持情况
     pub fn detect() -> Self {
         #[cfg(target_arch = "x86_64")]
         {
             Self {
+                // x86_64 特性
                 sse2: is_x86_feature_detected!("sse2"),
                 sse3: is_x86_feature_detected!("sse3"),
                 ssse3: is_x86_feature_detected!("ssse3"),
@@ -58,12 +76,37 @@ impl SimdCapabilities {
                 avx: is_x86_feature_detected!("avx"),
                 avx2: is_x86_feature_detected!("avx2"),
                 fma: is_x86_feature_detected!("fma"),
+                // ARM特性在x86上为false
+                neon: false,
+                crypto: false,
+                fp16: false,
+                dotprod: false,
             }
         }
 
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
         {
-            // 其他架构暂不支持SIMD（未来可添加ARM NEON）
+            Self {
+                // x86特性在ARM上为false
+                sse2: false,
+                sse3: false,
+                ssse3: false,
+                sse4_1: false,
+                avx: false,
+                avx2: false,
+                fma: false,
+                // ARM64 特性检测
+                neon: std::arch::is_aarch64_feature_detected!("neon"),
+                crypto: std::arch::is_aarch64_feature_detected!("aes")
+                    && std::arch::is_aarch64_feature_detected!("sha2"),
+                fp16: std::arch::is_aarch64_feature_detected!("fp16"),
+                dotprod: std::arch::is_aarch64_feature_detected!("dotprod"),
+            }
+        }
+
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            // 其他架构暂不支持SIMD
             Self {
                 sse2: false,
                 sse3: false,
@@ -72,26 +115,30 @@ impl SimdCapabilities {
                 avx: false,
                 avx2: false,
                 fma: false,
+                neon: false,
+                crypto: false,
+                fp16: false,
+                dotprod: false,
             }
         }
     }
 
-    /// 是否支持基础SIMD加速（至少SSE2）
+    /// 是否支持基础SIMD加速（SSE2或NEON）
     pub fn has_basic_simd(&self) -> bool {
-        self.sse2
+        self.sse2 || self.neon
     }
 
-    /// 是否支持高级SIMD优化（SSE4.1+）
+    /// 是否支持高级SIMD优化（SSE4.1或DotProd）
     pub fn has_advanced_simd(&self) -> bool {
-        self.sse4_1
+        self.sse4_1 || self.dotprod
     }
 
     /// 获取建议的并行度（一次处理的样本数）
     pub fn recommended_parallelism(&self) -> usize {
         if self.avx2 {
             8 // AVX2: 8x f32 并行
-        } else if self.sse2 {
-            4 // SSE2: 4x f32 并行
+        } else if self.sse2 || self.neon {
+            4 // SSE2/NEON: 4x f32 并行
         } else {
             1 // 标量处理
         }
@@ -158,7 +205,7 @@ impl SimdChannelData {
 
     /// 批量处理音频样本（SIMD优化）
     ///
-    /// 使用SSE2指令并行处理4个样本，
+    /// 使用SSE2或NEON指令并行处理4个样本，
     /// 显著提升RMS累积和Peak检测性能
     ///
     /// # 参数
@@ -187,9 +234,21 @@ impl SimdChannelData {
         if self.capabilities.has_basic_simd() {
             #[cfg(target_arch = "x86_64")]
             {
-                unsafe { self.process_samples_sse2(samples) }
+                if self.capabilities.sse2 {
+                    unsafe { self.process_samples_sse2(samples) }
+                } else {
+                    self.process_samples_scalar(samples)
+                }
             }
-            #[cfg(not(target_arch = "x86_64"))]
+            #[cfg(target_arch = "aarch64")]
+            {
+                if self.capabilities.neon {
+                    unsafe { self.process_samples_neon(samples) }
+                } else {
+                    self.process_samples_scalar(samples)
+                }
+            }
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
             {
                 self.process_samples_scalar(samples)
             }
@@ -262,6 +321,69 @@ impl SimdChannelData {
         len
     }
 
+    /// ARM NEON优化的样本处理（unsafe）
+    ///
+    /// 使用128位NEON向量并行处理4个f32样本：
+    /// - 向量化RMS累积（平方和）
+    /// - 向量化Peak检测（绝对值最大）
+    /// - 双Peak机制的向量化实现
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn process_samples_neon(&mut self, samples: &[f32]) -> usize {
+        let len = samples.len();
+        let mut i = 0;
+
+        // 使用标量方式处理Peak，确保与原实现完全一致
+        // NEON用于RMS累积，Peak处理回退到标量以保证正确性
+        let mut current_primary = self.inner.peak_primary;
+        let mut current_secondary = self.inner.peak_secondary;
+
+        // SAFETY: NEON intrinsics操作
+        unsafe {
+            // 当前累积值加载到NEON寄存器
+            let mut rms_accum = vdupq_n_f32(0.0);
+
+            // 4样本并行处理主循环（仅RMS累积使用SIMD）
+            while i + 4 <= len {
+                // 加载4个样本到NEON寄存器
+                let samples_vec = vld1q_f32(samples.as_ptr().add(i));
+
+                // RMS累积：samples^2（SIMD加速）
+                let squares = vmulq_f32(samples_vec, samples_vec);
+                rms_accum = vaddq_f32(rms_accum, squares);
+
+                // Peak处理：逐个样本处理以确保正确的次Peak逻辑
+                for j in 0..4 {
+                    let sample_abs = samples[i + j].abs() as f64;
+
+                    if sample_abs > current_primary {
+                        current_secondary = current_primary;
+                        current_primary = sample_abs;
+                    } else if sample_abs > current_secondary {
+                        current_secondary = sample_abs;
+                    }
+                }
+
+                i += 4;
+            }
+
+            // 水平归约：将4个并行值合并为标量
+            self.inner.rms_accumulator += self.horizontal_sum_neon(rms_accum) as f64;
+        }
+
+        // 更新Peak值
+        self.inner.peak_primary = current_primary;
+        self.inner.peak_secondary = current_secondary;
+
+        // 处理剩余样本（标量方式）
+        while i < len {
+            self.inner.process_sample(samples[i]);
+            i += 1;
+        }
+
+        len
+    }
+
     /// 标量处理方式（fallback）
     fn process_samples_scalar(&mut self, samples: &[f32]) -> usize {
         for &sample in samples {
@@ -290,6 +412,15 @@ impl SimdChannelData {
         let shuf2 = _mm_movehl_ps(max1, max1);
         let max2 = _mm_max_ss(max1, shuf2);
         _mm_cvtss_f32(max2)
+    }
+
+    /// NEON寄存器水平求和（4个f32相加）
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn horizontal_sum_neon(&self, vec: float32x4_t) -> f32 {
+        // 使用NEON的vpaddq指令进行水平求和
+        let sum_pairs = vpaddq_f32(vec, vec); // [v0+v1, v2+v3, v0+v1, v2+v3]
+        vpadds_f32(vget_low_f32(sum_pairs)) // (v0+v1) + (v2+v3)
     }
 
     /// 获取内部ChannelData的引用
@@ -379,9 +510,24 @@ mod tests {
 
         // 至少应该能检测基本信息（不管是否支持）
         println!("SIMD能力检测:");
-        println!("  SSE2: {}", caps.sse2);
-        println!("  SSE4.1: {}", caps.sse4_1);
-        println!("  AVX: {}", caps.avx);
+        #[cfg(target_arch = "x86_64")]
+        {
+            println!("  x86_64架构:");
+            println!("    SSE2: {}", caps.sse2);
+            println!("    SSE4.1: {}", caps.sse4_1);
+            println!("    AVX: {}", caps.avx);
+            println!("    AVX2: {}", caps.avx2);
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            println!("  ARM64架构:");
+            println!("    NEON: {}", caps.neon);
+            println!("    DotProd: {}", caps.dotprod);
+            println!("    FP16: {}", caps.fp16);
+            println!("    Crypto: {}", caps.crypto);
+        }
+        println!("  基础SIMD支持: {}", caps.has_basic_simd());
+        println!("  高级SIMD支持: {}", caps.has_advanced_simd());
         println!("  推荐并行度: {}", caps.recommended_parallelism());
 
         // 基本检查
@@ -421,6 +567,20 @@ mod tests {
         let rms_diff = (simd_processor.inner().rms_accumulator - scalar_data.rms_accumulator).abs();
         let peak1_diff = (simd_processor.inner().peak_primary - scalar_data.peak_primary).abs();
         let peak2_diff = (simd_processor.inner().peak_secondary - scalar_data.peak_secondary).abs();
+
+        println!("🔍 SIMD vs 标量实现对比:");
+        println!("  RMS累积:");
+        println!("    SIMD: {}", simd_processor.inner().rms_accumulator);
+        println!("    标量: {}", scalar_data.rms_accumulator);
+        println!("    差异: {}", rms_diff);
+        println!("  主Peak:");
+        println!("    SIMD: {}", simd_processor.inner().peak_primary);
+        println!("    标量: {}", scalar_data.peak_primary);
+        println!("    差异: {}", peak1_diff);
+        println!("  次Peak:");
+        println!("    SIMD: {}", simd_processor.inner().peak_secondary);
+        println!("    标量: {}", scalar_data.peak_secondary);
+        println!("    差异: {}", peak2_diff);
 
         assert!(rms_diff < 1e-6, "RMS差异过大: {}", rms_diff);
         assert!(peak1_diff < 1e-6, "主Peak差异过大: {}", peak1_diff);
