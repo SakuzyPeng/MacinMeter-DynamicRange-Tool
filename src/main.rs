@@ -219,7 +219,7 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
         if config.verbose {
             let stats = &batch_result.performance_stats;
             println!("📊 性能统计:");
-            
+
             // 优化时间显示格式
             let duration_display = if stats.total_duration_us >= 1_000_000 {
                 format!("{:.2}s", stats.total_duration_us as f64 / 1_000_000.0)
@@ -228,7 +228,7 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             } else {
                 format!("{}μs", stats.total_duration_us)
             };
-            
+
             // 优化处理速度显示格式
             let speed_display = if stats.samples_per_second >= 1_000_000.0 {
                 format!("{:.1}M samples/s", stats.samples_per_second / 1_000_000.0)
@@ -237,18 +237,20 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             } else {
                 format!("{:.0} samples/s", stats.samples_per_second)
             };
-            
+
             println!("   处理时间: {duration_display}");
             println!("   处理速度: {speed_display}");
-            println!("   处理样本: {} ({} 声道)", 
+            println!(
+                "   处理样本: {} ({} 声道)",
                 format_number(stats.total_samples),
                 stats.channels_processed
             );
-            
+
             // SIMD信息（仅在有意义时显示）
             if batch_result.simd_usage.used_simd || stats.simd_speedup > 1.0 {
-                println!("   SIMD加速: {:.1}x (覆盖率: {:.1}%)", 
-                    stats.simd_speedup, 
+                println!(
+                    "   SIMD加速: {:.1}x (覆盖率: {:.1}%)",
+                    stats.simd_speedup,
                     batch_result.simd_usage.simd_coverage * 100.0
                 );
             }

@@ -217,13 +217,7 @@ impl BatchProcessor {
         let results: Result<Vec<_>, AudioError> = channel_samples
             .par_iter()
             .enumerate()
-            .map(|(ch_idx, ch_samples)| {
-                self.process_single_channel(
-                    ch_samples,
-                    ch_idx,
-                    config,
-                )
-            })
+            .map(|(ch_idx, ch_samples)| self.process_single_channel(ch_samples, ch_idx, config))
             .collect();
 
         let dr_results = results?;
@@ -260,11 +254,7 @@ impl BatchProcessor {
                 .copied()
                 .collect();
 
-            let dr_result = self.process_single_channel(
-                &ch_samples,
-                ch_idx,
-                config,
-            )?;
+            let dr_result = self.process_single_channel(&ch_samples, ch_idx, config)?;
 
             dr_results.push(dr_result);
         }
@@ -290,7 +280,12 @@ impl BatchProcessor {
         config: &ChannelProcessConfig,
     ) -> AudioResult<DrResult> {
         // 创建DR计算器（统一使用标准API）
-        let mut calculator = DrCalculator::new_with_mode(1, config.sum_doubling, config.foobar2000_mode, config.sample_rate)?;
+        let mut calculator = DrCalculator::new_with_mode(
+            1,
+            config.sum_doubling,
+            config.foobar2000_mode,
+            config.sample_rate,
+        )?;
 
         if config.use_simd {
             // SIMD优化路径：批量处理后使用标准API
@@ -357,12 +352,13 @@ mod tests {
     fn test_interleaved_batch_processing() {
         let processor = BatchProcessor::new(false, None); // 禁用多线程简化测试
 
-        // 立体声测试数据
+        // ✅ 立体声测试数据（确保第二大Peak > √2×RMS）
         let samples = vec![
             0.1, -0.1, // L1, R1
-            0.2, -0.2, // L2, R2
-            0.3, -0.3, // L3, R3
-            0.8, -0.8, // L4, R4 (Peak)
+            0.1, -0.1, // L2, R2
+            0.1, -0.1, // L3, R3
+            0.7, -0.7, // L4, R4 (第二大Peak)
+            0.8, -0.8, // L5, R5 (最大Peak)
         ];
 
         let result = processor
@@ -375,7 +371,7 @@ mod tests {
         // 验证结果
         assert_eq!(result.dr_results.len(), 2);
         assert_eq!(result.performance_stats.channels_processed, 2);
-        assert_eq!(result.performance_stats.total_samples, 8);
+        assert_eq!(result.performance_stats.total_samples, 10); // ✅ 更新总样本数
 
         // 检查每个声道的结果
         for dr_result in &result.dr_results {
