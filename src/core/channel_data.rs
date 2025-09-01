@@ -1,6 +1,7 @@
-//! 24字节ChannelData核心数据结构
+//! 声道数据核心处理结构
 //!
-//! 基于foobar2000 DR Meter逆向分析的精确实现，确保内存布局一致性。
+//! 基于 Measuring_DR_ENv3.md 标准的精确实现，以 dr14_t.meter 作为参考。
+//! 提供高精度RMS累积和双Peak智能回退系统。
 //!
 //! ## 双Peak智能回退系统
 //!
@@ -112,7 +113,7 @@ impl fmt::Display for PeakQualityFlags {
 
 /// 每声道的DR计算数据结构
 ///
-/// 严格按照foobar2000 DR Meter的24字节内存布局设计：
+/// 基于Measuring_DR_ENv3.md标准的24字节内存布局设计：
 /// - 0-7字节：RMS累积值 (f64)
 /// - 8-15字节：主Peak值 (f64)
 /// - 16-23字节：次Peak值 (f64)
@@ -156,7 +157,7 @@ impl ChannelData {
 
     /// 处理单个音频样本，更新RMS累积和Peak值
     ///
-    /// 实现foobar2000的精确算法：
+    /// 实现Measuring_DR_ENv3.md标准的精确算法：
     /// - RMS: 累积样本的平方值
     /// - Peak: 跟踪绝对值最大值，实现双Peak机制
     ///
@@ -249,7 +250,7 @@ impl ChannelData {
     /// assert_eq!(data.get_effective_peak(), 0.5);
     /// ```
     pub fn get_effective_peak(&self) -> f64 {
-        // ✅ **官方标准**：DR测量使用"第二大Peak值"（Pk_2nd）
+        // ✅ **Measuring_DR_ENv3.md 标准**：DR测量使用"第二大Peak值"（Pk_2nd）
         // 参考文档方程4：DR_j[dB] = -20·log₁₀(...·1/Pk_2nd)
         if self.peak_secondary > 0.0 {
             self.peak_secondary // 优先使用第二大Peak值
@@ -263,7 +264,7 @@ impl ChannelData {
 
     /// 智能Peak回退系统：根据多重验证条件选择最佳Peak值
     ///
-    /// 实现foobar2000级别的智能Peak验证和回退机制：
+    /// 实现Measuring_DR_ENv3.md标准的智能Peak验证和回退机制：
     /// - 数字削波检测（0dBFS饱和检测）
     /// - RMS-Peak相关性验证
     /// - Peak质量评估和置信度计算

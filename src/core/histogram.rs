@@ -1,34 +1,43 @@
-//! 10001-bin直方图和20%采样算法
+//! 10000-bin直方图和20%采样算法
 //!
-//! 基于foobar2000 DR Meter逆向分析实现的高精度直方图统计和采样算法。
-//! 核心修正：使用3秒窗口RMS分布而不是单样本幅度分布
-
-use crate::error::{AudioError, AudioResult};
+//! 基于 Measuring_DR_ENv3.md 标准实现的高精度直方图统计和采样算法。
+//! 以 dr14_t.meter 作为参考实现，使用3秒窗口RMS分布统计
 
 /// 3秒窗口RMS分析器
 ///
-/// 实现foobar2000 "最响20%" 的正确统计对象：
+/// 实现 Measuring_DR_ENv3.md 标准的"上位20%"RMS统计：
 /// - 以3秒为窗口累计平方和，计算窗口RMS
-/// - 把窗口RMS值填入直方图（而不是单样本绝对值）
-/// - 确保"最响20%"指的是"RMS最高的20%窗口"
+/// - 把窗口RMS值填入直方图进行统计
+/// - "上位20%"指RMS最高的20%窗口，用于DR计算
 #[derive(Debug, Clone)]
 pub struct WindowRmsAnalyzer {
-    /// 窗口长度（样本数）- 符合官方DR测量标准
+    /// 窗口长度（样本数）- 符合 Measuring_DR_ENv3.md 标准
     window_len: usize,
 
     /// 当前窗口的平方和累积
     current_sum_sq: f64,
+
+    /// 当前窗口的最大Peak值
+    current_peak: f64,
 
     /// 当前窗口的样本计数
     current_count: usize,
 
     /// 所有窗口RMS值的直方图
     histogram: DrHistogram,
+
+    /// 所有窗口的Peak值集合（用于排序和选择第二大Peak值，符合标准公式4）
+    window_peaks: Vec<f64>,
+
+    /// 🔧 **紧急修复**: 直接存储窗口RMS值以避免直方图量化损失
+    /// 当RMS > 0.9999时，直方图量化会造成严重误差
+    /// 对于小窗口数量的情况，直接存储更准确
+    window_rms_values: Vec<f64>,
 }
 
 /// 10000-bin直方图容器
 ///
-/// 实现foobar2000 DR Meter的官方标准直方图统计：
+/// 实现 Measuring_DR_ENv3.md 标准的直方图统计：
 /// - 覆盖索引0-9999，对应RMS值0.0000-0.9999（精度0.0001）
 /// - 每个bin统计落在该RMS范围内的**窗口**数量（不是样本数量）
 /// - 支持加权均值+开方的20%RMS计算
@@ -75,8 +84,11 @@ impl WindowRmsAnalyzer {
         Self {
             window_len,
             current_sum_sq: 0.0,
+            current_peak: 0.0,
             current_count: 0,
             histogram: DrHistogram::new(),
+            window_peaks: Vec::new(),
+            window_rms_values: Vec::new(),
         }
     }
 
@@ -88,17 +100,28 @@ impl WindowRmsAnalyzer {
     pub fn process_channel(&mut self, samples: &[f32]) {
         for &sample in samples {
             let sample_f64 = sample as f64;
+            let abs_sample = sample_f64.abs();
+
+            // 更新当前窗口的平方和和Peak值
             self.current_sum_sq += sample_f64 * sample_f64;
+            self.current_peak = self.current_peak.max(abs_sample);
             self.current_count += 1;
 
-            // 窗口满了，计算窗口RMS并添加到直方图
+            // 窗口满了，计算窗口RMS和Peak并添加到直方图
             if self.current_count >= self.window_len {
                 // ✅ 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
                 let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
                 self.histogram.add_window_rms(window_rms);
 
+                // ✅ 记录窗口Peak值用于后续排序
+                self.window_peaks.push(self.current_peak);
+
+                // 🔧 **关键修复**: 直接存储RMS值避免量化损失
+                self.window_rms_values.push(window_rms);
+
                 // 重置窗口
                 self.current_sum_sq = 0.0;
+                self.current_peak = 0.0;
                 self.current_count = 0;
             }
         }
@@ -109,20 +132,106 @@ impl WindowRmsAnalyzer {
             let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
             self.histogram.add_window_rms(window_rms);
 
+            // ✅ 记录最后一个窗口的Peak值
+            self.window_peaks.push(self.current_peak);
+
+            // 🔧 **关键修复**: 直接存储RMS值避免量化损失
+            self.window_rms_values.push(window_rms);
+
             // 重置状态
             self.current_sum_sq = 0.0;
+            self.current_peak = 0.0;
             self.current_count = 0;
+        }
+    }
+
+    /// 获取DR14标准Peak值（精确复现dr14_t.meter的peaks[seg_cnt-2]算法）
+    ///
+    /// 🚨 **完全理解dr14_t.meter的Peak选择逻辑**:
+    /// 1. seg_cnt = 实际窗口数 + 1（总是+1，即使没有剩余样本）
+    /// 2. peaks数组分配seg_cnt行，未使用的行填0
+    /// 3. np.sort(peaks, 0) 将0值排在前面，实际Peak值后移
+    /// 4. peaks[seg_cnt-2] 选择排序后的特定位置
+    ///
+    /// 示例：3个实际窗口，无剩余样本
+    /// - seg_cnt = 4
+    /// - 原始peaks: [peak0, peak1, peak2, 0]
+    /// - 排序后: [0, peak_small, peak_medium, peak_large]  
+    /// - peaks[seg_cnt-2] = peaks[2] = peak_medium (中等Peak值)
+    ///
+    /// 实际上选择的是**排序后第三个位置的Peak值**
+    ///
+    /// # 返回值
+    ///
+    /// 返回按照dr14_t.meter精确算法选择的Peak值
+    pub fn get_second_largest_peak(&self) -> f64 {
+        if self.window_peaks.is_empty() {
+            return 0.0;
+        }
+
+        // 步骤1: 计算seg_cnt（总是+1）
+        let seg_cnt = self.window_peaks.len() + 1;
+
+        // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
+        let mut peaks_array = vec![0.0; seg_cnt];
+        for (i, &peak) in self.window_peaks.iter().enumerate() {
+            peaks_array[i] = peak;
+        }
+        // 剩余位置保持为0.0（模拟未使用的剩余样本窗口）
+
+        // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
+        peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤4: 选择第二大Peak值（倒数第二个）
+        // 排序后数组：[0, p1, p2, ..., p_max]
+        // 第二大Peak = peaks_array[len - 2]
+        if peaks_array.len() >= 2 {
+            peaks_array[peaks_array.len() - 2] // 第二大值
+        } else {
+            // 只有1个Peak时，使用该Peak
+            peaks_array[0]
         }
     }
 
     /// 计算"最响20%窗口"的加权RMS值
     ///
-    /// 使用foobar2000的精确算法：
-    /// 1. 逆向遍历直方图找到最响20%窗口
-    /// 2. 对选中窗口用1e-8×index²加权求和
-    /// 3. 除以窗口数并开方得到最终RMS
+    /// 🚨 **完全精确复现dr14_t.meter算法**:
+    /// 使用直接存储的RMS值（无量化损失）+ seg_cnt虚拟窗口逻辑
     pub fn calculate_20_percent_rms(&self) -> f64 {
-        self.histogram.calculate_weighted_20_percent_rms()
+        if self.window_rms_values.is_empty() {
+            return 0.0;
+        }
+
+        // 🔧 **精确复现dr14_t.meter的完整逻辑**
+
+        // 步骤1: 构建包含虚拟窗口的RMS数组
+        let actual_windows = self.window_rms_values.len();
+        let seg_cnt = actual_windows + 1; // dr14_t.meter总是+1
+
+        let mut rms_array = vec![0.0; seg_cnt];
+        // 复制实际RMS值
+        for (i, &rms) in self.window_rms_values.iter().enumerate() {
+            rms_array[i] = rms;
+        }
+        // 最后一个位置保持0.0（虚拟窗口）
+
+        // 步骤2: 排序（升序，0值会排在前面）
+        rms_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤3: 计算20%采样窗口数
+        let cut_best_bins = 0.2;
+        let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
+
+        // 步骤4: 选择最高20%的RMS值
+        let start_index = seg_cnt - n_blk;
+        let mut rms_sum = 0.0;
+
+        for &rms_value in rms_array.iter().skip(start_index).take(n_blk) {
+            rms_sum += rms_value * rms_value; // 平方和
+        }
+
+        // 步骤5: 开方平均
+        (rms_sum / n_blk as f64).sqrt()
     }
 
     /// 获取总窗口数
@@ -130,11 +239,24 @@ impl WindowRmsAnalyzer {
         self.histogram.total_windows()
     }
 
+    /// 获取存储的窗口RMS值（用于调试和验证）
+    pub fn get_window_rms_values(&self) -> &[f64] {
+        &self.window_rms_values
+    }
+
+    /// 获取存储的窗口Peak值（用于全局最大峰值计算）
+    pub fn get_window_peaks(&self) -> &[f64] {
+        &self.window_peaks
+    }
+
     /// 清空分析器状态
     pub fn clear(&mut self) {
         self.current_sum_sq = 0.0;
+        self.current_peak = 0.0;
         self.current_count = 0;
         self.histogram.clear();
+        self.window_peaks.clear();
+        self.window_rms_values.clear();
     }
 
     /// 获取窗口统计信息
@@ -206,97 +328,47 @@ impl DrHistogram {
         self.total_windows += 1;
     }
 
-    /// 实现foobar2000加权均值+开方的20%RMS计算
-    ///
-    /// 正确的foobar2000算法：
-    /// 1. 从高RMS向低RMS逆向遍历，选取最响20%窗口
-    /// 2. 对选中窗口用1e-8×index²进行加权求和
-    /// 3. 除以选中窗口总数并开方得到最终RMS
-    ///
-    /// # 返回值
-    ///
-    /// 返回加权计算的20%RMS值，如果直方图为空则返回0.0
-    ///
-    /// # 算法核心
-    ///
-    /// ```text
-    /// need = (total_windows * 0.2 + 0.5) as u64  // foobar精确舍入
-    /// sum_sq = 0; selected = 0;
-    /// for idx from 9999 down to 0:
-    ///   take = min(bins[idx], need - selected)
-    ///   if take > 0:
-    ///     sum_sq += take * 1e-8 * (idx * idx)
-    ///     selected += take
-    ///   if selected >= need: break
-    /// rms_20 = sqrt(sum_sq / selected)
-    /// ```
-    fn calculate_weighted_20_percent_rms(&self) -> f64 {
-        if self.total_windows == 0 {
-            return 0.0;
-        }
-
-        // 验证直方图数据完整性
-        if let Err(e) = self.validate() {
-            eprintln!("⚠️ 直方图验证失败: {e}");
-            return 0.0;
-        }
-
-        // 计算需要选择的窗口数（foobar2000精确舍入）
-        // 🔧 修复：至少选择1个窗口，避免0窗口的情况
-        let need = ((self.total_windows as f64 * 0.2 + 0.5) as u64).max(1);
-        let mut left = need;
-        let mut weighted_sum = 0.0;
-
-        // 从高RMS向低RMS逆向遍历，累积加权平方和
-        for index in (0..=9999).rev() {
-            let take = self.bins[index].min(left);
-            if take > 0 {
-                // 🔧 修复加权计算：将index转换回RMS值并计算平方和
-                let rms_value = index as f64 / 10000.0;
-                weighted_sum += take as f64 * rms_value * rms_value;
-                left -= take;
-
-                if left == 0 {
-                    break;
-                }
-            }
-        }
-
-        // 计算最终RMS：开方(加权和/选中窗口数)
-        if need > 0 {
-            (weighted_sum / need as f64).sqrt()
-        } else {
-            0.0
-        }
-    }
+    // 实现Measuring_DR_ENv3.md标准的20%RMS计算
+    //
+    // 基于dr14_t.meter的标准算法：
+    // 1. 创建包含虚拟窗口的RMS数组（seg_cnt = actual_windows + 1）
+    // 2. 对数组进行排序（升序）
+    // 3. 选择最高20%的RMS值进行平方和计算
+    // 4. 计算均方根：sqrt(sum_squares / count)
+    //
+    // # 返回值
+    //
+    // 返回加权计算的20%RMS值，如果直方图为空则返回0.0
+    //
+    // # 算法核心
+    //
+    // ```text
+    // need = (total_windows * 0.2 + 0.5) as u64  // 标准精确舍入
+    // sum_sq = 0; selected = 0;
+    // for idx from 9999 down to 0:
+    //   take = min(bins[idx], need - selected)
+    //   if take > 0:
+    //     sum_sq += take * 1e-8 * (idx * idx)
+    //     selected += take
+    //   if selected >= need: break
+    //
+    // dr14_t.meter兼容的20%采样算法（基于seg_cnt）
+    //
+    // 🚨 **关键修复**: 复现dr14_t.meter的完整seg_cnt逻辑
+    //
+    // dr14_t.meter的实际行为：
+    // 1. seg_cnt = 实际窗口数 + 1 （总是+1）
+    // 2. 创建大小为seg_cnt的RMS数组
+    // 3. 未使用的位置填0（虚拟窗口）
+    // 4. 对整个数组排序（0值会排在前面）
+    // 5. 基于seg_cnt计算20%窗口数
+    // 6. 从排序后的数组选择最高20%
 
     /// 清空直方图
     fn clear(&mut self) {
         self.bins.fill(0);
         self.total_windows = 0;
         self.rms_to_index_cache = None;
-    }
-
-    /// 验证直方图完整性
-    fn validate(&self) -> AudioResult<()> {
-        // 检查bin数量
-        if self.bins.len() != 10000 {
-            return Err(AudioError::CalculationError(format!(
-                "直方图bin数量错误: 期望10000，实际{}",
-                self.bins.len()
-            )));
-        }
-
-        // 检查总窗口数一致性
-        let computed_total: u64 = self.bins.iter().sum();
-        if computed_total != self.total_windows {
-            return Err(AudioError::CalculationError(format!(
-                "直方图窗口数不一致: 计算值{}，记录值{}",
-                computed_total, self.total_windows
-            )));
-        }
-
-        Ok(())
     }
 }
 
@@ -414,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn test_foobar_rounding() {
+    fn test_standard_rounding() {
         let mut analyzer = WindowRmsAnalyzer::new(100);
 
         // 创建11个窗口，20%应该是(11*0.2+0.5)=2.7->3个窗口

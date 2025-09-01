@@ -61,7 +61,7 @@ pub struct SimdUsageStats {
 struct ChannelProcessConfig {
     samples_per_channel: usize,
     sum_doubling: bool,
-    foobar2000_mode: bool,
+    measuring_dr_env3_mode: bool,
     use_simd: bool,
     sample_rate: u32,
 }
@@ -114,7 +114,7 @@ impl BatchProcessor {
     /// * `channel_count` - 声道数量
     /// * `sample_rate` - 采样率
     /// * `sum_doubling` - 是否启用Sum Doubling补偿
-    /// * `foobar2000_mode` - 是否启用foobar2000兼容模式
+    /// * `measuring_dr_env3_mode` - 是否启用Measuring_DR_ENv3.md标准模式
     ///
     /// # 返回值
     ///
@@ -125,7 +125,7 @@ impl BatchProcessor {
         channel_count: usize,
         sample_rate: u32,
         sum_doubling: bool,
-        foobar2000_mode: bool,
+        measuring_dr_env3_mode: bool,
     ) -> AudioResult<BatchResult> {
         let start_time = std::time::Instant::now();
 
@@ -146,7 +146,7 @@ impl BatchProcessor {
         let config = ChannelProcessConfig {
             samples_per_channel,
             sum_doubling,
-            foobar2000_mode,
+            measuring_dr_env3_mode,
             use_simd,
             sample_rate,
         };
@@ -283,7 +283,7 @@ impl BatchProcessor {
         let mut calculator = DrCalculator::new_with_mode(
             1,
             config.sum_doubling,
-            config.foobar2000_mode,
+            config.measuring_dr_env3_mode,
             config.sample_rate,
         )?;
 

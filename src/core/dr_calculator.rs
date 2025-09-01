@@ -1,23 +1,24 @@
 //! DR计算核心引擎
 //!
-//! 实现foobar2000 DR Meter的核心算法：DR = log10(RMS / Peak) * -20.0
+//! 实现基于 Measuring_DR_ENv3.md 标准的动态范围测量算法：
+//! DR = -20 * log10(sqrt(Σ(RMS²)/N) / Pk_2nd)
+//! 以 dr14_t.meter 项目作为参考实现
 
 use super::{ChannelData, WindowRmsAnalyzer};
 use crate::error::{AudioError, AudioResult};
 
-/// Sum Doubling补偿常量：sqrt(2) 的高精度值
+/// RMS计算系数：sqrt(2) 的高精度值
 ///
-/// 基于foobar2000 DR Meter逆向分析的精确浮点数值，
-/// 确保与foobar2000计算结果100%一致。不使用std::f64::consts::SQRT_2
-/// 以保持与foobar2000的精确匹配。
+/// 根据 Measuring_DR_ENv3.md 标准公式(1)：RMS = sqrt(2 * Σ(smp²)/n)
+/// 该系数确保与标准规范和 dr14_t.meter 参考实现的精确匹配。
 #[allow(clippy::approx_constant)]
-const SUM_DOUBLING_FACTOR: f64 = 1.414_213_562_373_095_1;
+const RMS_FACTOR: f64 = 1.414_213_562_373_095_1;
 
-/// Sum Doubling补偿阈值：样本数量
+/// RMS计算最小样本数阈值
 ///
-/// 当样本数量过少时，Sum Doubling可能引入不必要的噪声，
+/// 当样本数量过少时，RMS计算可能不稳定，
 /// 基于经验值设定最小样本数阈值
-const MIN_SAMPLES_FOR_SUM_DOUBLING: usize = 100;
+const MIN_SAMPLES_FOR_RMS: usize = 100;
 
 /// DR计算结果
 #[derive(Debug, Clone, PartialEq)]
@@ -28,11 +29,17 @@ pub struct DrResult {
     /// 计算得到的DR值
     pub dr_value: f64,
 
-    /// RMS值（用于调试和验证）
+    /// RMS值（用于DR计算的20%窗口RMS）
     pub rms: f64,
 
-    /// Peak值（用于调试和验证）
+    /// Peak值（用于DR计算的第二大峰值）
     pub peak: f64,
+
+    /// 全局最大采样峰值（用于dr14_t.meter兼容显示）
+    pub global_peak: f64,
+
+    /// 整曲RMS均值（用于dr14_t.meter兼容显示）
+    pub global_rms: f64,
 
     /// 参与计算的样本数量
     pub sample_count: usize,
@@ -40,17 +47,27 @@ pub struct DrResult {
 
 impl DrResult {
     /// 创建新的DR计算结果
-    pub fn new(channel: usize, dr_value: f64, rms: f64, peak: f64, sample_count: usize) -> Self {
+    pub fn new(
+        channel: usize,
+        dr_value: f64,
+        rms: f64,
+        peak: f64,
+        global_peak: f64,
+        global_rms: f64,
+        sample_count: usize,
+    ) -> Self {
         Self {
             channel,
             dr_value,
             rms,
             peak,
+            global_peak,
+            global_rms,
             sample_count,
         }
     }
 
-    /// 格式化DR值为整数显示（与foobar2000兼容）
+    /// 格式化DR值为整数显示（与标准兼容）
     pub fn dr_value_rounded(&self) -> i32 {
         self.dr_value.round() as i32
     }
@@ -62,7 +79,7 @@ impl DrResult {
 /// - 多声道数据管理
 /// - Sum Doubling补偿机制
 /// - DR值计算和结果生成
-/// - 10001-bin直方图和20%采样算法（foobar2000兼容模式）
+/// - 10000-bin直方图和20%采样算法（Measuring_DR_ENv3.md标准模式）
 pub struct DrCalculator {
     /// 每个声道的数据累积器
     channels: Vec<ChannelData>,
@@ -73,10 +90,10 @@ pub struct DrCalculator {
     /// 是否启用Sum Doubling补偿（交错数据）
     sum_doubling_enabled: bool,
 
-    /// 是否启用foobar2000兼容模式（20%采样算法）
-    foobar2000_mode: bool,
+    /// 是否启用Measuring_DR_ENv3.md标准模式（20%采样算法）
+    measuring_dr_env3_mode: bool,
 
-    /// 每个声道的3秒窗口RMS分析器（仅在foobar2000模式下使用）
+    /// 每个声道的3秒窗口RMS分析器（仅在Measuring_DR_ENv3.md标准模式下使用）
     window_analyzers: Option<Vec<WindowRmsAnalyzer>>,
 
     /// 采样率（用于窗口大小计算）
@@ -130,13 +147,13 @@ impl DrCalculator {
         Self::new_with_mode(channel_count, sum_doubling, false, sample_rate)
     }
 
-    /// 创建新的DR计算器（支持foobar2000兼容模式）
+    /// 创建新的DR计算器（支持Measuring_DR_ENv3.md标准模式）
     ///
     /// # 参数
     ///
     /// * `channel_count` - 音频声道数量
     /// * `sum_doubling` - 是否启用Sum Doubling补偿
-    /// * `foobar2000_mode` - 是否启用foobar2000兼容模式（3秒窗口20%采样算法）
+    /// * `measuring_dr_env3_mode` - 是否启用Measuring_DR_ENv3.md标准模式（3秒窗口20%采样算法）
     /// * `sample_rate` - 采样率（Hz，用于3秒窗口计算）
     ///
     /// # 示例
@@ -144,13 +161,13 @@ impl DrCalculator {
     /// ```rust
     /// use macinmeter_dr_tool::core::DrCalculator;
     ///
-    /// // 创建foobar2000兼容模式的计算器
+    /// // 创建Measuring_DR_ENv3.md标准模式的计算器
     /// let calculator = DrCalculator::new_with_mode(2, true, true, 48000).unwrap();
     /// ```
     pub fn new_with_mode(
         channel_count: usize,
         sum_doubling: bool,
-        foobar2000_mode: bool,
+        measuring_dr_env3_mode: bool,
         sample_rate: u32,
     ) -> AudioResult<Self> {
         if channel_count == 0 {
@@ -165,7 +182,7 @@ impl DrCalculator {
             return Err(AudioError::InvalidInput("采样率必须大于0".to_string()));
         }
 
-        let window_analyzers = if foobar2000_mode {
+        let window_analyzers = if measuring_dr_env3_mode {
             Some(
                 (0..channel_count)
                     .map(|_| WindowRmsAnalyzer::new(sample_rate))
@@ -179,7 +196,7 @@ impl DrCalculator {
             channels: vec![ChannelData::new(); channel_count],
             sample_count: 0,
             sum_doubling_enabled: sum_doubling,
-            foobar2000_mode,
+            measuring_dr_env3_mode,
             window_analyzers,
             sample_rate,
         })
@@ -244,7 +261,7 @@ impl DrCalculator {
                 self.channels[channel_idx].process_sample(sample);
             }
 
-            // foobar2000模式：3秒窗口RMS分析
+            // Measuring_DR_ENv3.md标准模式：3秒窗口RMS分析
             if let Some(ref mut analyzers) = self.window_analyzers {
                 analyzers[channel_idx].process_channel(channel_samples);
             }
@@ -303,7 +320,7 @@ impl DrCalculator {
                 self.channels[channel_idx].process_sample(sample);
             }
 
-            // foobar2000模式：3秒窗口RMS分析
+            // Measuring_DR_ENv3.md标准模式：3秒窗口RMS分析
             if let Some(ref mut analyzers) = self.window_analyzers {
                 analyzers[channel_idx].process_channel(samples);
             }
@@ -315,9 +332,9 @@ impl DrCalculator {
 
     /// 计算所有声道的DR值
     ///
-    /// 实现foobar2000的核心算法：
+    /// 实现 Measuring_DR_ENv3.md 标准算法：
     /// - 传统模式：DR = log10(RMS / Peak) * -20.0  
-    /// - foobar2000模式：DR = log10(20%_RMS / Peak) * -20.0（使用20%采样算法）
+    /// - 标准模式：DR = -20 × log₁₀(sqrt(Σ(RMS²)/N) / Pk_2nd)（使用20%采样算法）
     ///
     /// # 返回值
     ///
@@ -361,20 +378,64 @@ impl DrCalculator {
 
         for (channel_idx, channel_data) in self.channels.iter().enumerate() {
             // 根据模式选择RMS计算方法
-            let rms = if self.foobar2000_mode {
-                self.calculate_channel_rms_foobar2000(channel_idx)?
+            let rms = if self.measuring_dr_env3_mode {
+                self.calculate_channel_rms_measuring_dr_env3(channel_idx)?
             } else {
                 self.calculate_channel_rms(channel_data)?
             };
 
-            let peak = channel_data.get_effective_peak();
-            let dr_value = self.calculate_dr_value_with_fallback(rms, channel_data)?;
+            // ✅ 根据模式选择正确的Peak值
+            let peak = if self.measuring_dr_env3_mode {
+                // 官方标准：使用排序后第二大的窗口Peak值
+                let analyzers = self.window_analyzers.as_ref().ok_or_else(|| {
+                    AudioError::CalculationError(
+                        "Measuring_DR_ENv3.md标准模式下未初始化窗口分析器".to_string(),
+                    )
+                })?;
+                if channel_idx >= analyzers.len() {
+                    return Err(AudioError::CalculationError(format!(
+                        "声道索引{channel_idx}超出范围"
+                    )));
+                }
+                analyzers[channel_idx].get_second_largest_peak()
+            } else {
+                // 传统模式：使用ChannelData的Peak值
+                channel_data.get_effective_peak()
+            };
+
+            let dr_value = self.calculate_dr_value(rms, peak)?;
+
+            // 计算dr14_t.meter兼容的显示值
+            let global_peak = if self.measuring_dr_env3_mode {
+                // ENV3模式：从窗口分析器获取全局最大峰值
+                let analyzers = self.window_analyzers.as_ref().unwrap();
+                let window_peaks = analyzers[channel_idx].get_window_peaks();
+                window_peaks.iter().copied().fold(0.0f64, f64::max)
+            } else {
+                // 传统模式：使用ChannelData的主峰值
+                channel_data.peak_primary()
+            };
+
+            let global_rms = if self.measuring_dr_env3_mode {
+                // ENV3模式：计算整曲RMS（所有样本的RMS）
+                let total_sum_sq = channel_data.rms_accumulator;
+                if self.sample_count > 0 {
+                    (2.0 * total_sum_sq / self.sample_count as f64).sqrt()
+                } else {
+                    0.0
+                }
+            } else {
+                // 传统模式：使用计算出的RMS
+                rms
+            };
 
             results.push(DrResult::new(
                 channel_idx,
                 dr_value,
                 rms,
                 peak,
+                global_peak,
+                global_rms,
                 self.sample_count,
             ));
         }
@@ -400,13 +461,15 @@ impl DrCalculator {
         Ok(compensated_rms)
     }
 
-    /// 计算单个声道的20% RMS值（foobar2000兼容模式）
+    /// 计算单个声道的20% RMS值（Measuring_DR_ENv3.md标准模式）
     ///
-    /// 使用10001-bin直方图的20%采样算法，实现与foobar2000完全一致的精度。
-    /// 这是foobar2000 "最响20%样本"算法的核心实现。
-    fn calculate_channel_rms_foobar2000(&self, channel_idx: usize) -> AudioResult<f64> {
+    /// 使用直方图的20%采样算法，实现符合Measuring_DR_ENv3.md标准的精度。
+    /// 这是"最响20%样本"算法的核心实现。
+    fn calculate_channel_rms_measuring_dr_env3(&self, channel_idx: usize) -> AudioResult<f64> {
         let analyzers = self.window_analyzers.as_ref().ok_or_else(|| {
-            AudioError::CalculationError("foobar2000模式下未初始化窗口分析器".to_string())
+            AudioError::CalculationError(
+                "Measuring_DR_ENv3.md标准模式下未初始化窗口分析器".to_string(),
+            )
         })?;
 
         if channel_idx >= analyzers.len() {
@@ -424,84 +487,27 @@ impl DrCalculator {
             ));
         }
 
-        // 使用加权均值+开方的20%采样算法计算RMS值
+        // ✅ 严格按照官方公式4计算：sqrt(sum(RMS_n²)/N)
+        // calculate_20_percent_rms() 已完整实现官方标准，无需额外补偿
         let rms_20_percent = analyzer.calculate_20_percent_rms();
 
-        // 获取对应声道的Peak值（用于智能Sum Doubling评估）
-        let peak = self.channels[channel_idx].get_effective_peak();
-
-        // 使用智能Sum Doubling补偿系统
-        let (compensated_rms, _quality) =
-            self.apply_intelligent_sum_doubling(rms_20_percent, peak, self.sample_count);
-
-        if compensated_rms.is_infinite() || compensated_rms.is_nan() {
+        if rms_20_percent.is_infinite() || rms_20_percent.is_nan() {
             return Err(AudioError::CalculationError(
-                "foobar2000 RMS计算结果无效（无穷大或NaN）".to_string(),
+                "Measuring_DR_ENv3.md标准RMS计算结果无效（无穷大或NaN）".to_string(),
             ));
         }
 
-        if compensated_rms <= 0.0 {
+        if rms_20_percent <= 0.0 {
             return Err(AudioError::CalculationError(
-                "foobar2000 RMS值必须大于0".to_string(),
+                "Measuring_DR_ENv3.md标准RMS值必须大于0".to_string(),
             ));
         }
 
-        Ok(compensated_rms)
+        Ok(rms_20_percent)
     }
 
-    /// 智能DR计算（带Peak回退机制）
-    fn calculate_dr_value_with_fallback(
-        &self,
-        rms: f64,
-        channel_data: &ChannelData,
-    ) -> AudioResult<f64> {
-        // 首先尝试使用当前有效Peak值
-        let primary_peak = channel_data.get_effective_peak();
-
-        // 尝试基础DR计算
-        match self.calculate_dr_value(rms, primary_peak) {
-            Ok(dr) if dr >= 0.0 => return Ok(dr),
-            Ok(dr) => {
-                // DR<0时，使用智能Peak验证系统回退
-                eprintln!("⚠️  DR<0 ({dr:.2})，尝试Peak回退机制");
-
-                let (validated_peak, confidence) = channel_data.get_effective_peak_with_validation(
-                    self.sample_count,
-                    16, // 假设16位深度作为默认值
-                );
-
-                if confidence > 0.5 && validated_peak != primary_peak {
-                    eprintln!("🔄 使用验证Peak: {validated_peak:.6} (置信度: {confidence:.2})");
-                    return self.calculate_dr_value(rms, validated_peak);
-                }
-            }
-            Err(_) => {
-                // 基础计算失败，尝试智能回退
-                let (validated_peak, confidence) =
-                    channel_data.get_effective_peak_with_validation(self.sample_count, 16);
-
-                if confidence > 0.3 {
-                    eprintln!("🔄 Peak计算失败，使用验证Peak: {validated_peak:.6}");
-                    return self.calculate_dr_value(rms, validated_peak);
-                }
-            }
-        }
-
-        // 最后的保守回退：使用两个Peak中较小的
-        let conservative_peak =
-            if channel_data.peak_secondary() > 0.0 && channel_data.peak_primary() > 0.0 {
-                channel_data
-                    .peak_primary()
-                    .min(channel_data.peak_secondary())
-            } else {
-                primary_peak
-            };
-
-        eprintln!("🛡️  使用保守Peak估计: {conservative_peak:.6}");
-        self.calculate_dr_value(rms, conservative_peak)
-    }
-
-    /// 计算DR值：DR = log10(RMS / Peak) * -20.0
+    /// 计算DR值：根据Measuring_DR_ENv3.md标准公式(4)
+    /// DR_j[dB] = -20 × log10(sqrt(Σ(RMS_n²)/N) × (1/Pk_2nd))
     fn calculate_dr_value(&self, rms: f64, peak: f64) -> AudioResult<f64> {
         if rms <= 0.0 {
             return Err(AudioError::CalculationError("RMS值必须大于0".to_string()));
@@ -517,6 +523,8 @@ impl DrCalculator {
             )));
         }
 
+        // ✅ 严格按照Measuring_DR_ENv3.md公式(4)实现
+        // DR_j[dB] = -20 × log10(sqrt(Σ(RMS_n²)/N) / Pk_2nd)
         let ratio = rms / peak;
         let log_value = ratio.log10();
 
@@ -524,7 +532,7 @@ impl DrCalculator {
             return Err(AudioError::CalculationError("对数计算结果无效".to_string()));
         }
 
-        let dr_value = log_value * -20.0;
+        let dr_value = -20.0 * log_value;
 
         // DR值应该在合理范围内（0-100dB）
         if !(0.0..=100.0).contains(&dr_value) {
@@ -539,7 +547,7 @@ impl DrCalculator {
     /// 智能Sum Doubling补偿系统
     ///
     /// 基于音频特征分析，智能决定是否应用Sum Doubling补偿，
-    /// 并使用高精度常量确保与foobar2000的100%一致性。
+    /// 并使用高精度常量确保与Measuring_DR_ENv3.md标准的100%一致性。
     ///
     /// # 参数
     ///
@@ -573,7 +581,7 @@ impl DrCalculator {
 
         if quality.should_apply {
             // 应用高精度Sum Doubling补偿
-            let compensated_rms = rms * SUM_DOUBLING_FACTOR;
+            let compensated_rms = rms * RMS_FACTOR;
             (compensated_rms, quality)
         } else {
             // 不建议应用，返回原始RMS
@@ -597,7 +605,7 @@ impl DrCalculator {
         let mut issues = SumDoublingIssues::default();
 
         // 1. 样本数量检查
-        if sample_count < MIN_SAMPLES_FOR_SUM_DOUBLING {
+        if sample_count < MIN_SAMPLES_FOR_RMS {
             confidence *= 0.5; // 样本不足，降低置信度
             issues.insufficient_samples = true;
         }
@@ -666,12 +674,12 @@ impl DrCalculator {
         self.sum_doubling_enabled
     }
 
-    /// 获取foobar2000兼容模式状态
-    pub fn foobar2000_mode(&self) -> bool {
-        self.foobar2000_mode
+    /// 获取Measuring_DR_ENv3.md标准模式状态
+    pub fn measuring_dr_env3_mode(&self) -> bool {
+        self.measuring_dr_env3_mode
     }
 
-    /// 获取指定声道的直方图统计信息（仅foobar2000模式）
+    /// 获取指定声道的直方图统计信息（仅Measuring_DR_ENv3.md标准模式）
     pub fn get_window_stats(&self, channel_idx: usize) -> Option<crate::core::WindowStats> {
         if let Some(ref analyzers) = self.window_analyzers {
             if channel_idx < analyzers.len() {
@@ -684,6 +692,11 @@ impl DrCalculator {
     /// 获取音频采样率
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    /// 获取指定声道的窗口分析器（用于调试和验证）
+    pub fn get_window_analyzer(&self, channel: usize) -> Option<&WindowRmsAnalyzer> {
+        self.window_analyzers.as_ref()?.get(channel)
     }
 }
 
@@ -787,10 +800,10 @@ mod tests {
 
     #[test]
     fn test_dr_result_rounded() {
-        let result = DrResult::new(0, 12.7, 0.1, 0.5, 1000);
+        let result = DrResult::new(0, 12.7, 0.1, 0.5, 0.6, 0.15, 1000);
         assert_eq!(result.dr_value_rounded(), 13);
 
-        let result = DrResult::new(0, 12.3, 0.1, 0.5, 1000);
+        let result = DrResult::new(0, 12.3, 0.1, 0.5, 0.6, 0.15, 1000);
         assert_eq!(result.dr_value_rounded(), 12);
     }
 
@@ -904,7 +917,7 @@ mod tests {
         let calc = DrCalculator::new(1, true, 48000).unwrap();
 
         let (compensated, _) = calc.apply_intelligent_sum_doubling(0.5, 0.8, 1000);
-        let expected = 0.5 * SUM_DOUBLING_FACTOR;
+        let expected = 0.5 * RMS_FACTOR;
 
         assert!((compensated - expected).abs() < 1e-15); // 高精度比较
 

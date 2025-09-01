@@ -1,6 +1,7 @@
 //! MacinMeter DR Tool - 音频动态范围分析工具
 //!
-//! 基于foobar2000 DR Meter逆向分析实现的高精度DR计算工具。
+//! 基于 Measuring_DR_ENv3.md 标准实现的高精度DR计算工具。
+//! 以 dr14_t.meter 项目作为参考实现，提供符合行业标准的DR测量。
 
 use clap::{Arg, Command};
 use std::path::PathBuf;
@@ -49,6 +50,9 @@ struct AppConfig {
 
     /// 是否启用多线程处理
     enable_multithreading: bool,
+
+    /// 是否启用dr14_t.meter兼容模式（实验特性）
+    dr14_compat_mode: bool,
 }
 
 impl AppConfig {
@@ -97,6 +101,12 @@ impl AppConfig {
                     .help("禁用多线程处理（单线程模式）")
                     .action(clap::ArgAction::SetTrue),
             )
+            .arg(
+                Arg::new("dr14-compat-mode")
+                    .long("dr14-compat-mode")
+                    .help("🧪 实验特性：模拟dr14_t.meter的预处理（44.1kHz+16bit量化）")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .get_matches();
 
         Self {
@@ -106,8 +116,78 @@ impl AppConfig {
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
             enable_multithreading: !matches.get_flag("single-thread"), // 默认启用多线程
+            dr14_compat_mode: matches.get_flag("dr14-compat-mode"), // 实验特性
         }
     }
+}
+
+/// 使用ffmpeg进行dr14_t.meter兼容预处理
+///
+/// 直接调用ffmpeg，完全模拟dr14_t.meter的预处理行为：
+/// `ffmpeg -i "input" -b:a 16 -ar 44100 -y "output" -loglevel quiet`
+fn preprocess_with_ffmpeg(
+    input_path: &std::path::Path,
+    verbose: bool,
+) -> AudioResult<std::path::PathBuf> {
+    use std::process::Command;
+
+    let temp_dir = std::env::temp_dir();
+    let temp_file = temp_dir.join(format!(
+        "dr14_compat_{}.wav",
+        input_path.file_stem().unwrap_or_default().to_string_lossy()
+    ));
+
+    if verbose {
+        println!("🔄 ffmpeg预处理: {} → 44.1kHz/16bit", input_path.display());
+    }
+
+    // 构建ffmpeg命令（完全模拟dr14_t.meter）
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-i",
+        &input_path.to_string_lossy(),
+        "-b:a",
+        "16",
+        "-ar",
+        "44100",
+        "-y",
+        &temp_file.to_string_lossy(),
+        "-loglevel",
+        "quiet",
+    ]);
+
+    if verbose {
+        println!(
+            "   执行命令: ffmpeg -i \"{}\" -b:a 16 -ar 44100 -y \"{}\" -loglevel quiet",
+            input_path.display(),
+            temp_file.display()
+        );
+    }
+
+    // 执行ffmpeg命令
+    let output = cmd
+        .output()
+        .map_err(|e| AudioError::DecodingError(format!("ffmpeg执行失败: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AudioError::DecodingError(format!(
+            "ffmpeg处理失败: {stderr}"
+        )));
+    }
+
+    // 验证输出文件存在
+    if !temp_file.exists() {
+        return Err(AudioError::DecodingError(
+            "ffmpeg预处理后文件不存在".to_string(),
+        ));
+    }
+
+    if verbose {
+        println!("✅ 预处理完成: {}", temp_file.display());
+    }
+
+    Ok(temp_file)
 }
 
 /// 智能加载音频文件（自动选择解码器）
@@ -115,8 +195,38 @@ impl AppConfig {
 /// 根据文件扩展名自动选择合适的解码器：
 /// - .wav -> WavDecoder (基于hound，性能优化)
 /// - .flac, .mp3, .m4a, .aac, .ogg -> MultiDecoder (基于symphonia)
-fn load_audio_file(path: &std::path::Path, verbose: bool) -> AudioResult<(AudioFormat, Vec<f32>)> {
-    // 获取文件扩展名
+fn load_audio_file(
+    path: &std::path::Path,
+    verbose: bool,
+    dr14_compat_mode: bool,
+) -> AudioResult<(AudioFormat, Vec<f32>)> {
+    // dr14_t.meter兼容模式：使用ffmpeg预处理
+    if dr14_compat_mode {
+        if verbose {
+            println!("🧪 实验特性: dr14_t.meter兼容模式");
+        }
+
+        // 使用ffmpeg预处理到44.1kHz/16bit WAV
+        let preprocessed_path = preprocess_with_ffmpeg(path, verbose)?;
+
+        // 用WAV解码器加载预处理后的文件
+        let mut decoder = WavDecoder::new();
+        let format = decoder.load_file(&preprocessed_path)?;
+        let samples = decoder.samples().to_vec();
+
+        // 清理临时文件
+        if let Err(e) = std::fs::remove_file(&preprocessed_path) {
+            if verbose {
+                println!("⚠️  清理临时文件失败: {e}");
+            }
+        } else if verbose {
+            println!("🗑️  临时文件已清理");
+        }
+
+        return Ok((format, samples));
+    }
+
+    // 标准模式：保持原始音频质量
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -158,7 +268,8 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
     }
 
     // 智能加载音频文件（自动选择解码器）
-    let (format, samples) = load_audio_file(&config.input_path, config.verbose)?;
+    let (format, samples) =
+        load_audio_file(&config.input_path, config.verbose, config.dr14_compat_mode)?;
 
     if config.verbose {
         println!("📊 音频格式信息:");
@@ -212,7 +323,7 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
             format.channels as usize,
             format.sample_rate,
             config.sum_doubling,
-            true, // foobar2000兼容模式
+            true, // Measuring_DR_ENv3.md 标准模式
         )?;
 
         // 显示性能统计
@@ -271,7 +382,7 @@ fn process_audio_file(config: &AppConfig) -> AudioResult<()> {
                 let mut calculator = DrCalculator::new_with_mode(
                     format.channels as usize,
                     config.sum_doubling,
-                    true, // 启用foobar2000模式
+                    true, // 启用Measuring_DR_ENv3.md标准模式
                     format.sample_rate,
                 )?;
 
@@ -334,10 +445,16 @@ fn output_results(results: &[DrResult], config: &AppConfig) -> AudioResult<()> {
     output.push_str("-------------------------------------\n");
 
     for result in results {
+        // 计算dr14_t.meter兼容显示值（dB）
+        let global_peak_db = 20.0 * result.global_peak.log10();
+        let global_rms_db = 20.0 * result.global_rms.log10();
+
         output.push_str(&format!(
-            "声道 {}: DR{} (RMS:{:.6}, Peak:{:.6})\n",
+            "声道 {}: DR{} (RMS:{:.2}dB, Peak:{:.2}dB) [算法内部: RMS:{:.6}, Peak:{:.6}]\n",
             result.channel + 1,
             result.dr_value_rounded(),
+            global_rms_db,
+            global_peak_db,
             result.rms,
             result.peak
         ));
