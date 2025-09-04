@@ -224,71 +224,109 @@ jobs:
           ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-${{ matrix.target }}-target-
           
-    # 🕐 生成精确到秒的时间戳（UTC时区）
-    - name: 🕐 Generate Timestamp
+    # 🕐 生成精确到秒的时间戳（UTC时区） - Windows
+    - name: 🕐 Generate Timestamp (Windows)
+      if: matrix.os == 'windows-latest'
+      id: timestamp-windows
+      run: |
+        $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss_UTC" -AsUTC
+        echo "timestamp=$timestamp" >> $env:GITHUB_OUTPUT
+        echo "date_tag=$timestamp" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      
+    # 🕐 生成精确到秒的时间戳（UTC时区） - Unix
+    - name: 🕐 Generate Timestamp (Unix)
+      if: matrix.os != 'windows-latest'
+      id: timestamp-unix
+      run: |
+        timestamp=$(date -u +"%Y-%m-%d_%H-%M-%S_UTC")
+        echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
+        echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
+      shell: bash
+      
+    # 🕐 统一时间戳输出
+    - name: 🕐 Set Unified Timestamp
       id: timestamp
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Windows PowerShell
-          $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss_UTC" -AsUTC
-          echo "timestamp=$timestamp" >> $env:GITHUB_OUTPUT
-          echo "date_tag=$timestamp" >> $env:GITHUB_OUTPUT
+          echo "timestamp=${{ steps.timestamp-windows.outputs.timestamp }}" >> $GITHUB_OUTPUT
+          echo "date_tag=${{ steps.timestamp-windows.outputs.date_tag }}" >> $GITHUB_OUTPUT
         else
-          # Unix系统 (macOS, Linux)
-          timestamp=$(date -u +"%Y-%m-%d_%H-%M-%S_UTC")
-          echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
-          echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
+          echo "timestamp=${{ steps.timestamp-unix.outputs.timestamp }}" >> $GITHUB_OUTPUT
+          echo "date_tag=${{ steps.timestamp-unix.outputs.date_tag }}" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+      shell: bash
       
     - name: 🏗️ Build Release Binary
       run: |
         echo "🚀 Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
         cargo build --release --target ${{ matrix.target }} --verbose
         
-    - name: 📦 Prepare Binary with Timestamp
+    # 📦 准备二进制文件 - Windows
+    - name: 📦 Prepare Binary with Timestamp (Windows)
+      if: matrix.os == 'windows-latest'
+      id: binary-windows
+      run: |
+        $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        $source_path = "target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        Copy-Item $source_path $binary_name
+        echo "binary_name=$binary_name" >> $env:GITHUB_OUTPUT
+        echo "binary_path=$binary_name" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      
+    # 📦 准备二进制文件 - Unix
+    - name: 📦 Prepare Binary with Timestamp (Unix)
+      if: matrix.os != 'windows-latest'
+      id: binary-unix
+      run: |
+        binary_name="dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        source_path="target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        cp "$source_path" "$binary_name"
+        chmod +x "$binary_name"  # 确保可执行权限
+        echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
+        echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
+      shell: bash
+      
+    # 📦 统一二进制输出
+    - name: 📦 Set Unified Binary Info
       id: binary
       run: |
-        # 构建带分支和时间戳的文件名
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Windows处理
-          $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
-          $source_path = "target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
-          Copy-Item $source_path $binary_name
-          echo "binary_name=$binary_name" >> $env:GITHUB_OUTPUT
-          echo "binary_path=$binary_name" >> $env:GITHUB_OUTPUT
+          echo "binary_name=${{ steps.binary-windows.outputs.binary_name }}" >> $GITHUB_OUTPUT
+          echo "binary_path=${{ steps.binary-windows.outputs.binary_path }}" >> $GITHUB_OUTPUT
         else
-          # Unix系统处理
-          binary_name="dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
-          source_path="target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
-          cp "$source_path" "$binary_name"
-          chmod +x "$binary_name"  # 确保可执行权限
-          echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
-          echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
+          echo "binary_name=${{ steps.binary-unix.outputs.binary_name }}" >> $GITHUB_OUTPUT
+          echo "binary_path=${{ steps.binary-unix.outputs.binary_path }}" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+      shell: bash
       
-    - name: ✅ Verify Binary
+    # ✅ 验证二进制文件 - Windows
+    - name: ✅ Verify Binary (Windows)
+      if: matrix.os == 'windows-latest'
       run: |
         echo "🔍 Verifying built binary..."
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          if (Test-Path "${{ steps.binary.outputs.binary_path }}") {
-            $size = (Get-Item "${{ steps.binary.outputs.binary_path }}").Length
-            Write-Host "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
-          } else {
-            Write-Host "❌ Binary not found!"
-            exit 1
-          }
+        if (Test-Path "${{ steps.binary.outputs.binary_path }}") {
+          $size = (Get-Item "${{ steps.binary.outputs.binary_path }}").Length
+          Write-Host "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
+        } else {
+          Write-Host "❌ Binary not found!"
+          exit 1
+        }
+      shell: pwsh
+      
+    # ✅ 验证二进制文件 - Unix
+    - name: ✅ Verify Binary (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        echo "🔍 Verifying built binary..."
+        if [ -f "${{ steps.binary.outputs.binary_path }}" ]; then
+          size=$(stat -c%s "${{ steps.binary.outputs.binary_path }}" 2>/dev/null || stat -f%z "${{ steps.binary.outputs.binary_path }}")
+          echo "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
         else
-          if [ -f "${{ steps.binary.outputs.binary_path }}" ]; then
-            size=$(stat -c%s "${{ steps.binary.outputs.binary_path }}" 2>/dev/null || stat -f%z "${{ steps.binary.outputs.binary_path }}")
-            echo "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
-          else
-            echo "❌ Binary not found!"
-            exit 1
-          fi
+          echo "❌ Binary not found!"
+          exit 1
         fi
-      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+      shell: bash
       
     - name: 📦 Compress Binary (Unix systems)
       if: matrix.os != 'windows-latest'
