@@ -98,21 +98,38 @@ jobs:
           ${{ runner.os }}-target-quality-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-target-quality-
           
-    - name: 📦 Cache Cargo Tools
+    - name: 📦 Cache Cargo Tools  
       uses: actions/cache@v4
+      id: cargo-tools-cache
       with:
-        path: ~/.cargo/bin/
-        key: ${{ runner.os }}-cargo-tools-${{ hashFiles('**/Cargo.lock') }}
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
+        key: ${{ runner.os }}-cargo-tools-v3-audit-${{ hashFiles('.github/workflows/ci-cd.yml') }}
         restore-keys: |
+          ${{ runner.os }}-cargo-tools-v3-audit-
           ${{ runner.os }}-cargo-tools-
           
-    - name: 🔧 Install Security Audit Tool (Cached)
+    - name: 🔧 Install Security Audit Tool (Smart Cached)
       run: |
-        if ! command -v cargo-audit &> /dev/null; then
-          echo "Installing cargo-audit..."
-          cargo install --locked cargo-audit
+        echo "🎯 检测cargo-audit工具缓存状态..."
+        echo "缓存命中: ${{ steps.cargo-tools-cache.outputs.cache-hit }}"
+        
+        if [[ "${{ steps.cargo-tools-cache.outputs.cache-hit }}" == "true" ]]; then
+          echo "✅ 工具缓存命中，验证可用性..."
+          if command -v cargo-audit &> /dev/null; then
+            echo "🚀 cargo-audit已从缓存恢复"
+            cargo-audit --version
+          else
+            echo "⚠️  缓存异常，重新安装..."
+            cargo install --locked cargo-audit
+          fi
         else
-          echo "cargo-audit already installed (cached)"
+          echo "📦 缓存未命中，全新安装cargo-audit..."
+          cargo install --locked cargo-audit
+          echo "✅ 安装完成："
+          cargo-audit --version
         fi
       
     - name: 📋 Check Code Formatting
