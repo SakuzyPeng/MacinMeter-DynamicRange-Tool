@@ -196,6 +196,14 @@ jobs:
       with:
         targets: ${{ matrix.target }}
         
+    # 🎯 显式安装交叉编译目标 (确保可靠性)
+    - name: 🎯 Install Cross-compilation Target
+      run: |
+        echo "🎯 Installing target: ${{ matrix.target }}"
+        rustup target add ${{ matrix.target }}
+        rustup target list --installed | grep ${{ matrix.target }} || (echo "❌ Target installation failed" && exit 1)
+        echo "✅ Target ${{ matrix.target }} successfully installed"
+        
     # 🚀 多层缓存策略优化 - 私有仓库友好
     - name: 📦 Platform Cache - Cargo Registry
       uses: actions/cache@v4
@@ -260,6 +268,21 @@ jobs:
     - name: 🏗️ Build Release Binary
       run: |
         echo "🚀 Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
+        echo "📋 Build environment info:"
+        echo "  Target: ${{ matrix.target }}"
+        echo "  OS: ${{ matrix.os }}"
+        echo "  Platform: ${{ matrix.platform }}"
+        echo "  Arch: ${{ matrix.arch }}"
+        
+        echo "🔍 Verifying Rust setup:"
+        rustc --version
+        cargo --version
+        rustup show
+        
+        echo "🎯 Verifying target installation:"
+        rustup target list --installed | grep ${{ matrix.target }} && echo "✅ Target found" || (echo "❌ Target not found!" && exit 1)
+        
+        echo "🏗️ Starting build..."
         cargo build --release --target ${{ matrix.target }} --verbose
         
     # 📦 准备二进制文件 - Windows
