@@ -228,7 +228,7 @@ jobs:
     - name: 🕐 Generate Timestamp
       id: timestamp
       run: |
-        if [ "${{ runner.os }}" = "Windows" ]; then
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
           # Windows PowerShell
           $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss_UTC" -AsUTC
           echo "timestamp=$timestamp" >> $env:GITHUB_OUTPUT
@@ -239,7 +239,7 @@ jobs:
           echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
           echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
+      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
       
     - name: 🏗️ Build Release Binary
       run: |
@@ -250,7 +250,7 @@ jobs:
       id: binary
       run: |
         # 构建带分支和时间戳的文件名
-        if [ "${{ runner.os }}" = "Windows" ]; then
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
           # Windows处理
           $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
           $source_path = "target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
@@ -266,12 +266,12 @@ jobs:
           echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
           echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
+      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
       
     - name: ✅ Verify Binary
       run: |
         echo "🔍 Verifying built binary..."
-        if [ "${{ runner.os }}" = "Windows" ]; then
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
           if (Test-Path "${{ steps.binary.outputs.binary_path }}") {
             $size = (Get-Item "${{ steps.binary.outputs.binary_path }}").Length
             Write-Host "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
@@ -288,10 +288,10 @@ jobs:
             exit 1
           fi
         fi
-      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
+      shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
       
     - name: 📦 Compress Binary (Unix systems)
-      if: runner.os != 'Windows'
+      if: matrix.os != 'windows-latest'
       run: |
         echo "🗜️ Compressing binary to save storage..."
         gzip -9 "${{ steps.binary.outputs.binary_path }}"
@@ -302,9 +302,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.binary.outputs.binary_name }}
-        path: ${{ runner.os == 'Windows' && steps.binary.outputs.binary_path || steps.compress.outputs.compressed_path }}
+        path: ${{ matrix.os == 'windows-latest' && steps.binary.outputs.binary_path || steps.compress.outputs.compressed_path }}
         retention-days: 14  # 私有仓库优化：减少存储成本
-        compression-level: ${{ runner.os == 'Windows' && '9' || '0' }}  # Windows压缩，Unix已压缩
+        compression-level: ${{ matrix.os == 'windows-latest' && '9' || '0' }}  # Windows压缩，Unix已压缩
         
   # 📋 构建摘要和发布准备
   build-summary:
