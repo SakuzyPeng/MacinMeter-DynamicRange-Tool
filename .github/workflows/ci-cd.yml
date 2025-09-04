@@ -164,15 +164,15 @@ jobs:
             arch: x64
             extension: .exe
             
-          # macOS Intel
+          # macOS Intel (Native)
           - os: macos-latest
             target: x86_64-apple-darwin
             platform: macos
             arch: intel
             extension: ""
             
-          # macOS Apple Silicon
-          - os: macos-latest
+          # macOS Apple Silicon (Native) 
+          - os: macos-15
             target: aarch64-apple-darwin
             platform: macos
             arch: arm64
@@ -279,11 +279,21 @@ jobs:
         cargo --version
         rustup show
         
-        echo "🎯 Verifying target installation:"
-        rustup target list --installed | grep ${{ matrix.target }} && echo "✅ Target found" || (echo "❌ Target not found!" && exit 1)
+        echo "🎯 Checking if native or cross-compilation:"
+        NATIVE_TARGET=$(rustc -vV | grep "host:" | cut -d' ' -f2)
+        echo "  Host target: $NATIVE_TARGET"
+        echo "  Build target: ${{ matrix.target }}"
         
-        echo "🏗️ Starting build..."
-        cargo build --release --target ${{ matrix.target }} --verbose
+        if [ "$NATIVE_TARGET" = "${{ matrix.target }}" ]; then
+          echo "✅ Native build detected - no cross-compilation needed"
+          echo "🏗️ Starting native build..."
+          cargo build --release --verbose
+        else
+          echo "🎯 Cross-compilation detected - verifying target..."
+          rustup target list --installed | grep ${{ matrix.target }} && echo "✅ Target found" || (echo "❌ Target not found!" && exit 1)
+          echo "🏗️ Starting cross-compilation build..."
+          cargo build --release --target ${{ matrix.target }} --verbose
+        fi
         
     # 📦 准备二进制文件 - Windows
     - name: 📦 Prepare Binary with Timestamp (Windows)
@@ -291,7 +301,24 @@ jobs:
       id: binary-windows
       run: |
         $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
-        $source_path = "target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        
+        # 智能路径检测 - Native vs Cross-compilation
+        $native_path = "target/release/dr-meter${{ matrix.extension }}"
+        $cross_path = "target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        
+        if (Test-Path $native_path) {
+          Write-Host "✅ Using native build path: $native_path"
+          $source_path = $native_path
+        } elseif (Test-Path $cross_path) {
+          Write-Host "✅ Using cross-compilation path: $cross_path" 
+          $source_path = $cross_path
+        } else {
+          Write-Host "❌ Binary not found in either path!"
+          Write-Host "  Native path: $native_path"
+          Write-Host "  Cross path: $cross_path"
+          exit 1
+        }
+        
         Copy-Item $source_path $binary_name
         echo "binary_name=$binary_name" >> $env:GITHUB_OUTPUT
         echo "binary_path=$binary_name" >> $env:GITHUB_OUTPUT
@@ -303,7 +330,24 @@ jobs:
       id: binary-unix
       run: |
         binary_name="dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
-        source_path="target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        
+        # 智能路径检测 - Native vs Cross-compilation
+        native_path="target/release/dr-meter${{ matrix.extension }}"
+        cross_path="target/${{ matrix.target }}/release/dr-meter${{ matrix.extension }}"
+        
+        if [ -f "$native_path" ]; then
+          echo "✅ Using native build path: $native_path"
+          source_path="$native_path"
+        elif [ -f "$cross_path" ]; then
+          echo "✅ Using cross-compilation path: $cross_path"
+          source_path="$cross_path"
+        else
+          echo "❌ Binary not found in either path!"
+          echo "  Native path: $native_path"
+          echo "  Cross path: $cross_path"
+          exit 1
+        fi
+        
         cp "$source_path" "$binary_name"
         chmod +x "$binary_name"  # 确保可执行权限
         echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
