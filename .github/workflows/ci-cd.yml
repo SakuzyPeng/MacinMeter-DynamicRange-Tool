@@ -151,7 +151,7 @@ jobs:
     name: Build (${{ matrix.os }})
     needs: [changes, quality-check]  # 依赖变更检测和质量检查
     # 🚀 私有仓库优化：条件构建
-    if: ${{ (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch') && (!github.event.inputs.build_targets || github.event.inputs.build_targets == 'all' || contains(github.event.inputs.build_targets, matrix.platform)) }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       max-parallel: 2  # 私有仓库优化：限制并发以避免资源争用
@@ -239,7 +239,7 @@ jobs:
           echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
           echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
       
     - name: 🏗️ Build Release Binary
       run: |
@@ -266,7 +266,7 @@ jobs:
           echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
           echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
         fi
-      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
       
     - name: ✅ Verify Binary
       run: |
@@ -288,7 +288,7 @@ jobs:
             exit 1
           fi
         fi
-      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+      shell: ${{ fromJSON('["bash", "pwsh"]')[runner.os == 'Windows'] }}
       
     - name: 📦 Compress Binary (Unix systems)
       if: runner.os != 'Windows'
