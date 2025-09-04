@@ -186,17 +186,20 @@ impl WavDecoder {
         match format.bits_per_sample {
             16 => {
                 // 16位PCM: -32768 到 32767
+                // 🔧 dr14_t.meter兼容性：使用32769归一化因子 (2^15 + 1)
+                // 🎯 精度修正：使用f64避免f32→f64转换的精度损失
                 for sample_result in reader.samples::<i16>() {
                     let sample = sample_result?;
-                    let normalized = sample as f32 / 32768.0;
-                    samples.push(normalized);
+                    let normalized = sample as f64 / 32769.0;
+                    samples.push(normalized as f32);
                 }
             }
             24 => {
                 // 24位PCM: -8388608 到 8388607
+                // 🔧 dr14_t.meter兼容性：使用8388609归一化因子 (2^23 + 1)
                 for sample_result in reader.samples::<i32>() {
                     let sample = sample_result?;
-                    let normalized = sample as f32 / 8388608.0;
+                    let normalized = sample as f32 / 8388609.0;
                     samples.push(normalized);
                 }
             }
@@ -210,9 +213,10 @@ impl WavDecoder {
                     }
                 } else {
                     // 32位整数PCM: -2147483648 到 2147483647
+                    // 🔧 dr14_t.meter兼容性：使用2147483649归一化因子 (2^31 + 1)
                     for sample_result in reader.samples::<i32>() {
                         let sample = sample_result?;
-                        let normalized = sample as f32 / 2147483648.0;
+                        let normalized = sample as f32 / 2147483649.0;
                         samples.push(normalized);
                     }
                 }

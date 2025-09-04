@@ -1,8 +1,46 @@
+# 忽略配置文件本身
+.gitignore
+
+# Rust构建文件
 /target
 
-# 文档和音频文件不上传
-/docs
+# 外部参考项目（不应提交到主仓库）
+/dr14_t.meter
+
+# 文档和音频文件不上传（标准文档除外）
+/docs/*
+!/docs/Measuring-DR-ENv3_2025-08-30-19_10_53/
 /audio
+
+# DR分析结果文件
+DR_Analysis_Results_*.txt
+*.dr.txt
+
+# 测试和基准测试文件
+tests/simd_precision_test.rs
+**/benchmark_optimization.py
+**/performance_test_*.txt
+test_output_*.txt
+
+# 可执行文件和库文件
+dr-meter
+dr-meter.exe
+macinmeter-dr-tool
+macinmeter-dr-tool.exe
+debug_macinmeter_rms
+debug_macinmeter_rms.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+*.pdb
+
+# target目录下的所有二进制文件
+target/**/dr-meter
+target/**/dr-meter.exe
+target/**/macinmeter-dr-tool
+target/**/debug_macinmeter_rms
 
 # macOS系统文件
 .DS_Store
@@ -10,8 +48,19 @@
 # IDE文件
 .vscode/
 .idea/
+*.code-workspace
+
+# Rust特定文件
+Cargo.lock
+**/*.rs.bk
+
+# 调试和性能分析文件
+*.prof
+*.callgrind
+perf.data*
 
 # 临时文件
 *.tmp
 *.swp
 *~
+*.log

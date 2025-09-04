@@ -130,6 +130,9 @@ pub struct ChannelData {
 
     /// 次Peak值：主Peak失效时的备用Peak值（双Peak回退机制）
     pub peak_secondary: f64,
+
+    /// 🔧 **dr14兼容性**: 最后一个处理的样本值，用于尾样本排除逻辑
+    pub last_sample: f64,
 }
 
 impl ChannelData {
@@ -152,6 +155,7 @@ impl ChannelData {
             rms_accumulator: 0.0,
             peak_primary: 0.0,
             peak_secondary: 0.0,
+            last_sample: 0.0,
         }
     }
 
@@ -180,6 +184,9 @@ impl ChannelData {
     pub fn process_sample(&mut self, sample: f32) {
         let sample_f64 = sample as f64;
         let abs_sample = sample_f64.abs();
+
+        // 🔧 **dr14兼容性**: 记录最后处理的样本
+        self.last_sample = sample_f64;
 
         // RMS累积：累加样本平方值
         self.rms_accumulator += sample_f64 * sample_f64;
@@ -225,6 +232,31 @@ impl ChannelData {
         }
 
         let mean_square = self.rms_accumulator / sample_count as f64;
+        mean_square.sqrt()
+    }
+
+    /// 🎯 **dr14兼容性**: 计算排除最后样本的RMS值
+    ///
+    /// 精确复刻dr14_t.meter的"尾样本排除"行为，用于global_rms计算。
+    /// dr14_t.meter在计算全曲RMS时，会在尾部排除最后一个样本。
+    ///
+    /// # 参数
+    ///
+    /// * `sample_count` - 总样本数量（包括将被排除的最后样本）
+    ///
+    /// # 返回值
+    ///
+    /// 返回排除最后样本后的RMS值。如果样本数≤1，返回0.0。
+    pub fn calculate_rms_excluding_last_sample(&self, sample_count: usize) -> f64 {
+        if sample_count <= 1 {
+            return 0.0;
+        }
+
+        // 从累积平方和中减去最后样本的平方，样本数-1
+        let adjusted_sum_sq = self.rms_accumulator - (self.last_sample * self.last_sample);
+        let adjusted_count = sample_count - 1;
+
+        let mean_square = adjusted_sum_sq / adjusted_count as f64;
         mean_square.sqrt()
     }
 
@@ -426,6 +458,7 @@ impl ChannelData {
         self.rms_accumulator = 0.0;
         self.peak_primary = 0.0;
         self.peak_secondary = 0.0;
+        self.last_sample = 0.0;
     }
 
     /// 获取主Peak值
@@ -455,8 +488,8 @@ impl fmt::Display for ChannelData {
     }
 }
 
-// 编译时静态断言：确保ChannelData结构体大小为24字节
-const _: [u8; 24] = [0; std::mem::size_of::<ChannelData>()];
+// 编译时静态断言：确保ChannelData结构体大小为32字节 (24字节核心数据 + 8字节dr14兼容字段)
+const _: [u8; 32] = [0; std::mem::size_of::<ChannelData>()];
 
 // 编译时静态断言：确保ChannelData是8字节对齐的
 const _: [u8; 8] = [0; std::mem::align_of::<ChannelData>()];
@@ -467,8 +500,8 @@ mod tests {
 
     #[test]
     fn test_channel_data_size_and_alignment() {
-        // 验证24字节大小
-        assert_eq!(std::mem::size_of::<ChannelData>(), 24);
+        // 验证32字节大小（包含dr14兼容性字段）
+        assert_eq!(std::mem::size_of::<ChannelData>(), 32);
 
         // 验证8字节对齐
         assert_eq!(std::mem::align_of::<ChannelData>(), 8);

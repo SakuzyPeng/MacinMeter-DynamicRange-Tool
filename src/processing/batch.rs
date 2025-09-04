@@ -429,11 +429,17 @@ mod tests {
 
     #[test]
     fn test_parallel_vs_sequential_consistency() {
-        let samples = vec![
-            0.1, 0.2, 0.3, 0.4, // 4声道样本1
-            0.2, 0.3, 0.4, 0.5, // 4声道样本2
-            0.8, 0.7, 0.6, 0.9, // 4声道Peak
-        ];
+        // 生成更多合理的测试数据（4声道，1000个样本）
+        let mut samples = Vec::with_capacity(4000);
+        for i in 0..1000 {
+            let t = i as f32 * 0.01;
+            samples.push(0.1 + 0.1 * (t).sin()); // 声道1
+            samples.push(0.15 + 0.05 * (t * 1.1).cos()); // 声道2
+            samples.push(0.12 + 0.08 * (t * 0.9).sin()); // 声道3
+            samples.push(0.18 + 0.07 * (t * 1.2).cos()); // 声道4
+        }
+        // 添加一个Peak样本
+        samples.extend_from_slice(&[0.5, 0.4, 0.6, 0.3]);
 
         // 顺序处理
         let seq_processor = BatchProcessor::new(false, None);

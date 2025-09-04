@@ -33,6 +33,16 @@ pub struct WindowRmsAnalyzer {
     /// 当RMS > 0.9999时，直方图量化会造成严重误差
     /// 对于小窗口数量的情况，直接存储更准确
     window_rms_values: Vec<f64>,
+
+    /// 🎯 **精确对齐dr14_t.meter**: 记录整轨样本总数
+    /// 用于判断是否需要虚拟0窗口（仅在恰好整除时添加）
+    total_samples_processed: usize,
+
+    /// 🔧 **dr14兼容性**: 保存当前窗口的最后一个样本，用于尾窗"丢弃最后采样"逻辑
+    last_sample: f64,
+
+    /// 🔧 **方案A**: 当前窗口样本缓存，用于尾窗Peak值精确重新计算
+    current_window_samples: Vec<f64>,
 }
 
 /// 10000-bin直方图容器
@@ -89,6 +99,9 @@ impl WindowRmsAnalyzer {
             histogram: DrHistogram::new(),
             window_peaks: Vec::new(),
             window_rms_values: Vec::new(),
+            total_samples_processed: 0,
+            last_sample: 0.0,
+            current_window_samples: Vec::new(),
         }
     }
 
@@ -98,9 +111,18 @@ impl WindowRmsAnalyzer {
     ///
     /// * `samples` - 单声道f32样本数组
     pub fn process_channel(&mut self, samples: &[f32]) {
+        // 🎯 **精确对齐dr14_t.meter**: 记录总样本数
+        self.total_samples_processed += samples.len();
+
         for &sample in samples {
             let sample_f64 = sample as f64;
             let abs_sample = sample_f64.abs();
+
+            // 🔧 **dr14兼容性**: 保存当前样本作为潜在的"最后样本"
+            self.last_sample = sample_f64;
+
+            // 🔧 **方案A**: 维护当前窗口样本缓存，用于尾窗Peak重新计算
+            self.current_window_samples.push(sample_f64);
 
             // 更新当前窗口的平方和和Peak值
             self.current_sum_sq += sample_f64 * sample_f64;
@@ -123,43 +145,57 @@ impl WindowRmsAnalyzer {
                 self.current_sum_sq = 0.0;
                 self.current_peak = 0.0;
                 self.current_count = 0;
+                self.current_window_samples.clear(); // 清理样本缓存
             }
         }
 
         // 处理不足一个窗口的剩余样本
         if self.current_count > 0 {
-            // ✅ 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
-            let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
-            self.histogram.add_window_rms(window_rms);
+            // 🎯 **精确复刻dr14_t.meter尾窗行为**:
+            // dr14在尾窗切片时使用 Y[curr_sam:s[0] - 1, :] 排除最后一个样本
+            // 参考: dr14_t.meter/dr14tmeter/compute_dr14.py:68-71
+            if self.current_count > 1 {
+                // 排除最后一个样本：从平方和中减去最后样本的平方，样本数-1
+                let adjusted_sum_sq = self.current_sum_sq - (self.last_sample * self.last_sample);
+                let adjusted_count = self.current_count - 1;
 
-            // ✅ 记录最后一个窗口的Peak值
-            self.window_peaks.push(self.current_peak);
+                // ✅ dr14兼容RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
+                let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
+                self.histogram.add_window_rms(window_rms);
+                self.window_rms_values.push(window_rms);
 
-            // 🔧 **关键修复**: 直接存储RMS值避免量化损失
-            self.window_rms_values.push(window_rms);
+                // 🎯 **方案A**: 精确重新计算Peak值，排除最后一个样本
+                // 重新遍历尾窗样本（除了最后一个）来求真实峰值，与dr14_t.meter完全一致
+                let adjusted_peak = if self.current_window_samples.len() > 1 {
+                    // 排除最后一个样本，重新计算峰值 (等价于 dr14 的 np.max(abs(Y[curr_sam:s[0]-1, :])))
+                    self.current_window_samples[..self.current_window_samples.len() - 1]
+                        .iter()
+                        .map(|&s| s.abs())
+                        .fold(0.0, f64::max)
+                } else {
+                    // 只有1个样本的情况，Peak应该是0（因为被排除了）
+                    0.0
+                };
+                self.window_peaks.push(adjusted_peak);
+            } else {
+                // 尾窗只有1个样本时，dr14_t.meter会完全跳过（因为s[0]-1导致空区间）
+                // 我们也跳过这种情况，不添加任何窗口数据
+            }
 
             // 重置状态
             self.current_sum_sq = 0.0;
             self.current_peak = 0.0;
             self.current_count = 0;
+            self.current_window_samples.clear(); // 清理样本缓存
         }
     }
 
     /// 获取DR14标准Peak值（精确复现dr14_t.meter的peaks[seg_cnt-2]算法）
     ///
-    /// 🚨 **完全理解dr14_t.meter的Peak选择逻辑**:
-    /// 1. seg_cnt = 实际窗口数 + 1（总是+1，即使没有剩余样本）
-    /// 2. peaks数组分配seg_cnt行，未使用的行填0
-    /// 3. np.sort(peaks, 0) 将0值排在前面，实际Peak值后移
-    /// 4. peaks[seg_cnt-2] 选择排序后的特定位置
-    ///
-    /// 示例：3个实际窗口，无剩余样本
-    /// - seg_cnt = 4
-    /// - 原始peaks: [peak0, peak1, peak2, 0]
-    /// - 排序后: [0, peak_small, peak_medium, peak_large]  
-    /// - peaks[seg_cnt-2] = peaks[2] = peak_medium (中等Peak值)
-    ///
-    /// 实际上选择的是**排序后第三个位置的Peak值**
+    /// 🎯 **精确对齐dr14_t.meter的Peak选择逻辑**:
+    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
+    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
+    /// - peaks[seg_cnt-2] 选择排序后的第二大值
     ///
     /// # 返回值
     ///
@@ -169,24 +205,27 @@ impl WindowRmsAnalyzer {
             return 0.0;
         }
 
-        // 步骤1: 计算seg_cnt（总是+1）
-        let seg_cnt = self.window_peaks.len() + 1;
+        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let seg_cnt = if has_virtual_zero {
+            self.window_peaks.len() + 1 // 恰好整除：添加0窗
+        } else {
+            self.window_peaks.len() // 有尾窗：不添加0窗
+        };
 
         // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
         let mut peaks_array = vec![0.0; seg_cnt];
         for (i, &peak) in self.window_peaks.iter().enumerate() {
             peaks_array[i] = peak;
         }
-        // 剩余位置保持为0.0（模拟未使用的剩余样本窗口）
+        // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
         // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
         peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        // 步骤4: 选择第二大Peak值（倒数第二个）
-        // 排序后数组：[0, p1, p2, ..., p_max]
-        // 第二大Peak = peaks_array[len - 2]
-        if peaks_array.len() >= 2 {
-            peaks_array[peaks_array.len() - 2] // 第二大值
+        // 步骤4: 选择peaks[seg_cnt-2]位置的值
+        if seg_cnt >= 2 {
+            peaks_array[seg_cnt - 2] // dr14_t.meter的索引逻辑
         } else {
             // 只有1个Peak时，使用该Peak
             peaks_array[0]
@@ -195,34 +234,39 @@ impl WindowRmsAnalyzer {
 
     /// 计算"最响20%窗口"的加权RMS值
     ///
-    /// 🚨 **完全精确复现dr14_t.meter算法**:
-    /// 使用直接存储的RMS值（无量化损失）+ seg_cnt虚拟窗口逻辑
+    /// 🎯 **精确对齐dr14_t.meter的20%算法**:
+    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
+    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
+    /// - 使用seg_cnt计算n_blk，选择最高20%的RMS值
     pub fn calculate_20_percent_rms(&self) -> f64 {
         if self.window_rms_values.is_empty() {
             return 0.0;
         }
 
-        // 🔧 **精确复现dr14_t.meter的完整逻辑**
+        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let seg_cnt = if has_virtual_zero {
+            self.window_rms_values.len() + 1 // 恰好整除：添加0窗
+        } else {
+            self.window_rms_values.len() // 有尾窗：不添加0窗
+        };
 
-        // 步骤1: 构建包含虚拟窗口的RMS数组
-        let actual_windows = self.window_rms_values.len();
-        let seg_cnt = actual_windows + 1; // dr14_t.meter总是+1
-
+        // 步骤2: 构建RMS数组
         let mut rms_array = vec![0.0; seg_cnt];
         // 复制实际RMS值
         for (i, &rms) in self.window_rms_values.iter().enumerate() {
             rms_array[i] = rms;
         }
-        // 最后一个位置保持0.0（虚拟窗口）
+        // 如果has_virtual_zero为true，最后一个位置保持0.0
 
-        // 步骤2: 排序（升序，0值会排在前面）
+        // 步骤3: 排序（升序，0值会排在前面）
         rms_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        // 步骤3: 计算20%采样窗口数
+        // 步骤4: 计算20%采样窗口数（精确复现dr14_t.meter）
         let cut_best_bins = 0.2;
         let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
 
-        // 步骤4: 选择最高20%的RMS值
+        // 步骤5: 选择最高20%的RMS值
         let start_index = seg_cnt - n_blk;
         let mut rms_sum = 0.0;
 
@@ -230,7 +274,7 @@ impl WindowRmsAnalyzer {
             rms_sum += rms_value * rms_value; // 平方和
         }
 
-        // 步骤5: 开方平均
+        // 步骤6: 开方平均
         (rms_sum / n_blk as f64).sqrt()
     }
 
@@ -257,34 +301,7 @@ impl WindowRmsAnalyzer {
         self.histogram.clear();
         self.window_peaks.clear();
         self.window_rms_values.clear();
-    }
-
-    /// 获取窗口统计信息
-    pub fn get_statistics(&self) -> WindowStats {
-        let mut non_zero_bins = 0;
-        let mut min_rms = f64::INFINITY;
-        let mut max_rms: f64 = 0.0;
-
-        for (index, &count) in self.histogram.bins().iter().enumerate() {
-            if count > 0 {
-                non_zero_bins += 1;
-                let rms = index as f64 / 10000.0;
-                min_rms = min_rms.min(rms);
-                max_rms = max_rms.max(rms);
-            }
-        }
-
-        if min_rms == f64::INFINITY {
-            min_rms = 0.0;
-        }
-
-        WindowStats {
-            total_windows: self.histogram.total_windows(),
-            non_zero_bins,
-            min_rms,
-            max_rms,
-            rms_20_percent: self.calculate_20_percent_rms(),
-        }
+        self.total_samples_processed = 0;
     }
 }
 
@@ -296,11 +313,6 @@ impl DrHistogram {
             total_windows: 0,
             rms_to_index_cache: None,
         }
-    }
-
-    /// 获取bin数据（供WindowRmsAnalyzer使用）
-    pub(crate) fn bins(&self) -> &[u64] {
-        &self.bins
     }
 
     /// 获取总窗口数（供WindowRmsAnalyzer使用）
@@ -372,38 +384,9 @@ impl DrHistogram {
     }
 }
 
-/// 窗口统计信息
-#[derive(Debug, Clone)]
-pub struct WindowStats {
-    /// 总窗口数量
-    pub total_windows: u64,
-
-    /// 非零bin数量
-    pub non_zero_bins: usize,
-
-    /// 最小窗口RMS值
-    pub min_rms: f64,
-
-    /// 最大窗口RMS值  
-    pub max_rms: f64,
-
-    /// 最响20%窗口的加权RMS值
-    pub rms_20_percent: f64,
-}
-
 impl Default for DrHistogram {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl std::fmt::Display for WindowStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "WindowStats {{ windows: {}, bins: {}, rms_range: {:.6}-{:.6}, rms_20%: {:.6} }}",
-            self.total_windows, self.non_zero_bins, self.min_rms, self.max_rms, self.rms_20_percent
-        )
     }
 }
 
@@ -502,25 +485,6 @@ mod tests {
         // 前3个最高RMS窗口：1.0, 0.9, 0.8
         // 加权平均后开方应该接近这个范围的值
         assert!(rms_20 > 0.8);
-    }
-
-    #[test]
-    fn test_statistics() {
-        let mut analyzer = WindowRmsAnalyzer::new(100);
-
-        // 添加几个不同RMS的窗口
-        let amplitudes = [0.1, 0.3, 0.5, 0.7, 0.9];
-        for &amplitude in &amplitudes {
-            let samples: Vec<f32> = (0..300).map(|_| amplitude).collect();
-            analyzer.process_channel(&samples);
-        }
-
-        let stats = analyzer.get_statistics();
-        assert_eq!(stats.total_windows, 5);
-        assert!(stats.non_zero_bins > 0);
-        assert!(stats.min_rms > 0.0);
-        assert!(stats.max_rms <= 1.0);
-        assert!(stats.rms_20_percent > 0.0);
     }
 
     #[test]
