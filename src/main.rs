@@ -256,12 +256,12 @@ fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>> {
         }
 
         // 检查文件扩展名
-        if let Some(extension) = path.extension() {
-            if let Some(ext_str) = extension.to_str() {
-                let ext_lower = ext_str.to_lowercase();
-                if supported_extensions.contains(&ext_lower.as_str()) {
-                    audio_files.push(path);
-                }
+        if let Some(extension) = path.extension()
+            && let Some(ext_str) = extension.to_str()
+        {
+            let ext_lower = ext_str.to_lowercase();
+            if supported_extensions.contains(&ext_lower.as_str()) {
+                audio_files.push(path);
             }
         }
     }
