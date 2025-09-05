@@ -61,6 +61,10 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    env:
+      # 🎯 CI环境专用设置 - 覆盖本地.cargo/config.toml避免target冲突
+      CARGO_BUILD_TARGET: x86_64-unknown-linux-gnu
+      RUSTFLAGS: '-C opt-level=3'  # 简化编译标志避免特性冲突
     
     steps:
     - name: 📥 Checkout Repository
