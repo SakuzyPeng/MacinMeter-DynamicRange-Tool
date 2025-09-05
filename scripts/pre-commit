@@ -1,0 +1,76 @@
+#!/bin/bash
+# 🚀 MacinMeter DR Tool - 预提交钩子
+# 与GitHub Actions相同的代码质量检查，在本地提交前执行
+
+set -e  # 任何命令失败时立即退出
+
+echo "🔍 MacinMeter DR Tool - 预提交质量检查"
+echo "======================================"
+
+# 🎨 1. 代码格式检查
+echo ""
+echo "🎨 1. 检查代码格式..."
+if ! cargo fmt --check; then
+    echo "❌ 代码格式检查失败！请运行 'cargo fmt' 修复格式问题"
+    exit 1
+fi
+echo "✅ 代码格式检查通过"
+
+# 📎 2. Clippy静态分析
+echo ""
+echo "📎 2. 运行Clippy静态分析..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo "❌ Clippy检查失败！请修复上述警告"
+    exit 1
+fi
+echo "✅ Clippy静态分析通过"
+
+# 🔨 3. 编译检查
+echo ""
+echo "🔨 3. 检查代码编译..."
+if ! cargo check --all-targets --all-features; then
+    echo "❌ 编译检查失败！请修复编译错误"
+    exit 1
+fi
+echo "✅ 编译检查通过"
+
+# 🧪 4. 单元测试
+echo ""
+echo "🧪 4. 运行单元测试..."
+if ! cargo test; then
+    echo "❌ 单元测试失败！请修复测试问题"
+    exit 1
+fi
+echo "✅ 单元测试通过"
+
+# 🛡️ 5. 安全审计 (可选，如果安装了cargo-audit)
+echo ""
+echo "🛡️ 5. 安全审计..."
+if command -v cargo-audit &> /dev/null; then
+    if ! cargo audit --ignore RUSTSEC-0000-0000; then
+        echo "⚠️  安全审计发现问题，请检查上述警告"
+        echo "💡 如果是已知的无害警告，可以继续提交"
+    else
+        echo "✅ 安全审计通过"
+    fi
+else
+    echo "⚠️  cargo-audit未安装，跳过安全审计"
+    echo "💡 运行 'cargo install cargo-audit' 安装"
+fi
+
+# 🎉 所有检查通过
+echo ""
+echo "🎉 所有检查通过！可以安全提交"
+echo "======================================"
+
+# 📊 显示一些有用的信息
+echo ""
+echo "📊 提交前信息:"
+echo "  📁 工作目录: $(pwd)"
+echo "  🦀 Rust版本: $(rustc --version)"
+echo "  📦 Cargo版本: $(cargo --version)"
+echo "  🔧 目标平台: $(rustc -vV | grep host | cut -d' ' -f2)"
+
+echo ""
+echo "💡 提示: 这个钩子与GitHub Actions CI保持同步"
+echo "   如果本地检查通过，远程CI也应该能通过"

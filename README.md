@@ -174,6 +174,38 @@ codegen-units = 1
 panic = "abort"
 ```
 
+### 🔧 预提交钩子（推荐）
+
+为了确保代码质量和与CI保持一致，建议安装预提交钩子：
+
+```bash
+# 自动安装预提交钩子
+chmod +x scripts/install-pre-commit.sh
+./scripts/install-pre-commit.sh
+```
+
+**预提交钩子功能**：
+- 🎨 代码格式检查 (`cargo fmt --check`)
+- 📎 静态分析 (`cargo clippy`)  
+- 🔨 编译检查 (`cargo check`)
+- 🧪 单元测试 (`cargo test`)
+- 🛡️ 安全审计 (`cargo audit`)
+
+**使用效果**：
+- ✅ 在本地提前发现CI中可能出现的问题
+- ⚡ 节省"推送 → 等待 → 修复 → 重新推送"的时间
+- 🎯 与GitHub Actions完全相同的检查标准
+
+```bash
+# 正常提交 - 自动运行所有检查
+git commit -m "your message"
+
+# 紧急情况跳过检查
+git commit --no-verify -m "emergency fix"
+```
+
+详细使用说明请查看 [`scripts/README.md`](scripts/README.md)
+
 ## 📝 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
