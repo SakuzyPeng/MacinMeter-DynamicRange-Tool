@@ -272,17 +272,11 @@ impl SimdChannelData {
 
             // 当前累积值加载到SSE寄存器
             let mut rms_accum = _mm_set1_ps(0.0);
-            let mut primary_peak = _mm_set1_ps(self.inner.peak_primary as f32);
-            let mut secondary_peak = _mm_set1_ps(self.inner.peak_secondary as f32);
 
             // 4样本并行处理主循环
             while i + 4 <= len {
                 // 加载4个样本到SSE寄存器
                 let samples_vec = _mm_loadu_ps(samples.as_ptr().add(i));
-
-                // 计算绝对值：通过清除符号位实现
-                let abs_mask = _mm_set1_ps(f32::from_bits(0x7FFFFFFF));
-                let abs_samples = _mm_and_ps(samples_vec, abs_mask);
 
                 // RMS累积：samples^2
                 let squares = _mm_mul_ps(samples_vec, samples_vec);
@@ -396,19 +390,6 @@ impl SimdChannelData {
             let shuf2 = _mm_movehl_ps(sum1, sum1); // [2+3,3+3,2+3,3+3]
             let sum2 = _mm_add_ss(sum1, shuf2); // [0+1+2+3,...]
             _mm_cvtss_f32(sum2)
-        }
-    }
-
-    /// SSE寄存器水平最大值（4个f32中的最大值）
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "sse2")]
-    unsafe fn horizontal_max_ps(&self, vec: __m128) -> f32 {
-        unsafe {
-            let shuf1 = _mm_movehdup_ps(vec);
-            let max1 = _mm_max_ps(vec, shuf1);
-            let shuf2 = _mm_movehl_ps(max1, max1);
-            let max2 = _mm_max_ss(max1, shuf2);
-            _mm_cvtss_f32(max2)
         }
     }
 
