@@ -5,7 +5,7 @@ edition = "2024"
 description = "动态范围(DR)音频分析工具"
 
 [[bin]]
-name = "dr-meter"
+name = "MacinMeter-DynamicRange-Tool"
 path = "src/main.rs"
 
 [dependencies]
