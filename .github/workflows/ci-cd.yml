@@ -283,6 +283,16 @@ jobs:
       shell: bash
       
     - name: 🏗️ Build Release Binary
+      env:
+        # 🎯 CI专用RUSTFLAGS - 覆盖.cargo/config.toml避免CPU兼容问题
+        RUSTFLAGS: >-
+          ${{
+            matrix.target == 'aarch64-apple-darwin' && '-C target-feature=+neon -C opt-level=3' ||
+            matrix.target == 'x86_64-apple-darwin' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
+            matrix.target == 'x86_64-pc-windows-msvc' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
+            matrix.target == 'x86_64-unknown-linux-gnu' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
+            '-C opt-level=3'
+          }}
       run: |
         echo "🚀 Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
         echo "📋 Build environment info:"
@@ -290,6 +300,7 @@ jobs:
         echo "  OS: ${{ matrix.os }}"
         echo "  Platform: ${{ matrix.platform }}"
         echo "  Arch: ${{ matrix.arch }}"
+        echo "  RUSTFLAGS: $RUSTFLAGS"
         
         echo "🔍 Verifying Rust setup:"
         rustc --version
@@ -306,8 +317,16 @@ jobs:
           echo "🏗️ Starting native build..."
           cargo build --release --verbose
         else
-          echo "🎯 Cross-compilation detected - verifying target..."
-          rustup target list --installed | grep ${{ matrix.target }} && echo "✅ Target found" || (echo "❌ Target not found!" && exit 1)
+          echo "🎯 Cross-compilation detected - preparing target..."
+          echo "🔍 Checking if target ${{ matrix.target }} is installed..."
+          if rustup target list --installed | grep -q ${{ matrix.target }}; then
+            echo "✅ Target ${{ matrix.target }} already installed"
+          else
+            echo "📦 Installing target ${{ matrix.target }}..."
+            rustup target add ${{ matrix.target }}
+            echo "✅ Target installation completed"
+          fi
+          
           echo "🏗️ Starting cross-compilation build..."
           cargo build --release --target ${{ matrix.target }} --verbose
         fi
