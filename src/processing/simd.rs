@@ -288,27 +288,24 @@ impl SimdChannelData {
                 let squares = _mm_mul_ps(samples_vec, samples_vec);
                 rms_accum = _mm_add_ps(rms_accum, squares);
 
-                // Peak检测：向量化双Peak更新机制
-                // 🐛 修复：正确实现标量逻辑的向量化版本
+                // 🔧 双Peak检测：分步向量化更新
+                // 完全按照标量逻辑实现，避免复杂的并行条件判断
 
-                // 1. 检查新样本是否大于主Peak
+                // Step 1: 识别新主Peak（abs_samples > primary_peak）
                 let new_primary_mask = _mm_cmpgt_ps(abs_samples, primary_peak);
 
-                // 2. 当新样本成为主Peak时：旧主Peak → 次Peak，新样本 → 主Peak
-                let old_primary = primary_peak;
-                let new_secondary_from_primary =
-                    _mm_blendv_ps(secondary_peak, old_primary, new_primary_mask);
+                // Step 2: 更新次Peak为旧主Peak（当有新主Peak时）
+                secondary_peak = _mm_blendv_ps(secondary_peak, primary_peak, new_primary_mask);
+
+                // Step 3: 更新主Peak（无条件blend，mask控制是否更新）
                 primary_peak = _mm_blendv_ps(primary_peak, abs_samples, new_primary_mask);
 
-                // 3. 检查新样本是否大于次Peak但不大于主Peak
-                let new_secondary_mask = _mm_and_ps(
+                // Step 4: 处理次Peak直接更新（abs_samples > secondary_peak 且未成为主Peak）
+                let secondary_update_mask = _mm_and_ps(
                     _mm_cmpgt_ps(abs_samples, secondary_peak),
-                    _mm_cmple_ps(abs_samples, old_primary), // 使用旧主Peak比较
+                    _mm_xor_ps(new_primary_mask, _mm_set1_ps(f32::from_bits(0xFFFFFFFF))), // NOT new_primary_mask
                 );
-
-                // 4. 综合更新次Peak：优先考虑从主Peak降级的值
-                secondary_peak =
-                    _mm_blendv_ps(new_secondary_from_primary, abs_samples, new_secondary_mask);
+                secondary_peak = _mm_blendv_ps(secondary_peak, abs_samples, secondary_update_mask);
 
                 i += 4;
             }
