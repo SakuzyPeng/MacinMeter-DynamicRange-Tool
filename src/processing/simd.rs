@@ -288,39 +288,27 @@ impl SimdChannelData {
                 let squares = _mm_mul_ps(samples_vec, samples_vec);
                 rms_accum = _mm_add_ps(rms_accum, squares);
 
-                // 🔧 双Peak检测：分步向量化更新
-                // 完全按照标量逻辑实现，避免复杂的并行条件判断
-
-                // Step 1: 识别新主Peak（abs_samples > primary_peak）
-                let new_primary_mask = _mm_cmpgt_ps(abs_samples, primary_peak);
-
-                // Step 2: 更新次Peak为旧主Peak（当有新主Peak时）
-                secondary_peak = _mm_blendv_ps(secondary_peak, primary_peak, new_primary_mask);
-
-                // Step 3: 更新主Peak（无条件blend，mask控制是否更新）
-                primary_peak = _mm_blendv_ps(primary_peak, abs_samples, new_primary_mask);
-
-                // Step 4: 处理次Peak直接更新（abs_samples > secondary_peak 且未成为主Peak）
-                let secondary_update_mask = _mm_and_ps(
-                    _mm_cmpgt_ps(abs_samples, secondary_peak),
-                    _mm_xor_ps(new_primary_mask, _mm_set1_ps(f32::from_bits(0xFFFFFFFF))), // NOT new_primary_mask
-                );
-                secondary_peak = _mm_blendv_ps(secondary_peak, abs_samples, secondary_update_mask);
+                // 🎯 统一实现：向量化RMS，标量Peak
+                // 避免复杂的跨平台向量化Peak逻辑，确保100%一致性
 
                 i += 4;
             }
 
-            // 水平归约：将4个并行值合并为标量
+            // RMS向量化归约：将4个并行值合并为标量
             self.inner.rms_accumulator += self.horizontal_sum_ps(rms_accum) as f64;
 
-            // Peak值的水平最大值
-            self.inner.peak_primary = self.horizontal_max_ps(primary_peak) as f64;
-            self.inner.peak_secondary = self.horizontal_max_ps(secondary_peak) as f64;
+            // 🎯 统一Peak处理：所有样本用标量方式处理，确保跨平台一致性
+            for &sample in samples {
+                let abs_sample = (sample as f64).abs();
 
-            // 处理剩余样本（标量方式）
-            while i < len {
-                self.inner.process_sample(samples[i]);
-                i += 1;
+                if abs_sample > self.inner.peak_primary {
+                    // 新Peak值成为主Peak，原主Peak降为次Peak
+                    self.inner.peak_secondary = self.inner.peak_primary;
+                    self.inner.peak_primary = abs_sample;
+                } else if abs_sample > self.inner.peak_secondary {
+                    // 更新次Peak，但不影响主Peak
+                    self.inner.peak_secondary = abs_sample;
+                }
             }
 
             len
