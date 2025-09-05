@@ -169,7 +169,7 @@ cargo build --release
 cargo run -- [目录路径]
 
 # 运行生产版本
-./target/release/dr-meter [目录路径]
+./target/release/MacinMeter-DynamicRange-Tool [目录路径]
 
 # 运行测试
 cargo test
@@ -188,6 +188,32 @@ cargo fmt
 
 # 运行clippy检查
 cargo clippy -- -D warnings
+```
+
+## 📁 Mac编译产物绝对路径
+
+### 可执行文件位置
+**Debug版本 (开发用)**:
+```
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/debug/MacinMeter-DynamicRange-Tool
+```
+- 文件大小: ~10.4 MB
+- 包含调试信息，启动快但运行较慢
+
+**Release版本 (生产用)**:
+```
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool
+```
+- 文件大小: ~1.5 MB  
+- 优化编译，启动慢但运行快，用于性能测试和发布
+
+### 快速测试命令
+```bash
+# 测试release版本
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool --help
+
+# 测试基本功能
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool /path/to/audio/file
 ```
 
 ## ⚠️ 重要开发习惯：零警告原则
