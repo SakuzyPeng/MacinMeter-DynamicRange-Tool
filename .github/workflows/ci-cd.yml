@@ -62,8 +62,7 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     env:
-      # 🎯 CI环境专用设置 - 覆盖本地.cargo/config.toml避免target冲突
-      CARGO_BUILD_TARGET: x86_64-unknown-linux-gnu
+      # 🎯 CI环境专用设置 - 质量检查使用原生目标，避免跨编译复杂性
       RUSTFLAGS: '-C opt-level=3'  # 简化编译标志避免特性冲突
     
     steps:
@@ -268,17 +267,30 @@ jobs:
         echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
       shell: bash
       
-    # 🕐 统一时间戳输出
-    - name: 🕐 Set Unified Timestamp
+    # 🕐 统一时间戳输出 - Windows
+    - name: 🕐 Set Unified Timestamp (Windows)
+      if: matrix.os == 'windows-latest'
+      id: timestamp-win
+      run: |
+        echo "timestamp=${{ steps.timestamp-windows.outputs.timestamp }}" >> $env:GITHUB_OUTPUT
+        echo "date_tag=${{ steps.timestamp-windows.outputs.date_tag }}" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      
+    # 🕐 统一时间戳输出 - Unix
+    - name: 🕐 Set Unified Timestamp (Unix)
+      if: matrix.os != 'windows-latest'
+      id: timestamp-nix
+      run: |
+        echo "timestamp=${{ steps.timestamp-unix.outputs.timestamp }}" >> $GITHUB_OUTPUT
+        echo "date_tag=${{ steps.timestamp-unix.outputs.date_tag }}" >> $GITHUB_OUTPUT
+      shell: bash
+      
+    # 🕐 统一时间戳ID输出
+    - name: 🕐 Set Final Timestamp ID
       id: timestamp
       run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          echo "timestamp=${{ steps.timestamp-windows.outputs.timestamp }}" >> $GITHUB_OUTPUT
-          echo "date_tag=${{ steps.timestamp-windows.outputs.date_tag }}" >> $GITHUB_OUTPUT
-        else
-          echo "timestamp=${{ steps.timestamp-unix.outputs.timestamp }}" >> $GITHUB_OUTPUT
-          echo "date_tag=${{ steps.timestamp-unix.outputs.date_tag }}" >> $GITHUB_OUTPUT
-        fi
+        # 这一步只是为了保持后续步骤的兼容性
+        echo "Final timestamp ID set for downstream steps"
       shell: bash
       
     - name: 🏗️ Build Release Binary
@@ -306,36 +318,23 @@ jobs:
         cargo --version
         rustup show
         
-        echo "🎯 Checking if native or cross-compilation:"
-        NATIVE_TARGET=$(rustc -vV | grep "host:" | cut -d' ' -f2)
-        echo "  Host target: $NATIVE_TARGET"
-        echo "  Build target: ${{ matrix.target }}"
+        echo "🎯 Using GitHub Actions native runner strategy:"
+        echo "  Runner OS: ${{ matrix.os }}"
+        echo "  Target: ${{ matrix.target }}"
         
-        if [ "$NATIVE_TARGET" = "${{ matrix.target }}" ]; then
-          echo "✅ Native build detected - no cross-compilation needed"
-          echo "🏗️ Starting native build..."
-          cargo build --release --verbose
-        else
-          echo "🎯 Cross-compilation detected - preparing target..."
-          echo "🔍 Checking if target ${{ matrix.target }} is installed..."
-          if rustup target list --installed | grep -q ${{ matrix.target }}; then
-            echo "✅ Target ${{ matrix.target }} already installed"
-          else
-            echo "📦 Installing target ${{ matrix.target }}..."
-            rustup target add ${{ matrix.target }}
-            echo "✅ Target installation completed"
-          fi
-          
-          echo "🏗️ Starting cross-compilation build..."
-          cargo build --release --target ${{ matrix.target }} --verbose
-        fi
+        # 🎯 统一使用原生构建策略避免跨编译复杂性
+        echo "🏗️ Building for target: ${{ matrix.target }}"
+        echo "💡 Using GitHub Actions native runner for ${{ matrix.target }}"
         
+        # 直接构建，依赖GitHub Actions的runner原生支持
+        cargo build --release --verbose
+      shell: bash
     # 📦 准备二进制文件 - Windows
     - name: 📦 Prepare Binary with Timestamp (Windows)
       if: matrix.os == 'windows-latest'
       id: binary-windows
       run: |
-        $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        $binary_name = "dr-meter-${{ github.ref_name }}_${{ steps.timestamp-windows.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
         
         # 智能路径检测 - Native vs Cross-compilation
         $native_path = "target/release/dr-meter${{ matrix.extension }}"
@@ -364,7 +363,7 @@ jobs:
       if: matrix.os != 'windows-latest'
       id: binary-unix
       run: |
-        binary_name="dr-meter-${{ github.ref_name }}_${{ steps.timestamp.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        binary_name="dr-meter-${{ github.ref_name }}_${{ steps.timestamp-unix.outputs.timestamp }}_${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
         
         # 智能路径检测 - Native vs Cross-compilation
         native_path="target/release/dr-meter${{ matrix.extension }}"
@@ -389,17 +388,30 @@ jobs:
         echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
       shell: bash
       
-    # 📦 统一二进制输出
-    - name: 📦 Set Unified Binary Info
+    # 📦 统一二进制输出 - Windows
+    - name: 📦 Set Unified Binary Info (Windows)
+      if: matrix.os == 'windows-latest'
+      id: binary-win
+      run: |
+        echo "binary_name=${{ steps.binary-windows.outputs.binary_name }}" >> $env:GITHUB_OUTPUT
+        echo "binary_path=${{ steps.binary-windows.outputs.binary_path }}" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      
+    # 📦 统一二进制输出 - Unix
+    - name: 📦 Set Unified Binary Info (Unix)
+      if: matrix.os != 'windows-latest'
+      id: binary-nix
+      run: |
+        echo "binary_name=${{ steps.binary-unix.outputs.binary_name }}" >> $GITHUB_OUTPUT
+        echo "binary_path=${{ steps.binary-unix.outputs.binary_path }}" >> $GITHUB_OUTPUT
+      shell: bash
+      
+    # 📦 统一二进制ID输出
+    - name: 📦 Set Final Binary ID
       id: binary
       run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          echo "binary_name=${{ steps.binary-windows.outputs.binary_name }}" >> $GITHUB_OUTPUT
-          echo "binary_path=${{ steps.binary-windows.outputs.binary_path }}" >> $GITHUB_OUTPUT
-        else
-          echo "binary_name=${{ steps.binary-unix.outputs.binary_name }}" >> $GITHUB_OUTPUT
-          echo "binary_path=${{ steps.binary-unix.outputs.binary_path }}" >> $GITHUB_OUTPUT
-        fi
+        # 这一步只是为了保持后续步骤的兼容性
+        echo "Final binary ID set for downstream steps"
       shell: bash
       
     # ✅ 验证二进制文件 - Windows
@@ -407,9 +419,9 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         echo "🔍 Verifying built binary..."
-        if (Test-Path "${{ steps.binary.outputs.binary_path }}") {
-          $size = (Get-Item "${{ steps.binary.outputs.binary_path }}").Length
-          Write-Host "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
+        if (Test-Path "${{ steps.binary-windows.outputs.binary_path }}") {
+          $size = (Get-Item "${{ steps.binary-windows.outputs.binary_path }}").Length
+          Write-Host "✅ Binary verified: ${{ steps.binary-windows.outputs.binary_name }} ($size bytes)"
         } else {
           Write-Host "❌ Binary not found!"
           exit 1
@@ -421,9 +433,9 @@ jobs:
       if: matrix.os != 'windows-latest'
       run: |
         echo "🔍 Verifying built binary..."
-        if [ -f "${{ steps.binary.outputs.binary_path }}" ]; then
-          size=$(stat -c%s "${{ steps.binary.outputs.binary_path }}" 2>/dev/null || stat -f%z "${{ steps.binary.outputs.binary_path }}")
-          echo "✅ Binary verified: ${{ steps.binary.outputs.binary_name }} ($size bytes)"
+        if [ -f "${{ steps.binary-unix.outputs.binary_path }}" ]; then
+          size=$(stat -c%s "${{ steps.binary-unix.outputs.binary_path }}" 2>/dev/null || stat -f%z "${{ steps.binary-unix.outputs.binary_path }}")
+          echo "✅ Binary verified: ${{ steps.binary-unix.outputs.binary_name }} ($size bytes)"
         else
           echo "❌ Binary not found!"
           exit 1
@@ -434,15 +446,15 @@ jobs:
       if: matrix.os != 'windows-latest'
       run: |
         echo "🗜️ Compressing binary to save storage..."
-        gzip -9 "${{ steps.binary.outputs.binary_path }}"
-        echo "compressed_path=${{ steps.binary.outputs.binary_path }}.gz" >> $GITHUB_OUTPUT
+        gzip -9 "${{ steps.binary-unix.outputs.binary_path }}"
+        echo "compressed_path=${{ steps.binary-unix.outputs.binary_path }}.gz" >> $GITHUB_OUTPUT
       id: compress
       
     - name: 📤 Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.binary.outputs.binary_name }}
-        path: ${{ matrix.os == 'windows-latest' && steps.binary.outputs.binary_path || steps.compress.outputs.compressed_path }}
+        name: ${{ matrix.os == 'windows-latest' && steps.binary-windows.outputs.binary_name || steps.binary-unix.outputs.binary_name }}
+        path: ${{ matrix.os == 'windows-latest' && steps.binary-windows.outputs.binary_path || steps.compress.outputs.compressed_path }}
         retention-days: 14  # 私有仓库优化：减少存储成本
         compression-level: ${{ matrix.os == 'windows-latest' && '9' || '0' }}  # Windows压缩，Unix已压缩
         
