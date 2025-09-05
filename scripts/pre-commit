@@ -43,9 +43,29 @@ if ! cargo test; then
 fi
 echo "✅ 单元测试通过"
 
-# 🛡️ 5. 安全审计 (可选，如果安装了cargo-audit)
+# 🌐 5. 跨平台兼容性检查
 echo ""
-echo "🛡️ 5. 安全审计..."
+echo "🌐 5. 跨平台兼容性检查..."
+
+# 检查.cargo/config.toml中的全局target设置
+if [ -f ".cargo/config.toml" ]; then
+    if grep -q "^target = " .cargo/config.toml; then
+        echo "⚠️  发现.cargo/config.toml中的全局target设置！"
+        echo "    这可能导致CI跨编译失败"
+        grep "^target = " .cargo/config.toml | sed 's/^/    /'
+        echo "💡 建议: 注释掉全局target设置，让CI使用各平台原生target"
+        echo "❌ 跨平台兼容性检查失败"
+        exit 1
+    else
+        echo "✅ .cargo/config.toml配置正常"
+    fi
+else
+    echo "ℹ️  未找到.cargo/config.toml文件"
+fi
+
+# 🛡️ 6. 安全审计 (可选，如果安装了cargo-audit)
+echo ""
+echo "🛡️ 6. 安全审计..."
 if command -v cargo-audit &> /dev/null; then
     if ! cargo audit --ignore RUSTSEC-0000-0000; then
         echo "⚠️  安全审计发现问题，请检查上述警告"

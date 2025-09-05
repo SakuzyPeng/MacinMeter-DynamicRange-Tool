@@ -1,8 +1,9 @@
 # Cargo配置文件 - 针对Apple M4 Pro优化
+# ⚠️  不设置全局target，避免CI跨编译冲突
 
 [build]
-# 设置默认target为本机架构
-target = "aarch64-apple-darwin"
+# 移除全局target设置，让Cargo使用各平台的原生target
+# target = "aarch64-apple-darwin"  # 注释掉避免CI冲突
 
 # ARM64 (Apple Silicon) 特定优化
 [target.aarch64-apple-darwin]
