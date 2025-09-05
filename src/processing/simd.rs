@@ -551,7 +551,7 @@ mod tests {
 
         // 应该能正确报告SIMD支持状态
         let has_simd = processor.has_simd_support();
-        println!("当前系统SIMD支持: {}", has_simd);
+        println!("当前系统SIMD支持: {has_simd}");
     }
 
     #[test]
@@ -578,31 +578,46 @@ mod tests {
         println!("  RMS累积:");
         println!("    SIMD: {}", simd_processor.inner().rms_accumulator);
         println!("    标量: {}", scalar_data.rms_accumulator);
-        println!("    差异: {}", rms_diff);
+        println!("    差异: {rms_diff}");
         println!("  主Peak:");
         println!("    SIMD: {}", simd_processor.inner().peak_primary);
         println!("    标量: {}", scalar_data.peak_primary);
-        println!("    差异: {}", peak1_diff);
+        println!("    差异: {peak1_diff}");
         println!("  次Peak:");
         println!("    SIMD: {}", simd_processor.inner().peak_secondary);
         println!("    标量: {}", scalar_data.peak_secondary);
-        println!("    差异: {}", peak2_diff);
+        println!("    差异: {peak2_diff}");
 
         // 🎯 SIMD vs 标量精度阈值：考虑浮点运算的固有误差
-        const RMS_TOLERANCE: f64 = 1e-5;    // RMS累积的合理误差范围
-        const PEAK_TOLERANCE: f64 = 1e-6;   // Peak值的严格误差范围
-        
-        assert!(rms_diff < RMS_TOLERANCE, 
-            "RMS差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}", 
-            rms_diff, RMS_TOLERANCE, simd_processor.inner().rms_accumulator, scalar_data.rms_accumulator);
-            
-        assert!(peak1_diff < PEAK_TOLERANCE, 
-            "主Peak差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}", 
-            peak1_diff, PEAK_TOLERANCE, simd_processor.inner().peak_primary, scalar_data.peak_primary);
-            
-        assert!(peak2_diff < PEAK_TOLERANCE, 
-            "次Peak差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}", 
-            peak2_diff, PEAK_TOLERANCE, simd_processor.inner().peak_secondary, scalar_data.peak_secondary);
+        const RMS_TOLERANCE: f64 = 1e-5; // RMS累积的合理误差范围
+        const PEAK_TOLERANCE: f64 = 1e-6; // Peak值的严格误差范围
+
+        assert!(
+            rms_diff < RMS_TOLERANCE,
+            "RMS差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}",
+            rms_diff,
+            RMS_TOLERANCE,
+            simd_processor.inner().rms_accumulator,
+            scalar_data.rms_accumulator
+        );
+
+        assert!(
+            peak1_diff < PEAK_TOLERANCE,
+            "主Peak差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}",
+            peak1_diff,
+            PEAK_TOLERANCE,
+            simd_processor.inner().peak_primary,
+            scalar_data.peak_primary
+        );
+
+        assert!(
+            peak2_diff < PEAK_TOLERANCE,
+            "次Peak差异过大: {} (阈值: {})\n  SIMD: {}\n  标量: {}",
+            peak2_diff,
+            PEAK_TOLERANCE,
+            simd_processor.inner().peak_secondary,
+            scalar_data.peak_secondary
+        );
 
         println!("✅ SIMD与标量实现一致性验证通过");
     }
@@ -627,7 +642,7 @@ mod tests {
             assert!(!factory.should_use_simd(1000)); // 不支持SIMD
         }
 
-        println!("当前系统SIMD支持: {}", supports_simd);
+        println!("当前系统SIMD支持: {supports_simd}");
     }
 
     #[test]
