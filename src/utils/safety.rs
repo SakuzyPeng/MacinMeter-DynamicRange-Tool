@@ -224,12 +224,13 @@ impl SafetyGuard {
             }
             "write" => {
                 if let Some(parent) = path.parent()
-                    && !parent.exists() {
-                        return Err(AudioError::IoError(std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            "目标目录不存在",
-                        )));
-                    }
+                    && !parent.exists()
+                {
+                    return Err(AudioError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "目标目录不存在",
+                    )));
+                }
             }
             _ => {
                 return Err(AudioError::IoError(std::io::Error::new(
