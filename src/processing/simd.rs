@@ -399,7 +399,7 @@ mod tests {
 
         // 应该能正确报告SIMD支持状态
         let has_simd = processor.has_simd_support();
-        println!("当前系统SIMD支持: {}", has_simd);
+        println!("当前系统SIMD支持: {has_simd}");
     }
 
     #[test]
@@ -422,9 +422,9 @@ mod tests {
         let peak1_diff = (simd_processor.inner().peak_primary - scalar_data.peak_primary).abs();
         let peak2_diff = (simd_processor.inner().peak_secondary - scalar_data.peak_secondary).abs();
 
-        assert!(rms_diff < 1e-6, "RMS差异过大: {}", rms_diff);
-        assert!(peak1_diff < 1e-6, "主Peak差异过大: {}", peak1_diff);
-        assert!(peak2_diff < 1e-6, "次Peak差异过大: {}", peak2_diff);
+        assert!(rms_diff < 1e-6, "RMS差异过大: {rms_diff}");
+        assert!(peak1_diff < 1e-6, "主Peak差异过大: {peak1_diff}");
+        assert!(peak2_diff < 1e-6, "次Peak差异过大: {peak2_diff}");
 
         println!("✅ SIMD与标量实现一致性验证通过");
     }
@@ -449,7 +449,7 @@ mod tests {
             assert!(!factory.should_use_simd(1000)); // 不支持SIMD
         }
 
-        println!("当前系统SIMD支持: {}", supports_simd);
+        println!("当前系统SIMD支持: {supports_simd}");
     }
 
     #[test]

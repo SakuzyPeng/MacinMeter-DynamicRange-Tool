@@ -482,9 +482,9 @@ mod tests {
             let rms_diff = (seq_dr.rms - par_dr.rms).abs();
             let peak_diff = (seq_dr.peak - par_dr.peak).abs();
 
-            assert!(dr_diff < 1e-6, "DR值差异过大: {}", dr_diff);
-            assert!(rms_diff < 1e-6, "RMS差异过大: {}", rms_diff);
-            assert!(peak_diff < 1e-6, "Peak差异过大: {}", peak_diff);
+            assert!(dr_diff < 1e-6, "DR值差异过大: {dr_diff}");
+            assert!(rms_diff < 1e-6, "RMS差异过大: {rms_diff}");
+            assert!(peak_diff < 1e-6, "Peak差异过大: {peak_diff}");
         }
 
         println!("✅ 并行与顺序处理一致性验证通过");
