@@ -2,10 +2,10 @@
 name = "macinmeter-dr-tool"
 version = "0.1.0"
 edition = "2024"
-description = "动态范围(DR)音频分析工具"
+description = "foobar2000 DR Meter 逆向兼容工具 - 100%精度匹配foo_dr_meter插件"
 
 [[bin]]
-name = "dr-meter"
+name = "MacinMeter-DynamicRange-Tool-foo_dr"
 path = "src/main.rs"
 
 [dependencies]

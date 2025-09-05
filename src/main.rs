@@ -376,7 +376,7 @@ fn output_results(results: &[DrResult], config: &AppConfig) -> AudioResult<()> {
     }
 
     output.push('\n');
-    output.push_str("生成工具: MacinMeter DR Tool v");
+    output.push_str("生成工具: MacinMeter DR Tool (foo_dr_meter兼容) v");
     output.push_str(VERSION);
     output.push('\n');
 
@@ -428,7 +428,7 @@ fn main() {
     let config = AppConfig::from_args();
 
     if config.verbose {
-        println!("🚀 MacinMeter DR Tool v{VERSION} 启动");
+        println!("🚀 MacinMeter DR Tool (foo_dr_meter模拟器) v{VERSION} 启动");
         println!("📝 {DESCRIPTION}");
         println!();
     }

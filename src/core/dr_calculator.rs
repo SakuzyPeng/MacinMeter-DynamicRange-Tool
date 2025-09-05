@@ -1,6 +1,8 @@
 //! DR计算核心引擎
 //!
-//! 实现foobar2000 DR Meter的核心算法：DR = log10(RMS / Peak) * -20.0
+//! 基于对foobar2000 DR Meter算法的独立分析实现核心DR计算公式：DR = log10(RMS / Peak) * -20.0
+//!
+//! 注：本实现通过IDA Pro逆向分析理解算法逻辑，所有代码均为Rust原创实现
 
 use super::{ChannelData, SimpleHistogramAnalyzer};
 use crate::error::{AudioError, AudioResult};
