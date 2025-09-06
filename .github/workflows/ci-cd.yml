@@ -138,7 +138,7 @@ jobs:
     - name: 🔍 Run Clippy Static Analysis
       run: |
         echo "📎 Running Clippy static analysis..."
-        cargo clippy --all-targets --all-features -- -D warnings
+        cargo clippy --all-targets --all-features -- -D warnings -D unused-unsafe -D unsafe-op-in-unsafe-fn
         
     - name: ✅ Compile Check
       run: |
