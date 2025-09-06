@@ -392,7 +392,7 @@ impl DrCalculator {
 
     /// 计算单个声道的20% RMS值（foobar2000兼容模式）
     ///
-    /// 使用10001-bin直方图的20%采样算法，实现与foobar2000完全一致的精度。
+    /// 使用10001-bin直方图的20%采样算法，基于foobar2000算法的独立实现。
     /// 这是foobar2000 "最响20%样本"算法的核心实现。
     fn calculate_channel_rms_foobar2000(&self, channel_idx: usize) -> AudioResult<f64> {
         let analyzers = self.histogram_analyzers.as_ref().ok_or_else(|| {
@@ -523,7 +523,8 @@ impl DrCalculator {
         _peak: f64,
         _sample_count: usize,
     ) -> (f64, SumDoublingQuality) {
-        // Early Version模式：始终禁用Sum Doubling，确保最高精度
+        // Early Version模式：始终禁用Sum Doubling，确保最高精度和一致性
+        // 原因：Sum Doubling的修正因子因音频内容而异，没有普适的校准方法
         (
             rms,
             SumDoublingQuality {

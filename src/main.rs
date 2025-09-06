@@ -574,8 +574,8 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
     // 添加标准信息到输出
     batch_output.push_str("🌿 Git分支: early-version (foobar2000兼容版)\n");
     batch_output.push_str("📐 标准来源: foobar2000 DR Meter 逆向工程\n");
-    batch_output.push_str("✅ 当前模式: 100%精度匹配模式\n");
-    batch_output.push_str("📊 精度目标: 完全匹配 foobar2000 DR Meter 结果\n");
+    batch_output.push_str("✅ 当前模式: 高精度DR分析模式\n");
+    batch_output.push_str("📊 精度目标: 基于foobar2000逆向分析的高精度实现\n");
     batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
 

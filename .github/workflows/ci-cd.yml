@@ -74,7 +74,7 @@ jobs:
       with:
         components: rustfmt, clippy
         
-    - name: 📦 Smart Cache - Cargo Registry
+    - name: 📦 Smart Cache - Cargo Registry (crates.io)
       uses: actions/cache@v4
       with:
         path: |
@@ -84,13 +84,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-registry-
           
-    - name: 📦 Smart Cache - Cargo Git Dependencies  
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/git/db/
-        key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-git-
+    # 注意：跳过git依赖缓存，因为项目仅使用crates.io依赖
           
     - name: 📦 Smart Cache - Target Directory
       uses: actions/cache@v4
@@ -538,8 +532,8 @@ jobs:
           ## 🚀 MacinMeter DR Tool Release (foobar2000兼容版)
           
           ### 🎯 Features
-          - ✅ 100%精度匹配foobar2000 DR Meter插件
-          - 🔬 基于IDA Pro逆向工程的完整算法重现
+          - ✅ 基于foobar2000 DR Meter的衍生实现
+          - 🔬 基于IDA Pro逆向工程的算法研究与独立实现
           - 🚀 SIMD加速和多线程支持
           - 📁 批量处理模式（双击启动）
           - 🎵 支持多种音频格式 (WAV, FLAC, MP3, AAC, OGG)

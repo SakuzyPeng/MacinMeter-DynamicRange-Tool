@@ -2,7 +2,7 @@
 name = "macinmeter-dr-tool"
 version = "0.1.0"
 edition = "2024"
-description = "foobar2000 DR Meter 逆向兼容工具 - 100%精度匹配foo_dr_meter插件"
+description = "基于foobar2000 DR Meter的Rust衍生实现 - 致敬Janne Hyvärinen的开创性工作"
 
 [[bin]]
 name = "MacinMeter-DynamicRange-Tool-foo_dr"

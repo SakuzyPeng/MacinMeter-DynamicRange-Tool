@@ -3,21 +3,24 @@
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)
 
-**foobar2000 DR Meter 逆向兼容工具 - 100%精度匹配foo_dr_meter插件**
+**基于foobar2000 DR Meter的Rust衍生实现**
 
-一个基于对foobar2000 DR Meter算法逻辑独立分析的高性能音频动态范围(DR)测量工具，使用Rust实现。
+*致敬Janne Hyvärinen的开创性工作*
+
+一个基于foobar2000 DR Meter算法逻辑深入研究的高性能音频动态范围(DR)测量工具衍生实现，使用Rust语言重新构建，旨在为跨平台环境提供高精度的DR分析能力。
 
 ## 🎯 项目概述
 
-MacinMeter DR Tool (foobar2000兼容版) 专门为实现与Windows下foobar2000 DR Meter插件的100%精度匹配而设计。通过IDA Pro逆向工程分析，我们理解了原始算法的核心逻辑，并使用Rust语言进行了完全独立的重新实现。
+本项目是foobar2000 DR Meter插件的衍生实现，基于对原始算法的深入学习和理解。我们通过逆向工程研究了Janne Hyvärinen创作的原始算法逻辑，并将其精神和原理移植到Rust语言实现中，以便为更广泛的平台和用户群体提供服务。
 
-### ✨ 核心特性
+### ✨ 衍生实现特性
 
-- **🎯 100%精度匹配**: 与foobar2000 DR Meter计算结果完全一致
+- **🌿 致敬原创**: 忠实传承foobar2000 DR Meter的核心算法精神
+- **🎯 高精度实现**: Peak检测100%精确，DR分类高度准确
 - **🎵 多格式支持**: WAV, FLAC, MP3, AAC, OGG等主流音频格式
-- **🚀 高性能处理**: SIMD向量化优化，多线程并行计算
-- **🔧 跨平台支持**: Linux, macOS, Windows
-- **⚡ 算法优化**: Sum Doubling补偿机制，双Peak回退系统
+- **🚀 现代化优化**: Rust语言重构，SIMD向量化，多线程并行
+- **🔧 跨平台扩展**: 将原本Windows专有的功能扩展至Linux、macOS
+- **⚡ 算法传承**: 保持Sum Doubling、双Peak回退等原始设计理念
 
 ## 🚀 快速开始
 
@@ -102,14 +105,21 @@ cargo build --release
 使用标准测试音频文件验证：
 - **测试文件**: `Ver2-adm-master-from-DAW-spatialmix-noreverb-peaklimited-0-2025-08-29-00-00-55.flac`
 - **期望结果**: DR10 (与foobar2000 DR Meter一致)
-- **验证状态**: ✅ 100%精度匹配
+- **验证状态**: ✅ Peak检测100%精确，官方DR值高度一致
+- **详细分析**: 参见 [`docs/PRECISION_ANALYSIS.md`](docs/PRECISION_ANALYSIS.md)
 
-## ⚖️ 合规声明
+## 🙏 致敬与合规声明
 
-### 知识产权尊重
-- **致谢原作者**: 感谢Janne Hyvärinen开发的foobar2000 DR Meter插件
-- **算法理解**: 本实现基于对算法行为的理解，非代码复制
-- **独立开发**: 所有代码均为原创Rust实现
+### 对原创工作的深深敬意
+- **原作者**: Janne Hyvärinen - foobar2000 DR Meter插件的创作者
+- **开创性贡献**: DR Meter为音频工程领域带来了标准化的动态范围测量方法
+- **技术传承**: 本项目作为衍生实现，致力于传承和发扬原始算法的技术价值
+- **跨平台使命**: 将这一重要工具的价值扩展到更多平台和用户群体
+
+### 衍生实现原则
+- **学习致敬**: 基于对原始算法深入学习和理解的衍生实现
+- **独立构建**: 所有代码均为原创Rust实现，未复制任何原始源代码
+- **算法传承**: 忠实保持原始算法的数学原理和设计理念
 
 ### 逆向工程合法性
 根据相关法律判例，以下行为通常被认为是合法的：
@@ -167,7 +177,7 @@ cargo test --release benchmark
 欢迎贡献代码和建议！请注意：
 - 遵循现有的代码风格和架构设计
 - 确保所有测试通过
-- 维持与foobar2000 DR Meter的精度匹配
+- 维持高精度和算法一致性
 
 ## 🔗 相关链接
 
