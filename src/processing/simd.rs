@@ -218,7 +218,7 @@ impl SimdChannelData {
         // 4样本并行处理主循环
         while i + 4 <= len {
             // 加载4个样本到SSE寄存器
-            let samples_vec = _mm_loadu_ps(unsafe { samples.as_ptr().add(i) });
+            let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
             // 计算绝对值：通过清除符号位实现
             let abs_mask = _mm_set1_ps(f32::from_bits(0x7FFFFFFF));
