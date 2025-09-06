@@ -277,22 +277,22 @@ impl SimdChannelData {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "sse3")]
     unsafe fn horizontal_sum_ps(&self, vec: __m128) -> f32 {
-        let shuf1 = unsafe { _mm_movehdup_ps(vec) }; // [1,1,3,3] 
-        let sum1 = unsafe { _mm_add_ps(vec, shuf1) }; // [0+1,1+1,2+3,3+3]
-        let shuf2 = unsafe { _mm_movehl_ps(sum1, sum1) }; // [2+3,3+3,2+3,3+3]
-        let sum2 = unsafe { _mm_add_ss(sum1, shuf2) }; // [0+1+2+3,...]
-        unsafe { _mm_cvtss_f32(sum2) }
+        let shuf1 = _mm_movehdup_ps(vec); // [1,1,3,3] 
+        let sum1 = _mm_add_ps(vec, shuf1); // [0+1,1+1,2+3,3+3]
+        let shuf2 = _mm_movehl_ps(sum1, sum1); // [2+3,3+3,2+3,3+3]
+        let sum2 = _mm_add_ss(sum1, shuf2); // [0+1+2+3,...]
+        _mm_cvtss_f32(sum2)
     }
 
     /// SSE寄存器水平最大值（4个f32中的最大值）
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "sse3")]
     unsafe fn horizontal_max_ps(&self, vec: __m128) -> f32 {
-        let shuf1 = unsafe { _mm_movehdup_ps(vec) };
-        let max1 = unsafe { _mm_max_ps(vec, shuf1) };
-        let shuf2 = unsafe { _mm_movehl_ps(max1, max1) };
-        let max2 = unsafe { _mm_max_ss(max1, shuf2) };
-        unsafe { _mm_cvtss_f32(max2) }
+        let shuf1 = _mm_movehdup_ps(vec);
+        let max1 = _mm_max_ps(vec, shuf1);
+        let shuf2 = _mm_movehl_ps(max1, max1);
+        let max2 = _mm_max_ss(max1, shuf2);
+        _mm_cvtss_f32(max2)
     }
 
     /// 获取内部ChannelData的引用
