@@ -211,40 +211,37 @@ impl SimdChannelData {
         let mut i = 0;
 
         // 当前累积值加载到SSE寄存器
-        let mut rms_accum = unsafe { _mm_set1_ps(0.0) };
-        let mut primary_peak = unsafe { _mm_set1_ps(self.inner.peak_primary as f32) };
-        let mut secondary_peak = unsafe { _mm_set1_ps(self.inner.peak_secondary as f32) };
+        let mut rms_accum = _mm_set1_ps(0.0);
+        let mut primary_peak = _mm_set1_ps(self.inner.peak_primary as f32);
+        let mut secondary_peak = _mm_set1_ps(self.inner.peak_secondary as f32);
 
         // 4样本并行处理主循环
         while i + 4 <= len {
             // 加载4个样本到SSE寄存器
-            let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
+            let samples_vec = _mm_loadu_ps(unsafe { samples.as_ptr().add(i) });
 
             // 计算绝对值：通过清除符号位实现
-            let abs_mask = unsafe { _mm_set1_ps(f32::from_bits(0x7FFFFFFF)) };
-            let abs_samples = unsafe { _mm_and_ps(samples_vec, abs_mask) };
+            let abs_mask = _mm_set1_ps(f32::from_bits(0x7FFFFFFF));
+            let abs_samples = _mm_and_ps(samples_vec, abs_mask);
 
             // RMS累积：samples^2
-            let squares = unsafe { _mm_mul_ps(samples_vec, samples_vec) };
-            rms_accum = unsafe { _mm_add_ps(rms_accum, squares) };
+            let squares = _mm_mul_ps(samples_vec, samples_vec);
+            rms_accum = _mm_add_ps(rms_accum, squares);
 
             // Peak检测：更新主Peak和次Peak
-            let new_primary_mask = unsafe { _mm_cmpgt_ps(abs_samples, primary_peak) };
+            let new_primary_mask = _mm_cmpgt_ps(abs_samples, primary_peak);
 
             // 条件更新：新Peak > 主Peak时，主Peak -> 次Peak，新Peak -> 主Peak
             let old_primary = primary_peak;
-            primary_peak = unsafe { _mm_blendv_ps(primary_peak, abs_samples, new_primary_mask) };
-            secondary_peak =
-                unsafe { _mm_blendv_ps(secondary_peak, old_primary, new_primary_mask) };
+            primary_peak = _mm_blendv_ps(primary_peak, abs_samples, new_primary_mask);
+            secondary_peak = _mm_blendv_ps(secondary_peak, old_primary, new_primary_mask);
 
             // 处理新Peak > 次Peak但 <= 主Peak的情况
-            let secondary_mask = unsafe {
-                _mm_and_ps(
-                    _mm_cmpgt_ps(abs_samples, secondary_peak),
-                    _mm_cmple_ps(abs_samples, primary_peak),
-                )
-            };
-            secondary_peak = unsafe { _mm_blendv_ps(secondary_peak, abs_samples, secondary_mask) };
+            let secondary_mask = _mm_and_ps(
+                _mm_cmpgt_ps(abs_samples, secondary_peak),
+                _mm_cmple_ps(abs_samples, primary_peak),
+            );
+            secondary_peak = _mm_blendv_ps(secondary_peak, abs_samples, secondary_mask);
 
             i += 4;
         }
