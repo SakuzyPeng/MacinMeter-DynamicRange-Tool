@@ -210,53 +210,36 @@ impl SimdChannelData {
         let len = samples.len();
         let mut i = 0;
 
-        // 当前累积值加载到SSE寄存器
+        // SIMD仅处理RMS累积
         let mut rms_accum = _mm_set1_ps(0.0);
-        let mut primary_peak = _mm_set1_ps(self.inner.peak_primary as f32);
-        let mut secondary_peak = _mm_set1_ps(self.inner.peak_secondary as f32);
 
-        // 4样本并行处理主循环
+        // SIMD加速RMS计算：4样本并行处理
         while i + 4 <= len {
             // 加载4个样本到SSE寄存器
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
-            // 计算绝对值：通过清除符号位实现
-            let abs_mask = _mm_set1_ps(f32::from_bits(0x7FFFFFFF));
-            let abs_samples = _mm_and_ps(samples_vec, abs_mask);
-
-            // RMS累积：samples^2
+            // RMS累积：samples^2 (SIMD加速核心)
             let squares = _mm_mul_ps(samples_vec, samples_vec);
             rms_accum = _mm_add_ps(rms_accum, squares);
-
-            // Peak检测：更新主Peak和次Peak
-            let new_primary_mask = _mm_cmpgt_ps(abs_samples, primary_peak);
-
-            // 条件更新：新Peak > 主Peak时，主Peak -> 次Peak，新Peak -> 主Peak
-            let old_primary = primary_peak;
-            primary_peak = _mm_blendv_ps(primary_peak, abs_samples, new_primary_mask);
-            secondary_peak = _mm_blendv_ps(secondary_peak, old_primary, new_primary_mask);
-
-            // 处理新Peak > 次Peak但 <= 主Peak的情况
-            let secondary_mask = _mm_and_ps(
-                _mm_cmpgt_ps(abs_samples, secondary_peak),
-                _mm_cmple_ps(abs_samples, primary_peak),
-            );
-            secondary_peak = _mm_blendv_ps(secondary_peak, abs_samples, secondary_mask);
 
             i += 4;
         }
 
-        // 水平归约：将4个并行值合并为标量
+        // 水平归约：将4个并行RMS值合并
         self.inner.rms_accumulator += unsafe { self.horizontal_sum_ps(rms_accum) } as f64;
 
-        // Peak值的水平最大值
-        self.inner.peak_primary = unsafe { self.horizontal_max_ps(primary_peak) } as f64;
-        self.inner.peak_secondary = unsafe { self.horizontal_max_ps(secondary_peak) } as f64;
+        // Peak检测使用标量方式确保跨架构一致性
+        for &sample in samples {
+            let abs_sample = sample.abs() as f64;
 
-        // 处理剩余样本（标量方式）
-        while i < len {
-            self.inner.process_sample(samples[i]);
-            i += 1;
+            if abs_sample > self.inner.peak_primary {
+                // 新样本成为主Peak，原主Peak降为次Peak
+                self.inner.peak_secondary = self.inner.peak_primary;
+                self.inner.peak_primary = abs_sample;
+            } else if abs_sample > self.inner.peak_secondary {
+                // 新样本成为次Peak
+                self.inner.peak_secondary = abs_sample;
+            }
         }
 
         len
@@ -279,17 +262,6 @@ impl SimdChannelData {
         let shuf2 = _mm_movehl_ps(sum1, sum1); // [2+3,3+3,2+3,3+3]
         let sum2 = _mm_add_ss(sum1, shuf2); // [0+1+2+3,...]
         _mm_cvtss_f32(sum2)
-    }
-
-    /// SSE寄存器水平最大值（4个f32中的最大值）
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "sse3")]
-    unsafe fn horizontal_max_ps(&self, vec: __m128) -> f32 {
-        let shuf1 = _mm_movehdup_ps(vec);
-        let max1 = _mm_max_ps(vec, shuf1);
-        let shuf2 = _mm_movehl_ps(max1, max1);
-        let max2 = _mm_max_ss(max1, shuf2);
-        _mm_cvtss_f32(max2)
     }
 
     /// 获取内部ChannelData的引用
