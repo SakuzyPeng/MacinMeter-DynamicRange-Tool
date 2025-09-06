@@ -577,10 +577,10 @@ impl DrCalculator {
 
     /// 获取指定声道的直方图统计信息（仅foobar2000模式）
     pub fn get_histogram_stats(&self, channel_idx: usize) -> Option<crate::core::SimpleStats> {
-        if let Some(ref analyzers) = self.histogram_analyzers {
-            if channel_idx < analyzers.len() {
-                return Some(analyzers[channel_idx].get_statistics());
-            }
+        if let Some(ref analyzers) = self.histogram_analyzers
+            && channel_idx < analyzers.len()
+        {
+            return Some(analyzers[channel_idx].get_statistics());
         }
         None
     }
