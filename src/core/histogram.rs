@@ -4,6 +4,34 @@
 
 // 早期版本：已移除AudioError, AudioResult导入，简化错误处理
 
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
+
+// 🔥 Bit-exact数值常量 (与foobar2000完全相同的十六进制精度)
+// 📖 从foobar2000反汇编中提取的精确常量值
+const FOOBAR2000_0_2: f64 = f64::from_bits(0x3fc999999999999a); // 精确的0.2
+const FOOBAR2000_1E8: f64 = f64::from_bits(0x3e45798ee2308c3a); // 精确的1e-8
+
+/// foobar2000兼容的SSE平方根计算
+/// 🔥 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
+/// 📖 对应汇编：*(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn foobar2000_sse_sqrt(value: f64) -> f64 {
+    unsafe {
+        let packed = _mm_set_pd(0.0, value);
+        let result = _mm_sqrt_pd(packed);
+        _mm_cvtsd_f64(result)
+    }
+}
+
+/// 回退到标量平方根（非x86_64架构）
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+fn foobar2000_sse_sqrt(value: f64) -> f64 {
+    value.sqrt()
+}
+
 /// 简化版单样本直方图分析器
 ///
 /// 早期算法实现：
@@ -64,6 +92,18 @@ impl SimpleHistogramAnalyzer {
     /// 3. 开方得到RMS值
     pub fn calculate_20_percent_rms(&self) -> f64 {
         self.histogram.calculate_simple_20_percent_rms()
+    }
+
+    /// 使用有效样本数计算20% RMS（考虑Sum Doubling影响）
+    ///
+    /// # 参数
+    /// * `effective_samples` - 有效样本数，考虑Sum Doubling后的样本数
+    ///
+    /// # 返回值
+    /// 返回基于有效样本数计算的20%RMS值
+    pub fn calculate_20_percent_rms_with_effective_samples(&self, effective_samples: u64) -> f64 {
+        self.histogram
+            .calculate_simple_20_percent_rms_with_effective_samples(Some(effective_samples))
     }
 
     /// 计算"最响20%样本"的精确加权RMS值
@@ -135,7 +175,9 @@ impl DrHistogram {
         }
 
         // 计算bin索引：样本绝对值映射到0-10000范围
-        let index = (sample_abs as f64 * 10000.0).round().min(10000.0) as usize;
+        // 🔥 关键修复：使用foobar2000的截断方式，不是四舍五入！
+        // 📖 反汇编: v47 = (int)(v46 * 10000.0) - 直接截断转换
+        let index = ((sample_abs as f64 * 10000.0).min(10000.0)) as usize;
 
         self.bins[index] += 1;
         self.total_samples += 1;
@@ -154,12 +196,39 @@ impl DrHistogram {
     ///
     /// 返回简化计算的20%RMS值，如果直方图为空则返回0.0
     fn calculate_simple_20_percent_rms(&self) -> f64 {
+        self.calculate_simple_20_percent_rms_with_effective_samples(None)
+    }
+
+    /// 使用有效样本数计算20% RMS（考虑Sum Doubling）
+    ///
+    /// # 参数
+    /// * `effective_samples` - 有效样本数（考虑Sum Doubling后），None则使用total_samples
+    ///
+    /// # 返回值
+    /// 返回基于有效样本数计算的20%RMS值
+    fn calculate_simple_20_percent_rms_with_effective_samples(
+        &self,
+        effective_samples: Option<u64>,
+    ) -> f64 {
         if self.total_samples == 0 {
             return 0.0;
         }
 
-        // 计算需要选择的样本数
-        let need = (self.total_samples as f64 * 0.2 + 0.5) as u64;
+        // 🔥 关键修正：使用有效样本数计算20%采样数量
+        // 基于foobar2000反汇编分析：v14 * 0.2 + 0.5 (v14是经过Sum Doubling的样本数)
+        let effective_count = effective_samples.unwrap_or(self.total_samples);
+
+        // 🔥 数据类型转换链修复：先转int再转double (与foobar2000一致)
+        // 📖 对应汇编: (double)*(int *)(a1 + 20)
+        let effective_count_int = effective_count as i32;
+        let effective_count_f64 = effective_count_int as f64;
+        let mut need = (effective_count_f64 * FOOBAR2000_0_2 + 0.5) as u64;
+
+        // 🎯 零值保护：确保采样数至少为1（foobar2000边界逻辑）
+        // 反汇编发现：if (!v22) v22 = 1;
+        if need == 0 {
+            need = 1;
+        }
         let mut selected = 0;
         let mut sum_square = 0.0;
 
@@ -183,8 +252,13 @@ impl DrHistogram {
         }
 
         // 计算最终RMS：开方(平方和/选中样本数)
+        // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
+        // 📖 对应汇编: *(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
         if selected > 0 {
-            (sum_square / selected as f64).sqrt()
+            // 数据类型转换链：先转int再转double
+            let selected_int = selected as i32;
+            let selected_f64 = selected_int as f64;
+            foobar2000_sse_sqrt(sum_square / selected_f64)
         } else {
             0.0
         }
@@ -214,7 +288,7 @@ impl DrHistogram {
         }
 
         // 计算需要选择的样本数
-        let need = (self.total_samples as f64 * 0.2 + 0.5) as u64;
+        let need = (self.total_samples as f64 * FOOBAR2000_0_2 + 0.5) as u64;
         let mut selected = 0;
         let mut weighted_sum_square = 0.0;
         let mut total_weight = 0.0;
@@ -228,8 +302,8 @@ impl DrHistogram {
                 // 计算该bin对应的幅度值
                 let amplitude = index as f64 / 10000.0;
 
-                // 🔬 精确权重公式：0.00000001×index²
-                let weight = 0.00000001 * (index as f64) * (index as f64);
+                // 🔬 精确权重公式：FOOBAR2000_1E8×index²
+                let weight = FOOBAR2000_1E8 * (index as f64) * (index as f64);
 
                 // 加权平方和累积
                 weighted_sum_square += weight * take as f64 * amplitude * amplitude;
@@ -243,8 +317,9 @@ impl DrHistogram {
         }
 
         // 计算最终RMS：开方(加权平方和/总权重)
+        // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
         if total_weight > 0.0 {
-            (weighted_sum_square / total_weight).sqrt()
+            foobar2000_sse_sqrt(weighted_sum_square / total_weight)
         } else {
             // 🛡️ 回退策略：如果权重为0，使用简单计算
             self.calculate_simple_20_percent_rms()

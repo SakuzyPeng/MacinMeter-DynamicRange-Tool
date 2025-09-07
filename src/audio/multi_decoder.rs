@@ -115,6 +115,11 @@ impl MultiDecoder {
             .ok_or_else(|| AudioError::FormatError("未找到声道信息".to_string()))?
             .count() as u16;
 
+        // 获取真实位深度信息
+        let bits_per_sample = codec_params.bits_per_sample.unwrap_or(
+            codec_params.bits_per_coded_sample.unwrap_or(32), // 默认32位浮点
+        ) as u16;
+
         // 创建解码器
         let mut decoder = symphonia::default::get_codecs()
             .make(codec_params, &decoder_opts)
@@ -159,7 +164,7 @@ impl MultiDecoder {
         let format = AudioFormat::new(
             sample_rate,
             channels,
-            32, // 统一使用32位（f32）
+            bits_per_sample, // 使用真实位深度信息
             total_frames,
         );
 

@@ -21,6 +21,9 @@ clap = { version = "4.5", features = ["derive"] }
 # 性能优化（可选）
 rayon = "1.10"
 
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
 [profile.release]
 opt-level = 3
 lto = true

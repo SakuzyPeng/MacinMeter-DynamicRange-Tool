@@ -12,6 +12,28 @@
 
 use std::fmt;
 
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
+
+/// foobar2000兼容的SSE平方根计算
+/// 🔥 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn foobar2000_sse_sqrt(value: f64) -> f64 {
+    unsafe {
+        let packed = _mm_set_pd(0.0, value);
+        let result = _mm_sqrt_pd(packed);
+        _mm_cvtsd_f64(result)
+    }
+}
+
+/// 回退到标量平方根（非x86_64架构）
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+fn foobar2000_sse_sqrt(value: f64) -> f64 {
+    value.sqrt()
+}
+
 /// Peak质量评估结果
 ///
 /// 包含Peak值的置信度评分和详细的质量标志位
@@ -183,13 +205,14 @@ impl ChannelData {
         // RMS累积：累加样本平方值
         self.rms_accumulator += sample_f64 * sample_f64;
 
-        // 双Peak更新机制
+        // 🔥 关键修正：实现foobar2000的严格峰值更新条件
+        // 📖 反汇编发现：if (v16 > second_peak && v16 < max_peak)
         if abs_sample > self.peak_primary {
             // 新Peak值成为主Peak，原主Peak降为次Peak
             self.peak_secondary = self.peak_primary;
             self.peak_primary = abs_sample;
-        } else if abs_sample > self.peak_secondary {
-            // 更新次Peak，但不影响主Peak
+        } else if abs_sample > self.peak_secondary && abs_sample < self.peak_primary {
+            // ✅ foobar2000严格条件：必须同时满足 > second_peak AND < max_peak
             self.peak_secondary = abs_sample;
         }
     }
@@ -223,8 +246,15 @@ impl ChannelData {
             return 0.0;
         }
 
-        let mean_square = self.rms_accumulator / sample_count as f64;
-        mean_square.sqrt()
+        // 🔥 数据类型转换链修复：先转int再转double (与foobar2000一致)
+        // 📖 对应汇编: (double)*(int *)(a1 + 20)
+        let sample_count_int = sample_count as i32;
+        let sample_count_f64 = sample_count_int as f64;
+        let mean_square = self.rms_accumulator / sample_count_f64;
+
+        // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
+        // 📖 对应汇编: *(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
+        foobar2000_sse_sqrt(mean_square)
     }
 
     /// 获取有效的Peak值（主Peak优先，失效时使用次Peak）
@@ -249,34 +279,20 @@ impl ChannelData {
     /// assert_eq!(data.get_effective_peak(), 0.5);
     /// ```
     pub fn get_effective_peak(&self) -> f64 {
-        // 🏷️ FEATURE_UPDATE: 简化Sample Peak削波回退算法
-        // 📅 修改时间: 2025-08-31
-        // 🎯 只在Sample Peak削波时才回退，最大化动态范围利用
-        // 🔄 回退: 如需回退到复杂质量评估版本，请查看git历史
+        // 🔥 重大突破：基于foobar2000反汇编分析的真实峰值选择逻辑
+        // 📖 汇编代码第115-117行：v26 = *(第二大峰值); 优先使用第二大峰值！
+        // 🎯 foobar2000实际策略：优先第二大峰值 -> 回退到绝对最大峰值
 
-        if self.peak_primary > 0.0 {
-            // 检测Sample Peak是否达到数字削波阈值
-            // 使用严格的1.0阈值（只有真正的满幅削波才回退）
-            if self.peak_primary >= 1.0
-                && self.peak_secondary > 0.0
-                && self.peak_secondary < self.peak_primary
-            {
-                // 主Peak削波，但只有当次Peak足够大时才回退（避免RMS>Peak的不合理情况）
-                // 要求次Peak至少是主Peak的30%以上
-                if self.peak_secondary >= self.peak_primary * 0.3 {
-                    self.peak_secondary
-                } else {
-                    // 次Peak太小，仍使用主Peak（即使削波）
-                    self.peak_primary
-                }
-            } else {
-                // 主Peak健康，使用主Peak（支持母带师的极限动态优化）
-                self.peak_primary
-            }
-        } else if self.peak_secondary > 0.0 {
-            // 主Peak无效，回退到次Peak
+        // 步骤1：优先使用第二大峰值 (抗尖峰干扰设计)
+        if self.peak_secondary > 0.0 {
             self.peak_secondary
-        } else {
+        }
+        // 步骤2：回退到绝对最大峰值 (仅当第二大峰值无效时)
+        else if self.peak_primary > 0.0 {
+            self.peak_primary
+        }
+        // 步骤3：兜底策略
+        else {
             0.0
         }
     }
@@ -570,9 +586,10 @@ mod tests {
         data.process_sample(0.5);
         assert!((data.get_effective_peak() - 0.5).abs() < 1e-10);
 
-        // 主Peak和次Peak都存在
+        // 主Peak和次Peak都存在 
         data.process_sample(0.8);
-        assert!((data.get_effective_peak() - 0.8).abs() < 1e-6); // 返回主Peak
+        // 🔥 修复：新逻辑优先返回secondary peak (0.5) 而不是primary peak (0.8)
+        assert!((data.get_effective_peak() - 0.5).abs() < 1e-6); // 返回次Peak（新逻辑）
 
         // 模拟主Peak失效情况（手动设置为0测试回退机制）
         data.peak_primary = 0.0;

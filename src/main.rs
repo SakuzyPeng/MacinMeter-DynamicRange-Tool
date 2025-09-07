@@ -73,13 +73,6 @@ impl AppConfig {
                     .index(1),
             )
             .arg(
-                Arg::new("sum-doubling")
-                    .long("sum-doubling")
-                    .short('s')
-                    .help("启用Sum Doubling补偿（交错数据）")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
                 Arg::new("verbose")
                     .long("verbose")
                     .short('v')
@@ -132,7 +125,7 @@ impl AppConfig {
         Self {
             input_path,
             batch_mode,
-            sum_doubling: matches.get_flag("sum-doubling"),
+            sum_doubling: true, // 内部强制启用Sum Doubling（用户不可见）
             verbose: matches.get_flag("verbose"),
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
@@ -283,6 +276,7 @@ fn generate_single_output_path(audio_file: &std::path::Path) -> PathBuf {
 fn save_individual_result(
     audio_file: &std::path::Path,
     results: &[DrResult],
+    format: &AudioFormat,
     config: &AppConfig,
 ) -> AudioResult<()> {
     // 创建临时配置，用于生成单文件输出
@@ -297,7 +291,7 @@ fn save_individual_result(
     };
 
     // 调用output_results生成单独的文件
-    output_results(results, &temp_config, true)?; // auto_save = true
+    output_results(results, &temp_config, format, true)?; // auto_save = true
 
     Ok(())
 }
@@ -306,7 +300,7 @@ fn save_individual_result(
 fn process_single_audio_file(
     file_path: &std::path::Path,
     config: &AppConfig,
-) -> AudioResult<Vec<DrResult>> {
+) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
     if config.verbose {
         println!("🎵 正在加载音频文件: {}", file_path.display());
     }
@@ -446,73 +440,150 @@ fn process_single_audio_file(
         )?
     };
 
-    Ok(results)
+    Ok((results, format))
 }
 
-/// 输出DR计算结果
-fn output_results(results: &[DrResult], config: &AppConfig, auto_save: bool) -> AudioResult<()> {
+/// 输出DR计算结果（foobar2000兼容格式）
+fn output_results(
+    results: &[DrResult],
+    config: &AppConfig,
+    format: &AudioFormat,
+    auto_save: bool,
+) -> AudioResult<()> {
     // 准备输出内容
     let mut output = String::new();
 
-    // 标题
-    output.push_str("=====================================\n");
-    output.push_str("   MacinMeter DR Analysis Report\n");
-    output.push_str("=====================================\n\n");
-
-    // 文件信息
-    output.push_str(&format!("文件: {}\n", config.input_path.display()));
+    // MacinMeter标识头部（兼容foobar2000格式）
     output.push_str(&format!(
-        "Sum Doubling: {}\n",
-        if config.sum_doubling {
-            "启用"
-        } else {
-            "禁用"
-        }
+        "MacinMeter DR Tool v{VERSION} / Dynamic Range Meter (foobar2000 compatible)\n"
     ));
-    output.push_str(&format!(
-        "SIMD优化: {}\n",
-        if config.enable_simd {
-            "启用"
-        } else {
-            "禁用"
-        }
-    ));
-    output.push_str(&format!(
-        "多线程处理: {}\n",
-        if config.enable_multithreading {
-            "启用"
-        } else {
-            "禁用"
-        }
-    ));
-    output.push('\n');
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    output.push_str(&format!("log date: {now}\n\n"));
 
-    // DR计算结果
-    output.push_str("动态范围 (DR) 结果:\n");
-    output.push_str("-------------------------------------\n");
+    // 分隔线
+    output.push_str(
+        "--------------------------------------------------------------------------------\n",
+    );
 
-    for result in results {
+    // 文件统计信息（需要从音频文件获取）
+    let file_name = config
+        .input_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown");
+    output.push_str(&format!("Statistics for: {file_name}\n"));
+
+    // 从AudioFormat获取真实的音频信息（单声道样本数，匹配foobar2000）
+    output.push_str(&format!("Number of samples: {}\n", format.sample_count));
+    let minutes = format.duration_seconds as u32 / 60;
+    let seconds = format.duration_seconds as u32 % 60;
+    output.push_str(&format!("Duration: {minutes}:{seconds:02} \n"));
+
+    output.push_str(
+        "--------------------------------------------------------------------------------\n\n",
+    );
+
+    // foobar2000标准DR结果表格格式
+
+    // foobar2000风格的表格输出
+    if results.len() >= 2 {
+        // 转换为dB格式
+        let left_peak_db = if results[0].peak > 0.0 {
+            20.0 * results[0].peak.log10()
+        } else {
+            -f64::INFINITY
+        };
+
+        let right_peak_db = if results[1].peak > 0.0 {
+            20.0 * results[1].peak.log10()
+        } else {
+            -f64::INFINITY
+        };
+
+        // 计算RMS的dB值
+        let left_rms_db = if results[0].rms > 0.0 {
+            20.0 * results[0].rms.log10()
+        } else {
+            -f64::INFINITY
+        };
+
+        let right_rms_db = if results[1].rms > 0.0 {
+            20.0 * results[1].rms.log10()
+        } else {
+            -f64::INFINITY
+        };
+
+        // foobar2000标准表格格式
+        output.push_str("                 Left              Right\n\n");
         output.push_str(&format!(
-            "声道 {}: DR{} (RMS:{:.6}, Peak:{:.6})\n",
-            result.channel + 1,
-            result.dr_value_rounded(),
-            result.rms,
-            result.peak
+            "Peak Value:     {left_peak_db:.2} dB   ---     {right_peak_db:.2} dB   \n"
+        ));
+        output.push_str(&format!(
+            "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
+        ));
+        output.push_str(&format!(
+            "DR channel:      {:.2} dB   ---     {:.2} dB   \n",
+            results[0].dr_value, results[1].dr_value
+        ));
+    } else {
+        // 单声道情况的fallback
+        for (i, result) in results.iter().enumerate() {
+            let peak_db = if result.peak > 0.0 {
+                20.0 * result.peak.log10()
+            } else {
+                -f64::INFINITY
+            };
+
+            let channel_name = if i == 0 {
+                "Mono"
+            } else {
+                &format!("Channel {}", i + 1)
+            };
+
+            output.push_str(&format!(
+                "{channel_name}: Peak: {peak_db:.2} dB, DR: {:.2} dB\n",
+                result.dr_value
+            ));
+        }
+    }
+
+    // foobar2000标准分隔线和底部信息
+    output.push_str(
+        "--------------------------------------------------------------------------------\n\n",
+    );
+
+    // Official DR Value
+    if results.len() > 1 {
+        let avg_dr: f64 = results.iter().map(|r| r.dr_value).sum::<f64>() / results.len() as f64;
+        output.push_str(&format!(
+            "Official DR Value: DR{}\n\n",
+            avg_dr.round() as i32
         ));
     }
 
-    output.push('\n');
+    // 音频技术信息（foobar2000标准格式）
+    output.push_str(&format!("Samplerate:        {} Hz\n", format.sample_rate));
+    output.push_str(&format!("Channels:          {}\n", format.channels));
+    output.push_str(&format!("Bits per sample:   {}\n", format.bits_per_sample));
 
-    // 平均DR值
-    if results.len() > 1 {
-        let avg_dr: f64 = results.iter().map(|r| r.dr_value).sum::<f64>() / results.len() as f64;
-        output.push_str(&format!("平均DR值: DR{}\n", avg_dr.round() as i32));
-    }
+    // 计算码率（采样率 × 声道数 × 位深度 / 1000）
+    let bitrate =
+        format.sample_rate * format.channels as u32 * format.bits_per_sample as u32 / 1000;
+    output.push_str(&format!("Bitrate:           {bitrate} kbps\n"));
 
-    output.push('\n');
-    output.push_str("生成工具: MacinMeter DR Tool (foo_dr_meter兼容) v");
-    output.push_str(VERSION);
-    output.push('\n');
+    // 根据文件扩展名推断编解码器
+    let codec = config
+        .input_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|s| s.to_uppercase())
+        .unwrap_or_else(|| "Unknown".to_string());
+    output.push_str(&format!("Codec:             {codec}\n"));
+
+    // foobar2000标准结尾
+    output.push_str(
+        "================================================================================\n",
+    );
 
     // 输出到文件或控制台
     match &config.output_path {
@@ -596,19 +667,19 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
         );
 
         match process_single_audio_file(audio_file, config) {
-            Ok(results) => {
+            Ok((results, format)) => {
                 processed_count += 1;
 
                 // 🆕 为每个音频文件生成单独的DR结果文件
-                if let Err(e) = save_individual_result(audio_file, &results, config) {
+                if let Err(e) = save_individual_result(audio_file, &results, &format, config) {
                     println!("   ⚠️  保存单独结果文件失败: {e}");
                 } else if config.verbose {
                     let individual_path = generate_single_output_path(audio_file);
                     println!("   📄 单独结果已保存: {}", individual_path.display());
                 }
 
-                // 加载格式信息（用于批量汇总）
-                if let Ok((format, _samples)) = load_audio_file(audio_file, false) {
+                // 使用已获取的格式信息（无需重复加载）
+                {
                     let file_name = audio_file.file_name().unwrap_or_default().to_string_lossy();
 
                     // foobar2000兼容模式：显示分声道结果
@@ -735,10 +806,10 @@ fn main() {
     } else {
         // 单文件模式：处理单个音频文件
         match process_single_audio_file(&config.input_path, &config) {
-            Ok(results) => {
+            Ok((results, format)) => {
                 // 为单文件模式输出结果
                 // 如果用户未指定输出文件，则自动保存（auto_save = true）
-                output_results(&results, &config, config.output_path.is_none())
+                output_results(&results, &config, &format, config.output_path.is_none())
             }
             Err(e) => Err(e),
         }
