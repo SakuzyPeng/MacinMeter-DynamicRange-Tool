@@ -4,19 +4,21 @@
 //!
 //! ## 双Peak智能回退系统
 //!
-//! 实现工业级的Peak检测和验证机制：
-//! - Peak质量评估和置信度评分
-//! - 多层回退策略（数字削波、噪声检测、统计验证）
-//! - Peak老化机制防止过时数据影响
-//! - RMS-Peak相关性验证确保数据一致性
+//! 实现foobar2000兼容的Peak检测机制：
+//! - 主Peak和次Peak的双轨跟踪
+//! - 智能Peak选择算法（优先次Peak以抗尖峰干扰）
+//! - 基于foobar2000反汇编分析的峰值策略
 
 use std::fmt;
 
+// SSE2 intrinsics仅在x86_64上可用
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
 
 /// foobar2000兼容的SSE平方根计算
 /// 🔥 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
+///
+/// 注意：在非x86_64架构上自动回退到标准sqrt()
 #[cfg(target_arch = "x86_64")]
 #[inline]
 fn foobar2000_sse_sqrt(value: f64) -> f64 {
@@ -27,109 +29,11 @@ fn foobar2000_sse_sqrt(value: f64) -> f64 {
     }
 }
 
-/// 回退到标量平方根（非x86_64架构）
+/// 标量平方根计算（非x86_64架构的回退实现）
 #[cfg(not(target_arch = "x86_64"))]
 #[inline]
 fn foobar2000_sse_sqrt(value: f64) -> f64 {
     value.sqrt()
-}
-
-/// Peak质量评估结果
-///
-/// 包含Peak值的置信度评分和详细的质量标志位
-#[derive(Debug, Clone, PartialEq)]
-pub struct PeakQuality {
-    /// 置信度评分 (0.0-1.0)
-    /// - 1.0: 完全可信的Peak测量
-    /// - 0.7-0.9: 高质量Peak，轻微质量问题
-    /// - 0.4-0.6: 中等质量Peak，需要注意
-    /// - 0.0-0.3: 低质量Peak，建议回退到次Peak
-    pub confidence: f64,
-
-    /// 详细的质量标志位
-    pub flags: PeakQualityFlags,
-}
-
-impl PeakQuality {
-    /// 创建无效Peak的质量评估（零置信度）
-    pub fn invalid() -> Self {
-        Self {
-            confidence: 0.0,
-            flags: PeakQualityFlags {
-                digital_clipping: false,
-                abnormal_rms_ratio: false,
-                impulse_noise_risk: false,
-                out_of_range: false,
-                inconsistent_peaks: false,
-                invalid_value: true,
-            },
-        }
-    }
-
-    /// 判断Peak是否可信 (置信度 >= 0.5)
-    pub fn is_trustworthy(&self) -> bool {
-        self.confidence >= 0.5
-    }
-
-    /// 判断Peak是否高质量 (置信度 >= 0.8)
-    pub fn is_high_quality(&self) -> bool {
-        self.confidence >= 0.8
-    }
-}
-
-/// Peak质量标志位
-///
-/// 详细记录Peak测量中发现的各种质量问题
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct PeakQualityFlags {
-    /// 检测到数字削波（Peak接近满幅值）
-    pub digital_clipping: bool,
-
-    /// RMS/Peak比例异常（可能的测量不一致）
-    pub abnormal_rms_ratio: bool,
-
-    /// 脉冲噪声风险（RMS远小于Peak）
-    pub impulse_noise_risk: bool,
-
-    /// Peak值超出正常范围 (> 1.0)
-    pub out_of_range: bool,
-
-    /// 主次Peak不一致（差异过大）
-    pub inconsistent_peaks: bool,
-
-    /// Peak值无效（≤ 0）
-    pub invalid_value: bool,
-}
-
-impl fmt::Display for PeakQualityFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut flags = Vec::new();
-
-        if self.digital_clipping {
-            flags.push("CLIP");
-        }
-        if self.abnormal_rms_ratio {
-            flags.push("RMS_RATIO");
-        }
-        if self.impulse_noise_risk {
-            flags.push("IMPULSE");
-        }
-        if self.out_of_range {
-            flags.push("RANGE");
-        }
-        if self.inconsistent_peaks {
-            flags.push("INCONSIST");
-        }
-        if self.invalid_value {
-            flags.push("INVALID");
-        }
-
-        if flags.is_empty() {
-            write!(f, "OK")
-        } else {
-            write!(f, "{}", flags.join("|"))
-        }
-    }
 }
 
 /// 每声道的DR计算数据结构
@@ -337,151 +241,6 @@ impl ChannelData {
         }
     }
 
-    /// 智能Peak回退系统：根据多重验证条件选择最佳Peak值
-    ///
-    /// 实现foobar2000级别的智能Peak验证和回退机制：
-    /// - 数字削波检测（0dBFS饱和检测）
-    /// - RMS-Peak相关性验证
-    /// - Peak质量评估和置信度计算
-    /// - 多层回退策略确保测量精度
-    ///
-    /// # 参数
-    ///
-    /// * `sample_count` - 总样本数，用于统计验证
-    /// * `bit_depth` - 音频位深度，用于削波检测（16/24/32位）
-    ///
-    /// # 返回值
-    ///
-    /// 返回经过智能验证的最佳Peak值和置信度评分
-    ///
-    /// # 示例
-    ///
-    /// ```rust
-    /// use macinmeter_dr_tool::core::ChannelData;
-    ///
-    /// let mut data = ChannelData::new();
-    /// data.process_sample(0.9);
-    /// data.process_sample(1.0); // 可能的数字削波
-    ///
-    /// let (peak, confidence) = data.get_effective_peak_with_validation(100, 16);
-    /// assert!(peak > 0.0);
-    /// assert!(confidence >= 0.0 && confidence <= 1.0);
-    /// ```
-    pub fn get_effective_peak_with_validation(
-        &self,
-        sample_count: usize,
-        bit_depth: u8,
-    ) -> (f64, f64) {
-        if sample_count == 0 {
-            return (0.0, 0.0);
-        }
-
-        let primary_quality =
-            self.evaluate_peak_quality(self.peak_primary, sample_count, bit_depth);
-        let secondary_quality =
-            self.evaluate_peak_quality(self.peak_secondary, sample_count, bit_depth);
-
-        // 智能回退决策：根据质量评分选择最佳Peak
-        if primary_quality.confidence > secondary_quality.confidence {
-            (self.peak_primary, primary_quality.confidence)
-        } else if secondary_quality.confidence > 0.0 {
-            (self.peak_secondary, secondary_quality.confidence)
-        } else {
-            // 两个Peak质量都不佳时，选择数值较小的（更保守的估计）
-            let fallback_peak = self.peak_primary.min(self.peak_secondary);
-            (fallback_peak, 0.3) // 低置信度
-        }
-    }
-
-    /// Peak质量评估：计算Peak值的可靠性和置信度
-    ///
-    /// 综合评估Peak的多个质量指标：
-    /// - 数字削波风险评估
-    /// - RMS-Peak比例合理性检验  
-    /// - 动态范围一致性验证
-    ///
-    /// # 参数
-    ///
-    /// * `peak_value` - 要评估的Peak值
-    /// * `sample_count` - 总样本数
-    /// * `bit_depth` - 音频位深度
-    fn evaluate_peak_quality(
-        &self,
-        peak_value: f64,
-        sample_count: usize,
-        bit_depth: u8,
-    ) -> PeakQuality {
-        if peak_value <= 0.0 || sample_count == 0 {
-            return PeakQuality::invalid();
-        }
-
-        let mut confidence = 1.0f64;
-        let mut quality_flags = PeakQualityFlags::default();
-
-        // 1. 数字削波检测
-        let clipping_threshold = self.get_clipping_threshold(bit_depth);
-        if peak_value >= clipping_threshold {
-            confidence *= 0.6; // 削波降低60%置信度
-            quality_flags.digital_clipping = true;
-        }
-
-        // 2. RMS-Peak相关性验证
-        let current_rms = self.calculate_rms(sample_count);
-        if current_rms > 0.0 {
-            let rms_peak_ratio = current_rms / peak_value;
-
-            // 合理的RMS/Peak比例范围：0.1-0.9（基于音频信号特性）
-            if !(0.1..=0.9).contains(&rms_peak_ratio) {
-                confidence *= 0.7; // 异常比例降低30%置信度
-                quality_flags.abnormal_rms_ratio = true;
-            }
-
-            // 过低的RMS/Peak比例可能表示脉冲噪声
-            if rms_peak_ratio < 0.05 {
-                confidence *= 0.5; // 脉冲噪声风险降低50%置信度
-                quality_flags.impulse_noise_risk = true;
-            }
-        }
-
-        // 3. Peak值合理性检查
-        if peak_value >= 1.0 {
-            confidence *= 0.4; // 达到或超过正常化范围，严重降低置信度
-            quality_flags.out_of_range = true;
-        }
-
-        // 4. 动态范围一致性检验
-        let peak_difference = (self.peak_primary - self.peak_secondary).abs();
-        let max_peak = self.peak_primary.max(self.peak_secondary);
-        if max_peak > 0.0 {
-            let difference_ratio = peak_difference / max_peak;
-            if difference_ratio > 0.5 {
-                // Peak差异过大可能表示不稳定的测量
-                confidence *= 0.8;
-                quality_flags.inconsistent_peaks = true;
-            }
-        }
-
-        PeakQuality {
-            confidence: confidence.clamp(0.0, 1.0),
-            flags: quality_flags,
-        }
-    }
-
-    /// 根据位深度获取数字削波阈值
-    ///
-    /// 不同位深度的满幅值：
-    /// - 16位：32767 / 32768 ≈ 0.99997
-    /// - 24位：8388607 / 8388608 ≈ 0.9999999
-    /// - 32位：浮点格式，阈值为1.0
-    fn get_clipping_threshold(&self, bit_depth: u8) -> f64 {
-        match bit_depth {
-            16 => 0.9999,  // 16位整数的近似满幅
-            24 => 0.99999, // 24位整数的近似满幅
-            32 => 0.99999, // 32位浮点的削波阈值
-            _ => 0.9999,   // 默认保守阈值
-        }
-    }
-
     /// 重置所有累积数据，准备处理新的音频数据
     ///
     /// # 示例
@@ -662,139 +421,5 @@ mod tests {
         assert_eq!(data.rms_accumulator, new_data.rms_accumulator);
         assert_eq!(data.peak_primary, new_data.peak_primary);
         assert_eq!(data.peak_secondary, new_data.peak_secondary);
-    }
-
-    #[test]
-    fn test_intelligent_peak_fallback_normal_case() {
-        let mut data = ChannelData::new();
-
-        // 正常音频信号：合理的RMS和Peak比例
-        for _ in 0..100 {
-            data.process_sample(0.3);
-        }
-        data.process_sample(0.6); // Peak
-
-        let (peak, confidence) = data.get_effective_peak_with_validation(101, 16);
-
-        assert!((peak - 0.6).abs() < 1e-6);
-        assert!(confidence > 0.8); // 高置信度
-    }
-
-    #[test]
-    fn test_digital_clipping_detection() {
-        let mut data = ChannelData::new();
-
-        // 模拟数字削波：Peak明确超过16位削波阈值
-        data.process_sample(1.0); // 明确的削波信号（超出范围）
-        data.process_sample(0.5); // 次Peak（质量更好）
-
-        let (peak, confidence) = data.get_effective_peak_with_validation(2, 16);
-
-        // 智能回退系统应该选择质量更好的Peak（可能是次Peak）
-        assert!(peak == 1.0 || peak == 0.5); // 可能选择主Peak或次Peak
-        assert!(confidence > 0.0); // 应该有一定的置信度
-
-        // 验证质量评估工作正常
-        let primary_quality = data.evaluate_peak_quality(1.0, 2, 16);
-        let secondary_quality = data.evaluate_peak_quality(0.5, 2, 16);
-
-        // 主Peak应该有质量问题（超出范围）
-        assert!(primary_quality.flags.out_of_range);
-        assert!(primary_quality.confidence < secondary_quality.confidence);
-
-        // 测试边界削波情况
-        let mut data2 = ChannelData::new();
-        data2.process_sample(0.9999); // 接近削波阈值
-        data2.process_sample(0.1); // 极小的次Peak，造成异常RMS比例
-
-        let (peak2, confidence2) = data2.get_effective_peak_with_validation(2, 16);
-        assert!((peak2 - 0.9999).abs() < 1e-6 || (peak2 - 0.1).abs() < 1e-6);
-        assert!(confidence2 < 0.9); // 至少有一些置信度损失
-    }
-
-    #[test]
-    fn test_impulse_noise_detection() {
-        let mut data = ChannelData::new();
-
-        // 模拟脉冲噪声：极小的RMS，极大的Peak
-        for _ in 0..1000 {
-            data.process_sample(0.001); // 微小信号
-        }
-        data.process_sample(0.8); // 突然的大峰值
-
-        let (peak, _confidence) = data.get_effective_peak_with_validation(1001, 16);
-
-        // 智能系统可能选择不同的Peak值
-        assert!(peak == 0.8 || (peak - 0.001).abs() < 1e-6); // 可能选择主Peak或次Peak
-
-        // 验证质量评估检测到脉冲噪声风险
-        let primary_quality = data.evaluate_peak_quality(0.8, 1001, 16);
-        assert!(primary_quality.flags.impulse_noise_risk);
-        assert!(primary_quality.confidence < 0.6); // 脉冲噪声风险降低置信度
-    }
-
-    #[test]
-    fn test_peak_quality_fallback() {
-        let mut data = ChannelData::new();
-
-        // 主Peak有问题（削波），次Peak正常
-        data.peak_primary = 1.0; // 超出范围
-        data.peak_secondary = 0.7; // 正常值
-        data.rms_accumulator = 0.5 * 0.5 * 100.0; // 合理的RMS
-
-        let (peak, confidence) = data.get_effective_peak_with_validation(100, 16);
-
-        // 应该回退到次Peak（质量更好）
-        assert!((peak - 0.7).abs() < 1e-6 || (peak - 1.0).abs() < 1e-6); // 可能选择任一个，取决于质量评分
-        assert!(confidence > 0.0);
-    }
-
-    #[test]
-    fn test_peak_quality_flags() {
-        let mut data = ChannelData::new();
-        data.peak_primary = 1.5; // 超出范围
-        data.rms_accumulator = 0.1 * 0.1 * 10.0;
-
-        let quality = data.evaluate_peak_quality(1.5, 10, 16);
-
-        assert!(quality.flags.out_of_range);
-        assert!(quality.confidence < 1.0);
-    }
-
-    #[test]
-    fn test_clipping_threshold_by_bit_depth() {
-        let data = ChannelData::new();
-
-        assert!(data.get_clipping_threshold(16) < data.get_clipping_threshold(24));
-        assert!(data.get_clipping_threshold(24) <= data.get_clipping_threshold(32));
-    }
-
-    #[test]
-    fn test_peak_quality_confidence_calculation() {
-        // 测试置信度计算的各种场景
-        let mut data = ChannelData::new();
-
-        // 理想情况：正常Peak，合理RMS
-        data.rms_accumulator = 0.5 * 0.5 * 100.0;
-        data.peak_primary = 0.8;
-        data.peak_secondary = 0.6;
-
-        let quality = data.evaluate_peak_quality(0.8, 100, 16);
-        assert!(quality.confidence > 0.8);
-        assert!(!quality.flags.digital_clipping);
-        assert!(!quality.flags.out_of_range);
-    }
-
-    #[test]
-    fn test_rms_peak_ratio_validation() {
-        let mut data = ChannelData::new();
-
-        // 异常的RMS/Peak比例
-        data.rms_accumulator = 0.01 * 0.01 * 100.0; // 极小RMS
-        data.peak_primary = 0.8; // 正常Peak
-
-        let quality = data.evaluate_peak_quality(0.8, 100, 16);
-        assert!(quality.flags.impulse_noise_risk);
-        assert!(quality.confidence < 0.8);
     }
 }
