@@ -1,43 +1,39 @@
-//! 简化版DR直方图和20%采样算法
+//! foobar2000兼容的DR直方图和20%采样算法
 //!
-//! 早期版本实现：使用单样本绝对值直方图的简化DR算法
+//! 基于foobar2000 DR Meter逆向分析的精确直方图实现，专注于20%采样算法的高精度匹配。
+//!
+//! ## 核心特性
+//!
+//! - **10001-bin超高精度直方图**：覆盖0.0000-1.0000幅度范围，精度0.0001
+//! - **逆向遍历20%采样**：从高幅度向低幅度遍历，精确匹配foobar2000行为  
+//! - **内存布局兼容**：扁平化数组布局匹配foobar2000内存结构
+//! - **Sum Doubling感知**：支持累加器级别Sum Doubling的有效样本数计算
 
 // 早期版本：已移除AudioError, AudioResult导入，简化错误处理
 
-#[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
+// 🏷️ FEATURE_REMOVAL: SSE导入已删除，使用channel_data.rs中的统一SSE函数
+// 📅 删除时间: 2025-09-08
+// 🎯 原因: 删除重复的foobar2000_sse_sqrt函数定义后不再需要这些导入
 
 // 🔥 Bit-exact数值常量 (与foobar2000完全相同的十六进制精度)
 // 📖 从foobar2000反汇编中提取的精确常量值
 const FOOBAR2000_0_2: f64 = f64::from_bits(0x3fc999999999999a); // 精确的0.2
-const FOOBAR2000_1E8: f64 = f64::from_bits(0x3e45798ee2308c3a); // 精确的1e-8
+// 🏷️ FEATURE_REMOVAL: FOOBAR2000_1E8常量已删除
+// 📅 删除时间: 2025-09-08
+// 🎯 原因: 仅用于已删除的精确权重公式，现为死代码
 
-/// foobar2000兼容的SSE平方根计算
-/// 🔥 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
-/// 📖 对应汇编：*(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
-#[cfg(target_arch = "x86_64")]
-#[inline]
-fn foobar2000_sse_sqrt(value: f64) -> f64 {
-    unsafe {
-        let packed = _mm_set_pd(0.0, value);
-        let result = _mm_sqrt_pd(packed);
-        _mm_cvtsd_f64(result)
-    }
-}
+// 🏷️ FEATURE_REMOVAL: 重复的foobar2000_sse_sqrt函数定义已删除
+// 📅 删除时间: 2025-09-08
+// 🎯 原因: channel_data.rs中已有相同定义，避免代码重复
+// 💡 简化效果: 移除重复代码，统一使用channel_data.rs中的版本
 
-/// 回退到标量平方根（非x86_64架构）
-#[cfg(not(target_arch = "x86_64"))]
-#[inline]
-fn foobar2000_sse_sqrt(value: f64) -> f64 {
-    value.sqrt()
-}
-
-/// 简化版单样本直方图分析器
+/// foobar2000兼容的直方图分析器
 ///
-/// 早期算法实现：
-/// - 直接使用样本绝对值填充直方图
-/// - 简单的20%分位数计算
-/// - 无复杂窗口RMS处理
+/// 专为foobar2000 DR Meter精确兼容设计的20%采样算法实现：
+/// - 单样本绝对值直方图填充（匹配foobar2000行为）
+/// - 逆向遍历20%采样算法（从高幅度向低幅度）
+/// - 多声道感知的扁平化内存布局
+/// - Sum Doubling有效样本数支持
 #[derive(Debug, Clone)]
 pub struct SimpleHistogramAnalyzer {
     /// 样本绝对值直方图
@@ -47,16 +43,25 @@ pub struct SimpleHistogramAnalyzer {
     total_samples: u64,
 }
 
-/// 简化版10001-bin直方图容器
+/// foobar2000兼容的10001-bin直方图容器
 ///
-/// 早期版本直方图统计：
-/// - 覆盖索引0-10000，对应样本幅度0.0000-1.0000（精度0.0001）
-/// - 每个bin统计落在该幅度范围内的样本数量
-/// - 使用简单的20%分位数计算
+/// 基于foobar2000 DR Meter逆向分析的精确直方图实现：
+/// - **超高精度**：10001个bin覆盖0.0000-1.0000幅度范围（精度0.0001）
+/// - **foobar2000内存布局**：扁平化数组匹配原版内存结构
+/// - **多声道支持**：histogram_addr = base_addr + 4 * (10001 * channel + bin_index)
+/// - **20%采样算法**：支持逆向遍历的精确20%分位数计算
 #[derive(Debug, Clone)]
 pub struct DrHistogram {
-    /// 10001个bin的样本计数器（索引0-10000）
+    /// 🔥 关键修复：使用扁平化数组匹配foobar2000内存布局
+    /// 每个声道占用10001个连续元素，支持多声道统一寻址
     bins: Vec<u64>,
+
+    /// 声道数量（用于计算正确的内存偏移）
+    #[allow(dead_code)] // 用于内存分配，但编译器认为未被读取
+    channel_count: usize,
+
+    /// 当前处理的声道索引
+    current_channel: usize,
 
     /// 总样本数量
     total_samples: u64,
@@ -64,9 +69,33 @@ pub struct DrHistogram {
 
 impl SimpleHistogramAnalyzer {
     /// 创建简单直方图分析器
+    ///
+    /// 🎯 优先级4修复：支持多声道内存布局匹配
+    ///
+    /// # 参数
+    /// * `_sample_rate` - 采样率（保持API兼容性）
+    /// * `channel_count` - 总声道数量（可选，默认1）
+    /// * `current_channel` - 当前声道索引（可选，默认0）
     pub fn new(_sample_rate: u32) -> Self {
         Self {
-            histogram: DrHistogram::new(),
+            histogram: DrHistogram::new(1, 0), // 默认单声道兼容性
+            total_samples: 0,
+        }
+    }
+
+    /// 创建多声道感知的直方图分析器
+    ///
+    /// # 参数
+    /// * `sample_rate` - 采样率
+    /// * `channel_count` - 总声道数量
+    /// * `current_channel` - 当前处理的声道索引
+    pub fn new_multichannel(
+        _sample_rate: u32,
+        channel_count: usize,
+        current_channel: usize,
+    ) -> Self {
+        Self {
+            histogram: DrHistogram::new(channel_count, current_channel),
             total_samples: 0,
         }
     }
@@ -106,13 +135,10 @@ impl SimpleHistogramAnalyzer {
             .calculate_simple_20_percent_rms_with_effective_samples(Some(effective_samples))
     }
 
-    /// 计算"最响20%样本"的精确加权RMS值
-    ///
-    /// 使用精确权重公式：0.00000001×index²
-    /// 提供更准确的DR计算结果
-    pub fn calculate_weighted_20_percent_rms(&self) -> f64 {
-        self.histogram.calculate_weighted_20_percent_rms()
-    }
+    // 🏷️ FEATURE_REMOVAL: 精确加权RMS算法已删除
+    // 📅 删除时间: 2025-09-08
+    // 🎯 原因: weighted_rms功能已删除，此方法成为死代码
+    // 💡 foobar2000专属模式：使用简单算法确保最优精度
 
     /// 获取总样本数
     pub fn total_samples(&self) -> u64 {
@@ -155,17 +181,38 @@ impl SimpleHistogramAnalyzer {
 }
 
 impl DrHistogram {
-    /// 创建新的10001-bin直方图
-    fn new() -> Self {
+    /// 创建新的10001-bin直方图（支持多声道扁平化布局）
+    ///
+    /// # 参数
+    /// * `channel_count` - 声道数量，用于分配正确的内存空间
+    /// * `current_channel` - 当前处理的声道索引（0-based）
+    fn new(channel_count: usize, current_channel: usize) -> Self {
         Self {
-            bins: vec![0; 10001], // 索引0-10000
+            // 🔥 关键修复：分配channel_count * 10001的扁平化数组
+            // 匹配foobar2000内存布局：base_addr + 4 * (10001 * channel + bin_index)
+            bins: vec![0; channel_count * 10001],
+            channel_count,
+            current_channel,
             total_samples: 0,
         }
     }
 
-    /// 获取bin数据（供WindowRmsAnalyzer使用）
+    /// 计算foobar2000兼容的bin地址偏移
+    ///
+    /// 📖 对应foobar2000汇编：histogram_addr = base_addr + 4 * (10001 * channel + bin_index)
+    #[inline]
+    fn get_bin_offset(&self, bin_index: usize) -> usize {
+        // 🎯 优先级4修复：精确匹配foobar2000的地址计算
+        // 内存布局：[Ch0_Bin0..Ch0_Bin10000, Ch1_Bin0..Ch1_Bin10000, ...]
+        10001 * self.current_channel + bin_index
+    }
+
+    /// 获取当前声道的bin数据（供WindowRmsAnalyzer使用）
+    ///
+    /// 🔥 关键修复：返回当前声道的10001个bin，而不是整个扁平化数组
     pub(crate) fn bins(&self) -> &[u64] {
-        &self.bins
+        let start_offset = self.get_bin_offset(0);
+        &self.bins[start_offset..start_offset + 10001]
     }
 
     /// 添加样本绝对值到直方图
@@ -177,9 +224,11 @@ impl DrHistogram {
         // 计算bin索引：样本绝对值映射到0-10000范围
         // 🔥 关键修复：使用foobar2000的截断方式，不是四舍五入！
         // 📖 反汇编: v47 = (int)(v46 * 10000.0) - 直接截断转换
-        let index = ((sample_abs as f64 * 10000.0).min(10000.0)) as usize;
+        let bin_index = ((sample_abs as f64 * 10000.0).min(10000.0)) as usize;
 
-        self.bins[index] += 1;
+        // 🎯 优先级4修复：使用foobar2000兼容的地址偏移
+        let offset = self.get_bin_offset(bin_index);
+        self.bins[offset] += 1;
         self.total_samples += 1;
     }
 
@@ -218,119 +267,70 @@ impl DrHistogram {
         // 基于foobar2000反汇编分析：v14 * 0.2 + 0.5 (v14是经过Sum Doubling的样本数)
         let effective_count = effective_samples.unwrap_or(self.total_samples);
 
-        // 🔥 数据类型转换链修复：先转int再转double (与foobar2000一致)
-        // 📖 对应汇编: (double)*(int *)(a1 + 20)
+        // 🎯 优先级3修复：20%采样边界精确处理 - 三重精确边界控制
+        // 📖 基于UltraThink分析：foobar2000转换链 i32 -> u32 -> u64
         let effective_count_int = effective_count as i32;
         let effective_count_f64 = effective_count_int as f64;
-        let mut need = (effective_count_f64 * FOOBAR2000_0_2 + 0.5) as u64;
 
-        // 🎯 零值保护：确保采样数至少为1（foobar2000边界逻辑）
-        // 反汇编发现：if (!v22) v22 = 1;
-        if need == 0 {
-            need = 1;
-        }
-        let mut selected = 0;
+        // 🔥 关键修复：完全匹配foobar2000的数据类型转换链
+        let samples_20_temp = (effective_count_f64 * FOOBAR2000_0_2 + 0.5) as i32; // foobar2000转换链
+        let need = (samples_20_temp as u32 as u64).max(1); // 零值保护：i32 -> u32 -> u64
+
+        let mut remaining = need;
         let mut sum_square = 0.0;
 
-        // 从高幅度向低幅度逆向遍历，累积平方和
-        for index in (0..=10000).rev() {
-            let available = self.bins[index];
-            let take = available.min(need - selected);
+        // 🔥 从高幅度向低幅度逆向遍历，使用remaining计数器实现精确停止
+        for bin_index in (0..=10000).rev() {
+            if remaining == 0 {
+                break;
+            } // 🎯 精确停止条件
 
-            if take > 0 {
+            // 🎯 优先级4修复：使用foobar2000兼容的地址偏移访问bin
+            let offset = self.get_bin_offset(bin_index);
+            let available = self.bins[offset];
+            let use_count = available.min(remaining);
+
+            if use_count > 0 {
                 // 计算该bin对应的幅度值
-                let amplitude = index as f64 / 10000.0;
+                let amplitude = bin_index as f64 / 10000.0;
 
                 // 简单的平方和累积
-                sum_square += take as f64 * amplitude * amplitude;
-                selected += take;
-
-                if selected >= need {
-                    break;
-                }
+                sum_square += use_count as f64 * amplitude * amplitude;
+                remaining -= use_count; // 🎯 精确递减remaining计数器
             }
         }
 
         // 计算最终RMS：开方(平方和/选中样本数)
         // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
         // 📖 对应汇编: *(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
-        if selected > 0 {
+        let actually_selected = need - remaining; // 🎯 精确计算实际选中的样本数
+        if actually_selected > 0 {
             // 数据类型转换链：先转int再转double
-            let selected_int = selected as i32;
+            let selected_int = actually_selected as i32;
             let selected_f64 = selected_int as f64;
-            foobar2000_sse_sqrt(sum_square / selected_f64)
+
+            // 🎯 优先级2修复：DR计算阶段使用标量平方根（不是SSE）
+            // 📖 基于UltraThink分析：音频处理用SSE，DR计算用标量
+            (sum_square / selected_f64).sqrt() // 标量平方根替代SSE
         } else {
             0.0
         }
     }
 
-    /// ⚠️ 【警告】精确权重公式显著改变DR计算结果！
-    ///
-    /// 🔬 **实测发现** (2025-08-31):
-    /// - RMS增加+14%: 0.304 → 0.345
-    /// - DR值降低1dB: DR10 → DR8
-    /// - foobar2000误差增大: -0.21dB → 约-2.21dB
-    /// - 性能提升+42%: 28M → 39.7M samples/s
-    ///
-    /// 🏷️ FEATURE_ADDITION: 精确权重公式实验
-    /// 📅 添加时间: 2025-08-31
-    /// 🎯 公式: 权重 = 0.00000001×index²
-    /// 💡 原理: 高幅度样本获得平方级权重，偏向高能量区域
-    /// ⚠️ **不推荐生产使用**: 偏离foobar2000标准，精度降低
-    /// 🔄 回退: 强烈建议使用calculate_20_percent_rms()以保持最优精度
-    ///
-    /// # 返回值
-    ///
-    /// 返回使用精确权重计算的20%RMS值
-    fn calculate_weighted_20_percent_rms(&self) -> f64 {
-        if self.total_samples == 0 {
-            return 0.0;
-        }
-
-        // 计算需要选择的样本数
-        let need = (self.total_samples as f64 * FOOBAR2000_0_2 + 0.5) as u64;
-        let mut selected = 0;
-        let mut weighted_sum_square = 0.0;
-        let mut total_weight = 0.0;
-
-        // 从高幅度向低幅度逆向遍历，使用精确权重公式
-        for index in (0..=10000).rev() {
-            let available = self.bins[index];
-            let take = available.min(need - selected);
-
-            if take > 0 {
-                // 计算该bin对应的幅度值
-                let amplitude = index as f64 / 10000.0;
-
-                // 🔬 精确权重公式：FOOBAR2000_1E8×index²
-                let weight = FOOBAR2000_1E8 * (index as f64) * (index as f64);
-
-                // 加权平方和累积
-                weighted_sum_square += weight * take as f64 * amplitude * amplitude;
-                total_weight += weight * take as f64;
-                selected += take;
-
-                if selected >= need {
-                    break;
-                }
-            }
-        }
-
-        // 计算最终RMS：开方(加权平方和/总权重)
-        // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
-        if total_weight > 0.0 {
-            foobar2000_sse_sqrt(weighted_sum_square / total_weight)
-        } else {
-            // 🛡️ 回退策略：如果权重为0，使用简单计算
-            self.calculate_simple_20_percent_rms()
-        }
-    }
+    // 🏷️ FEATURE_REMOVAL: 精确权重公式已删除（60+行复杂死代码）
+    // 📅 删除时间: 2025-09-08
+    // 🎯 原因: weighted_rms功能已删除，该实验性算法成为死代码
+    // 💡 简化效果: 删除复杂权重计算逻辑，专注foobar2000简单算法
+    // 🔄 回退: 如需实验性功能，查看git历史
 
     // 早期版本：已移除get_bin_count测试方法，简化内部API
 
-    /// 清空直方图
+    /// 清空直方图（仅清空当前声道的部分）
+    ///
+    /// 🔥 关键修复：只清空当前声道的10001个bin，不影响其他声道
     fn clear(&mut self) {
-        self.bins.fill(0);
+        let start_offset = self.get_bin_offset(0);
+        self.bins[start_offset..start_offset + 10001].fill(0);
         self.total_samples = 0;
     }
 
@@ -358,7 +358,8 @@ pub struct SimpleStats {
 
 impl Default for DrHistogram {
     fn default() -> Self {
-        Self::new()
+        // 🔥 默认单声道布局，兼容旧代码
+        Self::new(1, 0)
     }
 }
 

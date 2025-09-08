@@ -7,7 +7,7 @@
 use super::{ChannelData, SimpleHistogramAnalyzer};
 use crate::error::{AudioError, AudioResult};
 
-// 早期版本：已移除Sum Doubling相关常量，不再使用RMS补偿机制
+// foobar2000专属模式：使用累加器级别Sum Doubling，移除了+3dB RMS补偿机制
 
 /// DR计算结果
 #[derive(Debug, Clone, PartialEq)]
@@ -69,14 +69,12 @@ pub struct DrCalculator {
     /// 每个声道的简单直方图分析器（仅在foobar2000模式下使用）
     histogram_analyzers: Option<Vec<SimpleHistogramAnalyzer>>,
 
-    /// 采样率（用于窗口大小计算）
+    /// 采样率（用于传递给直方图分析器）
     sample_rate: u32,
-
-    /// 🏷️ FEATURE_ADDITION: 精确权重实验控制开关
-    /// 📅 添加时间: 2025-08-31  
-    /// 🎯 目的: 控制是否使用精确权重公式计算20% RMS
-    /// 🔄 回退: 如需回退，删除此字段，相关逻辑改为直接使用简单算法
-    weighted_rms_enabled: bool,
+    // 🏷️ FEATURE_REMOVAL: 精确权重实验控制开关已删除
+    // 📅 删除时间: 2025-09-08
+    // 🎯 原因: 在所有使用位置都固定为false，属于死代码
+    // 💡 foobar2000专属模式：只使用简单算法确保最优精度
 }
 
 /// Sum Doubling质量评估结果
@@ -132,8 +130,8 @@ impl DrCalculator {
     ///
     /// * `channel_count` - 音频声道数量
     /// * `sum_doubling` - 是否启用Sum Doubling补偿
-    /// * `foobar2000_mode` - 是否启用foobar2000兼容模式（3秒窗口20%采样算法）
-    /// * `sample_rate` - 采样率（Hz，用于3秒窗口计算）
+    /// * `foobar2000_mode` - 是否启用foobar2000兼容模式（20%采样直方图算法）
+    /// * `sample_rate` - 采样率（Hz，传递给直方图分析器）
     ///
     /// # 示例
     ///
@@ -164,7 +162,15 @@ impl DrCalculator {
         let window_analyzers = if foobar2000_mode {
             Some(
                 (0..channel_count)
-                    .map(|_| SimpleHistogramAnalyzer::new(sample_rate))
+                    .map(|channel_idx| {
+                        // 🎯 优先级4修复：使用多声道感知构造函数
+                        // 匹配foobar2000内存布局：每个声道知道总数和自己的索引
+                        SimpleHistogramAnalyzer::new_multichannel(
+                            sample_rate,
+                            channel_count,
+                            channel_idx,
+                        )
+                    })
                     .collect(),
             )
         } else {
@@ -178,11 +184,6 @@ impl DrCalculator {
             foobar2000_mode,
             histogram_analyzers: window_analyzers,
             sample_rate,
-            // 🏷️ FEATURE_ADDITION: 精确权重实验控制开关初始化
-            // 📅 添加时间: 2025-08-31
-            // 🎯 默认禁用精确权重公式，确保向后兼容性
-            // 🔄 回退: 如需回退，删除此行初始化
-            weighted_rms_enabled: false,
         })
     }
 
@@ -334,7 +335,8 @@ impl DrCalculator {
     /// use macinmeter_dr_tool::core::DrCalculator;
     ///
     /// let mut calculator = DrCalculator::new(2, false, 48000).unwrap();
-    /// let samples = vec![0.1, -0.1, 0.2, -0.2, 1.0, -1.0];
+    /// // 使用简单测试数据，确保Peak > RMS
+    /// let samples = vec![0.05, -0.05, 0.05, -0.05, 0.05, -0.05];
     /// calculator.process_interleaved_samples(&samples).unwrap();
     ///
     /// let results = calculator.calculate_dr().unwrap();
@@ -372,22 +374,23 @@ impl DrCalculator {
         Ok(results)
     }
 
-    /// 计算单个声道的RMS值（使用智能Sum Doubling补偿）
+    /// 🎯 优先级1修复：计算单个声道的RMS值（使用累加器级别的Sum Doubling）
     fn calculate_channel_rms(&self, channel_data: &ChannelData) -> AudioResult<f64> {
-        let rms = channel_data.calculate_rms(self.sample_count);
-        let peak = channel_data.get_effective_peak();
+        // 🔥 关键修复：使用累加器级别的Sum Doubling，而非最终RMS补偿
+        // 📖 基于UltraThink分析：Sum Doubling应在批次级别对整个累加器进行
+        let rms = channel_data.calculate_rms_with_accumulator_sum_doubling(
+            self.sample_count,
+            self.sum_doubling_enabled,
+        );
 
-        // 使用智能Sum Doubling补偿系统
-        let (compensated_rms, _quality) =
-            self.apply_intelligent_sum_doubling(rms, peak, self.sample_count);
-
-        if compensated_rms.is_infinite() || compensated_rms.is_nan() {
+        if rms.is_infinite() || rms.is_nan() {
             return Err(AudioError::CalculationError(
                 "RMS计算结果无效（无穷大或NaN）".to_string(),
             ));
         }
 
-        Ok(compensated_rms)
+        // 🔄 移除额外的RMS补偿层，累加器级别的Sum Doubling已经处理了所有必要的调整
+        Ok(rms)
     }
 
     /// 计算单个声道的20% RMS值（foobar2000兼容模式）
@@ -428,13 +431,9 @@ impl DrCalculator {
         };
 
         // 使用有效样本数计算20%RMS（关键修正！）
-        let rms_20_percent = if self.weighted_rms_enabled {
-            // 使用精确权重公式（实验性）
-            analyzer.calculate_weighted_20_percent_rms()
-        } else {
-            // 🎯 关键：使用有效样本数计算20%采样数量
-            analyzer.calculate_20_percent_rms_with_effective_samples(effective_sample_count)
-        };
+        // 🎯 关键：使用有效样本数计算20%采样数量（foobar2000专属模式）
+        let rms_20_percent =
+            analyzer.calculate_20_percent_rms_with_effective_samples(effective_sample_count);
 
         // ❌ 重要发现：+3dB RMS修正让我们偏离foobar2000，而非更接近！
         // 📖 测试结果：+3dB修正导致RMS从-12.16dB变为-9.15dB，严重偏离foobar2000的-12.7dB
@@ -510,57 +509,11 @@ impl DrCalculator {
         Ok(dr_value)
     }
 
-    /// 简化Sum Doubling补偿系统
-    ///
-    /// 🏷️ FEATURE_UPDATE: 移除复杂质量评估逻辑
-    /// 📅 修改时间: 2025-08-31
-    /// 🎯 Early Version模式：禁用Sum Doubling，保持原始RMS
-    /// 🔄 回退: 如需复杂质量评估，查看git历史
-    ///
-    /// # 参数
-    ///
-    /// * `rms` - 原始RMS值
-    /// * `_peak` - Peak值（未使用，保留接口兼容性）
-    /// * `_sample_count` - 样本数量（未使用，保留接口兼容性）
-    ///
-    /// # 返回值
-    ///
-    /// 返回原始RMS值和默认质量信息
-    fn apply_intelligent_sum_doubling(
-        &self,
-        rms: f64,
-        _peak: f64,
-        _sample_count: usize,
-    ) -> (f64, SumDoublingQuality) {
-        // 🎯 重大发现：基于MAAT DR Meter用户手册的标准RMS修正
-        //
-        // 📖 官方文档证实："The RMS value is corrected by +3dB so that sine waves
-        //    have the same peak and RMS value, as is the case with most other RMS meters."
-        //
-        // 🔬 数学原理：RMS_corrected = RMS * √2 (对应+3.01dB修正)
-        // ✅ 这是音频工程的标准做法，不是实验性调整
-        // ✅ 符合foobar2000/TT DR Meter的原始设计规范
-
-        // 🔄 回退至原始逻辑：维持与foobar2000的最佳精度匹配
-        // ❌ 实验证明：+3dB修正严重偏离foobar2000标准（-12.16dB→-9.15dB）
-        // ✅ 结论：foobar2000不使用+3dB RMS修正，应使用原始算法
-        let compensated_rms = if !self.sum_doubling_enabled {
-            // Sum Doubling禁用时，为了保持历史兼容性，仍应用+3dB修正
-            rms * std::f64::consts::SQRT_2
-        } else {
-            // Sum Doubling启用时使用原始RMS，保持与foobar2000最佳匹配
-            rms
-        };
-
-        (
-            compensated_rms,
-            SumDoublingQuality {
-                should_apply: self.sum_doubling_enabled,
-                confidence: 1.0,
-                issues: SumDoublingIssues::default(),
-            },
-        )
-    }
+    // 🏷️ FEATURE_REMOVAL: 非foobar2000智能Sum Doubling已删除
+    // 📅 删除时间: 2025-09-08
+    // 🎯 分支聚焦：专注foobar2000兼容模式，移除+3dB修正等非标准路径
+    // 💡 原因: 仓库分支只考虑foobar2000，简化代码维护
+    // 🔄 回退: 如需非foobar2000支持，查看git历史
 
     // 🏷️ FEATURE_REMOVAL: 复杂质量评估系统已移除
     // 📅 移除时间: 2025-08-31
@@ -618,37 +571,10 @@ impl DrCalculator {
         self.sample_rate
     }
 
-    /// 🏷️ FEATURE_ADDITION: 精确权重公式控制方法
-    /// 📅 添加时间: 2025-08-31
-    /// 🎯 启用精确权重公式（0.00000001×index²）
-    /// 🔄 回退: 如需回退，删除此方法及相关调用
-    pub fn enable_weighted_rms(&mut self) {
-        self.weighted_rms_enabled = true;
-    }
-
-    /// 🏷️ FEATURE_ADDITION: 精确权重公式控制方法
-    /// 📅 添加时间: 2025-08-31
-    /// 🎯 禁用精确权重公式，回到简化算法
-    /// 🔄 回退: 如需回退，删除此方法及相关调用
-    pub fn disable_weighted_rms(&mut self) {
-        self.weighted_rms_enabled = false;
-    }
-
-    /// 🏷️ FEATURE_ADDITION: 精确权重公式状态查询
-    /// 📅 添加时间: 2025-08-31
-    /// 🎯 获取当前精确权重公式启用状态
-    /// 🔄 回退: 如需回退，删除此方法及相关调用
-    pub fn is_weighted_rms_enabled(&self) -> bool {
-        self.weighted_rms_enabled
-    }
-
-    /// 🏷️ FEATURE_ADDITION: 精确权重公式状态设置
-    /// 📅 添加时间: 2025-08-31
-    /// 🎯 直接设置精确权重公式启用状态
-    /// 🔄 回退: 如需回退，删除此方法及相关调用
-    pub fn set_weighted_rms(&mut self, enabled: bool) {
-        self.weighted_rms_enabled = enabled;
-    }
+    // 🏷️ FEATURE_REMOVAL: 精确权重公式控制方法已删除
+    // 📅 删除时间: 2025-09-08
+    // 🎯 原因: weighted_rms_enabled字段已删除，这些方法成为死代码
+    // 💡 foobar2000专属模式：统一使用简单算法确保最优精度
 }
 
 #[cfg(test)]
@@ -713,15 +639,16 @@ mod tests {
         assert_eq!(results.len(), 1);
         let result = &results[0];
         assert_eq!(result.channel, 0);
-        
-        // 🔥 修复：计算期待的RMS (包括√2修正)
-        let base_rms = ((0.1_f64.powi(2) + 0.1_f64.powi(2) + 0.8_f64.powi(2) + 0.7_f64.powi(2)) / 4.0).sqrt();
-        let expected_rms = base_rms * std::f64::consts::SQRT_2; // +3dB修正
+
+        // 🔥 修复：foobar2000专属模式，不应用+3dB修正
+        let base_rms =
+            ((0.1_f64.powi(2) + 0.1_f64.powi(2) + 0.8_f64.powi(2) + 0.7_f64.powi(2)) / 4.0).sqrt();
+        let expected_rms = base_rms; // foobar2000模式：无+3dB修正
         assert!((result.rms - expected_rms).abs() < 1e-6);
-        
+
         // 🔥 修复：期待foobar2000选择次Peak = 0.7 而不是主Peak = 0.8
         assert!((result.peak - 0.7).abs() < 1e-6);
-        
+
         // DR值应该为正（RMS < Peak）
         assert!(result.dr_value > 0.0);
     }
@@ -733,8 +660,8 @@ mod tests {
         // 确保第二大峰值大于预期RMS，避免RMS > Peak错误
         let samples = vec![
             0.1, 0.1, 0.1, 0.1, // 小信号，但次Peak要足够大
-            0.8, // 第二大峰值  
-            1.0,  // 主Peak（但foobar2000会优先选择次Peak）
+            0.8, // 第二大峰值
+            1.0, // 主Peak（但foobar2000会优先选择次Peak）
         ];
 
         calc.process_interleaved_samples(&samples).unwrap();
@@ -742,14 +669,14 @@ mod tests {
 
         let result = &results[0];
 
-        // 🔥 修复：基于新测试数据的RMS计算
+        // 🔥 修复：基于新测试数据的RMS计算（foobar2000专属模式）
         // sqrt((4*0.1^2 + 1*0.8^2 + 1*1.0^2) / 6) = sqrt(1.68/6) ≈ 0.529
         let base_rms = ((4.0 * 0.1_f64.powi(2) + 0.8_f64.powi(2) + 1.0_f64.powi(2)) / 6.0).sqrt();
-        // 早期版本：不应用RMS补偿，期待原始RMS值
-        let expected_rms = base_rms;
+        // foobar2000专属模式：启用Sum Doubling时，累加器级别修复生效（相当于RMS * √2）
+        let expected_rms = base_rms * std::f64::consts::SQRT_2; // Sum Doubling启用，累加器翻倍
 
         assert!((result.rms - expected_rms).abs() < 1e-6);
-        // 🔥 修复：foobar2000峰值选择策略会选择次Peak = 0.8 而不是主Peak = 1.0  
+        // 🔥 修复：foobar2000峰值选择策略会选择次Peak = 0.8 而不是主Peak = 1.0
         assert!((result.peak - 0.8).abs() < 1e-6); // 期待次Peak
         assert!(result.rms < result.peak); // RMS应该小于Peak
         assert!(result.dr_value > 0.0); // DR值应该为正
@@ -788,9 +715,9 @@ mod tests {
 
         // 🔥 修复：模拟实际音频，确保第二大峰值足够大应对√2补偿
         let samples = vec![
-            0.1, 0.1, 0.1, 0.1, // 小信号
-            1.0, // 主Peak
-            0.85, // 第二大峰值（foobar2000会优先选择，足够大应对√2补偿） 
+            0.1, 0.1, 0.1, 0.1,  // 小信号
+            1.0,  // 主Peak
+            0.85, // 第二大峰值（foobar2000会优先选择，足够大应对√2补偿）
         ];
 
         calc.process_interleaved_samples(&samples).unwrap();
@@ -818,14 +745,16 @@ mod tests {
         let results = calc.calculate_dr().unwrap();
         let result = &results[0];
 
-        // 验证智能Sum Doubling系统工作 
-        let base_rms = ((1000.0 * 0.2_f64.powi(2) + 0.6_f64.powi(2) + 0.8_f64.powi(2)) / 1002.0).sqrt();
+        // 验证智能Sum Doubling系统工作
+        let base_rms =
+            ((1000.0 * 0.2_f64.powi(2) + 0.6_f64.powi(2) + 0.8_f64.powi(2)) / 1002.0).sqrt();
 
         // 🏷️ FEATURE_UPDATE: 简化测试，移除质量评估调用
         // 早期版本不使用复杂质量评估，直接验证RMS值
 
-        // 早期版本：无论系统如何决定，都应该返回原始base_rms（不应用RMS补偿）
-        assert!((result.rms - base_rms).abs() < 1e-6);
+        // foobar2000专属模式：Sum Doubling启用时，累加器级别修复生效（相当于RMS * √2）
+        let expected_rms = base_rms * std::f64::consts::SQRT_2; // Sum Doubling启用，累加器翻倍
+        assert!((result.rms - expected_rms).abs() < 1e-6);
         // 🔥 修复：期待foobar2000选择次Peak = 0.6 而不是主Peak = 0.8
         assert!((result.peak - 0.6).abs() < 1e-6);
 
@@ -850,9 +779,10 @@ mod tests {
         let results = calc.calculate_dr().unwrap();
         let result = &results[0];
 
-        // Sum Doubling未启用，会应用√2 RMS修正
-        let base_rms = ((100.0 * 0.2_f64.powi(2) + 1.0_f64.powi(2) + 0.6_f64.powi(2)) / 102.0).sqrt();
-        let expected_rms = base_rms * std::f64::consts::SQRT_2; // +3dB修正
+        // foobar2000专属模式：Sum Doubling未启用，也不应用√2 RMS修正
+        let base_rms =
+            ((100.0 * 0.2_f64.powi(2) + 1.0_f64.powi(2) + 0.6_f64.powi(2)) / 102.0).sqrt();
+        let expected_rms = base_rms; // foobar2000模式：无+3dB修正
         assert!((result.rms - expected_rms).abs() < 1e-6);
         // 🔥 修复：期待foobar2000选择次Peak = 0.6
         assert!((result.peak - 0.6).abs() < 1e-6);
@@ -864,16 +794,11 @@ mod tests {
     // 💡 原因: 对应的evaluate_sum_doubling_quality()方法已被移除
     // 🔄 回退: 如需测试质量评估，查看git历史
 
-    #[test]
-    fn test_no_rms_compensation_in_early_version() {
-        // 早期版本：验证不应用任何RMS补偿
-        let calc = DrCalculator::new(1, true, 48000).unwrap();
-
-        let (result_rms, _) = calc.apply_intelligent_sum_doubling(0.5, 0.8, 1000);
-
-        // 早期版本应该返回原始RMS值，不应用任何补偿
-        assert!((result_rms - 0.5).abs() < 1e-15);
-    }
+    // 🏷️ FEATURE_REMOVAL: 非foobar2000 RMS补偿测试已删除
+    // 📅 删除时间: 2025-09-08
+    // 🎯 分支聚焦：专注foobar2000兼容模式，移除+3dB修正相关测试
+    // 💡 原因: 对应的apply_intelligent_sum_doubling()方法已被删除
+    // 🔄 回退: 如需非foobar2000测试，查看git历史
 
     // 🏷️ FEATURE_REMOVAL: 边界情况测试已移除
     // 📅 移除时间: 2025-08-31

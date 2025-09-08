@@ -257,6 +257,46 @@ impl ChannelData {
         foobar2000_sse_sqrt(mean_square)
     }
 
+    /// 🎯 优先级1修复：累加器级别的Sum Doubling
+    ///
+    /// 基于UltraThink分析：Sum Doubling应在批次级别对整个累加器进行，
+    /// 而不是在样本级别或最终RMS补偿级别
+    ///
+    /// # 参数
+    ///
+    /// * `sample_count` - 参与计算的样本总数
+    /// * `apply_sum_doubling` - 是否对累加器应用Sum Doubling
+    ///
+    /// # 返回值
+    ///
+    /// 返回经过累加器级Sum Doubling处理的RMS值
+    pub fn calculate_rms_with_accumulator_sum_doubling(
+        &self,
+        sample_count: usize,
+        apply_sum_doubling: bool,
+    ) -> f64 {
+        if sample_count == 0 {
+            return 0.0;
+        }
+
+        // 🔥 关键修复：对整个累加器进行Sum Doubling，而不是对最终RMS
+        // 📖 foobar2000模式：final_rms_squared = accumulator + accumulator
+        let final_accumulator = if apply_sum_doubling {
+            // 批次结束时对整个累加器进行Sum Doubling
+            self.rms_accumulator + self.rms_accumulator // 使用加法而非乘法！
+        } else {
+            self.rms_accumulator
+        };
+
+        // 数据类型转换链
+        let sample_count_int = sample_count as i32;
+        let sample_count_f64 = sample_count_int as f64;
+        let mean_square = final_accumulator / sample_count_f64;
+
+        // 🔥 音频处理阶段：使用SSE平方根
+        foobar2000_sse_sqrt(mean_square)
+    }
+
     /// 获取有效的Peak值（主Peak优先，失效时使用次Peak）
     ///
     /// 实现双Peak回退机制：
@@ -586,7 +626,7 @@ mod tests {
         data.process_sample(0.5);
         assert!((data.get_effective_peak() - 0.5).abs() < 1e-10);
 
-        // 主Peak和次Peak都存在 
+        // 主Peak和次Peak都存在
         data.process_sample(0.8);
         // 🔥 修复：新逻辑优先返回secondary peak (0.5) 而不是primary peak (0.8)
         assert!((data.get_effective_peak() - 0.5).abs() < 1e-6); // 返回次Peak（新逻辑）

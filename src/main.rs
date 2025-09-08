@@ -361,11 +361,6 @@ fn process_single_audio_file(
             format.sample_rate,
             config.sum_doubling,
             true, // foobar2000兼容模式
-            // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
-            // 📅 修改时间: 2025-08-31
-            // 🎯 统一使用weighted_rms=false以保持与foobar2000最优精度匹配
-            // 🔄 回退: 如需重新启用选项，查看git历史
-            false, // weighted_rms固定为false
         )?;
 
         // 显示性能统计
@@ -432,7 +427,9 @@ fn process_single_audio_file(
                 // 📅 修改时间: 2025-08-31
                 // 🎯 统一使用weighted_rms=false以保持与foobar2000最优精度匹配
                 // 🔄 回退: 如需重新启用选项，查看git历史
-                calculator.set_weighted_rms(false); // 固定为false，最优精度
+                // 🏷️ FEATURE_REMOVAL: set_weighted_rms调用已删除
+                // 📅 删除时间: 2025-09-08
+                // 🎯 原因: foobar2000专属模式自动使用最优精度算法
 
                 calculator.process_interleaved_samples(&samples)?;
                 calculator.calculate_dr()
