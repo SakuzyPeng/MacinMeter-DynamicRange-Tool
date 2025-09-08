@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ 重要提醒：专家角色激活
 
-**在开始任何技术工作之前，必须激活专业角色：**
+**在开始任何技术工作前，必须激活专业角色：**
 
 ### 🎯 推荐专家角色
 - **rust-audio-expert**: Rust音频开发专家 → `action("rust-audio-expert")`
@@ -37,6 +37,8 @@ action("rust-audio-expert")
 ## 项目概述
 
 MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态范围(DR)分析工具，使用Rust实现，目标是达到高精度实现和工业级性能。
+
+**早期版本分支（early-version）**：专注foobar2000算法精确匹配的精简化实现。
 
 ## 构建和运行命令
 
@@ -201,6 +203,19 @@ echo "✅ 所有检查通过！"
 
 **⚠️ 记住：Rust编译器的警告都很有价值，忽略警告往往会导致潜在的bug或性能问题！对于音频处理这种性能敏感的应用，警告检查更加重要。**
 
+### 🔄 预提交钩子系统
+
+项目配置了自动化的预提交钩子（.git/hooks/pre-commit），每次提交时自动执行：
+
+1. **代码格式检查** (`cargo fmt --check`)
+2. **Clippy静态分析** (严格模式：`-D warnings -D unused-unsafe`)
+3. **编译检查** (`cargo check --all-targets`)
+4. **单元测试** (`cargo test`)
+5. **x86 CI环境测试** (Docker模拟，确保跨架构兼容性)
+6. **安全审计** (`cargo audit`)
+
+**注意**: 所有检查必须通过才能成功提交，确保代码质量。
+
 ---
 
 ## 核心架构
@@ -231,11 +246,18 @@ echo "✅ 所有检查通过！"
 ### 关键技术要点
 
 1. **24字节数据结构**: 每声道精确的内存布局，支持8字节对齐
-2. **Sum Doubling机制**: 专为交错音频数据设计的2倍RMS修正算法
+2. **累加器级Sum Doubling**: 在批次结束时对整个RMS累加器进行2倍处理，而非RMS值修正
 3. **双Peak回退系统**: 主Peak失效时智能切换到次Peak的容错设计
 4. **10001-bin直方图**: 超高精度DR分布统计（覆盖0-10000索引）
 5. **逆向遍历20%采样**: 从高RMS向低RMS遍历，符合"最响20%"标准
 6. **SSE向量化**: 4样本并行处理，预期6-7倍性能提升
+
+### 🆕 Early-version分支特性（最新）
+
+- **简化API**: BatchProcessor.process_interleaved_batch 参数从6个减少到5个
+- **死代码清理**: 移除weighted_rms实验系统（60+行死代码）
+- **统一文档**: 所有注释和文档都专注foobar2000兼容性
+- **算法精准**: 累加器级Sum Doubling确保与foobar2000的最佳匹配
 
 ### 依赖说明
 
@@ -269,6 +291,96 @@ echo "✅ 所有检查通过！"
 - 多格式音频文件兼容性测试
 - 边界条件和异常情况处理测试
 
+### 🚨 重要API变更（Early-version分支）
+
+**BatchProcessor.process_interleaved_batch 方法签名更新**:
+```rust
+// 旧版本（6个参数）
+pub fn process_interleaved_batch(
+    samples: &[f32], 
+    channels: usize, 
+    sample_rate: u32,
+    sum_doubling: bool,
+    foobar2000_mode: bool,
+    weighted_rms: bool,  // ❌ 已移除
+) -> AudioResult<BatchResult>
+
+// 新版本（5个参数） - Early-version分支
+pub fn process_interleaved_batch(
+    samples: &[f32],
+    channels: usize, 
+    sample_rate: u32,
+    sum_doubling: bool,
+    foobar2000_mode: bool,
+) -> AudioResult<BatchResult>
+```
+
+**移除的功能**:
+- `weighted_rms` 参数和相关实验性功能
+- `DrCalculator.set_weighted_rms()` 等控制方法
+- `SimpleHistogramAnalyzer.calculate_weighted_20_percent_rms()` 方法
+
+**保留的核心功能**:
+- 24字节ChannelData结构
+- 累加器级Sum Doubling机制
+- foobar2000兼容的20%采样算法
+- 双Peak回退系统
+- SIMD优化
+
 详细的技术分析和开发计划参见：
-- `docs/DR_Meter_Deep_Analysis_Enhanced.md` - 完整的foobar2000逆向分析
+- `docs/DR_Meter_Deep_Analysis_Enhanced.md` - 完整的foobar2000逆向分析  
 - `docs/DEVELOPMENT_PLAN.md` - 15天开发计划和技术规格
+
+---
+
+## 🎯 关键开发指引
+
+### 测试策略
+```bash
+# 运行特定模块测试
+cargo test core::dr_calculator::tests
+cargo test core::histogram::tests
+cargo test processing::batch::tests
+
+# 运行精度测试（release模式重要）
+cargo test --release simd_precision_test
+
+# 运行文档测试
+cargo test --doc
+```
+
+### 架构理解要点
+
+**数据流**:
+```
+Audio File → Decoder → Interleaved Samples → BatchProcessor → DrCalculator → DrResult
+                                                    ↓
+                                        SimdProcessor + ChannelData + Histogram
+```
+
+**关键抽象**:
+- `ChannelData`: 24字节内存对齐结构，foobar2000兼容
+- `DrCalculator`: 主计算引擎，支持两种模式（标准/foobar2000）
+- `SimpleHistogramAnalyzer`: 10001-bin直方图，20%采样算法
+- `BatchProcessor`: 批量处理器，SIMD优化入口
+
+**内存布局关键点**:
+- ChannelData必须8字节对齐
+- 直方图使用扁平化数组（多声道支持）
+- Sum Doubling在累加器级别进行，不是RMS级别
+
+### 性能注意事项
+
+- **SIMD要求**: SSE2在x86_64上，回退到标量计算在其他架构
+- **并行处理**: rayon用于批量文件处理，不是单文件内并行
+- **内存分配**: 重用ChannelData和直方图缓冲区避免分配
+- **浮点精度**: 使用f64进行累加，f32用于样本输入
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+
+      
+      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.
