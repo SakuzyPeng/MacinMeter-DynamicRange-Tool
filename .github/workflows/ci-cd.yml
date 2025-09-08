@@ -54,6 +54,9 @@ jobs:
           docs:
             - 'README.md'
             - 'docs/**'
+            - '*.md'
+            - 'CLAUDE.md'
+            - 'API_REFERENCE.md'
             
   # 🔍 代码质量检查和安全审计
   quality-check:
