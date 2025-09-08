@@ -359,8 +359,7 @@ fn process_single_audio_file(
             &samples,
             format.channels as usize,
             format.sample_rate,
-            config.sum_doubling,
-            true, // foobar2000兼容模式
+            config.sum_doubling, // 固定使用foobar2000兼容模式
         )?;
 
         // 显示性能统计
@@ -416,11 +415,10 @@ fn process_single_audio_file(
                     println!("⚡ 使用传统计算器（兼容模式）...");
                 }
 
-                let mut calculator = DrCalculator::new_with_mode(
+                let mut calculator = DrCalculator::new(
                     format.channels as usize,
                     config.sum_doubling,
-                    true, // 启用foobar2000模式
-                    format.sample_rate,
+                    format.sample_rate, // 固定使用foobar2000模式
                 )?;
 
                 // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式

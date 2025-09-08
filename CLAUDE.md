@@ -254,8 +254,10 @@ echo "✅ 所有检查通过！"
 
 ### 🆕 Early-version分支特性（最新）
 
-- **简化API**: BatchProcessor.process_interleaved_batch 参数从6个减少到5个
-- **死代码清理**: 移除weighted_rms实验系统（60+行死代码）
+- **API极简化**: BatchProcessor.process_interleaved_batch 参数从6个减少到4个
+- **模式统一**: 移除模式选择，固定使用foobar2000兼容模式
+- **死代码清理**: 移除weighted_rms实验系统和标准模式计算（200+行死代码）
+- **构造函数简化**: DrCalculator.new 只需3个参数，移除new_with_mode方法
 - **统一文档**: 所有注释和文档都专注foobar2000兼容性
 - **算法精准**: 累加器级Sum Doubling确保与foobar2000的最佳匹配
 
@@ -305,19 +307,40 @@ pub fn process_interleaved_batch(
     weighted_rms: bool,  // ❌ 已移除
 ) -> AudioResult<BatchResult>
 
-// 新版本（5个参数） - Early-version分支
+// 当前版本（4个参数） - Early-version分支
 pub fn process_interleaved_batch(
     samples: &[f32],
     channels: usize, 
     sample_rate: u32,
+    sum_doubling: bool,  // 固定使用foobar2000模式，无需模式参数
+) -> AudioResult<BatchResult>
+```
+
+**DrCalculator构造函数简化**:
+```rust
+// 旧版本（支持模式选择）
+pub fn new_with_mode(
+    channel_count: usize,
     sum_doubling: bool,
     foobar2000_mode: bool,
-) -> AudioResult<BatchResult>
+    sample_rate: u32,
+) -> AudioResult<Self>
+
+// 当前版本（固定foobar2000模式）
+pub fn new(
+    channel_count: usize,
+    sum_doubling: bool,
+    sample_rate: u32,
+) -> AudioResult<Self>
 ```
 
 **移除的功能**:
 - `weighted_rms` 参数和相关实验性功能
+- `foobar2000_mode` 参数（现在固定启用）
+- `DrCalculator.new_with_mode()` 构造方法
 - `DrCalculator.set_weighted_rms()` 等控制方法
+- `DrCalculator.foobar2000_mode()` 状态查询方法
+- `calculate_channel_rms()` 标准模式RMS计算方法
 - `SimpleHistogramAnalyzer.calculate_weighted_20_percent_rms()` 方法
 
 **保留的核心功能**:
@@ -347,7 +370,32 @@ cargo test --release simd_precision_test
 
 # 运行文档测试
 cargo test --doc
+
+# 运行单个测试（用于调试）
+cargo test test_calculate_dr_basic -- --nocapture
 ```
+
+### 测试数据特点
+
+**重要**: foobar2000模式使用20%采样算法，测试数据必须适配这一特性：
+
+```rust
+// ✅ 正确的测试数据模式
+let mut samples = Vec::new();
+for _ in 0..100 {
+    samples.push(0.01); // 大量小信号，降低20%RMS
+}
+samples.push(1.0);  // 主Peak
+samples.push(0.9);  // 次Peak，确保远大于20%RMS
+
+// ❌ 错误的测试数据（会导致RMS > Peak错误）
+let samples = vec![0.1, 0.1, 0.8, 0.7]; // 信号过强，20%RMS可能超过Peak
+```
+
+**测试约束**:
+- 必须确保Peak值远大于20%RMS值
+- foobar2000会优先选择次Peak而非主Peak
+- Sum Doubling启用时RMS值会相应调整
 
 ### 架构理解要点
 
@@ -360,7 +408,7 @@ Audio File → Decoder → Interleaved Samples → BatchProcessor → DrCalculat
 
 **关键抽象**:
 - `ChannelData`: 24字节内存对齐结构，foobar2000兼容
-- `DrCalculator`: 主计算引擎，支持两种模式（标准/foobar2000）
+- `DrCalculator`: 主计算引擎，专注foobar2000兼容模式
 - `SimpleHistogramAnalyzer`: 10001-bin直方图，20%采样算法
 - `BatchProcessor`: 批量处理器，SIMD优化入口
 

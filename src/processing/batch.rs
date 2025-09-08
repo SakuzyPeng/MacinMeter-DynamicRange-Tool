@@ -61,13 +61,12 @@ pub struct SimdUsageStats {
 struct ChannelProcessConfig {
     samples_per_channel: usize,
     sum_doubling: bool,
-    foobar2000_mode: bool,
     use_simd: bool,
     sample_rate: u32,
-    // 🏷️ FEATURE_REMOVAL: weighted_rms配置参数已删除
+    // 🏷️ FEATURE_REMOVAL: foobar2000_mode配置参数已删除
     // 📅 删除时间: 2025-09-08
-    // 🎯 原因: foobar2000专属分支，无需API兼容性，彻底简化配置
-    // 💡 效果: 减少配置复杂度，专注foobar2000最优精度算法
+    // 🎯 原因: foobar2000专属分支，统一使用foobar2000模式，无需运行时切换
+    // 💡 效果: 简化API，减少配置复杂度，专注foobar2000最优精度算法
 }
 
 /// 高性能批量处理器
@@ -111,6 +110,7 @@ impl BatchProcessor {
     /// 批量处理交错音频数据（多声道SIMD优化）
     ///
     /// 使用SIMD并行处理每个声道，同时支持多声道间的并行计算
+    /// 固定使用foobar2000兼容模式（20%采样算法）
     ///
     /// # 参数
     ///
@@ -118,7 +118,6 @@ impl BatchProcessor {
     /// * `channel_count` - 声道数量
     /// * `sample_rate` - 采样率
     /// * `sum_doubling` - 是否启用Sum Doubling补偿
-    /// * `foobar2000_mode` - 是否启用foobar2000兼容模式
     ///
     /// # 返回值
     ///
@@ -129,7 +128,6 @@ impl BatchProcessor {
         channel_count: usize,
         sample_rate: u32,
         sum_doubling: bool,
-        foobar2000_mode: bool,
     ) -> AudioResult<BatchResult> {
         let start_time = std::time::Instant::now();
 
@@ -146,11 +144,10 @@ impl BatchProcessor {
         // 决定是否使用SIMD优化
         let use_simd = self.simd_processor.should_use_simd(samples_per_channel);
 
-        // 创建处理配置
+        // 创建处理配置（固定使用foobar2000模式）
         let config = ChannelProcessConfig {
             samples_per_channel,
             sum_doubling,
-            foobar2000_mode,
             use_simd,
             sample_rate,
         };
@@ -283,13 +280,8 @@ impl BatchProcessor {
         channel_idx: usize,
         config: &ChannelProcessConfig,
     ) -> AudioResult<DrResult> {
-        // 创建DR计算器（统一使用标准API）
-        let mut calculator = DrCalculator::new_with_mode(
-            1,
-            config.sum_doubling,
-            config.foobar2000_mode,
-            config.sample_rate,
-        )?;
+        // 创建DR计算器（统一使用foobar2000模式）
+        let mut calculator = DrCalculator::new(1, config.sum_doubling, config.sample_rate)?;
 
         // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
         // 📅 修改时间: 2025-08-31
@@ -365,25 +357,27 @@ mod tests {
     fn test_interleaved_batch_processing() {
         let processor = BatchProcessor::new(false, None); // 禁用多线程简化测试
 
-        // 立体声测试数据
-        let samples = vec![
-            0.1, -0.1, // L1, R1
-            0.1, -0.1, // L2, R2
-            0.8, -0.8, // L3, R3 (主Peak)
-            0.7, -0.7, // L4, R4 (次Peak，足够大应对√2补偿)
-        ];
+        // 立体声测试数据 - 适配foobar2000模式
+        let mut samples = Vec::new();
+        for _ in 0..100 {
+            samples.extend_from_slice(&[0.01, -0.01]); // 大量小信号
+        }
+        samples.extend_from_slice(&[
+            1.0, -1.0, // 主Peak
+            0.9, -0.9, // 次Peak，确保远大于20%RMS
+        ]);
 
         let result = processor
             .process_interleaved_batch(
                 &samples, 2, // 立体声
-                44100, false, false, // foobar2000兼容模式
+                44100, false, // sum_doubling禁用
             )
             .unwrap();
 
         // 验证结果
         assert_eq!(result.dr_results.len(), 2);
         assert_eq!(result.performance_stats.channels_processed, 2);
-        assert_eq!(result.performance_stats.total_samples, 8);
+        assert_eq!(result.performance_stats.total_samples, samples.len()); // 204个样本
 
         // 检查每个声道的结果
         for dr_result in &result.dr_results {
@@ -419,7 +413,7 @@ mod tests {
         samples.push(-0.8); // 右声道Peak
 
         let result = processor
-            .process_interleaved_batch(&samples, 2, 44100, false, false)
+            .process_interleaved_batch(&samples, 2, 44100, false)
             .unwrap();
 
         // 验证SIMD使用情况
@@ -441,23 +435,26 @@ mod tests {
 
     #[test]
     fn test_parallel_vs_sequential_consistency() {
-        let samples = vec![
-            0.1, 0.1, 0.1, 0.1, // 4声道样本1
-            0.1, 0.1, 0.1, 0.1, // 4声道样本2
-            0.8, 0.8, 0.8, 0.8, // 4声道主Peak
-            0.7, 0.7, 0.7, 0.7, // 4声道次Peak（足够大应对√2补偿）
-        ];
+        // 创建适配foobar2000模式的4声道测试数据
+        let mut samples = Vec::new();
+        for _ in 0..50 {
+            samples.extend_from_slice(&[0.01, 0.01, 0.01, 0.01]); // 4声道小信号
+        }
+        samples.extend_from_slice(&[
+            1.0, 1.0, 1.0, 1.0, // 4声道主Peak
+            0.95, 0.95, 0.95, 0.95, // 4声道次Peak，确保远大于20%RMS
+        ]);
 
         // 顺序处理
         let seq_processor = BatchProcessor::new(false, None);
         let seq_result = seq_processor
-            .process_interleaved_batch(&samples, 4, 44100, false, false)
+            .process_interleaved_batch(&samples, 4, 44100, false)
             .unwrap();
 
         // 并行处理
         let par_processor = BatchProcessor::new(true, None);
         let par_result = par_processor
-            .process_interleaved_batch(&samples, 4, 44100, false, false)
+            .process_interleaved_batch(&samples, 4, 44100, false)
             .unwrap();
 
         // 比较结果（应该相同）

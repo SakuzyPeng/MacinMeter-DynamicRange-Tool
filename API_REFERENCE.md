@@ -52,18 +52,10 @@ DR计算引擎，负责协调整个动态范围计算过程。
 
 ```rust
 impl DrCalculator {
-    /// 创建标准DR计算器
+    /// 创建DR计算器（固定使用foobar2000兼容模式）
     pub fn new(
         channel_count: usize, 
         sum_doubling: bool, 
-        sample_rate: u32
-    ) -> AudioResult<Self>
-    
-    /// 创建带模式选择的DR计算器
-    pub fn new_with_mode(
-        channel_count: usize, 
-        sum_doubling: bool, 
-        foobar2000_mode: bool, 
         sample_rate: u32
     ) -> AudioResult<Self>
 }
@@ -72,8 +64,9 @@ impl DrCalculator {
 **参数说明**:
 - `channel_count`: 音频声道数量
 - `sum_doubling`: 是否启用累加器级Sum Doubling补偿
-- `foobar2000_mode`: 是否启用foobar2000兼容模式（20%采样算法）
 - `sample_rate`: 采样率（Hz）
+
+**注意**: Early-version分支固定使用foobar2000兼容模式（20%采样算法），无需额外参数指定。
 
 #### 核心方法
 
@@ -213,14 +206,13 @@ impl BatchProcessor {
         thread_pool_size: Option<usize>
     ) -> Self
     
-    /// 🚨 Early-Version API: 处理交错音频批次（5个参数）
+    /// 🚨 Early-Version API: 处理交错音频批次（4个参数，固定foobar2000模式）
     pub fn process_interleaved_batch(
         &self,
         samples: &[f32],           // 交错音频样本
         channel_count: usize,      // 声道数量
         sample_rate: u32,          // 采样率
         sum_doubling: bool,        // Sum Doubling开关
-        foobar2000_mode: bool,     // foobar2000兼容模式
     ) -> AudioResult<BatchResult>
     
     /// 获取SIMD能力信息
@@ -492,8 +484,7 @@ let batch_result = processor.process_interleaved_batch(
     &samples,       // 音频样本
     2,             // 立体声
     44100,         // 采样率
-    true,          // Sum Doubling
-    true,          // foobar2000模式
+    true,          // Sum Doubling（固定foobar2000模式）
 )?;
 
 // 3. 查看结果和性能统计
@@ -521,8 +512,7 @@ let result = processor.process_interleaved_batch(
     decoder.samples(),
     format.channels as usize,
     format.sample_rate,
-    true,
-    true,
+    true, // Sum Doubling（固定foobar2000模式）
 )?;
 
 // 4. 显示DR结果
@@ -555,13 +545,12 @@ pub fn process_interleaved_batch(
     weighted_rms: bool,  // 已移除
 ) -> AudioResult<BatchResult>
 
-// ✅ 新版本（5个参数）- Early-version分支
+// ✅ 新版本（4个参数）- Early-version分支
 pub fn process_interleaved_batch(
     samples: &[f32],
     channels: usize, 
     sample_rate: u32,
-    sum_doubling: bool,
-    foobar2000_mode: bool,
+    sum_doubling: bool, // 固定使用foobar2000模式
 ) -> AudioResult<BatchResult>
 ```
 
