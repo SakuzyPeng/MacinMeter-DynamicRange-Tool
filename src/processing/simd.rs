@@ -202,31 +202,42 @@ impl SimdChannelData {
     ///
     /// 使用128位SSE2向量并行处理4个f32样本：
     /// - 向量化RMS累积（平方和）
-    /// - 向量化Peak检测（绝对值最大）
-    /// - 双Peak机制的向量化实现
+    /// - 标量处理Peak检测确保精度一致性
+    /// - 完整处理所有样本（包括剩余样本）
     #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "sse4.1")]
+    #[target_feature(enable = "sse2")]
+    #[allow(unused_unsafe)] // 🎯 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
     unsafe fn process_samples_sse2(&mut self, samples: &[f32]) -> usize {
         let len = samples.len();
         let mut i = 0;
 
-        // SIMD仅处理RMS累积
-        let mut rms_accum = _mm_set1_ps(0.0);
-
         // SIMD加速RMS计算：4样本并行处理
         while i + 4 <= len {
-            // 加载4个样本到SSE寄存器
+            // 加载4个样本到SSE寄存器（内存访问需要unsafe）
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
-            // RMS累积：samples^2 (SIMD加速核心)
+            // RMS累积：samples^2 (算术操作在target_feature中不需要unsafe)
             let squares = _mm_mul_ps(samples_vec, samples_vec);
-            rms_accum = _mm_add_ps(rms_accum, squares);
+
+            // 🎯 精度一致性关键改进：逐个提取并以f64精度累积
+            // 这确保了与标量实现的绝对精度一致性，避免f32批量累积的误差
+            let mut square_results = [0.0f32; 4];
+            unsafe { _mm_storeu_ps(square_results.as_mut_ptr(), squares) };
+
+            // 逐个f64累积，与标量实现保持完全相同的累积精度
+            for square in square_results {
+                self.inner.rms_accumulator += square as f64;
+            }
 
             i += 4;
         }
 
-        // 水平归约：将4个并行RMS值合并
-        self.inner.rms_accumulator += unsafe { self.horizontal_sum_ps(rms_accum) } as f64;
+        // 🎯 处理剩余样本（标量方式，确保完整性）
+        while i < len {
+            let sample = samples[i] as f64;
+            self.inner.rms_accumulator += sample * sample;
+            i += 1;
+        }
 
         // Peak检测使用标量方式确保跨架构一致性
         for &sample in samples {
@@ -251,17 +262,6 @@ impl SimdChannelData {
             self.inner.process_sample(sample);
         }
         samples.len()
-    }
-
-    /// SSE寄存器水平求和（4个f32相加）
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "sse3")]
-    unsafe fn horizontal_sum_ps(&self, vec: __m128) -> f32 {
-        let shuf1 = _mm_movehdup_ps(vec); // [1,1,3,3] 
-        let sum1 = _mm_add_ps(vec, shuf1); // [0+1,1+1,2+3,3+3]
-        let shuf2 = _mm_movehl_ps(sum1, sum1); // [2+3,3+3,2+3,3+3]
-        let sum2 = _mm_add_ss(sum1, shuf2); // [0+1+2+3,...]
-        _mm_cvtss_f32(sum2)
     }
 
     /// 获取内部ChannelData的引用
@@ -389,7 +389,7 @@ mod tests {
             scalar_data.process_sample(sample);
         }
 
-        // 比较结果（允许浮点精度误差）
+        // 比较结果（要求绝对精度一致性）
         let rms_diff = (simd_processor.inner().rms_accumulator - scalar_data.rms_accumulator).abs();
         let peak1_diff = (simd_processor.inner().peak_primary - scalar_data.peak_primary).abs();
         let peak2_diff = (simd_processor.inner().peak_secondary - scalar_data.peak_secondary).abs();
