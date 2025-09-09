@@ -4,7 +4,6 @@
 //!
 //! 注：本实现通过IDA Pro逆向分析理解算法逻辑，所有代码均为Rust原创实现
 
-use super::{ChannelData, SimpleHistogramAnalyzer};
 use crate::error::{AudioError, AudioResult};
 use crate::processing::SimdChannelData;
 
@@ -321,28 +320,19 @@ impl BlockProcessor {
 /// - 多声道数据管理
 /// - Sum Doubling补偿机制
 /// - DR值计算和结果生成
-/// - 支持两种处理模式：传统样本级处理和官方规范的块级处理
+/// - 使用官方规范的3秒块级处理架构
 pub struct DrCalculator {
-    /// 每个声道的数据累积器（传统模式）
-    channels: Vec<ChannelData>,
-
-    /// 总处理样本数（单声道）
-    sample_count: usize,
+    /// 声道数量
+    channel_count: usize,
 
     /// 是否启用Sum Doubling补偿（交错数据）
     sum_doubling_enabled: bool,
-
-    /// 每个声道的简单直方图分析器（传统模式）
-    histogram_analyzers: Vec<SimpleHistogramAnalyzer>,
 
     /// 采样率
     sample_rate: u32,
 
     /// 块处理器（官方规范模式）
-    block_processor: Option<BlockProcessor>,
-
-    /// 处理模式：true为块级处理（官方规范），false为传统样本级处理
-    use_block_processing: bool,
+    block_processor: BlockProcessor,
     // 🏷️ FEATURE_REMOVAL: 精确权重实验控制开关已删除
     // 📅 删除时间: 2025-09-08
     // 🎯 原因: 在所有使用位置都固定为false，属于死代码
@@ -376,7 +366,7 @@ pub struct SumDoublingIssues {
 }
 
 impl DrCalculator {
-    /// 创建启用块处理的DR计算器（官方规范模式）
+    /// 创建DR计算器（官方规范模式）
     ///
     /// 使用3秒块处理架构，完全遵循官方DR规范：
     /// DR = -20 × log₁₀(√(∑RMS_n²/N) / Pk_2nd)
@@ -394,9 +384,9 @@ impl DrCalculator {
     /// use macinmeter_dr_tool::core::DrCalculator;
     ///
     /// // 使用官方规范的3秒块处理模式
-    /// let calculator = DrCalculator::new_with_block_processing(2, true, 48000, 3.0);
+    /// let calculator = DrCalculator::new(2, true, 48000, 3.0);
     /// ```
-    pub fn new_with_block_processing(
+    pub fn new(
         channel_count: usize,
         sum_doubling: bool,
         sample_rate: u32,
@@ -421,21 +411,11 @@ impl DrCalculator {
         // 创建块处理器
         let block_processor = BlockProcessor::new(block_duration, sample_rate, sum_doubling);
 
-        // 仍然需要创建传统结构以保持API兼容性
-        let histogram_analyzers = (0..channel_count)
-            .map(|channel_idx| {
-                SimpleHistogramAnalyzer::new_multichannel(sample_rate, channel_count, channel_idx)
-            })
-            .collect();
-
         Ok(Self {
-            channels: vec![ChannelData::new(); channel_count],
-            sample_count: 0,
+            channel_count,
             sum_doubling_enabled: sum_doubling,
-            histogram_analyzers,
             sample_rate,
-            block_processor: Some(block_processor),
-            use_block_processing: true,
+            block_processor,
         })
     }
 
@@ -457,16 +437,7 @@ impl DrCalculator {
         samples: &[f32],
         channel_count: usize,
     ) -> AudioResult<Vec<DrResult>> {
-        if !self.use_block_processing {
-            return Err(AudioError::CalculationError(
-                "此方法仅在块处理模式下可用".to_string(),
-            ));
-        }
-
-        let block_processor = self
-            .block_processor
-            .as_ref()
-            .ok_or_else(|| AudioError::CalculationError("块处理器未初始化".to_string()))?;
+        let block_processor = &self.block_processor;
 
         // 将样本转换为块
         let channel_blocks =
@@ -521,27 +492,9 @@ impl DrCalculator {
     // 💡 原因: 用户要求只保留削波检测，移除复杂质量评估
     // 🔄 回退: 如需复杂质量评估，查看git历史中的evaluate_sum_doubling_quality()方法
 
-    /// 重置计算器状态，准备处理新的音频数据
-    pub fn reset(&mut self) {
-        for channel in &mut self.channels {
-            channel.reset();
-        }
-        self.sample_count = 0;
-
-        // 重置直方图
-        for analyzer in self.histogram_analyzers.iter_mut() {
-            analyzer.clear();
-        }
-    }
-
-    /// 获取当前处理的样本总数
-    pub fn sample_count(&self) -> usize {
-        self.sample_count
-    }
-
     /// 获取声道数量
     pub fn channel_count(&self) -> usize {
-        self.channels.len()
+        self.channel_count
     }
 
     /// 获取Sum Doubling启用状态
@@ -549,23 +502,9 @@ impl DrCalculator {
         self.sum_doubling_enabled
     }
 
-    /// 获取指定声道的直方图统计信息
-    pub fn get_histogram_stats(&self, channel_idx: usize) -> Option<crate::core::SimpleStats> {
-        if channel_idx < self.histogram_analyzers.len() {
-            Some(self.histogram_analyzers[channel_idx].get_statistics())
-        } else {
-            None
-        }
-    }
-
     /// 获取音频采样率
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
-    }
-
-    /// 检查是否启用了块处理模式
-    pub fn is_block_processing_enabled(&self) -> bool {
-        self.use_block_processing
     }
 
     // 🏷️ FEATURE_REMOVAL: 精确权重公式控制方法已删除
@@ -580,21 +519,20 @@ mod tests {
 
     #[test]
     fn test_new_calculator() {
-        let calc = DrCalculator::new_with_block_processing(2, true, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, true, 48000, 3.0).unwrap();
         assert_eq!(calc.channel_count(), 2);
-        assert_eq!(calc.sample_count(), 0);
         assert!(calc.sum_doubling_enabled());
     }
 
     #[test]
     fn test_invalid_channel_count() {
-        assert!(DrCalculator::new_with_block_processing(0, false, 48000, 3.0).is_err());
-        assert!(DrCalculator::new_with_block_processing(33, false, 48000, 3.0).is_err());
+        assert!(DrCalculator::new(0, false, 48000, 3.0).is_err());
+        assert!(DrCalculator::new(33, false, 48000, 3.0).is_err());
     }
 
     #[test]
     fn test_calculate_dr_from_interleaved_samples() {
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
         let samples = vec![0.5, -0.3, 0.7, -0.1]; // L1, R1, L2, R2
 
         let results = calc.calculate_dr_from_samples(&samples, 2).unwrap();
@@ -606,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_invalid_interleaved_data() {
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
         let samples = vec![0.5, -0.3, 0.7]; // 不是2的倍数
 
         assert!(calc.calculate_dr_from_samples(&samples, 2).is_err());
@@ -614,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_from_channel_samples() {
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
         // 将分离的声道样本转换为交错格式
         let interleaved_samples = vec![0.5, -0.3, 0.7, -0.1]; // L1, R1, L2, R2
 
@@ -628,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_basic() {
-        let calc = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, false, 48000, 3.0).unwrap();
         // 🔥 修复：适配foobar2000模式，使用大量小信号+少量大信号的数据
         // foobar2000使用20%采样算法，需要确保Peak远大于20%RMS
         let mut samples = vec![0.1; 100]; // 大量小信号
@@ -662,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_with_sum_doubling() {
-        let calc = DrCalculator::new_with_block_processing(1, true, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, true, 48000, 3.0).unwrap();
         // 🔥 修复：适配foobar2000模式+Sum Doubling，使用更多小信号数据
         let mut samples = vec![0.05; 200]; // 大量极小信号，降低20%RMS
         samples.push(1.0); // 主Peak
@@ -693,7 +631,7 @@ mod tests {
 
     #[test]
     fn test_calculate_dr_no_data() {
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
         let empty_samples: Vec<f32> = vec![];
         assert!(calc.calculate_dr_from_samples(&empty_samples, 2).is_err());
     }
@@ -709,7 +647,7 @@ mod tests {
 
     #[test]
     fn test_stateless_calculation() {
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
         let samples = vec![0.5, -0.3, 0.7, -0.1];
 
         // 新的API是无状态的，不需要reset
@@ -725,7 +663,7 @@ mod tests {
 
     #[test]
     fn test_realistic_dr_calculation() {
-        let calc = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, false, 48000, 3.0).unwrap();
 
         // 🔥 修复：模拟真实音频，使用更多动态范围数据
         let mut samples = vec![0.02; 500]; // 大量极小信号，模拟静音段
@@ -758,7 +696,7 @@ mod tests {
 
     #[test]
     fn test_intelligent_sum_doubling_normal_case() {
-        let calc = DrCalculator::new_with_block_processing(1, true, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, true, 48000, 3.0).unwrap();
 
         // 🔥 修复：适配foobar2000模式，使用更大的动态范围
         let mut samples = vec![0.01; 1000]; // 极小信号，确保20%RMS远低于Peak
@@ -791,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_intelligent_sum_doubling_disabled() {
-        let calc = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, false, 48000, 3.0).unwrap();
 
         // 🔥 修复：适配foobar2000模式，Sum Doubling禁用情况
         let mut samples = vec![0.01; 800]; // 极小信号，确保20%RMS远低于Peak
@@ -1010,14 +948,13 @@ mod tests {
 
     #[test]
     fn test_dr_calculator_with_block_processing() {
-        let calc = DrCalculator::new_with_block_processing(
+        let calc = DrCalculator::new(
             1, false, // sum_doubling - 关闭以避免RMS > Peak问题
             48000, 3.0, // 3秒块
         )
         .unwrap();
 
-        // 验证块处理模式已启用
-        assert!(calc.is_block_processing_enabled());
+        // 块处理模式已默认启用
 
         // 创建12秒的单声道测试数据（4个3秒块）
         let mut samples = Vec::new();
@@ -1064,10 +1001,10 @@ mod tests {
         let samples = generate_safe_test_data();
 
         // 现在统一使用块处理模式，测试多次计算的一致性
-        let calc1 = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc1 = DrCalculator::new(1, false, 48000, 3.0).unwrap();
         let results1 = calc1.calculate_dr_from_samples(&samples, 1).unwrap();
 
-        let calc2 = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc2 = DrCalculator::new(1, false, 48000, 3.0).unwrap();
         let results2 = calc2.calculate_dr_from_samples(&samples, 1).unwrap();
 
         // 相同的输入应该产生一致的结果
@@ -1095,7 +1032,7 @@ mod tests {
 
     #[test]
     fn test_sum_doubling_with_block_processing() {
-        let calc = DrCalculator::new_with_block_processing(1, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(1, false, 48000, 3.0).unwrap();
 
         // 创建不会导致RMS>Peak问题的测试数据
         let samples = generate_safe_test_data();
@@ -1142,7 +1079,7 @@ mod tests {
     #[test]
     fn test_block_processing_memory_efficiency() {
         // 测试块处理是否高效处理大量数据
-        let calc = DrCalculator::new_with_block_processing(2, false, 48000, 3.0).unwrap();
+        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
 
         // 创建12秒的双声道交错测试数据，确保RMS < Peak
         let mut large_samples = Vec::new();

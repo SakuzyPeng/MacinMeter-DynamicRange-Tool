@@ -335,7 +335,7 @@ fn process_single_audio_file(
         format.sample_rate,
         || {
             // 创建块处理DR计算器（统一算法入口）
-            let calculator = DrCalculator::new_with_block_processing(
+            let calculator = DrCalculator::new(
                 format.channels as usize,
                 config.sum_doubling,
                 format.sample_rate,

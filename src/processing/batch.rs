@@ -283,7 +283,7 @@ impl BatchProcessor {
         // 创建块处理DR计算器（官方规范模式）
         // 重要：虽然数据已分离为单声道，但Sum Doubling基于原始数据来源
         // 如果原始数据是交错的，分离后的每个声道仍需要Sum Doubling补偿
-        let calculator = DrCalculator::new_with_block_processing(
+        let calculator = DrCalculator::new(
             1,
             config.sum_doubling, // 保持原始交错数据的Sum Doubling配置
             config.sample_rate,
