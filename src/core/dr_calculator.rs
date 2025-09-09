@@ -339,32 +339,6 @@ pub struct DrCalculator {
     // 💡 foobar2000专属模式：只使用简单算法确保最优精度
 }
 
-/// Sum Doubling质量评估结果
-#[derive(Debug, Clone, PartialEq)]
-pub struct SumDoublingQuality {
-    /// 是否建议应用Sum Doubling
-    pub should_apply: bool,
-
-    /// 置信度评分 (0.0-1.0)
-    pub confidence: f64,
-
-    /// 检测到的问题标志
-    pub issues: SumDoublingIssues,
-}
-
-/// Sum Doubling问题标志
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct SumDoublingIssues {
-    /// 样本数量过少
-    pub insufficient_samples: bool,
-
-    /// RMS值异常（可能影响补偿效果）
-    pub abnormal_rms: bool,
-
-    /// Peak值异常（可能不适合补偿）
-    pub abnormal_peak: bool,
-}
-
 impl DrCalculator {
     /// 创建DR计算器（官方规范模式）
     ///
