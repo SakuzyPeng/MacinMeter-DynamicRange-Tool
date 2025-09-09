@@ -18,7 +18,7 @@ pub mod utils;
 
 // 重新导出核心类型
 pub use audio::{AudioFormat, MultiDecoder, WavDecoder};
-pub use core::dr_calculator::DrResult;
+pub use core::dr_calculator::{AudioBlock, BlockProcessor, DrResult};
 pub use core::{ChannelData, DrCalculator};
 pub use error::{AudioError, AudioResult};
 pub use processing::{BatchProcessor, SimdChannelData, SimdProcessor};

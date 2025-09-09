@@ -223,21 +223,21 @@ impl ChannelData {
     /// assert_eq!(data.get_effective_peak(), 0.5);
     /// ```
     pub fn get_effective_peak(&self) -> f64 {
-        // 🔥 重大突破：基于foobar2000反汇编分析的真实峰值选择逻辑
-        // 📖 汇编代码第115-117行：v26 = *(第二大峰值); 优先使用第二大峰值！
-        // 🎯 foobar2000实际策略：优先第二大峰值 -> 回退到绝对最大峰值
+        // 🎯 CORRECT: foobar2000 Peak选择的真实逻辑
+        // 核心原则：只要主Peak不削波就选主Peak，削波时才用次Peak
 
-        // 步骤1：优先使用第二大峰值 (抗尖峰干扰设计)
-        if self.peak_secondary > 0.0 {
-            self.peak_secondary
-        }
-        // 步骤2：回退到绝对最大峰值 (仅当第二大峰值无效时)
-        else if self.peak_primary > 0.0 {
+        // 步骤1：检查主Peak是否削波（达到或接近1.0）
+        const CLIPPING_THRESHOLD: f64 = 1.0 - 1e-6; // 允许微小的数值误差
+
+        if self.peak_primary > 0.0 && self.peak_primary < CLIPPING_THRESHOLD {
+            // 主Peak未削波，直接使用
             self.peak_primary
-        }
-        // 步骤3：兜底策略
-        else {
-            0.0
+        } else if self.peak_secondary > 0.0 {
+            // 主Peak削波或无效，回退到次Peak
+            self.peak_secondary
+        } else {
+            // 兜底策略：如果次Peak也无效，仍然使用主Peak
+            self.peak_primary.max(0.0)
         }
     }
 
@@ -387,8 +387,8 @@ mod tests {
 
         // 主Peak和次Peak都存在
         data.process_sample(0.8);
-        // 🔥 修复：新逻辑优先返回secondary peak (0.5) 而不是primary peak (0.8)
-        assert!((data.get_effective_peak() - 0.5).abs() < 1e-6); // 返回次Peak（新逻辑）
+        // 🎯 CORRECT: 削波逻辑 - 主Peak=0.8未削波，应该返回主Peak
+        assert!((data.get_effective_peak() - 0.8).abs() < 1e-6); // 返回主Peak（未削波）
 
         // 模拟主Peak失效情况（手动设置为0测试回退机制）
         data.peak_primary = 0.0;

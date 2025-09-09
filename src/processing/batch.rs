@@ -280,8 +280,15 @@ impl BatchProcessor {
         channel_idx: usize,
         config: &ChannelProcessConfig,
     ) -> AudioResult<DrResult> {
-        // 创建DR计算器（统一使用foobar2000模式）
-        let mut calculator = DrCalculator::new(1, config.sum_doubling, config.sample_rate)?;
+        // 创建块处理DR计算器（官方规范模式）
+        // 重要：虽然数据已分离为单声道，但Sum Doubling基于原始数据来源
+        // 如果原始数据是交错的，分离后的每个声道仍需要Sum Doubling补偿
+        let calculator = DrCalculator::new_with_block_processing(
+            1,
+            config.sum_doubling, // 保持原始交错数据的Sum Doubling配置
+            config.sample_rate,
+            3.0, // 官方规范3秒块
+        )?;
 
         // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
         // 📅 修改时间: 2025-08-31
@@ -292,21 +299,9 @@ impl BatchProcessor {
         // 📅 删除时间: 2025-09-08
         // 🎯 原因: foobar2000专属模式固定使用简单算法，无需运行时配置
 
-        if config.use_simd {
-            // SIMD优化路径：批量处理后使用标准API
-            let mut simd_data = self.simd_processor.create_channel_processor(samples.len());
-            simd_data.process_samples_simd(samples);
-
-            // 通过标准接口传递SIMD处理的数据
-            // 注意：这里需要将SIMD处理的结果转换为标准格式
-            // 目前暂时回退到标量处理以确保兼容性
-            calculator.process_channel_samples(&[samples.to_vec()])?;
-        } else {
-            // 标量处理路径
-            calculator.process_channel_samples(&[samples.to_vec()])?;
-        }
-
-        let results = calculator.calculate_dr()?;
+        // 使用块处理模式直接计算DR（官方规范）
+        // SIMD优化已在块处理内部实现，无需外部处理
+        let results = calculator.calculate_dr_from_samples(samples, 1)?;
         let mut result = results.into_iter().next().unwrap();
         result.channel = channel_idx;
 

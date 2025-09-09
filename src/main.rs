@@ -11,23 +11,11 @@ use macinmeter_dr_tool::{
     audio::{AudioFormat, MultiDecoder, WavDecoder},
     core::DrCalculator,
     error::{AudioError, AudioResult},
-    processing::BatchProcessor,
 };
 
 /// 应用程序版本信息
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
-
-/// 格式化数字显示（添加千位分隔符）
-fn format_number(num: usize) -> String {
-    if num >= 1_000_000 {
-        format!("{:.1}M", num as f64 / 1_000_000.0)
-    } else if num >= 1_000 {
-        format!("{:.1}K", num as f64 / 1_000.0)
-    } else {
-        num.to_string()
-    }
-}
 
 /// 应用程序配置
 #[derive(Debug)]
@@ -320,120 +308,43 @@ fn process_single_audio_file(
     // 创建安全运行器
     let runner = SafeRunner::new("DR计算");
 
-    // 决定使用哪种处理方式
-    let results = if config.enable_simd || config.enable_multithreading {
-        // 使用SIMD批量处理器（高性能模式）
-        if config.verbose {
-            println!("🚀 使用高性能批量处理器...");
-            println!(
-                "   SIMD优化: {}",
-                if config.enable_simd {
-                    "启用"
-                } else {
-                    "禁用"
-                }
-            );
-            println!(
-                "   多线程: {}",
-                if config.enable_multithreading {
-                    "启用"
-                } else {
-                    "禁用"
-                }
-            );
-        }
-
-        let batch_processor = BatchProcessor::new(config.enable_multithreading, None);
-
-        // 显示SIMD能力信息
-        if config.verbose {
-            let caps = batch_processor.simd_capabilities();
-            println!("💻 SIMD能力检测:");
-            println!("   SSE2: {}", caps.sse2);
-            println!("   SSE4.1: {}", caps.sse4_1);
-            println!("   AVX: {}", caps.avx);
-            println!("   推荐并行度: {}x", caps.recommended_parallelism());
-        }
-
-        let batch_result = batch_processor.process_interleaved_batch(
-            &samples,
-            format.channels as usize,
-            format.sample_rate,
-            config.sum_doubling, // 固定使用foobar2000兼容模式
-        )?;
-
-        // 显示性能统计
-        if config.verbose {
-            let stats = &batch_result.performance_stats;
-            println!("📊 性能统计:");
-
-            // 优化时间显示格式
-            let duration_display = if stats.total_duration_us >= 1_000_000 {
-                format!("{:.2}s", stats.total_duration_us as f64 / 1_000_000.0)
-            } else if stats.total_duration_us >= 1_000 {
-                format!("{:.1}ms", stats.total_duration_us as f64 / 1_000.0)
+    // 统一使用块处理模式DR计算器（官方规范）
+    if config.verbose {
+        println!("🧱 使用官方规范的块处理模式（3秒块）...");
+        println!(
+            "   SIMD优化: {}",
+            if config.enable_simd {
+                "启用"
             } else {
-                format!("{}μs", stats.total_duration_us)
-            };
-
-            // 优化处理速度显示格式
-            let speed_display = if stats.samples_per_second >= 1_000_000.0 {
-                format!("{:.1}M samples/s", stats.samples_per_second / 1_000_000.0)
-            } else if stats.samples_per_second >= 1_000.0 {
-                format!("{:.1}K samples/s", stats.samples_per_second / 1_000.0)
-            } else {
-                format!("{:.0} samples/s", stats.samples_per_second)
-            };
-
-            println!("   处理时间: {duration_display}");
-            println!("   处理速度: {speed_display}");
-            println!(
-                "   处理样本: {} ({} 声道)",
-                format_number(stats.total_samples),
-                stats.channels_processed
-            );
-
-            // SIMD信息（仅在有意义时显示）
-            if batch_result.simd_usage.used_simd || stats.simd_speedup > 1.0 {
-                println!(
-                    "   SIMD加速: {:.1}x (覆盖率: {:.1}%)",
-                    stats.simd_speedup,
-                    batch_result.simd_usage.simd_coverage * 100.0
-                );
+                "禁用"
             }
-        }
+        );
+        println!(
+            "   多线程: {}",
+            if config.enable_multithreading {
+                "启用"
+            } else {
+                "禁用"
+            }
+        );
+    }
 
-        batch_result.dr_results
-    } else {
-        // 使用传统DR计算器（兼容模式）
-        runner.run_with_protection(
-            &samples,
-            format.channels as usize,
-            format.sample_rate,
-            || {
-                if config.verbose {
-                    println!("⚡ 使用传统计算器（兼容模式）...");
-                }
+    let results = runner.run_with_protection(
+        &samples,
+        format.channels as usize,
+        format.sample_rate,
+        || {
+            // 创建块处理DR计算器（统一算法入口）
+            let calculator = DrCalculator::new_with_block_processing(
+                format.channels as usize,
+                config.sum_doubling,
+                format.sample_rate,
+                3.0, // 官方规范的3秒块
+            )?;
 
-                let mut calculator = DrCalculator::new(
-                    format.channels as usize,
-                    config.sum_doubling,
-                    format.sample_rate, // 固定使用foobar2000模式
-                )?;
-
-                // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
-                // 📅 修改时间: 2025-08-31
-                // 🎯 统一使用weighted_rms=false以保持与foobar2000最优精度匹配
-                // 🔄 回退: 如需重新启用选项，查看git历史
-                // 🏷️ FEATURE_REMOVAL: set_weighted_rms调用已删除
-                // 📅 删除时间: 2025-09-08
-                // 🎯 原因: foobar2000专属模式自动使用最优精度算法
-
-                calculator.process_interleaved_samples(&samples)?;
-                calculator.calculate_dr()
-            },
-        )?
-    };
+            calculator.calculate_dr_from_samples(&samples, format.channels as usize)
+        },
+    )?;
 
     Ok((results, format))
 }
