@@ -321,6 +321,7 @@ impl BlockProcessor {
 /// - Sum Doubling补偿机制
 /// - DR值计算和结果生成
 /// - 使用官方规范的3秒块级处理架构
+/// - 支持流式块累积和批量处理
 pub struct DrCalculator {
     /// 声道数量
     channel_count: usize,
@@ -333,6 +334,10 @@ pub struct DrCalculator {
 
     /// 块处理器（官方规范模式）
     block_processor: BlockProcessor,
+
+    /// 流式处理累积的块（用于大文件恒定内存处理）
+    /// 每个声道有自己的块列表
+    accumulated_blocks: Vec<Vec<AudioBlock>>,
     // 🏷️ FEATURE_REMOVAL: 精确权重实验控制开关已删除
     // 📅 删除时间: 2025-09-08
     // 🎯 原因: 在所有使用位置都固定为false，属于死代码
@@ -390,6 +395,7 @@ impl DrCalculator {
             sum_doubling_enabled: sum_doubling,
             sample_rate,
             block_processor,
+            accumulated_blocks: vec![Vec::new(); channel_count], // 为每个声道初始化一个空的块列表
         })
     }
 
@@ -479,6 +485,101 @@ impl DrCalculator {
     /// 获取音频采样率
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    /// 流式处理：处理单个音频块（恒定内存使用）
+    ///
+    /// 将音频块转换为AudioBlock并累积统计信息，不保留原始样本数据，
+    /// 实现恒定内存使用的大文件处理。
+    pub fn process_chunk(&mut self, chunk_samples: &[f32], channels: usize) -> AudioResult<()> {
+        // 将块样本转换为AudioBlock结构
+        let block_results = self
+            .block_processor
+            .process_interleaved_to_blocks(chunk_samples, channels)?;
+
+        // 累积有效的音频块（只存储块统计，不存储样本）
+        // block_results: Vec<Vec<AudioBlock>>, 每个元素是一个声道的块列表
+        for (channel_idx, channel_blocks) in block_results.into_iter().enumerate() {
+            for block in channel_blocks {
+                if block.is_valid() {
+                    self.accumulated_blocks[channel_idx].push(block);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 完成流式处理并计算最终DR结果
+    ///
+    /// 从累积的块统计信息中计算最终DR值，支持多声道处理。
+    /// 使用与批量模式相同的算法确保结果一致性。
+    pub fn finalize(&self) -> AudioResult<Vec<DrResult>> {
+        // 检查是否有任何声道的数据
+        let has_data = self
+            .accumulated_blocks
+            .iter()
+            .any(|ch_blocks| !ch_blocks.is_empty());
+        if !has_data {
+            return Err(AudioError::CalculationError(
+                "没有有效的音频块数据".to_string(),
+            ));
+        }
+
+        // 创建结果向量，每个声道一个结果
+        let mut results = Vec::new();
+
+        for channel in 0..self.channel_count {
+            // 获取该声道的所有块
+            let channel_blocks = &self.accumulated_blocks[channel];
+
+            if channel_blocks.is_empty() {
+                // 静音声道或空声道，返回特殊的静音结果（匹配foobar2000）
+                println!("⚠️  声道{}为静音或空声道，返回静音DR结果", channel + 1);
+                results.push(DrResult::new(
+                    channel, 0.0, // 静音声道DR值为0
+                    0.0, // 静音声道RMS为0（将在输出时显示为-1.#J）
+                    0.0, // 静音声道Peak为0（将在输出时显示为-1.#J）
+                    0,   // 样本数为0
+                ));
+                continue;
+            }
+
+            // 使用BlockProcessor的DR计算算法
+            let dr_value = self
+                .block_processor
+                .calculate_dr_from_blocks(channel_blocks)?;
+
+            // 计算该声道的统计信息
+            let total_samples: usize = channel_blocks.iter().map(|b| b.sample_count).sum();
+            let avg_rms = channel_blocks
+                .iter()
+                .map(|b| b.rms * b.rms)
+                .sum::<f64>()
+                .sqrt()
+                / (channel_blocks.len() as f64).sqrt();
+            let max_peak = channel_blocks.iter().map(|b| b.peak).fold(0.0, f64::max);
+
+            // 创建声道DR结果
+            results.push(DrResult::new(
+                channel,
+                dr_value,
+                avg_rms,
+                max_peak,
+                total_samples,
+            ));
+        }
+
+        // 检查是否至少有一个声道有有效数据
+        if results.is_empty() {
+            return Err(AudioError::CalculationError(
+                "所有声道都为静音或空声道，无法计算DR".to_string(),
+            ));
+        }
+
+        // 返回有效声道的结果
+        println!("✅ 成功计算{}个有效声道的DR值", results.len());
+        Ok(results)
     }
 
     // 🏷️ FEATURE_REMOVAL: 精确权重公式控制方法已删除

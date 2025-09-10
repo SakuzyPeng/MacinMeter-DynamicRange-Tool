@@ -38,12 +38,8 @@ impl SafetyGuard {
             return Err(AudioError::InvalidInput("音频样本数据不能为空".to_string()));
         }
 
-        if samples.len() > 100_000_000 {
-            // 100M样本限制
-            return Err(AudioError::InvalidInput(
-                "音频样本数量过大，可能导致内存不足".to_string(),
-            ));
-        }
+        // 移除粗暴的样本数量限制
+        // 现在由智能内存管理策略处理大文件安全性
 
         // 检查声道数
         if channels == 0 {

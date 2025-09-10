@@ -16,10 +16,13 @@ pub mod error;
 pub mod processing;
 pub mod utils;
 
-// 重新导出核心类型
-pub use audio::{AudioFormat, MultiDecoder, WavDecoder};
+// 重新导出核心类型 - 统一解码器
+pub use audio::universal_decoder::{
+    AudioFormat, DecoderCapability, FormatSupport, UniversalDecoder,
+};
 pub use core::dr_calculator::{AudioBlock, BlockProcessor, DrResult};
 pub use core::{ChannelData, DrCalculator};
 pub use error::{AudioError, AudioResult};
 pub use processing::{BatchProcessor, SimdChannelData, SimdProcessor};
 pub use utils::safety::SafeRunner;
+pub use utils::{MemoryEstimate, MemoryStrategySelector, ProcessingStrategy};
