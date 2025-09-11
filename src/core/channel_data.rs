@@ -183,11 +183,11 @@ impl ChannelData {
             return 0.0;
         }
 
-        // 🔥 关键修复：对整个累加器进行Sum Doubling，而不是对最终RMS
-        // 📖 foobar2000模式：final_rms_squared = accumulator + accumulator
+        // 🔥 关键修复：按foobar2000汇编顺序实现Sum Doubling
+        // 📖 汇编指令：addsd xmm1, xmm1（加法而非乘法）
         let final_accumulator = if apply_sum_doubling {
-            // 批次结束时对整个累加器进行Sum Doubling
-            self.rms_accumulator + self.rms_accumulator // 使用加法而非乘法！
+            // 批次结束时对整个累加器进行Sum Doubling（符合addsd指令）
+            self.rms_accumulator + self.rms_accumulator // ✅ 正确：使用加法
         } else {
             self.rms_accumulator
         };

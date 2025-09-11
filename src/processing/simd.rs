@@ -216,17 +216,18 @@ impl SimdChannelData {
             // 加载4个样本到SSE寄存器（内存访问需要unsafe）
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
-            // RMS累积：samples^2 (算术操作在target_feature中不需要unsafe)
-            let squares = _mm_mul_ps(samples_vec, samples_vec);
+            // 🎯 修复关键精度问题：直接以f64精度处理，避免f32中转精度损失
+            // 为匹配foobar2000的累加精度，将4个样本逐个转换为f64处理
+            unsafe {
+                // 提取4个f32样本到数组
+                let mut sample_results = [0.0f32; 4];
+                _mm_storeu_ps(sample_results.as_mut_ptr(), samples_vec);
 
-            // 🎯 精度一致性关键改进：逐个提取并以f64精度累积
-            // 这确保了与标量实现的绝对精度一致性，避免f32批量累积的误差
-            let mut square_results = [0.0f32; 4];
-            unsafe { _mm_storeu_ps(square_results.as_mut_ptr(), squares) };
-
-            // 逐个f64累积，与标量实现保持完全相同的累积精度
-            for square in square_results {
-                self.inner.rms_accumulator += square as f64;
+                // 直接以f64精度计算平方并累加，避免f32平方后的精度损失
+                for sample in sample_results {
+                    let sample_f64 = sample as f64;
+                    self.inner.rms_accumulator += sample_f64 * sample_f64;
+                }
             }
 
             i += 4;
@@ -393,6 +394,11 @@ mod tests {
         let rms_diff = (simd_processor.inner().rms_accumulator - scalar_data.rms_accumulator).abs();
         let peak1_diff = (simd_processor.inner().peak_primary - scalar_data.peak_primary).abs();
         let peak2_diff = (simd_processor.inner().peak_secondary - scalar_data.peak_secondary).abs();
+
+        // 验证SIMD处理器是否真的处理了样本
+        if simd_processor.inner().rms_accumulator == 0.0 {
+            panic!("❌ SIMD处理器RMS累加器为0，说明样本没有被正确处理！");
+        }
 
         assert!(rms_diff < 1e-6, "RMS差异过大: {rms_diff}");
         assert!(peak1_diff < 1e-6, "主Peak差异过大: {peak1_diff}");

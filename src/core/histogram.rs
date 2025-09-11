@@ -18,9 +18,7 @@
 // 🔥 Bit-exact数值常量 (与foobar2000完全相同的十六进制精度)
 // 📖 从foobar2000反汇编中提取的精确常量值
 const FOOBAR2000_0_2: f64 = f64::from_bits(0x3fc999999999999a); // 精确的0.2
-// 🏷️ FEATURE_REMOVAL: FOOBAR2000_1E8常量已删除
-// 📅 删除时间: 2025-09-08
-// 🎯 原因: 仅用于已删除的精确权重公式，现为死代码
+const FOOBAR2000_1E8: f64 = f64::from_bits(0x3e45798ee2308c3a); // 精确的1e-8 (0.00000001)
 
 // 🏷️ FEATURE_REMOVAL: 重复的foobar2000_sse_sqrt函数定义已删除
 // 📅 删除时间: 2025-09-08
@@ -276,6 +274,8 @@ impl DrHistogram {
         let samples_20_temp = (effective_count_f64 * FOOBAR2000_0_2 + 0.5) as i32; // foobar2000转换链
         let need = (samples_20_temp as u32 as u64).max(1); // 零值保护：i32 -> u32 -> u64
 
+        // 20%采样计算过程
+
         let mut remaining = need;
         let mut sum_square = 0.0;
 
@@ -291,11 +291,11 @@ impl DrHistogram {
             let use_count = available.min(remaining);
 
             if use_count > 0 {
-                // 计算该bin对应的幅度值
-                let amplitude = bin_index as f64 / 10000.0;
-
-                // 简单的平方和累积
-                sum_square += use_count as f64 * amplitude * amplitude;
+                // 🔥 关键修复：使用与foobar2000完全相同的浮点运算顺序
+                // 📖 对应C伪代码：v21 = v21 + (double)(int)v25 * 0.00000001 * ((double)v20 * (double)v20);
+                // 其中：v25=use_count, v20=bin_index, 0.00000001=FOOBAR2000_1E8
+                let bin_index_f64 = bin_index as f64;
+                sum_square += use_count as f64 * FOOBAR2000_1E8 * (bin_index_f64 * bin_index_f64);
                 remaining -= use_count; // 🎯 精确递减remaining计数器
             }
         }
@@ -311,7 +311,9 @@ impl DrHistogram {
 
             // 🎯 优先级2修复：DR计算阶段使用标量平方根（不是SSE）
             // 📖 基于UltraThink分析：音频处理用SSE，DR计算用标量
-            (sum_square / selected_f64).sqrt() // 标量平方根替代SSE
+
+            // 20%RMS计算完成
+            (sum_square / selected_f64).sqrt()
         } else {
             0.0
         }

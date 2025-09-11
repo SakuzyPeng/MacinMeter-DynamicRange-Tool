@@ -117,7 +117,7 @@ impl AppConfig {
         Self {
             input_path,
             batch_mode,
-            sum_doubling: true, // 内部强制启用Sum Doubling（用户不可见）
+            sum_doubling: true, // 🔥 修复：启用Sum Doubling匹配foobar2000
             verbose: matches.get_flag("verbose"),
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
