@@ -272,8 +272,9 @@ fn process_audio_file_streaming(
             }
         }
 
-        // 处理当前块（恒定内存）
-        dr_calculator.process_chunk(&chunk_samples, format.channels as usize)?;
+        // 🔥 关键修复：使用decoder chunk对齐处理，与foobar2000一致
+        // 避免固定时间切分，直接按解码器chunk边界处理
+        dr_calculator.process_decoder_chunk(&chunk_samples, format.channels as usize)?;
 
         // 强制清理内存（确保恒定内存使用）
         drop(chunk_samples);

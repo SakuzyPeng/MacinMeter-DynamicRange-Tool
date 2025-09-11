@@ -287,7 +287,7 @@ impl BatchProcessor {
             1,
             config.sum_doubling, // 保持原始交错数据的Sum Doubling配置
             config.sample_rate,
-            3.0, // 官方规范3秒块
+            1.0, // 🔧 减小块粒度：从3秒改为1秒，与解码chunk更好对齐
         )?;
 
         // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式

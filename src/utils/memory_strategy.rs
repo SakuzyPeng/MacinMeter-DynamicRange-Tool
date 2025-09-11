@@ -91,19 +91,24 @@ impl MemoryStrategySelector {
     }
 
     /// 根据内存估算选择最优策略
-    fn select_strategy(&self, estimated_peak: u64, file_size: u64) -> ProcessingStrategy {
+    fn select_strategy(&self, _estimated_peak: u64, _file_size: u64) -> ProcessingStrategy {
+        // 🔥 强制所有文件使用流式处理，确保chunk对齐
+        // 这与foobar2000的解码器chunk处理机制完全一致
+        ProcessingStrategy::StreamingBlocks
+        
+        // 注释掉的原始逻辑（保留以供参考）:
         // 策略1: 小文件直接全内存加载
-        if file_size < 200 * 1024 * 1024 && estimated_peak < self.memory_limit {
-            return ProcessingStrategy::FullMemory;
-        }
-
-        // 策略2: 超大文件或内存不足，强制流式处理
-        if estimated_peak > self.memory_limit || file_size > 2 * 1024 * 1024 * 1024 {
-            return ProcessingStrategy::StreamingBlocks;
-        }
-
+        // if file_size < 200 * 1024 * 1024 && estimated_peak < self.memory_limit {
+        //     return ProcessingStrategy::FullMemory;
+        // }
+        
+        // 策略2: 超大文件或内存不足，强制流式处理  
+        // if estimated_peak > self.memory_limit || file_size > 2 * 1024 * 1024 * 1024 {
+        //     return ProcessingStrategy::StreamingBlocks;
+        // }
+        
         // 策略3: 中等大小文件，使用自适应模式
-        ProcessingStrategy::Adaptive
+        // ProcessingStrategy::Adaptive
     }
 
     /// 获取系统可用内存 (字节)

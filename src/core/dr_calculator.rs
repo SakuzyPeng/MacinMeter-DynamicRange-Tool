@@ -306,9 +306,9 @@ impl BlockProcessor {
 
         valid_blocks.sort_by(|a, b| b.rms.partial_cmp(&a.rms).unwrap());
 
-        // 选择最高20%的块（N = 0.2 × blknum）
+        // 🎯 foobar2000精确实现：K = max(1, round(0.2*B))
         let total_blocks = valid_blocks.len();
-        let selected_count = ((total_blocks as f64 * 0.2).ceil() as usize).max(1);
+        let selected_count = ((total_blocks as f64 * 0.2).round() as usize).max(1);
         let selected_blocks = &valid_blocks[..selected_count.min(total_blocks)];
 
         // 计算选中块的RMS²和
@@ -320,20 +320,30 @@ impl BlockProcessor {
         // 计算有效RMS：√(∑RMS_n²/N)
         let effective_rms = (rms_square_sum / selected_count as f64).sqrt();
 
-        // 🔥 实现foobar2000的双重DR回退机制
-        // 第一步：优先使用我们的削波检测选择的Peak（保留特色功能）
+        // 🔥 智能削波检测的双Peak回退机制
+        // 只有当第一Peak削波时才切换到第二Peak，否则使用最大Peak
         let mut peaks: Vec<f64> = valid_blocks.iter().map(|block| block.peak).collect();
         peaks.sort_by(|a, b| b.partial_cmp(a).unwrap());
 
-        let selected_peak = if peaks.len() >= 2 {
-            peaks[1] // 第二大Peak（我们的特色削波检测）
-        } else if peaks.len() == 1 {
-            peaks[0] // 只有一个Peak时使用它
+        let primary_peak = peaks[0]; // 最大Peak
+        
+        // 削波检测：Peak接近或达到满量程(1.0)时认为削波
+        const CLIPPING_THRESHOLD: f64 = 0.99; // 99%满量程视为削波
+        let is_clipped = primary_peak >= CLIPPING_THRESHOLD;
+        
+        let selected_peak = if is_clipped && peaks.len() >= 2 {
+            // 只有削波且有第二Peak时才使用第二Peak
+            peaks[1] 
         } else {
+            // 正常情况下总是使用最大Peak
+            primary_peak
+        };
+
+        if selected_peak <= 0.0 {
             return Err(AudioError::CalculationError(
                 "无法找到有效Peak值".to_string(),
             ));
-        };
+        }
 
         // 第二步：foobar2000的智能回退机制
         if effective_rms <= 0.0 {
@@ -347,27 +357,15 @@ impl BlockProcessor {
             return Err(AudioError::CalculationError("Peak值无效".to_string()));
         };
 
-        // 🎯 关键修复：如果DR < 0，回退到次Peak（foobar2000逻辑）
+        // 🎯 foobar2000精确实现：如果DR < 0，回退用最大峰重算并取≥0
         if dr_value < 0.0 {
-            // 获取所有块的次Peak，选择最大的
-            let secondary_peaks: Vec<f64> = valid_blocks
-                .iter()
-                .map(|block| block.peak_secondary)
-                .filter(|&p| p > 0.0)
-                .collect();
-
-            if !secondary_peaks.is_empty() {
-                let max_secondary_peak = secondary_peaks.iter().fold(0.0f64, |a, &b| a.max(b));
-                if max_secondary_peak > 0.0 && effective_rms <= max_secondary_peak {
-                    // 使用次Peak重新计算，并确保DR ≥ 0（fmax逻辑）
-                    dr_value = (-20.0 * (effective_rms / max_secondary_peak).log10()).max(0.0);
-                } else {
-                    // 兜底：确保DR ≥ 0
-                    dr_value = dr_value.max(0.0);
-                }
+            // 回退到全局最大峰值重新计算
+            let global_max_peak = peaks[0]; // peaks已按降序排列，[0]是全局最大
+            if global_max_peak > 0.0 {
+                dr_value = (-20.0 * (effective_rms / global_max_peak).log10()).max(0.0);
             } else {
-                // 没有有效次Peak，确保DR ≥ 0
-                dr_value = dr_value.max(0.0);
+                // 兜底：确保DR ≥ 0
+                dr_value = 0.0;
             }
         }
 
@@ -627,13 +625,15 @@ impl DrCalculator {
 
             // 计算统计信息用于结果报告
             let (avg_rms, max_peak, total_samples) = if !blocks.is_empty() {
-                let avg_rms = blocks
-                    .iter()
-                    .filter(|b| b.is_valid())
-                    .map(|b| b.rms * b.rms)
-                    .sum::<f64>()
-                    / blocks.len() as f64;
-                let avg_rms = avg_rms.sqrt();
+                // 🔧 修复分母不一致问题：分子用有效块求和，分母也用有效块数
+                // 这与foobar2000的"等权平均有效块"机制对齐
+                let valid_blocks: Vec<_> = blocks.iter().filter(|b| b.is_valid()).collect();
+                let avg_rms = if !valid_blocks.is_empty() {
+                    let sum_square: f64 = valid_blocks.iter().map(|b| b.rms * b.rms).sum();
+                    (sum_square / valid_blocks.len() as f64).sqrt()
+                } else {
+                    0.0
+                };
 
                 let max_peak = blocks.iter().map(|b| b.peak).fold(0.0, f64::max);
 
@@ -687,6 +687,72 @@ impl DrCalculator {
     ///
     /// 将音频块转换为AudioBlock并累积统计信息，不保留原始样本数据，
     /// 实现恒定内存使用的大文件处理。
+    /// 🔥 新增：按解码器chunk边界处理（与foobar2000对齐）
+    /// 直接将每个decoder chunk作为一个块，不再二次切分
+    pub fn process_decoder_chunk(&mut self, chunk_samples: &[f32], channels: usize) -> AudioResult<()> {
+        // 🔧 关键修复：直接按decoder chunk边界处理，避免固定时间切分
+        // 这与foobar2000的"按解码chunk结算"机制对齐
+        
+        if chunk_samples.len() % channels != 0 {
+            return Err(AudioError::InvalidInput(
+                "样本数量与声道数不匹配".to_string()
+            ));
+        }
+
+        let samples_per_channel = chunk_samples.len() / channels;
+        
+        // 为每个声道创建一个AudioBlock（基于整个decoder chunk）
+        for channel_idx in 0..channels {
+            let channel_samples: Vec<f32> = chunk_samples
+                .iter()
+                .skip(channel_idx)
+                .step_by(channels)
+                .copied()
+                .collect();
+
+            // 直接计算整个decoder chunk的统计信息
+            let mut rms_sum = 0.0f64;
+            let mut max_sample = 0.0f32;
+
+            for &sample in &channel_samples {
+                let abs_sample = sample.abs();
+                rms_sum += (sample as f64).powi(2);
+                max_sample = max_sample.max(abs_sample);
+            }
+
+            // 应用Sum Doubling（如果启用）
+            let effective_rms_sum = if self.sum_doubling_enabled {
+                rms_sum + rms_sum
+            } else {
+                rms_sum
+            };
+
+            let chunk_rms = if samples_per_channel > 0 {
+                (effective_rms_sum / samples_per_channel as f64).sqrt()
+            } else {
+                0.0
+            };
+
+            // 创建AudioBlock
+            let block = AudioBlock::new(
+                chunk_rms,
+                max_sample as f64,
+                max_sample as f64, // primary peak
+                max_sample as f64, // secondary peak (在chunk级别相同)
+                samples_per_channel,
+                0.0, // start_time (decoder chunk不需要精确时间戳)
+                0.0, // duration (decoder chunk处理不依赖持续时间)
+            );
+
+            if block.is_valid() {
+                self.accumulated_blocks[channel_idx].push(block);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 🔧 传统的固定时间块处理方法（保持向后兼容）
     pub fn process_chunk(&mut self, chunk_samples: &[f32], channels: usize) -> AudioResult<()> {
         // 将块样本转换为AudioBlock结构
         let block_results = self
