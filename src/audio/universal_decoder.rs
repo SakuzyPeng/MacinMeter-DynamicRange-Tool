@@ -67,6 +67,11 @@ pub trait StreamingDecoder {
 
     /// 重置到开头
     fn reset(&mut self) -> AudioResult<()>;
+
+    /// 获取块大小统计信息（可选，仅逐包模式支持）
+    fn get_chunk_stats(&mut self) -> Option<ChunkSizeStats> {
+        None // 默认不支持
+    }
 }
 
 /// 解码器能力标识
@@ -124,6 +129,9 @@ pub trait AudioDecoder: Send + Sync {
 
     /// 创建流式解码器（适用于大文件）
     fn create_streaming(&self, path: &Path) -> AudioResult<Box<dyn StreamingDecoder>>;
+
+    /// 用于类型转换的辅助方法
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// PCM解码器 - 处理WAV、FLAC等PCM格式
@@ -170,12 +178,27 @@ impl AudioDecoder for PcmDecoder {
     }
 
     fn create_streaming(&self, path: &Path) -> AudioResult<Box<dyn StreamingDecoder>> {
-        // 创建PCM流式解码器
+        // 创建PCM流式解码器（默认非逐包模式）
         Ok(Box::new(PcmStreamingDecoder::new(path)?))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
 impl PcmDecoder {
+    /// 创建流式解码器（可指定逐包模式）
+    pub fn create_streaming_with_packet_mode(
+        &self,
+        path: &Path,
+        packet_chunk_mode: bool,
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        Ok(Box::new(PcmStreamingDecoder::new_with_packet_mode(
+            path,
+            packet_chunk_mode,
+        )?))
+    }
     /// 使用hound解码WAV文件
     fn decode_with_hound(&self, path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)> {
         let mut reader = hound::WavReader::open(path)?;
@@ -480,6 +503,57 @@ impl AudioDecoder for DsdDecoder {
     fn create_streaming(&self, _path: &Path) -> AudioResult<Box<dyn StreamingDecoder>> {
         Err(AudioError::FormatError("DSD流式解码尚未实现".to_string()))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// 块大小统计信息
+#[derive(Debug, Clone)]
+pub struct ChunkSizeStats {
+    pub total_chunks: usize,
+    pub sizes: Vec<usize>,
+    pub min_size: usize,
+    pub max_size: usize,
+    pub mean_size: f64,
+    pub median_size: usize,
+}
+
+impl ChunkSizeStats {
+    fn new() -> Self {
+        Self {
+            total_chunks: 0,
+            sizes: Vec::new(),
+            min_size: usize::MAX,
+            max_size: 0,
+            mean_size: 0.0,
+            median_size: 0,
+        }
+    }
+
+    fn add_chunk(&mut self, size: usize) {
+        self.total_chunks += 1;
+        self.sizes.push(size);
+        self.min_size = self.min_size.min(size);
+        self.max_size = self.max_size.max(size);
+    }
+
+    fn finalize(&mut self) {
+        if !self.sizes.is_empty() {
+            self.mean_size = self.sizes.iter().sum::<usize>() as f64 / self.sizes.len() as f64;
+            self.sizes.sort_unstable();
+            self.median_size = self.sizes[self.sizes.len() / 2];
+        }
+    }
+
+    pub fn get_percentile(&self, p: f64) -> usize {
+        if self.sizes.is_empty() {
+            return 0;
+        }
+        let idx = ((self.sizes.len() - 1) as f64 * p / 100.0).round() as usize;
+        self.sizes[idx.min(self.sizes.len() - 1)]
+    }
 }
 
 /// PCM流式解码器
@@ -490,6 +564,10 @@ pub struct PcmStreamingDecoder {
     current_position: u64,
     total_samples: u64,
 
+    // 🔥 新增：逐包直通模式开关
+    packet_chunk_mode: bool,
+    chunk_stats: ChunkSizeStats,
+
     // symphonia组件
     format_reader: Option<Box<dyn symphonia::core::formats::FormatReader>>,
     decoder: Option<Box<dyn symphonia::core::codecs::Decoder>>,
@@ -498,11 +576,18 @@ pub struct PcmStreamingDecoder {
 
 impl PcmStreamingDecoder {
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
+        Self::new_with_packet_mode(path, false)
+    }
+
+    pub fn new_with_packet_mode<P: AsRef<Path>>(
+        path: P,
+        packet_chunk_mode: bool,
+    ) -> AudioResult<Self> {
         let path = path.as_ref().to_path_buf();
         let pcm_decoder = PcmDecoder;
         let format = pcm_decoder.probe_format(&path)?;
 
-        // 根据格式优化块大小
+        // 根据格式优化块大小（在逐包模式下不使用，但保留兼容性）
         let chunk_size = Self::optimize_chunk_size(&format);
 
         Ok(Self {
@@ -511,10 +596,18 @@ impl PcmStreamingDecoder {
             chunk_size,
             current_position: 0,
             total_samples: format.sample_count,
+            packet_chunk_mode,
+            chunk_stats: ChunkSizeStats::new(),
             format_reader: None,
             decoder: None,
             track_id: None,
         })
+    }
+
+    /// 获取块大小统计信息（仅在逐包模式下有效）
+    pub fn get_chunk_stats(&mut self) -> ChunkSizeStats {
+        self.chunk_stats.finalize();
+        self.chunk_stats.clone()
     }
 
     fn optimize_chunk_size(format: &AudioFormat) -> usize {
@@ -596,49 +689,98 @@ impl StreamingDecoder for PcmStreamingDecoder {
         let decoder = self.decoder.as_mut().unwrap();
         let track_id = self.track_id.unwrap();
 
-        let mut chunk_samples = Vec::new();
+        if self.packet_chunk_mode {
+            // 🔥 逐包直通模式：每次decode一个packet就立即返回
+            loop {
+                let packet = match format_reader.next_packet() {
+                    Ok(packet) => packet,
+                    Err(SymphoniaError::ResetRequired) => {
+                        decoder.reset();
+                        continue;
+                    }
+                    Err(SymphoniaError::IoError(ref e))
+                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                    {
+                        return Ok(None); // 文件结束
+                    }
+                    Err(e) => return Err(AudioError::FormatError(format!("读取包失败: {e}"))),
+                };
 
-        // 读取直到达到块大小或文件结尾
-        while chunk_samples.len() < self.chunk_size {
-            let packet = match format_reader.next_packet() {
-                Ok(packet) => packet,
-                Err(SymphoniaError::ResetRequired) => {
-                    decoder.reset();
+                if packet.track_id() != track_id {
                     continue;
                 }
-                Err(SymphoniaError::IoError(ref e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    break;
-                }
-                Err(e) => return Err(AudioError::FormatError(format!("读取包失败: {e}"))),
-            };
 
-            if packet.track_id() != track_id {
-                continue;
+                match decoder.decode(&packet) {
+                    Ok(audio_buf) => {
+                        let mut packet_samples = Vec::new();
+                        PcmDecoder::convert_buffer_to_interleaved(&audio_buf, &mut packet_samples)?;
+
+                        if !packet_samples.is_empty() {
+                            // 🔥 记录块大小统计（每声道样本数）
+                            let samples_per_channel =
+                                packet_samples.len() / self.format.channels as usize;
+                            self.chunk_stats.add_chunk(samples_per_channel);
+
+                            // 更新位置
+                            self.current_position += samples_per_channel as u64;
+                            return Ok(Some(packet_samples));
+                        }
+                    }
+                    Err(SymphoniaError::IoError(ref e))
+                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                    {
+                        return Ok(None);
+                    }
+                    Err(SymphoniaError::DecodeError(_)) => continue,
+                    Err(e) => return Err(AudioError::FormatError(format!("解码失败: {e}"))),
+                }
             }
-
-            match decoder.decode(&packet) {
-                Ok(audio_buf) => {
-                    PcmDecoder::convert_buffer_to_interleaved(&audio_buf, &mut chunk_samples)?;
-                }
-                Err(SymphoniaError::IoError(ref e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    break;
-                }
-                Err(SymphoniaError::DecodeError(_)) => continue,
-                Err(e) => return Err(AudioError::FormatError(format!("解码失败: {e}"))),
-            }
-        }
-
-        if chunk_samples.is_empty() {
-            Ok(None)
         } else {
-            // 更新位置：基于帧数而不是interleaved samples数
-            let frames = chunk_samples.len() as u64 / self.format.channels as u64;
-            self.current_position += frames;
-            Ok(Some(chunk_samples))
+            // 🔄 传统模式：累加到块大小阈值
+            let mut chunk_samples = Vec::new();
+
+            // 读取直到达到块大小或文件结尾
+            while chunk_samples.len() < self.chunk_size {
+                let packet = match format_reader.next_packet() {
+                    Ok(packet) => packet,
+                    Err(SymphoniaError::ResetRequired) => {
+                        decoder.reset();
+                        continue;
+                    }
+                    Err(SymphoniaError::IoError(ref e))
+                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                    {
+                        break;
+                    }
+                    Err(e) => return Err(AudioError::FormatError(format!("读取包失败: {e}"))),
+                };
+
+                if packet.track_id() != track_id {
+                    continue;
+                }
+
+                match decoder.decode(&packet) {
+                    Ok(audio_buf) => {
+                        PcmDecoder::convert_buffer_to_interleaved(&audio_buf, &mut chunk_samples)?;
+                    }
+                    Err(SymphoniaError::IoError(ref e))
+                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                    {
+                        break;
+                    }
+                    Err(SymphoniaError::DecodeError(_)) => continue,
+                    Err(e) => return Err(AudioError::FormatError(format!("解码失败: {e}"))),
+                }
+            }
+
+            if chunk_samples.is_empty() {
+                Ok(None)
+            } else {
+                // 更新位置：基于帧数而不是interleaved samples数
+                let frames = chunk_samples.len() as u64 / self.format.channels as u64;
+                self.current_position += frames;
+                Ok(Some(chunk_samples))
+            }
         }
     }
 
@@ -660,6 +802,15 @@ impl StreamingDecoder for PcmStreamingDecoder {
         self.track_id = None;
         self.current_position = 0;
         Ok(())
+    }
+
+    fn get_chunk_stats(&mut self) -> Option<ChunkSizeStats> {
+        if self.packet_chunk_mode {
+            self.chunk_stats.finalize();
+            Some(self.chunk_stats.clone())
+        } else {
+            None
+        }
     }
 }
 
@@ -739,6 +890,21 @@ impl UniversalDecoder {
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let decoder = self.get_decoder(path.as_ref())?;
         decoder.create_streaming(path.as_ref())
+    }
+
+    /// 创建流式解码器（可指定逐包模式）
+    pub fn create_streaming_with_packet_mode<P: AsRef<Path>>(
+        &self,
+        path: P,
+        packet_chunk_mode: bool,
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        let decoder = self.get_decoder(path.as_ref())?;
+        if let Some(pcm_decoder) = decoder.as_any().downcast_ref::<PcmDecoder>() {
+            pcm_decoder.create_streaming_with_packet_mode(path.as_ref(), packet_chunk_mode)
+        } else {
+            // 其他解码器暂不支持逐包模式，使用默认模式
+            decoder.create_streaming(path.as_ref())
+        }
     }
 
     /// 获取支持的格式列表

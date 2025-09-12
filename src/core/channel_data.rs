@@ -192,10 +192,34 @@ impl ChannelData {
             self.rms_accumulator
         };
 
+        // 🐛 调试输出：Sum Doubling效果分析（仅在debug模式）
+        #[cfg(debug_assertions)]
+        {
+            if apply_sum_doubling {
+                eprintln!("    🔧 Sum Doubling应用中:");
+                eprintln!("      - 原始累加器: {:.10}", self.rms_accumulator);
+                eprintln!("      - 翻倍累加器: {final_accumulator:.10}");
+                eprintln!(
+                    "      - 倍增系数: {:.3}x",
+                    final_accumulator / self.rms_accumulator
+                );
+            } else {
+                eprintln!("    📊 标准处理（无Sum Doubling）:");
+                eprintln!("      - 累加器值: {final_accumulator:.10}");
+            }
+        }
+
         // 数据类型转换链
         let sample_count_int = sample_count as i32;
         let sample_count_f64 = sample_count_int as f64;
         let mean_square = final_accumulator / sample_count_f64;
+
+        // 🐛 调试输出：RMS计算链（仅在debug模式）
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("      - 样本数: {sample_count}");
+            eprintln!("      - 均方值: {mean_square:.10}");
+        }
 
         // 🔥 音频处理阶段：使用SSE平方根
         foobar2000_sse_sqrt(mean_square)
@@ -260,6 +284,14 @@ impl ChannelData {
         self.rms_accumulator = 0.0;
         self.peak_primary = 0.0;
         self.peak_secondary = 0.0;
+    }
+
+    /// 只重置RMS累积器，保留峰值信息（用于块级处理）
+    ///
+    /// 这允许在处理多个块时维护全曲样本级的峰值信息
+    pub fn reset_rms_only(&mut self) {
+        self.rms_accumulator = 0.0;
+        // 保留 peak_primary 和 peak_secondary
     }
 
     /// 获取主Peak值

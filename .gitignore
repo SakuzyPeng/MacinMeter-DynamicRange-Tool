@@ -53,3 +53,7 @@ wheels/
 # 备份文件
 *.bak
 *.orig
+
+# foobar2000 SDK
+SDK-2025-03-07/
+SDK*/
