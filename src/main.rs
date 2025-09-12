@@ -12,10 +12,6 @@ use macinmeter_dr_tool::{
     audio::{AudioFormat, UniversalDecoder},
     core::DrCalculator,
     error::{AudioError, AudioResult},
-    utils::{
-        MemoryStrategySelector, ProcessingStrategy, get_memory_status_report,
-        should_use_emergency_mode,
-    },
 };
 
 /// 应用程序版本信息
@@ -46,7 +42,7 @@ struct AppConfig {
     /// 是否启用多线程处理
     enable_multithreading: bool,
 
-    /// 是否启用逐包直通模式（packet-level pass-through）
+    /// 是否启用逐包直通模式（packet-level pass-through）- 默认启用
     packet_chunk_mode: bool,
     // 🏷️ FEATURE_REMOVAL: 移除精确权重公式选项
     // 📅 移除时间: 2025-08-31
@@ -95,9 +91,9 @@ impl AppConfig {
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
-                Arg::new("packet-chunk")
-                    .long("packet-chunk")
-                    .help("启用逐包直通模式（用于与foobar2000的块边界对齐验证）")
+                Arg::new("disable-packet-chunk")
+                    .long("disable-packet-chunk")
+                    .help("禁用逐包直通模式（改用传统固定时长块模式）")
                     .action(clap::ArgAction::SetTrue),
             )
             // 🏷️ FEATURE_REMOVAL: 移除--weighted-rms参数
@@ -132,40 +128,20 @@ impl AppConfig {
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
             enable_multithreading: !matches.get_flag("single-thread"), // 默认启用多线程
-            packet_chunk_mode: matches.get_flag("packet-chunk"), // 逐包直通模式
-                                                            // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
-                                                            // 📅 移除时间: 2025-08-31
-                                                            // 🎯 统一使用最优精度模式，weighted_rms固定为false
-                                                            // 🔄 回退: 如需重新启用选项，查看git历史
+            packet_chunk_mode: !matches.get_flag("disable-packet-chunk"), // 默认启用逐包直通模式，除非明确禁用
+                                                                          // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
+                                                                          // 📅 移除时间: 2025-08-31
+                                                                          // 🎯 统一使用最优精度模式，weighted_rms固定为false
+                                                                          // 🔄 回退: 如需重新启用选项，查看git历史
         }
     }
 }
 
-/// 智能加载并处理音频文件，根据文件大小自动选择处理策略
-///
-/// 处理策略：
-/// - 小文件(< 200MB): 全内存加载+处理，最佳性能
-/// - 大文件(>= 200MB): 流式处理，恒定内存使用
-/// - 超大文件或内存不足: 强制流式处理，确保安全
+/// 处理音频文件 - foobar2000-plugin分支简化版（默认逐包流式处理）
 fn process_audio_file_smart(
     path: &std::path::Path,
     config: &AppConfig,
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
-    // 🛡️ 安全检查：文件大小预检和内存策略分析
-    let memory_selector = MemoryStrategySelector::new();
-    let memory_estimate = memory_selector.analyze_file(path)?;
-
-    // 验证处理策略的安全性
-    memory_selector.validate_strategy(&memory_estimate)?;
-
-    if config.verbose {
-        println!(
-            "📊 内存分析: 预估峰值 {:.1}MB, 策略: {:?}",
-            memory_estimate.peak_memory as f64 / (1024.0 * 1024.0),
-            memory_estimate.recommended_strategy
-        );
-    }
-
     // 获取文件扩展名
     let extension = path
         .extension()
@@ -173,44 +149,12 @@ fn process_audio_file_smart(
         .map(|s| s.to_lowercase())
         .unwrap_or_default();
 
-    match memory_estimate.recommended_strategy {
-        ProcessingStrategy::FullMemory => {
-            // 🚨 临时注释：全内存模式调用了有bug的process_interleaved_to_blocks
-            // 强制使用流式模式避免global_peaks=0的问题
-            if config.verbose {
-                println!(
-                    "🔄 [临时修复] 强制流式模式替代全内存模式，预估内存: {:.1}MB",
-                    memory_estimate.peak_memory as f64 / (1024.0 * 1024.0)
-                );
-            }
-            // 强制调用流式处理
-            process_audio_file_streaming(path, &extension, config)
-
-            // 原全内存代码（临时注释）：
-            // let (format, samples) = load_audio_file_full_memory(path, &extension, config.verbose)?;
-            // let dr_results = process_samples_with_dr_calculator(&samples, &format, config)?;
-            // Ok((dr_results, format))
-        }
-        ProcessingStrategy::StreamingBlocks | ProcessingStrategy::Adaptive => {
-            // 大文件使用流式处理（内存安全）
-            if config.verbose {
-                println!("🌊 使用动态流式模式（智能内存管理）");
-
-                // 显示动态内存管理状态
-                if let Ok(memory_report) = get_memory_status_report() {
-                    println!("{memory_report}");
-                }
-
-                // 检查是否需要紧急模式
-                if let Ok(emergency) = should_use_emergency_mode()
-                    && emergency
-                {
-                    println!("⚠️ 检测到内存压力，启用紧急模式（降级处理）");
-                }
-            }
-            process_audio_file_streaming(path, &extension, config)
-        }
+    if config.verbose {
+        println!("🌊 使用流式处理模式（foobar2000-plugin分支默认模式）");
     }
+
+    // 直接使用流式处理
+    process_audio_file_streaming(path, &extension, config)
 }
 
 /// 使用DR计算器处理样本数据的辅助函数
@@ -267,8 +211,12 @@ fn process_audio_file_streaming(
         decoder.create_streaming_with_packet_mode(path, config.packet_chunk_mode)?;
 
     // 逐包模式调试信息
-    if config.verbose && config.packet_chunk_mode {
-        println!("🔥 逐包直通模式已启用 - 解码器原生包大小直通");
+    if config.verbose {
+        if config.packet_chunk_mode {
+            println!("🔥 逐包直通模式已启用 - 解码器原生包大小直通（默认模式）");
+        } else {
+            println!("📦 传统固定时长块模式已启用 - 700ms固定块");
+        }
     }
 
     // 创建DR计算器（流式处理模式）
@@ -289,7 +237,7 @@ fn process_audio_file_streaming(
     if config.packet_chunk_mode {
         // 逐包直通模式：每个解码包直接作为一个块
         if config.verbose {
-            println!("🔥 逐包模式：直接将每个解码包作为独立块处理");
+            println!("🔥 逐包模式（默认）：直接将每个解码包作为独立块处理");
         }
 
         while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
@@ -316,7 +264,7 @@ fn process_audio_file_streaming(
 
         if config.verbose {
             println!(
-                "🔄 传统模式：使用{}秒块处理 ({}样本/块)",
+                "🔄 传统模式（--disable-packet-chunk）：使用{}秒块处理 ({}样本/块)",
                 block_duration,
                 samples_per_block / format.channels as usize
             );
@@ -965,9 +913,9 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
     batch_output.push_str("=====================================\n\n");
 
     // 添加标准信息到输出
-    batch_output.push_str("🌿 Git分支: early-version (foobar2000兼容版)\n");
+    batch_output.push_str("🌿 Git分支: foobar2000-plugin (默认逐包直通模式)\n");
     batch_output.push_str("📐 标准来源: foobar2000 DR Meter 逆向工程\n");
-    batch_output.push_str("✅ 当前模式: 高精度DR分析模式\n");
+    batch_output.push_str("✅ 当前模式: 逐包直通DR分析模式（默认）\n");
     batch_output.push_str("📊 精度目标: 基于foobar2000逆向分析的高精度实现\n");
     batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
@@ -1119,6 +1067,9 @@ fn main() {
 
     println!("🚀 MacinMeter DR Tool (foobar2000兼容版) v{VERSION} 启动");
     println!("📝 {DESCRIPTION}");
+    if config.verbose {
+        println!("🌿 当前分支: foobar2000-plugin (默认逐包直通模式)");
+    }
     println!();
 
     // 根据模式选择处理方式

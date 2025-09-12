@@ -38,7 +38,7 @@ action("rust-audio-expert")
 
 MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态范围(DR)分析工具，使用Rust实现，目标是达到高精度实现和工业级性能。
 
-**早期版本分支（early-version）**：专注foobar2000算法精确匹配的精简化实现。
+**foobar2000-plugin分支**：专注与foobar2000完全兼容的逐包直通实现，默认启用与foobar2000原版完全对齐的块处理模式。
 
 ## 构建和运行命令
 
@@ -252,14 +252,14 @@ echo "✅ 所有检查通过！"
 5. **逆向遍历20%采样**: 从高RMS向低RMS遍历，符合"最响20%"标准
 6. **SSE向量化**: 4样本并行处理，预期6-7倍性能提升
 
-### 🆕 Early-version分支特性（最新）
+### 🔥 foobar2000-plugin分支特性（当前分支）
 
-- **API极简化**: BatchProcessor.process_interleaved_batch 参数从6个减少到4个
-- **模式统一**: 移除模式选择，固定使用foobar2000兼容模式
-- **死代码清理**: 移除weighted_rms实验系统和标准模式计算（200+行死代码）
-- **构造函数简化**: DrCalculator.new 只需3个参数，移除new_with_mode方法
-- **统一文档**: 所有注释和文档都专注foobar2000兼容性
-- **算法精准**: 累加器级Sum Doubling确保与foobar2000的最佳匹配
+- **默认逐包直通**: `packet_chunk_mode` 默认启用，与foobar2000块边界完美对齐
+- **参数简化**: 只保留必要的4个核心参数选项，移除复杂配置
+- **流式专用**: 移除智能内存管理，专注流式处理模式
+- **反向参数逻辑**: `--disable-packet-chunk` 用于禁用默认功能
+- **完全兼容**: 所有默认配置都针对foobar2000完全兼容性优化
+- **算法精准**: Sum Doubling固定启用，确保与foobar2000的最佳匹配
 
 ### 依赖说明
 
@@ -293,27 +293,22 @@ echo "✅ 所有检查通过！"
 - 多格式音频文件兼容性测试
 - 边界条件和异常情况处理测试
 
-### 🚨 重要API变更（Early-version分支）
+### 🔥 foobar2000-plugin分支配置（当前分支）
 
-**BatchProcessor.process_interleaved_batch 方法签名更新**:
-```rust
-// 旧版本（6个参数）
-pub fn process_interleaved_batch(
-    samples: &[f32], 
-    channels: usize, 
-    sample_rate: u32,
-    sum_doubling: bool,
-    foobar2000_mode: bool,
-    weighted_rms: bool,  // ❌ 已移除
-) -> AudioResult<BatchResult>
+**默认启用的功能**:
+```bash
+✅ packet_chunk_mode: true    # 默认逐包直通模式
+✅ sum_doubling: true         # 固定启用Sum Doubling
+✅ enable_simd: true          # 默认启用SIMD优化
+✅ enable_multithreading: true # 默认启用多线程
+```
 
-// 当前版本（4个参数） - Early-version分支
-pub fn process_interleaved_batch(
-    samples: &[f32],
-    channels: usize, 
-    sample_rate: u32,
-    sum_doubling: bool,  // 固定使用foobar2000模式，无需模式参数
-) -> AudioResult<BatchResult>
+**命令行参数变更**:
+```bash
+# 新的反向参数逻辑
+--disable-packet-chunk   # 禁用逐包模式，改用传统700ms固定块
+--disable-simd          # 禁用SIMD优化
+--single-thread         # 禁用多线程，使用单线程模式
 ```
 
 **DrCalculator构造函数简化**:
@@ -345,14 +340,22 @@ pub fn new(
 
 **保留的核心功能**:
 - 24字节ChannelData结构
-- 累加器级Sum Doubling机制
+- 累加器级Sum Doubling机制（默认启用）
 - foobar2000兼容的20%采样算法
 - 双Peak回退系统
-- SIMD优化
+- SIMD优化（默认启用）
+
+**🔥 foobar2000-plugin分支特色**:
+- 逐包直通处理：每个解码包直接作为独立块处理
+- 块边界完美对齐：与foobar2000原版完全相同的块分割方式
+- 格式原生支持：FLAC frame、MP3 frame等原生包结构
+- 简化配置：默认启用所有foobar2000兼容特性
+- 流式内存管理：恒定~50MB内存使用，支持任意大小文件
 
 详细的技术分析和开发计划参见：
 - `docs/DR_Meter_Deep_Analysis_Enhanced.md` - 完整的foobar2000逆向分析  
 - `docs/DEVELOPMENT_PLAN.md` - 15天开发计划和技术规格
+- `docs/FOOBAR2000_SDK_INTEGRATION_PLAN.md` - foobar2000 SDK集成计划（适用于未来原生集成）
 
 ---
 
