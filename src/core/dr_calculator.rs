@@ -590,7 +590,9 @@ impl BlockProcessor {
         };
 
         // 🎯 foobar2000精确实现：如果DR < 0，回退用最大峰重算并取≥0
+        #[cfg(debug_assertions)]
         let initial_dr = dr_value;
+
         let fallback_used = if dr_value < 0.0 {
             // 回退到全局最大峰值重新计算
             let global_max_peak = peaks[0]; // peaks已按降序排列，[0]是全局最大
@@ -605,6 +607,9 @@ impl BlockProcessor {
         } else {
             false
         };
+
+        #[cfg(not(debug_assertions))]
+        let _ = fallback_used; // 避免release模式下未使用变量警告
 
         // 🐛 调试：DR计算最终结果
         #[cfg(debug_assertions)]
