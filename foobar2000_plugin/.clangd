@@ -1,0 +1,19 @@
+CompileFlags:
+  Add: 
+    - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK
+    - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared
+    - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client
+    - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc
+    - -DFOOBAR2000_HAVE_DSP
+    - -DFOOBAR2000_DESKTOP
+    - -D_REENTRANT
+    - -std=c++17
+Diagnostics:
+  Suppress:
+    - clang-diagnostic-error
+  ClangTidy:
+    Remove:
+      - clang-diagnostic-error
+      - clang-diagnostic-warning
+  UnusedIncludes: None
+  MissingIncludes: None

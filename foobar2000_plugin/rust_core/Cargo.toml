@@ -1,0 +1,48 @@
+[package]
+name = "macinmeter-dr-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["Sakuzy Peng <sakuzy.peng@gmail.com>"]
+description = "MacinMeter DR Analysis Core Engine for foobar2000 Plugin"
+
+[lib]
+name = "macinmeter_dr_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+# 引入主工程DR计算核心
+macinmeter-dr-core = { path = "../..", package = "macinmeter-dr-tool", features = [] }
+
+# Audio decoding
+hound = "3.5"
+symphonia = { version = "0.5", features = ["all"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Utils
+walkdir = "2.5"
+
+# Performance
+rayon = "1.10"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Global static variables
+lazy_static = "1.4"
+
+# C string handling
+libc = "0.2"
+
+[features]
+default = ["simd"]
+simd = []
+
+[profile.release]
+opt-level = "z"  # 优化大小
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true  # 移除调试符号

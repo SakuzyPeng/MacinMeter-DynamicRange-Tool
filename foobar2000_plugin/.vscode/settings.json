@@ -1,0 +1,16 @@
+{
+    "clangd.arguments": [
+        "--compile-commands-dir=build",
+        "--header-insertion=never",
+        "--clang-tidy=false",
+        "--completion-style=detailed"
+    ],
+    "clangd.path": "clangd",
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "*.h": "cpp",
+        "*.cpp": "cpp"
+    }
+}

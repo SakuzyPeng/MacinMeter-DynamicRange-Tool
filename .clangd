@@ -1,0 +1,24 @@
+CompileFlags:
+  Add: 
+    - -I./SDK-2025-03-07/foobar2000/SDK
+    - -I./SDK-2025-03-07/foobar2000/shared
+    - -I./SDK-2025-03-07/foobar2000/foobar2000_component_client
+    - -I./SDK-2025-03-07/pfc
+    - -DFOOBAR2000_HAVE_DSP
+    - -DFOOBAR2000_DESKTOP
+    - -D_REENTRANT
+    - -std=c++17
+  Remove:
+    - -W*
+Diagnostics:
+  ClangTidy:
+    Add: 
+      - readability-*
+      - performance-*
+      - modernize-*
+    Remove:
+      - clang-diagnostic-error
+      - clang-diagnostic-warning
+      - misc-*
+  UnusedIncludes: None
+  MissingIncludes: None

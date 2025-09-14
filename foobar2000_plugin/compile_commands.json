@@ -1,0 +1,284 @@
+[
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/plugin_main.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/plugin_main.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/plugin_main.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/plugin_main.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/context_menu.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/context_menu.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/context_menu.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/context_menu.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/audio_accessor.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/audio_accessor.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/audio_accessor.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/audio_accessor.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/rust_bridge.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/rust_bridge.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/rust_bridge.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/rust_bridge.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/results_dialog.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/results_dialog.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/results_dialog.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/results_dialog.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/src/foobar2000_stub.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/foobar2000_stub.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/src/foobar2000_stub.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/src/foobar2000_stub.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/service.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/service.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/service.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/service.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/console.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/console.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/console.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/console.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/popup_message.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/popup_message.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/popup_message.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/popup_message.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/completion_notify.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/completion_notify.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/completion_notify.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/completion_notify.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/input.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/input.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/input.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/input.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/guids.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/guids.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/guids.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/guids.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem_helper.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem_helper.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem_helper.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/filesystem_helper.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_impl.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_impl.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_impl.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_impl.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_merge.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_merge.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_merge.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/file_info_merge.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/abort_callback.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/abort_callback.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/abort_callback.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/abort_callback.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk_channel_config.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk_channel_config.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk_channel_config.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/audio_chunk_channel_config.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/playable_location.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/playable_location.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/playable_location.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/playable_location.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/metadb_handle.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/metadb_handle.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/metadb_handle.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/metadb_handle.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain_info.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain_info.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain_info.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK/replaygain_info.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/shared-nix.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/shared-nix.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/shared-nix.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/shared-nix.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/audio_math.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/audio_math.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/audio_math.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared/audio_math.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client/component_client.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client/component_client.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client/component_client.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client/component_client.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/guid.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/guid.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/guid.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/guid.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/printf.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/printf.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/printf.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/printf.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string_base.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string_base.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string_base.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string_base.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-lite.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-lite.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-lite.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-lite.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-compare.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-compare.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-compare.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/string-compare.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/other.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/other.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/other.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/other.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pathUtils.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pathUtils.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pathUtils.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pathUtils.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/splitString2.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/splitString2.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/splitString2.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/splitString2.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/utf8.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/utf8.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/utf8.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/utf8.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/bit_array.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/bit_array.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/bit_array.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/bit_array.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/sort.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/sort.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/sort.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/sort.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/crashWithMessage.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/crashWithMessage.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/crashWithMessage.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/crashWithMessage.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/timers.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/timers.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/timers.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/timers.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/nix-objects.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/nix-objects.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/nix-objects.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/nix-objects.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/synchro_nix.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/synchro_nix.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/synchro_nix.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/synchro_nix.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pfc-fb2k-hooks.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pfc-fb2k-hooks.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pfc-fb2k-hooks.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/pfc-fb2k-hooks.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/unicode-normalize.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/unicode-normalize.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/unicode-normalize.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/unicode-normalize.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_math.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_math.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_math.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_math.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_sample.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_sample.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_sample.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/audio_sample.cpp.o"
+},
+{
+  "directory": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/build",
+  "command": "/usr/bin/c++ -DMAC_VERSION -Dfoo_dr_macinmeter_EXPORTS -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000 -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/SDK -isystem /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/foobar2000_plugin/../SDK-2025-03-07/foobar2000/helpers -std=gnu++17 -arch arm64 -mmacosx-version-min=11.0 -fPIC -o CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/wildcard.cpp.o -c /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/wildcard.cpp",
+  "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/wildcard.cpp",
+  "output": "CMakeFiles/foo_dr_macinmeter.dir/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/pfc/wildcard.cpp.o"
+}
+]
