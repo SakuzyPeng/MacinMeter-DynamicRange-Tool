@@ -173,6 +173,32 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
                 throw std::runtime_error("Failed to finalize DR analysis");
             }
 
+            // 从foobar2000获取真实的音频信息并修正DR结果
+            try {
+                file_info_impl info;
+                handle->get_info(info);
+
+                // 获取真实的bits per sample
+                const char* bps_str = info.meta_get("BITSPERSAMPLE", 0);
+                if (!bps_str) {
+                    bps_str = info.info_get("bitspersample");
+                }
+                if (bps_str) {
+                    dr_result.bits_per_sample = (unsigned int)std::atoi(bps_str);
+                }
+
+                // 计算正确的duration（total_samples已经是帧数，不需要再除以声道数）
+                if (audio.sample_rate > 0 && dr_result.total_samples > 0) {
+                    dr_result.duration_seconds = (double)dr_result.total_samples / audio.sample_rate;
+                }
+
+                console::printf("MacinMeter DR: Audio info corrected - %u Hz, %u ch, %u bits, %.2f s",
+                               audio.sample_rate, audio.channels, dr_result.bits_per_sample, dr_result.duration_seconds);
+            }
+            catch (const std::exception& e) {
+                console::printf("MacinMeter DR: Warning - could not get file info: %s", e.what());
+            }
+
             // 将DR结果转换为AudioData格式（兼容现有接口）
             audio.sample_count = dr_result.total_samples;
             if (audio.sample_rate > 0 && audio.channels > 0) {
@@ -342,6 +368,35 @@ DrAnalysisResult AudioAccessor::analyze_dr_data(const metadb_handle_ptr& handle)
             size_t name_len = std::min(file_name.length(), sizeof(result.file_name) - 1);
             std::strncpy(result.file_name, file_name.c_str(), name_len);
             result.file_name[name_len] = '\0';
+
+            // 从foobar2000获取真实的音频信息
+            try {
+                file_info_impl info;
+                handle->get_info(info);
+
+                // 获取真实的bits per sample
+                const char* bps_str = info.meta_get("BITSPERSAMPLE", 0);
+                if (!bps_str) {
+                    bps_str = info.info_get("bitspersample");
+                }
+                if (bps_str) {
+                    result.bits_per_sample = (unsigned int)std::atoi(bps_str);
+                } else {
+                    // 如果无法获取，保持Rust侧的默认值（32位浮点）
+                    // result.bits_per_sample 已经由 Rust 侧设置
+                }
+
+                // 计算正确的duration（total_samples已经是帧数，不需要再除以声道数）
+                if (sample_rate > 0 && result.total_samples > 0) {
+                    result.duration_seconds = (double)result.total_samples / sample_rate;
+                }
+
+                console::printf("MacinMeter DR: Audio info - %u Hz, %u ch, %u bits, %.2f s",
+                               sample_rate, channels, result.bits_per_sample, result.duration_seconds);
+            }
+            catch (const std::exception& e) {
+                console::printf("MacinMeter DR: Warning - could not get file info: %s", e.what());
+            }
 
             console::printf("MacinMeter DR: Direct DR analysis completed - DR%.0f (precise: %.2f), %u samples",
                            result.official_dr_value, result.precise_dr_value, result.total_samples);

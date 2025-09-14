@@ -116,6 +116,7 @@ fn convert_dr_results_to_c(
         result.sample_rate = sample_rate;
         result.total_samples = total_frames as c_uint;
         result.bits_per_sample = 32; // 硬编码为32位（foobar2000内部格式）
+        // 正确计算duration：total_frames已经是帧数，直接除以采样率
         result.duration_seconds = (total_frames as f64) / (sample_rate as f64);
 
         copy_str_to_c_array("foobar2000", &mut result.codec);
@@ -157,8 +158,15 @@ pub extern "C" fn dr_session_new(
     }
 }
 
+/// 向DR会话添加音频样本数据
+///
+/// # Safety
+/// 调用者必须确保：
+/// - `session` 是通过 `dr_session_new` 创建的有效指针
+/// - `samples` 指向至少 `frame_count * channels` 个有效的 f32 样本
+/// - 在会话被释放前，指针仍然有效
 #[no_mangle]
-pub extern "C" fn dr_session_feed_interleaved(
+pub unsafe extern "C" fn dr_session_feed_interleaved(
     session: *mut DrSession,
     samples: *const f32,
     frame_count: c_uint,
@@ -167,11 +175,11 @@ pub extern "C" fn dr_session_feed_interleaved(
         return -1;
     }
 
-    let session = unsafe { &mut *session };
+    let session = &mut *session;
     let channels = session.channels;
     let sample_count = (frame_count as usize) * channels;
 
-    let sample_slice = unsafe { std::slice::from_raw_parts(samples, sample_count) };
+    let sample_slice = std::slice::from_raw_parts(samples, sample_count);
 
     match session.feed_interleaved(sample_slice) {
         Ok(_) => 0,
@@ -179,8 +187,15 @@ pub extern "C" fn dr_session_feed_interleaved(
     }
 }
 
+/// 完成DR分析并获取结果
+///
+/// # Safety
+/// 调用者必须确保：
+/// - `session` 是通过 `dr_session_new` 创建的有效指针
+/// - `result` 指向一个有效的 `DrAnalysisResult` 结构体
+/// - 在会话被释放前，指针仍然有效
 #[no_mangle]
-pub extern "C" fn dr_session_finalize(
+pub unsafe extern "C" fn dr_session_finalize(
     session: *mut DrSession,
     result: *mut DrAnalysisResult,
 ) -> c_int {
@@ -188,7 +203,7 @@ pub extern "C" fn dr_session_finalize(
         return -1;
     }
 
-    let session = unsafe { &mut *session };
+    let session = &mut *session;
 
     match session.finalize() {
         Ok(dr_results) => {
@@ -206,11 +221,16 @@ pub extern "C" fn dr_session_finalize(
     }
 }
 
+/// 释放DR会话资源
+///
+/// # Safety
+/// 调用者必须确保：
+/// - `session` 是通过 `dr_session_new` 创建的有效指针，或者是 null
+/// - 释放后不再使用该指针
+/// - 每个会话只能释放一次
 #[no_mangle]
-pub extern "C" fn dr_session_free(session: *mut DrSession) {
+pub unsafe extern "C" fn dr_session_free(session: *mut DrSession) {
     if !session.is_null() {
-        unsafe {
-            drop(Box::from_raw(session));
-        }
+        drop(Box::from_raw(session));
     }
 }
