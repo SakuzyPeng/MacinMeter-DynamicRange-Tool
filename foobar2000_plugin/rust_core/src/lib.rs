@@ -3,7 +3,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
 // 引入主工程的真实DR计算核心
-use macinmeter_dr_core::{AudioResult, BatchProcessor, DrResult};
+use macinmeter_dr_core::{AudioResult, DrCalculator, DrResult};
 
 // 扩展的FFI结构体定义 - 包含每声道明细
 #[repr(C)]
@@ -31,36 +31,40 @@ pub struct DrAnalysisResult {
 
 // 会话式DR分析器
 pub struct DrSession {
-    processor: BatchProcessor,
+    calculator: DrCalculator,
     channels: usize,
     sample_rate: u32,
     total_samples: usize,
-    sample_buffer: Vec<f32>, // 暂存交错音频数据
+    sample_buffer: Vec<f32>, // 累积交错音频数据
     enable_sum_doubling: bool,
 }
 
 impl DrSession {
     pub fn new(channels: usize, sample_rate: u32, enable_sum_doubling: bool) -> AudioResult<Self> {
-        let processor = BatchProcessor::new(true, None);
+        // 使用逐包直通模式：块大小设为很小的值，确保每个foobar2000包都作为独立块处理
+        // 使用很小的块持续时间以实现流式处理（0.1秒 = 100ms）
+        let calculator = DrCalculator::new(channels, enable_sum_doubling, sample_rate, 0.1)?;
 
         Ok(Self {
-            processor,
+            calculator,
             channels,
             sample_rate,
             total_samples: 0,
-            sample_buffer: Vec::new(),
+            sample_buffer: Vec::new(), // 保留但不使用，为了避免FFI兼容性问题
             enable_sum_doubling,
         })
     }
 
     pub fn feed_interleaved(&mut self, samples: &[f32]) -> AudioResult<()> {
-        self.sample_buffer.extend_from_slice(samples);
+        // 立即处理此包数据，而不是累积
+        // 使用process_decoder_chunk保持foobar2000的原生解码包边界
+        self.calculator.process_decoder_chunk(samples, self.channels)?;
         self.total_samples += samples.len() / self.channels;
         Ok(())
     }
 
     pub fn finalize(&mut self) -> AudioResult<Vec<DrResult>> {
-        if self.sample_buffer.is_empty() {
+        if self.total_samples == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "No audio data to analyze",
@@ -68,14 +72,11 @@ impl DrSession {
             .into());
         }
 
-        // 使用真实的BatchProcessor进行DR计算
-        let batch_result = self.processor.process_interleaved_batch(
-            &self.sample_buffer,
-            self.channels,
-            self.sample_rate,
-            self.enable_sum_doubling,
-        )?;
-        Ok(batch_result.dr_results)
+        // 获取累积的DR计算结果
+        // 由于我们已经通过process_chunk逐包处理了所有数据
+        // 现在只需要获取最终结果
+        let results = self.calculator.finalize()?;
+        Ok(results)
     }
 }
 
