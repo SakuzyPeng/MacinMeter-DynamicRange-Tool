@@ -96,8 +96,8 @@ set(PLUGIN_SOURCES
 )
 
 # 添加custom target来构建Rust核心库
-set(RUST_PROJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../")
-set(RUST_BUILD_DIR "${RUST_PROJECT_PATH}/target/release")
+set(RUST_CORE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/rust_core")
+set(RUST_BUILD_DIR "${RUST_CORE_PATH}/target/release")
 
 if(APPLE)
     set(RUST_LIB_NAME "libmacinmeter_dr_core.dylib")
@@ -109,22 +109,26 @@ endif()
 
 set(RUST_LIB_FULL_PATH "${RUST_BUILD_DIR}/${RUST_LIB_NAME}")
 
-# 创建Rust构建目标
-add_custom_target(build_rust_core
-    COMMAND cargo build --release ${RUST_BUILD_TARGET}
-    WORKING_DIRECTORY ${RUST_PROJECT_PATH}
-    COMMENT "Building Rust core library..."
-    VERBATIM
+# 获取Rust源文件列表用于依赖检查
+file(GLOB_RECURSE RUST_SOURCES
+    "${RUST_CORE_PATH}/src/*.rs"
+)
+list(APPEND RUST_SOURCES
+    "${RUST_CORE_PATH}/Cargo.toml"
 )
 
-# 创建Rust库输出的custom command
+# 创建Rust库输出的custom command（带源文件依赖）
 add_custom_command(
     OUTPUT ${RUST_LIB_FULL_PATH}
     COMMAND cargo build --release ${RUST_BUILD_TARGET}
-    WORKING_DIRECTORY ${RUST_PROJECT_PATH}
+    DEPENDS ${RUST_SOURCES}
+    WORKING_DIRECTORY ${RUST_CORE_PATH}
     COMMENT "Building Rust core library with output tracking..."
     VERBATIM
 )
+
+# 创建基于输出文件的构建目标
+add_custom_target(build_rust_core DEPENDS ${RUST_LIB_FULL_PATH})
 
 # 创建导入库目标来表示Rust库
 add_library(rust_core_lib SHARED IMPORTED)
@@ -209,7 +213,7 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:foo_dr_macinmeter> ${CMAKE_CURRENT_BINARY_DIR}/plugin_bundle/mac/foo_dr_macinmeter.component/Contents/MacOS/foo_dr_macinmeter
 
         # 复制Rust核心库到Resources
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/../target/release/libmacinmeter_dr_core.dylib ${CMAKE_CURRENT_BINARY_DIR}/plugin_bundle/mac/foo_dr_macinmeter.component/Contents/Resources/
+        COMMAND ${CMAKE_COMMAND} -E copy ${RUST_LIB_FULL_PATH} ${CMAKE_CURRENT_BINARY_DIR}/plugin_bundle/mac/foo_dr_macinmeter.component/Contents/Resources/
 
         # 复制Info.plist
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.template ${CMAKE_CURRENT_BINARY_DIR}/plugin_bundle/mac/foo_dr_macinmeter.component/Contents/Info.plist
