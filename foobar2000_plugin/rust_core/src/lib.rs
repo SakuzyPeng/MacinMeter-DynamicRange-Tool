@@ -35,8 +35,10 @@ pub struct DrSession {
     channels: usize,
     sample_rate: u32,
     total_samples: usize,
-    sample_buffer: Vec<f32>, // 累积交错音频数据
-    enable_sum_doubling: bool,
+    #[allow(dead_code)]
+    sample_buffer: Vec<f32>, // 累积交错音频数据（为FFI兼容性保留）
+    #[allow(dead_code)]
+    enable_sum_doubling: bool, // Sum Doubling配置（为扩展性保留）
 }
 
 impl DrSession {
@@ -58,7 +60,8 @@ impl DrSession {
     pub fn feed_interleaved(&mut self, samples: &[f32]) -> AudioResult<()> {
         // 立即处理此包数据，而不是累积
         // 使用process_decoder_chunk保持foobar2000的原生解码包边界
-        self.calculator.process_decoder_chunk(samples, self.channels)?;
+        self.calculator
+            .process_decoder_chunk(samples, self.channels)?;
         self.total_samples += samples.len() / self.channels;
         Ok(())
     }
@@ -117,7 +120,7 @@ fn convert_dr_results_to_c(
         result.sample_rate = sample_rate;
         result.total_samples = total_frames as c_uint;
         result.bits_per_sample = 32; // 硬编码为32位（foobar2000内部格式）
-        // 正确计算duration：total_frames已经是帧数，直接除以采样率
+                                     // 正确计算duration：total_frames已经是帧数，直接除以采样率
         result.duration_seconds = (total_frames as f64) / (sample_rate as f64);
 
         copy_str_to_c_array("foobar2000", &mut result.codec);

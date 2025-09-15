@@ -1,20 +1,22 @@
-#include "foobar2000.h"
 #include "context_menu.h"
 #include "audio_accessor.h"
+#include "foobar2000.h"
 #include "results_dialog.h"
 #include "rust_bridge.h"
 
 // 菜单节点实现
 class context_dr_menu_node : public contextmenu_item_node_root_leaf {
-private:
+  private:
     unsigned m_index;
     pfc::string8 m_name;
 
-public:
+  public:
     context_dr_menu_node(unsigned index, const char* name) : m_index(index), m_name(name) {}
 
-    bool get_display_data(pfc::string_base& p_out, unsigned& p_displayflags, metadb_handle_list_cref p_data, const GUID& p_caller) override {
-        console::printf("MacinMeter DR: Menu node get_display_data called for: %s", m_name.get_ptr());
+    bool get_display_data(pfc::string_base& p_out, unsigned& p_displayflags,
+                          metadb_handle_list_cref p_data, const GUID& p_caller) override {
+        console::printf("MacinMeter DR: Menu node get_display_data called for: %s",
+                        m_name.get_ptr());
         p_out = m_name;
         p_displayflags = 0;
         return true;
@@ -34,23 +36,29 @@ public:
         } catch (const std::exception& e) {
             console::printf("MacinMeter DR Plugin Error: %s", e.what());
             popup_message::g_complain("MacinMeter DR Plugin",
-                PFC_string_formatter() << "Error analyzing dynamic range: " << e.what());
+                                      PFC_string_formatter()
+                                          << "Error analyzing dynamic range: " << e.what());
         }
     }
 
-private:
+  private:
     // 执行单个文件DR分析（使用foobar2000解码器）
     void execute_dr_analysis_single(metadb_handle_list_cref data) {
-        if (data.get_count() == 0) return;
+        if (data.get_count() == 0)
+            return;
 
-        console::printf("MacinMeter DR: Analyzing %d track(s) using packet-by-packet DR analysis...", (int)data.get_count());
+        console::printf(
+            "MacinMeter DR: Analyzing %d track(s) using packet-by-packet DR analysis...",
+            (int)data.get_count());
 
         // 直接进行DR分析（逐包会话模式）
         AudioAccessor accessor;
         auto results = accessor.analyze_dr_data_list(data);
 
         if (results.empty()) {
-            popup_message::g_complain("MacinMeter DR Plugin", "No valid DR analysis results from packet-by-packet processing");
+            popup_message::g_complain(
+                "MacinMeter DR Plugin",
+                "No valid DR analysis results from packet-by-packet processing");
             return;
         }
 
@@ -70,7 +78,7 @@ private:
             audio_data_list.push_back(audio_data);
 
             console::printf("MacinMeter DR: %s - DR%.0f (packet-by-packet analysis)",
-                result.file_name, result.official_dr_value);
+                            result.file_name, result.official_dr_value);
         }
 
         // 显示结果
@@ -79,15 +87,18 @@ private:
             dialog.show_results(results, audio_data_list);
         } else {
             popup_message::g_complain("MacinMeter DR Plugin",
-                "Failed to analyze any of the decoded audio tracks");
+                                      "Failed to analyze any of the decoded audio tracks");
         }
     }
 
     // 执行批量DR分析（使用foobar2000解码器）
     void execute_dr_analysis_batch(metadb_handle_list_cref data) {
-        if (data.get_count() == 0) return;
+        if (data.get_count() == 0)
+            return;
 
-        console::printf("MacinMeter DR: Starting batch analysis for %d track(s) using packet-by-packet analysis...", (int)data.get_count());
+        console::printf("MacinMeter DR: Starting batch analysis for %d track(s) using "
+                        "packet-by-packet analysis...",
+                        (int)data.get_count());
 
         // 直接进行批量DR分析（逐包会话模式）
         AudioAccessor accessor;
@@ -95,7 +106,8 @@ private:
 
         if (results.empty()) {
             popup_message::g_complain("MacinMeter DR Plugin",
-                "Batch analysis failed - no tracks could be processed using packet-by-packet analysis");
+                                      "Batch analysis failed - no tracks could be processed using "
+                                      "packet-by-packet analysis");
             return;
         }
 
@@ -115,11 +127,13 @@ private:
             audio_data_list.push_back(audio_data);
 
             console::printf("MacinMeter DR: %s - DR%.0f (batch packet-by-packet analysis)",
-                result.file_name, result.official_dr_value);
+                            result.file_name, result.official_dr_value);
         }
 
         // 显示批量结果
-        console::printf("MacinMeter DR: Batch analysis completed - %d track(s) processed successfully", (int)results.size());
+        console::printf(
+            "MacinMeter DR: Batch analysis completed - %d track(s) processed successfully",
+            (int)results.size());
 
         ResultsDialog dialog;
         dialog.show_results(results, audio_data_list);
@@ -127,33 +141,32 @@ private:
 
     bool get_description(pfc::string_base& p_out) override {
         if (m_index == 0) {
-            p_out = "Analyze dynamic range using MacinMeter's high-precision DR engine (foobar2000 compatible)";
+            p_out = "Analyze dynamic range using MacinMeter's high-precision DR engine (foobar2000 "
+                    "compatible)";
         } else {
-            p_out = "Batch analyze dynamic range and generate comprehensive report with MacinMeter DR engine";
+            p_out = "Batch analyze dynamic range and generate comprehensive report with MacinMeter "
+                    "DR engine";
         }
         return true;
     }
 
     GUID get_guid() override {
         static const GUID guids[] = {
-            { 0xe1f2a3b4, 0xc5d6, 0xe7f8, { 0xa9, 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6 } },
-            { 0xf2a3b4c5, 0xd6e7, 0xf8a9, { 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6, 0xc7 } }
-        };
+            {0xe1f2a3b4, 0xc5d6, 0xe7f8, {0xa9, 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6}},
+            {0xf2a3b4c5, 0xd6e7, 0xf8a9, {0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6, 0xc7}}};
         return guids[m_index];
     }
 
-    bool is_mappable_shortcut() override { return true; }
+    bool is_mappable_shortcut() override {
+        return true;
+    }
 };
 
 // 右键菜单项实现
 class context_dr_meter : public contextmenu_item {
-public:
+  public:
     // 菜单项数量
-    enum {
-        cmd_analyze_dr_single = 0,
-        cmd_analyze_dr_batch = 1,
-        cmd_total
-    };
+    enum { cmd_analyze_dr_single = 0, cmd_analyze_dr_batch = 1, cmd_total };
 
     // 获取菜单项数量
     unsigned get_num_items() override {
@@ -162,12 +175,16 @@ public:
     }
 
     // 创建菜单节点实例（关键方法）
-    contextmenu_item_node_root* instantiate_item(unsigned p_index, metadb_handle_list_cref p_data, const GUID& p_caller) override {
-        console::printf("MacinMeter DR: instantiate_item called with index=%u, data_count=%u", p_index, (unsigned)p_data.get_count());
+    contextmenu_item_node_root* instantiate_item(unsigned p_index, metadb_handle_list_cref p_data,
+                                                 const GUID& p_caller) override {
+        console::printf("MacinMeter DR: instantiate_item called with index=%u, data_count=%u",
+                        p_index, (unsigned)p_data.get_count());
 
-        if (p_index >= cmd_total) return nullptr;
+        if (p_index >= cmd_total)
+            return nullptr;
 
-        const char* name = (p_index == cmd_analyze_dr_single) ? "MacinMeter DR Analysis" : "MacinMeter DR Batch Analysis";
+        const char* name = (p_index == cmd_analyze_dr_single) ? "MacinMeter DR Analysis"
+                                                              : "MacinMeter DR Batch Analysis";
         return new context_dr_menu_node(p_index, name);
     }
 
@@ -195,10 +212,12 @@ public:
     bool get_item_description(unsigned index, pfc::string_base& out) override {
         switch (index) {
         case cmd_analyze_dr_single:
-            out = "Analyze dynamic range using MacinMeter's high-precision DR engine (foobar2000 compatible)";
+            out = "Analyze dynamic range using MacinMeter's high-precision DR engine (foobar2000 "
+                  "compatible)";
             return true;
         case cmd_analyze_dr_batch:
-            out = "Batch analyze dynamic range and generate comprehensive report with MacinMeter DR engine";
+            out = "Batch analyze dynamic range and generate comprehensive report with MacinMeter "
+                  "DR engine";
             return true;
         default:
             return false;
@@ -209,10 +228,9 @@ public:
     GUID get_item_guid(unsigned index) override {
         static const GUID guids[cmd_total] = {
             // {E1F2A3B4-C5D6-E7F8-A9B0-C1D2E3F4A5B6}
-            { 0xe1f2a3b4, 0xc5d6, 0xe7f8, { 0xa9, 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6 } },
+            {0xe1f2a3b4, 0xc5d6, 0xe7f8, {0xa9, 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6}},
             // {F2A3B4C5-D6E7-F8A9-B0C1-D2E3F4A5B6C7}
-            { 0xf2a3b4c5, 0xd6e7, 0xf8a9, { 0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6, 0xc7 } }
-        };
+            {0xf2a3b4c5, 0xd6e7, 0xf8a9, {0xb0, 0xc1, 0xd2, 0xe3, 0xf4, 0xa5, 0xb6, 0xc7}}};
         return guids[index];
     }
 
@@ -223,13 +241,14 @@ public:
     }
 
     // 简单执行方法（新增必需方法）
-    void item_execute_simple(unsigned p_index, const GUID& p_node, metadb_handle_list_cref p_data, const GUID& p_caller) override {
+    void item_execute_simple(unsigned p_index, const GUID& p_node, metadb_handle_list_cref p_data,
+                             const GUID& p_caller) override {
         console::printf("MacinMeter DR: item_execute_simple called for index %u", p_index);
         // 这里可以调用实际的DR分析功能
         // 暂时只打印日志
     }
 
-private:
+  private:
     // 检查是否为音频文件 (简化实现 - 先让菜单总是显示)
     bool is_audio_file(const char* path) {
         // 暂时总是返回true，让菜单显示
@@ -264,16 +283,21 @@ private:
 
     // 执行单个文件DR分析（使用foobar2000解码器）
     void execute_dr_analysis_single(metadb_handle_list_cref data) {
-        if (data.get_count() == 0) return;
+        if (data.get_count() == 0)
+            return;
 
-        console::printf("MacinMeter DR: Analyzing %d track(s) using packet-by-packet DR analysis...", (int)data.get_count());
+        console::printf(
+            "MacinMeter DR: Analyzing %d track(s) using packet-by-packet DR analysis...",
+            (int)data.get_count());
 
         // 直接进行DR分析（逐包会话模式）
         AudioAccessor accessor;
         auto results = accessor.analyze_dr_data_list(data);
 
         if (results.empty()) {
-            popup_message::g_complain("MacinMeter DR Plugin", "No valid DR analysis results from packet-by-packet processing");
+            popup_message::g_complain(
+                "MacinMeter DR Plugin",
+                "No valid DR analysis results from packet-by-packet processing");
             return;
         }
 
@@ -293,7 +317,7 @@ private:
             audio_data_list.push_back(audio_data);
 
             console::printf("MacinMeter DR: %s - DR%.0f (packet-by-packet analysis)",
-                result.file_name, result.official_dr_value);
+                            result.file_name, result.official_dr_value);
         }
 
         // 显示结果
@@ -301,16 +325,19 @@ private:
             ResultsDialog dialog;
             dialog.show_results(results, audio_data_list);
         } else {
-            popup_message::g_complain("MacinMeter DR Plugin", 
-                "Failed to analyze any of the decoded audio tracks");
+            popup_message::g_complain("MacinMeter DR Plugin",
+                                      "Failed to analyze any of the decoded audio tracks");
         }
     }
 
     // 执行批量DR分析（使用foobar2000解码器）
     void execute_dr_analysis_batch(metadb_handle_list_cref data) {
-        if (data.get_count() == 0) return;
+        if (data.get_count() == 0)
+            return;
 
-        console::printf("MacinMeter DR: Starting batch analysis for %d track(s) using packet-by-packet analysis...", (int)data.get_count());
+        console::printf("MacinMeter DR: Starting batch analysis for %d track(s) using "
+                        "packet-by-packet analysis...",
+                        (int)data.get_count());
 
         try {
             // 直接进行批量DR分析（逐包会话模式）
@@ -319,7 +346,8 @@ private:
 
             if (results.empty()) {
                 popup_message::g_complain("MacinMeter DR Plugin",
-                    "Batch analysis failed - no tracks could be processed using packet-by-packet analysis");
+                                          "Batch analysis failed - no tracks could be processed "
+                                          "using packet-by-packet analysis");
                 return;
             }
 
@@ -340,25 +368,28 @@ private:
                 audio_data_list.push_back(audio_data);
 
                 console::printf("MacinMeter DR: %d/%d: %s - DR%.0f (packet-by-packet)",
-                               (int)(i + 1), (int)results.size(),
-                               result.file_name, result.official_dr_value);
+                                (int)(i + 1), (int)results.size(), result.file_name,
+                                result.official_dr_value);
             }
 
-            console::print("MacinMeter DR: Generating batch report from packet-by-packet analysis...");
+            console::print(
+                "MacinMeter DR: Generating batch report from packet-by-packet analysis...");
 
             // 生成批量报告
             ResultsDialog dialog;
             dialog.show_batch_results(results, audio_data_list);
-            console::printf("MacinMeter DR: Batch analysis completed successfully (%d tracks, packet-by-packet mode)", (int)results.size());
-        }
-        catch (const std::exception& e) {
+            console::printf("MacinMeter DR: Batch analysis completed successfully (%d tracks, "
+                            "packet-by-packet mode)",
+                            (int)results.size());
+        } catch (const std::exception& e) {
             console::printf("MacinMeter DR: Batch analysis error: %s", e.what());
-            popup_message::g_complain("MacinMeter DR Plugin", 
-                PFC_string_formatter() << "Batch analysis failed: " << e.what());
-        }
-        catch (...) {
+            popup_message::g_complain("MacinMeter DR Plugin", PFC_string_formatter()
+                                                                  << "Batch analysis failed: "
+                                                                  << e.what());
+        } catch (...) {
             console::print("MacinMeter DR: Unknown batch analysis error");
-            popup_message::g_complain("MacinMeter DR Plugin", "Batch analysis failed with unknown error");
+            popup_message::g_complain("MacinMeter DR Plugin",
+                                      "Batch analysis failed with unknown error");
         }
     }
 };

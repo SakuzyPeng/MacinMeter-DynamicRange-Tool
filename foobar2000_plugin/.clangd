@@ -1,5 +1,5 @@
 CompileFlags:
-  Add: 
+  Add:
     - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/SDK
     - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/shared
     - -I/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/SDK-2025-03-07/foobar2000/foobar2000_component_client
@@ -8,12 +8,20 @@ CompileFlags:
     - -DFOOBAR2000_DESKTOP
     - -D_REENTRANT
     - -std=c++17
+    - -Wall
+    - -Wextra
+    - -Wpedantic
 Diagnostics:
-  Suppress:
-    - clang-diagnostic-error
   ClangTidy:
+    Add:
+      - modernize-*
+      - readability-*
+      - performance-*
+      - bugprone-*
+      - cppcoreguidelines-*
     Remove:
-      - clang-diagnostic-error
-      - clang-diagnostic-warning
-  UnusedIncludes: None
-  MissingIncludes: None
+      - modernize-use-trailing-return-type
+      - cppcoreguidelines-avoid-magic-numbers
+      - readability-magic-numbers
+  UnusedIncludes: Strict
+  MissingIncludes: Strict

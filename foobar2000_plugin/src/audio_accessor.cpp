@@ -1,54 +1,54 @@
 #include "audio_accessor.h"
-#include "rust_bridge.h"
 #include "foobar2000.h"
+#include "rust_bridge.h"
 #include <filesystem>
 
-std::vector<AudioData> AudioAccessor::decode_audio_data_list(const pfc::list_base_const_t<metadb_handle_ptr>& handles) {
+std::vector<AudioData>
+AudioAccessor::decode_audio_data_list(const pfc::list_base_const_t<metadb_handle_ptr>& handles) {
     std::vector<AudioData> audio_data_list;
     audio_data_list.reserve(handles.get_count());
-    
+
     for (t_size i = 0; i < handles.get_count(); ++i) {
         try {
             AudioData audio = decode_audio_data(handles[i]);
             if (!audio.samples.empty()) {
                 audio_data_list.push_back(std::move(audio));
             }
-        }
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             console::printf("MacinMeter DR: Error decoding audio data: %s", e.what());
         }
     }
-    
+
     return audio_data_list;
 }
 
 AudioData AudioAccessor::decode_audio_data(const metadb_handle_ptr& handle) {
     AudioData audio;
-    
+
     if (!handle.is_valid()) {
         console::print("MacinMeter DR: Invalid handle");
         return audio;
     }
-    
+
     // 获取文件路径
     const char* file_path = handle->get_path();
     if (!file_path) {
         console::print("MacinMeter DR: Failed to get file path");
         return audio;
     }
-    
+
     // 提取文件名
     std::filesystem::path path(file_path);
     audio.file_name = path.filename().string();
-    
+
     console::printf("MacinMeter DR: Starting foobar2000 decode for: %s", audio.file_name.c_str());
-    
+
     // 提取元数据信息
     extract_file_info(handle, audio);
-    
+
     // 使用foobar2000解码器解码音频数据
     decode_audio_samples(handle, audio);
-    
+
     return audio;
 }
 
@@ -61,13 +61,11 @@ void AudioAccessor::extract_file_info(const metadb_handle_ptr& handle, AudioData
         audio.artist = "";
         audio.album = "";
         audio.duration = 0.0;
-        
-        console::printf("MacinMeter DR: File info - title: %s", 
-                       audio.title.c_str());
-    }
-    catch (const std::exception& e) {
+
+        console::printf("MacinMeter DR: File info - title: %s", audio.title.c_str());
+    } catch (const std::exception& e) {
         console::printf("MacinMeter DR: Error extracting file info: %s", e.what());
-        
+
         // 如果获取元数据失败，使用文件名作为标题
         if (audio.title.empty()) {
             std::filesystem::path path(audio.file_name);
@@ -79,7 +77,8 @@ void AudioAccessor::extract_file_info(const metadb_handle_ptr& handle, AudioData
 
 void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioData& audio) {
     try {
-        console::printf("MacinMeter DR: Opening foobar2000 decoder for: %s", audio.file_name.c_str());
+        console::printf("MacinMeter DR: Opening foobar2000 decoder for: %s",
+                        audio.file_name.c_str());
 
         // 使用foobar2000的input_decoder
         service_ptr_t<input_decoder> decoder;
@@ -95,7 +94,8 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
         // 初始化解码器（第一个子歌曲，简单解码模式）
         decoder->initialize(0, input_flag_simpledecode, abort);
 
-        console::printf("MacinMeter DR: Decoder initialized, starting packet-by-packet DR analysis...");
+        console::printf(
+            "MacinMeter DR: Decoder initialized, starting packet-by-packet DR analysis...");
 
         // 解码音频数据并实时进行DR计算（逐包直通模式）
         audio_chunk_impl chunk;
@@ -112,8 +112,8 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
                 audio.sample_rate = chunk.get_sample_rate();
                 audio.channels = chunk.get_channels();
 
-                console::printf("MacinMeter DR: Audio format - %uHz, %uch",
-                               audio.sample_rate, audio.channels);
+                console::printf("MacinMeter DR: Audio format - %uHz, %uch", audio.sample_rate,
+                                audio.channels);
 
                 // 创建DR分析会话（启用Sum Doubling）
                 dr_session = dr_session_new(audio.channels, audio.sample_rate, 1);
@@ -121,7 +121,8 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
                     throw std::runtime_error("Failed to create DR analysis session");
                 }
 
-                console::printf("MacinMeter DR: DR analysis session created, beginning packet-by-packet processing...");
+                console::printf("MacinMeter DR: DR analysis session created, beginning "
+                                "packet-by-packet processing...");
                 first_chunk = false;
             }
 
@@ -142,7 +143,8 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
 
             // 立即将此包数据喂给DR计算引擎（逐包直通）
             unsigned int frame_count = chunk_samples / audio.channels;
-            int feed_result = dr_session_feed_interleaved(dr_session, float_buffer.data(), frame_count);
+            int feed_result =
+                dr_session_feed_interleaved(dr_session, float_buffer.data(), frame_count);
 
             if (feed_result != 0) {
                 dr_session_free(dr_session);
@@ -153,7 +155,8 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
 
             // 周期性日志输出
             if (total_samples % 100000 == 0) {
-                console::printf("MacinMeter DR: Processed %zu samples in packet-by-packet mode...", total_samples);
+                console::printf("MacinMeter DR: Processed %zu samples in packet-by-packet mode...",
+                                total_samples);
             }
         }
 
@@ -189,13 +192,15 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
 
                 // 计算正确的duration（total_samples已经是帧数，不需要再除以声道数）
                 if (audio.sample_rate > 0 && dr_result.total_samples > 0) {
-                    dr_result.duration_seconds = (double)dr_result.total_samples / audio.sample_rate;
+                    dr_result.duration_seconds =
+                        (double)dr_result.total_samples / audio.sample_rate;
                 }
 
-                console::printf("MacinMeter DR: Audio info corrected - %u Hz, %u ch, %u bits, %.2f s",
-                               audio.sample_rate, audio.channels, dr_result.bits_per_sample, dr_result.duration_seconds);
-            }
-            catch (const std::exception& e) {
+                console::printf(
+                    "MacinMeter DR: Audio info corrected - %u Hz, %u ch, %u bits, %.2f s",
+                    audio.sample_rate, audio.channels, dr_result.bits_per_sample,
+                    dr_result.duration_seconds);
+            } catch (const std::exception& e) {
                 console::printf("MacinMeter DR: Warning - could not get file info: %s", e.what());
             }
 
@@ -210,15 +215,15 @@ void AudioAccessor::decode_audio_samples(const metadb_handle_ptr& handle, AudioD
             // 存储DR计算结果（不存储样本数据）
             audio.samples.clear(); // 逐包模式不保存所有样本
 
-            console::printf("MacinMeter DR: Packet-by-packet analysis completed - DR%.0f (precise: %.2f), %u samples, %.2fs",
-                           dr_result.official_dr_value, dr_result.precise_dr_value,
-                           dr_result.total_samples, audio.duration);
+            console::printf("MacinMeter DR: Packet-by-packet analysis completed - DR%.0f (precise: "
+                            "%.2f), %u samples, %.2fs",
+                            dr_result.official_dr_value, dr_result.precise_dr_value,
+                            dr_result.total_samples, audio.duration);
         } else {
             throw std::runtime_error("DR analysis session was not created");
         }
 
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         console::printf("MacinMeter DR: Error in packet-by-packet audio processing: %s", e.what());
 
         // 确保在错误情况下清理数据
@@ -236,7 +241,8 @@ std::string AudioAccessor::get_safe_string(const file_info& info, const char* fi
 }
 
 // 直接进行DR分析并返回结果列表（逐包会话模式）
-std::vector<DrAnalysisResult> AudioAccessor::analyze_dr_data_list(const pfc::list_base_const_t<metadb_handle_ptr>& handles) {
+std::vector<DrAnalysisResult>
+AudioAccessor::analyze_dr_data_list(const pfc::list_base_const_t<metadb_handle_ptr>& handles) {
     std::vector<DrAnalysisResult> results;
     results.reserve(handles.get_count());
 
@@ -247,8 +253,7 @@ std::vector<DrAnalysisResult> AudioAccessor::analyze_dr_data_list(const pfc::lis
             if (result.official_dr_value > 0) {
                 results.push_back(result);
             }
-        }
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             console::printf("MacinMeter DR: Error analyzing audio data for DR: %s", e.what());
         }
     }
@@ -313,12 +318,13 @@ DrAnalysisResult AudioAccessor::analyze_dr_data(const metadb_handle_ptr& handle)
                 channels = chunk.get_channels();
 
                 console::printf("MacinMeter DR: Direct analysis - Audio format %uHz, %uch",
-                               sample_rate, channels);
+                                sample_rate, channels);
 
                 // 创建DR分析会话（启用Sum Doubling）
                 dr_session = dr_session_new(channels, sample_rate, 1);
                 if (!dr_session) {
-                    throw std::runtime_error("Failed to create DR analysis session for direct analysis");
+                    throw std::runtime_error(
+                        "Failed to create DR analysis session for direct analysis");
                 }
 
                 first_chunk = false;
@@ -339,11 +345,13 @@ DrAnalysisResult AudioAccessor::analyze_dr_data(const metadb_handle_ptr& handle)
             chunk_stats.chunk_sizes.push_back(chunk_samples);
 
             unsigned int frame_count = chunk_samples / channels;
-            int feed_result = dr_session_feed_interleaved(dr_session, float_buffer.data(), frame_count);
+            int feed_result =
+                dr_session_feed_interleaved(dr_session, float_buffer.data(), frame_count);
 
             if (feed_result != 0) {
                 dr_session_free(dr_session);
-                throw std::runtime_error("Failed to feed chunk data to DR analysis engine in direct mode");
+                throw std::runtime_error(
+                    "Failed to feed chunk data to DR analysis engine in direct mode");
             }
 
             total_samples += chunk_samples;
@@ -392,20 +400,20 @@ DrAnalysisResult AudioAccessor::analyze_dr_data(const metadb_handle_ptr& handle)
                 }
 
                 console::printf("MacinMeter DR: Audio info - %u Hz, %u ch, %u bits, %.2f s",
-                               sample_rate, channels, result.bits_per_sample, result.duration_seconds);
-            }
-            catch (const std::exception& e) {
+                                sample_rate, channels, result.bits_per_sample,
+                                result.duration_seconds);
+            } catch (const std::exception& e) {
                 console::printf("MacinMeter DR: Warning - could not get file info: %s", e.what());
             }
 
-            console::printf("MacinMeter DR: Direct DR analysis completed - DR%.0f (precise: %.2f), %u samples",
-                           result.official_dr_value, result.precise_dr_value, result.total_samples);
+            console::printf(
+                "MacinMeter DR: Direct DR analysis completed - DR%.0f (precise: %.2f), %u samples",
+                result.official_dr_value, result.precise_dr_value, result.total_samples);
         } else {
             throw std::runtime_error("DR analysis session was not created for direct analysis");
         }
 
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         console::printf("MacinMeter DR: Error in direct DR analysis: %s", e.what());
         memset(&result, 0, sizeof(DrAnalysisResult));
     }
