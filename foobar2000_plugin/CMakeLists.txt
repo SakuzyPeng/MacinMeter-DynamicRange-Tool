@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# 🚀 强制Release构建（优化大小）
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # 平台特定设置
 if(APPLE)
     message(STATUS "Building for macOS foobar2000")
@@ -27,9 +32,9 @@ include_directories(SYSTEM
 # 平台特定的预定义宏
 if(APPLE)
     add_definitions(-DMAC_VERSION)
-    # 优化大小的编译选项
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Os -ffunction-sections -fdata-sections -fvisibility=hidden")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,-dead_strip -Wl,-x")
+    # 🎯 平衡的大小优化（保持异常处理，目标：减少30%的文件大小）
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Os -flto -ffunction-sections -fdata-sections -fvisibility=hidden -DNDEBUG")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,-dead_strip -Wl,-x -flto -Wl,-S")
 elseif(WIN32)
     add_definitions(-DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN)
 endif()

@@ -2,10 +2,10 @@ name: CI/CD Pipeline - MacinMeter DR Tool (foobar2000兼容版)
 
 on:
   push:
-    branches: [ master, main, early-version ]
+    branches: [ master, main, early-version, foobar2000-plugin ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ master, main, early-version ]
+    branches: [ master, main, early-version, foobar2000-plugin ]
   workflow_dispatch:  # 允许手动触发
     inputs:
       skip_tests:
