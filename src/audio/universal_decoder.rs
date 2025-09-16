@@ -188,7 +188,27 @@ impl AudioDecoder for PcmDecoder {
 }
 
 impl PcmDecoder {
+    /// 创建流式解码器用于批处理计算（统一模式）
+    ///
+    /// 此方法使用统一的流式收集+批处理计算模式，移除了packet_chunk_mode选项。
+    /// 解码器将以合适的块大小收集样本，然后由WindowRmsAnalyzer进行批处理计算。
+    pub fn create_streaming_for_batch_processing(
+        &self,
+        path: &Path,
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        // 固定使用优化的流式收集模式（原packet_chunk_mode=true的行为）
+        Ok(Box::new(PcmStreamingDecoder::new_for_batch_processing(
+            path,
+        )?))
+    }
+
     /// 创建流式解码器（可指定逐包模式）
+    ///
+    /// 🏷️ DEPRECATED: 将在后续版本中移除，请使用create_streaming_for_batch_processing
+    #[deprecated(
+        since = "0.1.0",
+        note = "使用 create_streaming_for_batch_processing 替代"
+    )]
     pub fn create_streaming_with_packet_mode(
         &self,
         path: &Path,
@@ -575,6 +595,15 @@ pub struct PcmStreamingDecoder {
 }
 
 impl PcmStreamingDecoder {
+    /// 创建用于批处理计算的流式解码器（推荐方法）
+    ///
+    /// 此方法固定使用最优的流式收集模式，适配WindowRmsAnalyzer批处理计算。
+    /// 移除了packet_chunk_mode选项，简化架构。
+    pub fn new_for_batch_processing<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
+        // 固定使用packet_chunk_mode=true的优化模式
+        Self::new_with_packet_mode(path, true)
+    }
+
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         Self::new_with_packet_mode(path, false)
     }
@@ -892,19 +921,29 @@ impl UniversalDecoder {
         decoder.create_streaming(path.as_ref())
     }
 
-    /// 创建流式解码器（可指定逐包模式）
-    pub fn create_streaming_with_packet_mode<P: AsRef<Path>>(
+    /// 创建用于批处理计算的流式解码器（推荐方法）
+    ///
+    /// 此方法使用统一的流式收集+批处理计算模式，简化了架构设计。
+    pub fn create_streaming_for_batch_processing<P: AsRef<Path>>(
         &self,
         path: P,
-        packet_chunk_mode: bool,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let decoder = self.get_decoder(path.as_ref())?;
         if let Some(pcm_decoder) = decoder.as_any().downcast_ref::<PcmDecoder>() {
-            pcm_decoder.create_streaming_with_packet_mode(path.as_ref(), packet_chunk_mode)
+            pcm_decoder.create_streaming_for_batch_processing(path.as_ref())
         } else {
-            // 其他解码器暂不支持逐包模式，使用默认模式
+            // 其他解码器使用默认流式模式
             decoder.create_streaming(path.as_ref())
         }
+    }
+
+    pub fn create_streaming_with_packet_mode<P: AsRef<Path>>(
+        &self,
+        path: P,
+        _packet_chunk_mode: bool, // 参数保留但不使用
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        // 🔧 修复：统一使用create_streaming_for_batch_processing替代deprecated方法
+        self.create_streaming_for_batch_processing(path.as_ref())
     }
 
     /// 获取支持的格式列表

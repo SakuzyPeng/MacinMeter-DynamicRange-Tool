@@ -1,0 +1,24 @@
+foobar2000 2.0 / Dynamic Range Meter 1.1.1
+log date: 2025-09-15 05:49:14
+
+--------------------------------------------------------------------------------
+Statistics for: Ver2-adm-master-from-DAW-spatialmix-noreverb-peaklimited-0-2025-08-29-00-00-55
+Number of samples: 10662000
+Duration: 3:42 
+--------------------------------------------------------------------------------
+
+                 Left              Right
+
+Peak Value:     -1.53 dB   ---     -0.13 dB   
+Avg RMS:       -12.62 dB   ---    -12.73 dB   
+DR channel:      10.04 dB   ---     10.46 dB   
+--------------------------------------------------------------------------------
+
+Official DR Value: DR10
+
+Samplerate:        48000 Hz
+Channels:          2
+Bits per sample:   32
+Bitrate:           3072 kbps
+Codec:             FLAC
+================================================================================

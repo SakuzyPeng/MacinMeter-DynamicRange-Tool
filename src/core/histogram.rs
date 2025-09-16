@@ -15,10 +15,8 @@
 // 📅 删除时间: 2025-09-08
 // 🎯 原因: 删除重复的foobar2000_sse_sqrt函数定义后不再需要这些导入
 
-// 🔥 Bit-exact数值常量 (与foobar2000完全相同的十六进制精度)
-// 📖 从foobar2000反汇编中提取的精确常量值
-const FOOBAR2000_0_2: f64 = f64::from_bits(0x3fc999999999999a); // 精确的0.2
-const FOOBAR2000_1E8: f64 = f64::from_bits(0x3e45798ee2308c3a); // 精确的1e-8 (0.00000001)
+// 🔥 Bit-exact数值常量已移除 (未使用的常量)
+// 📖 如需精确常量值，参考master分支实现
 
 // 🏷️ FEATURE_REMOVAL: 重复的foobar2000_sse_sqrt函数定义已删除
 // 📅 删除时间: 2025-09-08
@@ -47,24 +45,6 @@ pub struct SimpleHistogramAnalyzer {
 /// - **超高精度**：10001个bin覆盖0.0000-1.0000幅度范围（精度0.0001）
 /// - **foobar2000内存布局**：扁平化数组匹配原版内存结构
 /// - **多声道支持**：histogram_addr = base_addr + 4 * (10001 * channel + bin_index)
-/// - **20%采样算法**：支持逆向遍历的精确20%分位数计算
-#[derive(Debug, Clone)]
-pub struct DrHistogram {
-    /// 🔥 关键修复：使用扁平化数组匹配foobar2000内存布局
-    /// 每个声道占用10001个连续元素，支持多声道统一寻址
-    bins: Vec<u64>,
-
-    /// 声道数量（用于计算正确的内存偏移）
-    #[allow(dead_code)] // 用于内存分配，但编译器认为未被读取
-    channel_count: usize,
-
-    /// 当前处理的声道索引
-    current_channel: usize,
-
-    /// 总样本数量
-    total_samples: u64,
-}
-
 impl SimpleHistogramAnalyzer {
     /// 创建简单直方图分析器
     ///
@@ -76,24 +56,7 @@ impl SimpleHistogramAnalyzer {
     /// * `current_channel` - 当前声道索引（可选，默认0）
     pub fn new(_sample_rate: u32) -> Self {
         Self {
-            histogram: DrHistogram::new(1, 0), // 默认单声道兼容性
-            total_samples: 0,
-        }
-    }
-
-    /// 创建多声道感知的直方图分析器
-    ///
-    /// # 参数
-    /// * `sample_rate` - 采样率
-    /// * `channel_count` - 总声道数量
-    /// * `current_channel` - 当前处理的声道索引
-    pub fn new_multichannel(
-        _sample_rate: u32,
-        channel_count: usize,
-        current_channel: usize,
-    ) -> Self {
-        Self {
-            histogram: DrHistogram::new(channel_count, current_channel),
+            histogram: DrHistogram::new(), // 使用无参数的new方法
             total_samples: 0,
         }
     }
@@ -178,167 +141,6 @@ impl SimpleHistogramAnalyzer {
     }
 }
 
-impl DrHistogram {
-    /// 创建新的10001-bin直方图（支持多声道扁平化布局）
-    ///
-    /// # 参数
-    /// * `channel_count` - 声道数量，用于分配正确的内存空间
-    /// * `current_channel` - 当前处理的声道索引（0-based）
-    fn new(channel_count: usize, current_channel: usize) -> Self {
-        Self {
-            // 🔥 关键修复：分配channel_count * 10001的扁平化数组
-            // 匹配foobar2000内存布局：base_addr + 4 * (10001 * channel + bin_index)
-            bins: vec![0; channel_count * 10001],
-            channel_count,
-            current_channel,
-            total_samples: 0,
-        }
-    }
-
-    /// 计算foobar2000兼容的bin地址偏移
-    ///
-    /// 📖 对应foobar2000汇编：histogram_addr = base_addr + 4 * (10001 * channel + bin_index)
-    #[inline]
-    fn get_bin_offset(&self, bin_index: usize) -> usize {
-        // 🎯 优先级4修复：精确匹配foobar2000的地址计算
-        // 内存布局：[Ch0_Bin0..Ch0_Bin10000, Ch1_Bin0..Ch1_Bin10000, ...]
-        10001 * self.current_channel + bin_index
-    }
-
-    /// 获取当前声道的bin数据（供WindowRmsAnalyzer使用）
-    ///
-    /// 🔥 关键修复：返回当前声道的10001个bin，而不是整个扁平化数组
-    pub(crate) fn bins(&self) -> &[u64] {
-        let start_offset = self.get_bin_offset(0);
-        &self.bins[start_offset..start_offset + 10001]
-    }
-
-    /// 添加样本绝对值到直方图
-    pub fn add_sample(&mut self, sample_abs: f32) {
-        if sample_abs < 0.0 || !sample_abs.is_finite() {
-            return; // 忽略无效样本
-        }
-
-        // 计算bin索引：样本绝对值映射到0-10000范围
-        // 🔥 关键修复：使用foobar2000的截断方式，不是四舍五入！
-        // 📖 反汇编: v47 = (int)(v46 * 10000.0) - 直接截断转换
-        let bin_index = ((sample_abs as f64 * 10000.0).min(10000.0)) as usize;
-
-        // 🎯 优先级4修复：使用foobar2000兼容的地址偏移
-        let offset = self.get_bin_offset(bin_index);
-        self.bins[offset] += 1;
-        self.total_samples += 1;
-    }
-
-    // 早期版本：已移除add_window_rms方法，不再使用窗口RMS处理
-
-    /// 简化的20%RMS计算
-    ///
-    /// 早期算法的简化实现：
-    /// 1. 从高幅度向低幅度逆向遍历，选取20%样本
-    /// 2. 简单计算这些样本的平方和
-    /// 3. 开方得到RMS值
-    ///
-    /// # 返回值
-    ///
-    /// 返回简化计算的20%RMS值，如果直方图为空则返回0.0
-    fn calculate_simple_20_percent_rms(&self) -> f64 {
-        self.calculate_simple_20_percent_rms_with_effective_samples(None)
-    }
-
-    /// 使用有效样本数计算20% RMS（考虑Sum Doubling）
-    ///
-    /// # 参数
-    /// * `effective_samples` - 有效样本数（考虑Sum Doubling后），None则使用total_samples
-    ///
-    /// # 返回值
-    /// 返回基于有效样本数计算的20%RMS值
-    fn calculate_simple_20_percent_rms_with_effective_samples(
-        &self,
-        effective_samples: Option<u64>,
-    ) -> f64 {
-        if self.total_samples == 0 {
-            return 0.0;
-        }
-
-        // 🔥 关键修正：使用有效样本数计算20%采样数量
-        // 基于foobar2000反汇编分析：v14 * 0.2 + 0.5 (v14是经过Sum Doubling的样本数)
-        let effective_count = effective_samples.unwrap_or(self.total_samples);
-
-        // 🎯 优先级3修复：20%采样边界精确处理 - 三重精确边界控制
-        // 📖 基于UltraThink分析：foobar2000转换链 i32 -> u32 -> u64
-        let effective_count_int = effective_count as i32;
-        let effective_count_f64 = effective_count_int as f64;
-
-        // 🔥 关键修复：完全匹配foobar2000的数据类型转换链
-        let samples_20_temp = (effective_count_f64 * FOOBAR2000_0_2 + 0.5) as i32; // foobar2000转换链
-        let need = (samples_20_temp as u32 as u64).max(1); // 零值保护：i32 -> u32 -> u64
-
-        // 20%采样计算过程
-
-        let mut remaining = need;
-        let mut sum_square = 0.0;
-
-        // 🔥 从高幅度向低幅度逆向遍历，使用remaining计数器实现精确停止
-        for bin_index in (0..=10000).rev() {
-            if remaining == 0 {
-                break;
-            } // 🎯 精确停止条件
-
-            // 🎯 优先级4修复：使用foobar2000兼容的地址偏移访问bin
-            let offset = self.get_bin_offset(bin_index);
-            let available = self.bins[offset];
-            let use_count = available.min(remaining);
-
-            if use_count > 0 {
-                // 🔥 关键修复：使用与foobar2000完全相同的浮点运算顺序
-                // 📖 对应C伪代码：v21 = v21 + (double)(int)v25 * 0.00000001 * ((double)v20 * (double)v20);
-                // 其中：v25=use_count, v20=bin_index, 0.00000001=FOOBAR2000_1E8
-                let bin_index_f64 = bin_index as f64;
-                sum_square += use_count as f64 * FOOBAR2000_1E8 * (bin_index_f64 * bin_index_f64);
-                remaining -= use_count; // 🎯 精确递减remaining计数器
-            }
-        }
-
-        // 计算最终RMS：开方(平方和/选中样本数)
-        // 🔥 关键精度修复：使用foobar2000相同的SSE平方根
-        // 📖 对应汇编: *(_QWORD *)&v46 = *(_OWORD *)&_mm_sqrt_pd(v43);
-        let actually_selected = need - remaining; // 🎯 精确计算实际选中的样本数
-        if actually_selected > 0 {
-            // 数据类型转换链：先转int再转double
-            let selected_int = actually_selected as i32;
-            let selected_f64 = selected_int as f64;
-
-            // 🎯 优先级2修复：DR计算阶段使用标量平方根（不是SSE）
-            // 📖 基于UltraThink分析：音频处理用SSE，DR计算用标量
-
-            // 20%RMS计算完成
-            (sum_square / selected_f64).sqrt()
-        } else {
-            0.0
-        }
-    }
-
-    // 🏷️ FEATURE_REMOVAL: 精确权重公式已删除（60+行复杂死代码）
-    // 📅 删除时间: 2025-09-08
-    // 🎯 原因: weighted_rms功能已删除，该实验性算法成为死代码
-    // 💡 简化效果: 删除复杂权重计算逻辑，专注foobar2000简单算法
-    // 🔄 回退: 如需实验性功能，查看git历史
-
-    // 早期版本：已移除get_bin_count测试方法，简化内部API
-
-    /// 清空直方图（仅清空当前声道的部分）
-    ///
-    /// 🔥 关键修复：只清空当前声道的10001个bin，不影响其他声道
-    fn clear(&mut self) {
-        let start_offset = self.get_bin_offset(0);
-        self.bins[start_offset..start_offset + 10001].fill(0);
-        self.total_samples = 0;
-    }
-
-    // 早期版本：已移除validate方法，简化验证逻辑
-}
-
 /// 样本统计信息
 #[derive(Debug, Clone)]
 pub struct SimpleStats {
@@ -358,13 +160,6 @@ pub struct SimpleStats {
     pub rms_20_percent: f64,
 }
 
-impl Default for DrHistogram {
-    fn default() -> Self {
-        // 🔥 默认单声道布局，兼容旧代码
-        Self::new(1, 0)
-    }
-}
-
 impl std::fmt::Display for SimpleStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -376,6 +171,397 @@ impl std::fmt::Display for SimpleStats {
             self.max_value,
             self.rms_20_percent
         )
+    }
+}
+
+/// WindowRmsAnalyzer - 基于master分支的正确20%采样算法
+///
+/// 这是从master分支移植的正确算法实现，使用窗口RMS值的20%采样
+/// 而不是样本级直方图的20%采样，能够产生与master分支完全一致的结果。
+#[derive(Debug, Clone)]
+pub struct WindowRmsAnalyzer {
+    /// 窗口长度（样本数）- 符合 Measuring_DR_ENv3.md 标准
+    window_len: usize,
+    /// 当前窗口的平方和累积
+    current_sum_sq: f64,
+    /// 当前窗口的最大Peak值
+    current_peak: f64,
+    /// 当前窗口的样本计数
+    current_count: usize,
+    /// 所有窗口RMS值的直方图
+    histogram: DrHistogram,
+    /// 所有窗口的Peak值集合（用于排序和选择第二大Peak值）
+    window_peaks: Vec<f64>,
+    /// 🔧 **关键修复**: 直接存储窗口RMS值以避免直方图量化损失
+    window_rms_values: Vec<f64>,
+    /// 处理的样本总数（用于虚拟零窗逻辑）
+    total_samples_processed: usize,
+    /// 最后一个样本值（用于尾窗处理）
+    last_sample: f64,
+    /// 当前窗口样本缓存（用于尾窗Peak重新计算）
+    current_window_samples: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct DrHistogram {
+    /// 10000个bin，索引0对应RMS=0，索引9999对应RMS=0.9999
+    bins: Vec<u32>,
+    /// 总窗口数
+    total_windows: u64,
+    /// RMS值到索引的映射缓存
+    rms_to_index_cache: Option<Vec<u16>>,
+}
+
+impl WindowRmsAnalyzer {
+    /// 计算符合官方DR测量标准的3秒窗口样本数
+    fn calculate_standard_window_size(sample_rate: u32) -> usize {
+        match sample_rate {
+            44100 => 132480,                 // 官方标准：44.1kHz使用132480样本
+            _ => (3 * sample_rate) as usize, // 其他采样率：标准3秒窗口
+        }
+    }
+
+    /// 创建3秒窗口RMS分析器
+    pub fn new(sample_rate: u32, _sum_doubling: bool) -> Self {
+        let window_len = Self::calculate_standard_window_size(sample_rate);
+        Self {
+            window_len,
+            current_sum_sq: 0.0,
+            current_peak: 0.0,
+            current_count: 0,
+            histogram: DrHistogram::new(),
+            window_peaks: Vec::new(),
+            window_rms_values: Vec::new(),
+            total_samples_processed: 0,
+            last_sample: 0.0,
+            current_window_samples: Vec::new(),
+        }
+    }
+
+    /// 处理单声道样本，按3秒窗口计算RMS并填入直方图
+    pub fn process_samples(&mut self, samples: &[f32]) {
+        // 🎯 **精确对齐dr14_t.meter**: 记录总样本数
+        self.total_samples_processed += samples.len();
+
+        for &sample in samples {
+            let sample_f64 = sample as f64;
+            let abs_sample = sample_f64.abs();
+
+            // 🔧 **dr14兼容性**: 保存当前样本作为潜在的"最后样本"
+            self.last_sample = sample_f64;
+
+            // 🔧 **方案A**: 维护当前窗口样本缓存，用于尾窗Peak重新计算
+            self.current_window_samples.push(sample_f64);
+
+            // 更新当前窗口的平方和和Peak值
+            self.current_sum_sq += sample_f64 * sample_f64;
+            self.current_peak = self.current_peak.max(abs_sample);
+            self.current_count += 1;
+
+            // 窗口满了，计算窗口RMS和Peak并添加到直方图
+            if self.current_count >= self.window_len {
+                // ✅ 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
+                let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
+                self.histogram.add_window_rms(window_rms);
+
+                // ✅ 记录窗口Peak值用于后续排序
+                self.window_peaks.push(self.current_peak);
+
+                // 🔧 **关键修复**: 直接存储RMS值避免量化损失
+                self.window_rms_values.push(window_rms);
+
+                // 重置窗口
+                self.current_sum_sq = 0.0;
+                self.current_peak = 0.0;
+                self.current_count = 0;
+                self.current_window_samples.clear(); // 清理样本缓存
+            }
+        }
+
+        // 处理不足一个窗口的剩余样本
+        if self.current_count > 0 {
+            // 🎯 **精确复刻dr14_t.meter尾窗行为**:
+            // dr14在尾窗切片时使用 Y[curr_sam:s[0] - 1, :] 排除最后一个样本
+            if self.current_count > 1 {
+                // 排除最后一个样本：从平方和中减去最后样本的平方，样本数-1
+                let adjusted_sum_sq = self.current_sum_sq - (self.last_sample * self.last_sample);
+                let adjusted_count = self.current_count - 1;
+
+                // ✅ dr14兼容RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
+                let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
+                self.histogram.add_window_rms(window_rms);
+                self.window_rms_values.push(window_rms);
+
+                // 🎯 **方案A**: 精确重新计算Peak值，排除最后一个样本
+                let adjusted_peak = if self.current_window_samples.len() > 1 {
+                    self.current_window_samples[..self.current_window_samples.len() - 1]
+                        .iter()
+                        .map(|&s| s.abs())
+                        .fold(0.0, f64::max)
+                } else {
+                    0.0
+                };
+                self.window_peaks.push(adjusted_peak);
+            } else {
+                // 尾窗只有1个样本时，dr14_t.meter会完全跳过
+            }
+
+            // 重置状态
+            self.current_sum_sq = 0.0;
+            self.current_peak = 0.0;
+            self.current_count = 0;
+            self.current_window_samples.clear(); // 清理样本缓存
+        }
+    }
+
+    /// 设置窗口长度（样本数）
+    pub fn set_window_length(&mut self, window_length_samples: usize) {
+        self.window_len = window_length_samples;
+    }
+
+    /// 处理音频块并添加RMS值（向后兼容接口）
+    pub fn add_window_rms(&mut self, rms_value: f64, sample_count: usize) {
+        self.window_rms_values.push(rms_value);
+        self.total_samples_processed += sample_count;
+    }
+
+    /// 计算"最响20%窗口"的加权RMS值
+    ///
+    /// 🎯 **精确对齐dr14_t.meter的20%算法**:
+    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
+    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
+    /// - 使用seg_cnt计算n_blk，选择最高20%的RMS值
+    pub fn calculate_20_percent_rms(&self) -> f64 {
+        if self.window_rms_values.is_empty() {
+            return 0.0;
+        }
+
+        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let seg_cnt = if has_virtual_zero {
+            self.window_rms_values.len() + 1 // 恰好整除：添加0窗
+        } else {
+            self.window_rms_values.len() // 有尾窗：不添加0窗
+        };
+
+        // 步骤2: 构建RMS数组
+        let mut rms_array = vec![0.0; seg_cnt];
+        // 复制实际RMS值
+        for (i, &rms) in self.window_rms_values.iter().enumerate() {
+            rms_array[i] = rms;
+        }
+        // 如果has_virtual_zero为true，最后一个位置保持0.0
+
+        // 步骤3: 排序（升序，0值会排在前面）
+        rms_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤4: 计算20%采样窗口数（精确复现dr14_t.meter）
+        let cut_best_bins = 0.2;
+        let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
+
+        // 步骤5: 选择最高20%的RMS值
+        let start_index = seg_cnt - n_blk;
+        let mut rms_sum = 0.0;
+
+        for &rms_value in rms_array.iter().skip(start_index).take(n_blk) {
+            rms_sum += rms_value * rms_value; // 平方和
+        }
+
+        // 步骤6: 开方平均
+        (rms_sum / n_blk as f64).sqrt()
+    }
+
+    /// 获取按照dr14_t.meter标准的最大窗口Peak值（主峰）
+    ///
+    /// 实现窗口级最大Peak选择算法：
+    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
+    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
+    /// - peaks[seg_cnt-1] 选择排序后的最大值
+    ///
+    /// # 返回值
+    ///
+    /// 返回窗口级最大Peak值
+    pub fn get_largest_peak(&self) -> f64 {
+        if self.window_peaks.is_empty() {
+            return 0.0;
+        }
+
+        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let seg_cnt = if has_virtual_zero {
+            self.window_peaks.len() + 1 // 恰好整除：添加0窗
+        } else {
+            self.window_peaks.len() // 有尾窗：不添加0窗
+        };
+
+        // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
+        let mut peaks_array = vec![0.0; seg_cnt];
+        for (i, &peak) in self.window_peaks.iter().enumerate() {
+            peaks_array[i] = peak;
+        }
+        // 如果has_virtual_zero为true，最后一个位置保持为0.0
+
+        // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
+        peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤4: 选择peaks[seg_cnt-1]位置的值（最大值）
+        peaks_array[seg_cnt - 1]
+    }
+
+    /// 获取按照dr14_t.meter标准的第二大窗口Peak值
+    ///
+    /// 实现与master分支相同的窗口级Peak选择算法：
+    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
+    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
+    /// - peaks[seg_cnt-2] 选择排序后的第二大值
+    ///
+    /// # 返回值
+    ///
+    /// 返回按照dr14_t.meter精确算法选择的Peak值
+    pub fn get_second_largest_peak(&self) -> f64 {
+        if self.window_peaks.is_empty() {
+            return 0.0;
+        }
+
+        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let seg_cnt = if has_virtual_zero {
+            self.window_peaks.len() + 1 // 恰好整除：添加0窗
+        } else {
+            self.window_peaks.len() // 有尾窗：不添加0窗
+        };
+
+        // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
+        let mut peaks_array = vec![0.0; seg_cnt];
+        for (i, &peak) in self.window_peaks.iter().enumerate() {
+            peaks_array[i] = peak;
+        }
+        // 如果has_virtual_zero为true，最后一个位置保持为0.0
+
+        // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
+        peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤4: 选择peaks[seg_cnt-2]位置的值
+        if seg_cnt >= 2 {
+            peaks_array[seg_cnt - 2] // dr14_t.meter的索引逻辑
+        } else {
+            // 只有1个Peak时，使用该Peak
+            peaks_array[0]
+        }
+    }
+
+    /// 获取窗口RMS值列表（供调试使用）
+    pub fn get_window_rms_values(&self) -> &[f64] {
+        &self.window_rms_values
+    }
+
+    /// 清空分析器状态
+    pub fn clear(&mut self) {
+        self.current_sum_sq = 0.0;
+        self.current_peak = 0.0;
+        self.current_count = 0;
+        self.histogram.clear();
+        self.window_peaks.clear();
+        self.window_rms_values.clear();
+        self.total_samples_processed = 0;
+        self.last_sample = 0.0;
+        self.current_window_samples.clear();
+    }
+
+    /// 获取处理的样本总数
+    pub fn total_samples_processed(&self) -> usize {
+        self.total_samples_processed
+    }
+}
+
+impl DrHistogram {
+    /// 创建新的10000-bin直方图
+    fn new() -> Self {
+        Self {
+            bins: vec![0; 10000], // 索引0-9999
+            total_windows: 0,
+            rms_to_index_cache: None,
+        }
+    }
+
+    /// 获取直方图bins（供SimpleHistogramAnalyzer兼容）
+    pub fn bins(&self) -> &[u32] {
+        &self.bins
+    }
+
+    /// 添加样本到直方图（供SimpleHistogramAnalyzer使用）
+    pub fn add_sample(&mut self, sample_abs: f32) {
+        if sample_abs < 0.0 || !sample_abs.is_finite() {
+            return; // 忽略无效样本
+        }
+
+        // 计算bin索引：样本绝对值映射到0-9999范围
+        let bin_index = ((sample_abs as f64 * 10000.0).min(9999.0)) as usize;
+        self.bins[bin_index] += 1;
+    }
+
+    /// 添加窗口RMS到直方图
+    fn add_window_rms(&mut self, window_rms: f64) {
+        if window_rms < 0.0 || !window_rms.is_finite() {
+            return; // 忽略无效窗口
+        }
+
+        // 计算bin索引：RMS映射到0-9999范围
+        let index = (window_rms * 10000.0).round().min(9999.0) as usize;
+
+        self.bins[index] += 1;
+        self.total_windows += 1;
+    }
+
+    /// 简单的20%RMS计算（供SimpleHistogramAnalyzer使用）
+    pub fn calculate_simple_20_percent_rms(&self) -> f64 {
+        self.calculate_simple_20_percent_rms_with_effective_samples(None)
+    }
+
+    /// 使用有效样本数计算20% RMS（供SimpleHistogramAnalyzer使用）
+    pub fn calculate_simple_20_percent_rms_with_effective_samples(
+        &self,
+        _effective_samples: Option<u64>,
+    ) -> f64 {
+        let total_samples: u64 = self.bins.iter().map(|&count| count as u64).sum();
+        if total_samples == 0 {
+            return 0.0;
+        }
+
+        // 20%采样计算
+        let need = ((total_samples as f64 * 0.2) as u64).max(1);
+        let mut remaining = need;
+        let mut sum_square = 0.0;
+
+        // 从高幅度向低幅度逆向遍历
+        for bin_index in (0..self.bins.len()).rev() {
+            if remaining == 0 {
+                break;
+            }
+
+            let available = self.bins[bin_index] as u64;
+            let use_count = available.min(remaining);
+
+            if use_count > 0 {
+                let bin_value = bin_index as f64 / 10000.0;
+                sum_square += use_count as f64 * (bin_value * bin_value);
+                remaining -= use_count;
+            }
+        }
+
+        let actually_selected = need - remaining;
+        if actually_selected > 0 {
+            (sum_square / actually_selected as f64).sqrt()
+        } else {
+            0.0
+        }
+    }
+
+    /// 清空直方图
+    fn clear(&mut self) {
+        self.bins.fill(0);
+        self.total_windows = 0;
+        self.rms_to_index_cache = None;
     }
 }
 

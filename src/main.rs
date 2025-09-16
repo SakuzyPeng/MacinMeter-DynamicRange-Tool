@@ -8,7 +8,6 @@ use std::process;
 
 use macinmeter_dr_tool::{
     DrResult,
-    audio::universal_decoder::StreamingDecoder,
     audio::{AudioFormat, UniversalDecoder},
     core::DrCalculator,
     error::{AudioError, AudioResult},
@@ -41,9 +40,11 @@ struct AppConfig {
 
     /// 是否启用多线程处理
     enable_multithreading: bool,
+    // 🏷️ FEATURE_REMOVAL: packet_chunk_mode已移除
+    // 📅 移除时间: 2025-09-16
+    // 🎯 统一使用流式收集+批处理计算模式
+    // 💡 原因: 简化架构，避免模式切换的复杂性
 
-    /// 是否启用逐包直通模式（packet-level pass-through）- 默认启用
-    packet_chunk_mode: bool,
     // 🏷️ FEATURE_REMOVAL: 移除精确权重公式选项
     // 📅 移除时间: 2025-08-31
     // 🎯 统一使用最优精度模式（weighted_rms=false）
@@ -90,12 +91,8 @@ impl AppConfig {
                     .help("禁用多线程处理（单线程模式）")
                     .action(clap::ArgAction::SetTrue),
             )
-            .arg(
-                Arg::new("disable-packet-chunk")
-                    .long("disable-packet-chunk")
-                    .help("禁用逐包直通模式（改用传统固定时长块模式）")
-                    .action(clap::ArgAction::SetTrue),
-            )
+            // 🏷️ FEATURE_REMOVAL: disable-packet-chunk参数已移除 (2025-09-16)
+            // 🎯 统一使用流式收集+批处理计算模式，不再提供模式切换选项
             // 🏷️ FEATURE_REMOVAL: 移除--weighted-rms参数
             // 📅 移除时间: 2025-08-31
             // 💡 原因: 精确权重模式偏离foobar2000标准，统一使用最优精度模式
@@ -128,21 +125,23 @@ impl AppConfig {
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
             enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
             enable_multithreading: !matches.get_flag("single-thread"), // 默认启用多线程
-            packet_chunk_mode: !matches.get_flag("disable-packet-chunk"), // 默认启用逐包直通模式，除非明确禁用
-                                                                          // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
-                                                                          // 📅 移除时间: 2025-08-31
-                                                                          // 🎯 统一使用最优精度模式，weighted_rms固定为false
-                                                                          // 🔄 回退: 如需重新启用选项，查看git历史
+                                                            // 🏷️ FEATURE_REMOVAL: packet_chunk_mode参数解析已移除 (2025-09-16)
+                                                            // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
+                                                            // 📅 移除时间: 2025-08-31
+                                                            // 🎯 统一使用最优精度模式，weighted_rms固定为false
+                                                            // 🔄 回退: 如需重新启用选项，查看git历史
         }
     }
 }
 
-/// 处理音频文件 - foobar2000-plugin分支简化版（默认逐包流式处理）
-fn process_audio_file_smart(
+/// 主要的音频文件处理入口点
+///
+/// 自动选择最优的处理策略：流式收集样本 + WindowRmsAnalyzer批处理计算
+fn process_audio_file_with_batch_calculation(
     path: &std::path::Path,
     config: &AppConfig,
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
-    // 获取文件扩展名
+    // 获取文件扩展名用于解码器选择
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -150,11 +149,11 @@ fn process_audio_file_smart(
         .unwrap_or_default();
 
     if config.verbose {
-        println!("🌊 使用流式处理模式（foobar2000-plugin分支默认模式）");
+        println!("🎯 使用流式收集+批处理计算模式（与master分支WindowRmsAnalyzer对齐）");
     }
 
-    // 直接使用流式处理
-    process_audio_file_streaming(path, &extension, config)
+    // 使用流式收集样本+批处理计算
+    process_audio_file_with_incremental_loading(path, &extension, config)
 }
 
 /// 使用DR计算器处理样本数据的辅助函数
@@ -191,14 +190,17 @@ fn load_audio_file_full_memory(
     decoder.decode_full(path)
 }
 
-/// 流式处理模式（大文件安全，真正的零累积）
-fn process_audio_file_streaming(
+/// 流式收集样本 + 批处理计算 - 使用WindowRmsAnalyzer的正确方式（与master分支对齐）
+///
+/// 此函数使用流式解码器逐块收集所有样本到内存，然后使用批处理模式进行DR计算。
+/// 命名明确反映了"流式收集 + 批处理计算"的双阶段处理方式。
+fn process_audio_file_with_incremental_loading(
     path: &std::path::Path,
-    extension: &str,
+    _extension: &str,
     config: &AppConfig,
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
     if config.verbose {
-        println!("🌊 使用统一解码器（流式恒定内存模式，.{extension}格式）...");
+        println!("🎯 使用批处理模式（WindowRmsAnalyzer，与master分支对齐）...");
     }
 
     let decoder = UniversalDecoder::new();
@@ -206,115 +208,58 @@ fn process_audio_file_streaming(
     // 先探测格式获取音频参数
     let format = decoder.probe_format(path)?;
 
-    // 创建流式解码器（支持逐包模式）
-    let mut streaming_decoder =
-        decoder.create_streaming_with_packet_mode(path, config.packet_chunk_mode)?;
+    // 创建流式解码器收集所有样本（使用统一的流式收集模式）
+    let mut streaming_decoder = decoder.create_streaming_for_batch_processing(path)?;
 
-    // 逐包模式调试信息
     if config.verbose {
-        if config.packet_chunk_mode {
-            println!("🔥 逐包直通模式已启用 - 解码器原生包大小直通（默认模式）");
-        } else {
-            println!("📦 传统固定时长块模式已启用 - 700ms固定块");
-        }
+        println!("📦 收集所有样本中，然后使用WindowRmsAnalyzer正确处理...");
     }
 
-    // 创建DR计算器（流式处理模式）
-    let mut dr_calculator = DrCalculator::new(
+    // 收集所有音频样本
+    let mut all_samples = Vec::new();
+    let mut total_chunks = 0;
+
+    while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
+        total_chunks += 1;
+
+        if config.verbose && total_chunks % 500 == 0 {
+            let progress = streaming_decoder.progress() * 100.0;
+            println!(
+                "⌛ 样本收集进度: {progress:.1}% (已收集{total_chunks}个chunk, 总样本: {})",
+                all_samples.len()
+            );
+        }
+
+        // 收集所有样本到内存中
+        all_samples.extend_from_slice(&chunk_samples);
+    }
+
+    if config.verbose {
+        println!(
+            "✅ 样本收集完成：共收集 {} 个decoder chunk，总样本数: {}",
+            total_chunks,
+            all_samples.len()
+        );
+        println!("🔧 现在使用WindowRmsAnalyzer正确处理（与master分支相同的算法）...");
+    }
+
+    // 创建DR计算器（批处理模式）
+    let dr_calculator = DrCalculator::new(
         format.channels as usize,
         config.sum_doubling,
         format.sample_rate,
         3.0, // 官方规范的3秒块
     )?;
 
-    if config.verbose {
-        println!("📦 开始真正流式DR计算，块大小: 3秒，恒定内存: ~50MB...");
-    }
-
-    let mut total_chunks = 0;
-
-    // 🔥 根据逐包模式切换处理策略
-    if config.packet_chunk_mode {
-        // 逐包直通模式：每个解码包直接作为一个块
-        if config.verbose {
-            println!("🔥 逐包模式（默认）：直接将每个解码包作为独立块处理");
-        }
-
-        while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
-            total_chunks += 1;
-
-            if config.verbose && total_chunks % 500 == 0 {
-                let progress = streaming_decoder.progress() * 100.0;
-                println!("⌛ 逐包处理进度: {progress:.1}% (已处理{total_chunks}个包)");
-            }
-
-            // 🎯 关键：每个解码包直接作为一个块送入DR计算器，维护全曲峰值
-            dr_calculator.process_decoder_chunk(&chunk_samples, format.channels as usize)?;
-        }
-
-        if config.verbose {
-            println!("✅ 逐包模式完成：共处理 {total_chunks} 个解码包作为独立块");
-        }
-    } else {
-        // 传统模式：收集小块组成固定时长块
-        let mut accumulated_samples = Vec::new();
-        let block_duration = 0.7; // 实验：700ms块
-        let samples_per_block =
-            (format.sample_rate as f64 * block_duration) as usize * format.channels as usize;
-
-        if config.verbose {
-            println!(
-                "🔄 传统模式（--disable-packet-chunk）：使用{}秒块处理 ({}样本/块)",
-                block_duration,
-                samples_per_block / format.channels as usize
-            );
-        }
-
-        while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
-            total_chunks += 1;
-
-            if config.verbose && total_chunks % 50 == 0 {
-                let progress = streaming_decoder.progress() * 100.0;
-                println!(
-                    "⏳ 收集解码块进度: {progress:.1}% (已收集{total_chunks}个解码块, 累积样本: {})",
-                    accumulated_samples.len()
-                );
-            }
-
-            // 累积解码块样本
-            accumulated_samples.extend_from_slice(&chunk_samples);
-
-            // 当累积样本达到指定块大小时，处理并清空
-            while accumulated_samples.len() >= samples_per_block {
-                let block_samples: Vec<f32> =
-                    accumulated_samples.drain(..samples_per_block).collect();
-                dr_calculator.process_decoder_chunk(&block_samples, format.channels as usize)?;
-            }
-        }
-
-        // 处理剩余样本
-        if !accumulated_samples.is_empty() {
-            if config.verbose {
-                println!(
-                    "📦 处理最后的剩余样本块: {} 样本",
-                    accumulated_samples.len()
-                );
-            }
-            dr_calculator.process_decoder_chunk(&accumulated_samples, format.channels as usize)?;
-        }
-    }
+    // 🎯 关键修复：使用calculate_dr_from_samples而不是流式process_decoder_chunk
+    // 这样WindowRmsAnalyzer会内部创建正确的3秒窗口，与master分支对齐
+    let dr_results =
+        dr_calculator.calculate_dr_from_samples(&all_samples, format.channels as usize)?;
 
     if config.verbose {
-        println!("✅ 流式DR计算完成，总处理块数: {total_chunks}");
+        println!("✅ WindowRmsAnalyzer处理完成，DR计算结果已生成");
     }
 
-    // 📊 逐包模式的块大小统计报告
-    if config.packet_chunk_mode {
-        print_chunk_size_stats(streaming_decoder.as_mut(), &format, config.verbose)?;
-    }
-
-    // 完成DR计算并返回结果（多声道）
-    let dr_results = dr_calculator.finalize()?;
     Ok((dr_results, format))
 }
 
@@ -427,59 +372,11 @@ fn save_individual_result(
         output_path: None, // 让系统自动生成文件名
         enable_simd: config.enable_simd,
         enable_multithreading: config.enable_multithreading,
-        packet_chunk_mode: config.packet_chunk_mode,
+        // 🏷️ FEATURE_REMOVAL: packet_chunk_mode已移除，统一使用流式收集+批处理计算
     };
 
     // 调用output_results生成单独的文件
     output_results(results, &temp_config, format, true)?; // auto_save = true
-
-    Ok(())
-}
-
-/// 打印逐包模式的块大小统计信息
-fn print_chunk_size_stats(
-    streaming_decoder: &mut dyn StreamingDecoder,
-    format: &AudioFormat,
-    verbose: bool,
-) -> AudioResult<()> {
-    if !verbose {
-        return Ok(());
-    }
-
-    if let Some(stats) = streaming_decoder.get_chunk_stats() {
-        println!("\n📊 逐包模式统计报告：");
-        println!("   总解码包数: {}", stats.total_chunks);
-        println!(
-            "   包大小范围: {} - {} 样本",
-            stats.min_size, stats.max_size
-        );
-        println!("   平均包大小: {:.1} 样本", stats.mean_size);
-        println!("   中位数包大小: {} 样本", stats.median_size);
-
-        // 计算时间统计
-        let min_time_ms =
-            (stats.min_size as f64 / format.channels as f64) / format.sample_rate as f64 * 1000.0;
-        let max_time_ms =
-            (stats.max_size as f64 / format.channels as f64) / format.sample_rate as f64 * 1000.0;
-        let mean_time_ms =
-            (stats.mean_size / format.channels as f64) / format.sample_rate as f64 * 1000.0;
-
-        println!("   包时长范围: {min_time_ms:.2}ms - {max_time_ms:.2}ms");
-        println!("   平均包时长: {mean_time_ms:.2}ms");
-
-        // 显示块边界对Top 20%的影响分析
-        println!("\n🔍 块边界分析：");
-        if stats.max_size > stats.min_size * 3 {
-            println!(
-                "   ⚠️  检测到显著的包大小差异（{}倍），可能影响Top 20%统计精度",
-                stats.max_size / stats.min_size.max(1)
-            );
-        } else {
-            println!("   ✅ 包大小相对稳定，有利于Top 20%统计一致性");
-        }
-    } else if verbose {
-        println!("📊 当前解码器不支持块统计信息收集");
-    }
 
     Ok(())
 }
@@ -493,8 +390,8 @@ fn process_single_audio_file(
         println!("🎵 正在加载音频文件: {}", file_path.display());
     }
 
-    // 🎯 智能处理音频文件（自动选择内存策略）
-    let (dr_results, format) = process_audio_file_smart(file_path, config)?;
+    // 🎯 使用批处理计算模式处理音频文件
+    let (dr_results, format) = process_audio_file_with_batch_calculation(file_path, config)?;
 
     if config.verbose {
         println!("📊 音频格式信息:");
