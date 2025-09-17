@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "file": "/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/src/processing/batch.rs",
+    "diagnostics": [
+      {
+        "message": "code is inactive due to #[cfg] directives: debug_assertions is enabled",
+        "severity": 3,
+        "level": "Hint",
+        "source": "rust-analyzer",
+        "code": "inactive-code",
+        "start": {
+          "line": 27,
+          "character": 0
+        },
+        "end": {
+          "line": 30,
+          "character": 1
+        }
+      }
+    ]
+  }
+]

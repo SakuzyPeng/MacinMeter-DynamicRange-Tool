@@ -40,16 +40,6 @@ struct AppConfig {
 
     /// 是否启用多线程处理
     enable_multithreading: bool,
-    // 🏷️ FEATURE_REMOVAL: packet_chunk_mode已移除
-    // 📅 移除时间: 2025-09-16
-    // 🎯 统一使用流式收集+批处理计算模式
-    // 💡 原因: 简化架构，避免模式切换的复杂性
-
-    // 🏷️ FEATURE_REMOVAL: 移除精确权重公式选项
-    // 📅 移除时间: 2025-08-31
-    // 🎯 统一使用最优精度模式（weighted_rms=false）
-    // 💡 原因: 精确权重导致+14% RMS误差，偏离foobar2000标准
-    // 🔄 回退: 如需重新启用选项，查看git历史
 }
 
 impl AppConfig {
@@ -91,12 +81,6 @@ impl AppConfig {
                     .help("禁用多线程处理（单线程模式）")
                     .action(clap::ArgAction::SetTrue),
             )
-            // 🏷️ FEATURE_REMOVAL: disable-packet-chunk参数已移除 (2025-09-16)
-            // 🎯 统一使用流式收集+批处理计算模式，不再提供模式切换选项
-            // 🏷️ FEATURE_REMOVAL: 移除--weighted-rms参数
-            // 📅 移除时间: 2025-08-31
-            // 💡 原因: 精确权重模式偏离foobar2000标准，统一使用最优精度模式
-            // 🔄 回退: 如需重新启用，查看git历史中的weighted-rms参数定义
             .get_matches();
 
         // 确定输入路径和模式
@@ -120,87 +104,24 @@ impl AppConfig {
         Self {
             input_path,
             batch_mode,
-            sum_doubling: true, // 🔥 修复：启用Sum Doubling匹配foobar2000
+            sum_doubling: true,
             verbose: matches.get_flag("verbose"),
             output_path: matches.get_one::<String>("output").map(PathBuf::from),
-            enable_simd: !matches.get_flag("disable-simd"), // 默认启用，除非明确禁用
-            enable_multithreading: !matches.get_flag("single-thread"), // 默认启用多线程
-                                                            // 🏷️ FEATURE_REMOVAL: packet_chunk_mode参数解析已移除 (2025-09-16)
-                                                            // 🏷️ FEATURE_REMOVAL: 移除精确权重参数解析
-                                                            // 📅 移除时间: 2025-08-31
-                                                            // 🎯 统一使用最优精度模式，weighted_rms固定为false
-                                                            // 🔄 回退: 如需重新启用选项，查看git历史
+            enable_simd: !matches.get_flag("disable-simd"),
+            enable_multithreading: !matches.get_flag("single-thread"),
         }
     }
 }
 
-/// 主要的音频文件处理入口点
+/// 音频文件DR计算处理
 ///
-/// 自动选择最优的处理策略：流式收集样本 + WindowRmsAnalyzer批处理计算
-fn process_audio_file_with_batch_calculation(
+/// 使用流式解码器收集样本，然后进行批处理DR计算。
+fn process_audio_file(
     path: &std::path::Path,
     config: &AppConfig,
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
-    // 获取文件扩展名用于解码器选择
-    let extension = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
-
     if config.verbose {
-        println!("🎯 使用流式收集+批处理计算模式（与master分支WindowRmsAnalyzer对齐）");
-    }
-
-    // 使用流式收集样本+批处理计算
-    process_audio_file_with_incremental_loading(path, &extension, config)
-}
-
-/// 使用DR计算器处理样本数据的辅助函数
-#[allow(dead_code)] // 临时禁用全内存模式，未来可能重新启用
-fn process_samples_with_dr_calculator(
-    samples: &[f32],
-    format: &AudioFormat,
-    config: &AppConfig,
-) -> AudioResult<Vec<DrResult>> {
-    // 创建DR计算器
-    let calculator = DrCalculator::new(
-        format.channels as usize,
-        config.sum_doubling,
-        format.sample_rate,
-        3.0, // 官方规范的3秒块
-    )?;
-
-    // 计算DR（返回所有声道的结果）
-    calculator.calculate_dr_from_samples(samples, format.channels as usize)
-}
-
-/// 全内存加载模式（小文件优化）
-#[allow(dead_code)] // 临时禁用全内存模式，未来可能重新启用
-fn load_audio_file_full_memory(
-    path: &std::path::Path,
-    extension: &str,
-    verbose: bool,
-) -> AudioResult<(AudioFormat, Vec<f32>)> {
-    if verbose {
-        println!("🎵 使用统一解码器（全内存模式，.{extension}格式）...");
-    }
-
-    let decoder = UniversalDecoder::new();
-    decoder.decode_full(path)
-}
-
-/// 流式收集样本 + 批处理计算 - 使用WindowRmsAnalyzer的正确方式（与master分支对齐）
-///
-/// 此函数使用流式解码器逐块收集所有样本到内存，然后使用批处理模式进行DR计算。
-/// 命名明确反映了"流式收集 + 批处理计算"的双阶段处理方式。
-fn process_audio_file_with_incremental_loading(
-    path: &std::path::Path,
-    _extension: &str,
-    config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
-    if config.verbose {
-        println!("🎯 使用批处理模式（WindowRmsAnalyzer，与master分支对齐）...");
+        println!("🎯 使用批处理模式进行DR计算...");
     }
 
     let decoder = UniversalDecoder::new();
@@ -212,7 +133,7 @@ fn process_audio_file_with_incremental_loading(
     let mut streaming_decoder = decoder.create_streaming_for_batch_processing(path)?;
 
     if config.verbose {
-        println!("📦 收集所有样本中，然后使用WindowRmsAnalyzer正确处理...");
+        println!("📦 收集所有音频样本中...");
     }
 
     // 收集所有音频样本
@@ -240,24 +161,23 @@ fn process_audio_file_with_incremental_loading(
             total_chunks,
             all_samples.len()
         );
-        println!("🔧 现在使用WindowRmsAnalyzer正确处理（与master分支相同的算法）...");
+        println!("🔧 现在进行DR计算处理...");
     }
 
-    // 创建DR计算器（批处理模式）
+    // 创建DR计算器
     let dr_calculator = DrCalculator::new(
         format.channels as usize,
         config.sum_doubling,
         format.sample_rate,
-        3.0, // 官方规范的3秒块
+        3.0, // 3秒窗口
     )?;
 
-    // 🎯 关键修复：使用calculate_dr_from_samples而不是流式process_decoder_chunk
-    // 这样WindowRmsAnalyzer会内部创建正确的3秒窗口，与master分支对齐
+    // 计算DR值
     let dr_results =
         dr_calculator.calculate_dr_from_samples(&all_samples, format.channels as usize)?;
 
     if config.verbose {
-        println!("✅ WindowRmsAnalyzer处理完成，DR计算结果已生成");
+        println!("✅ DR计算完成");
     }
 
     Ok((dr_results, format))
@@ -313,74 +233,6 @@ fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>> {
     Ok(audio_files)
 }
 
-/// 生成批量处理结果文件路径
-fn generate_batch_output_path(
-    scan_dir: &std::path::Path,
-    first_audio_file: Option<&std::path::Path>,
-) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    // 如果有音频文件，使用第一个文件名；否则使用目录名
-    let base_name = if let Some(first_file) = first_audio_file {
-        // 获取文件名（不包含扩展名）
-        first_file
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("audio")
-            .to_string()
-    } else {
-        // 使用目录名
-        scan_dir
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("batch")
-            .to_string()
-    };
-
-    scan_dir.join(format!("{base_name}_BatchDR_Results_{timestamp}.txt"))
-}
-
-/// 生成单文件处理结果文件路径
-fn generate_single_output_path(audio_file: &std::path::Path) -> PathBuf {
-    let parent_dir = audio_file
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let file_stem = audio_file
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("audio");
-
-    parent_dir.join(format!("{file_stem}_DR_Analysis.txt"))
-}
-
-/// 为单个音频文件保存DR结果到对应的txt文件
-fn save_individual_result(
-    audio_file: &std::path::Path,
-    results: &[DrResult],
-    format: &AudioFormat,
-    config: &AppConfig,
-) -> AudioResult<()> {
-    // 创建临时配置，用于生成单文件输出
-    let temp_config = AppConfig {
-        input_path: audio_file.to_path_buf(),
-        batch_mode: false,
-        sum_doubling: config.sum_doubling,
-        verbose: false,    // 避免冗余输出
-        output_path: None, // 让系统自动生成文件名
-        enable_simd: config.enable_simd,
-        enable_multithreading: config.enable_multithreading,
-        // 🏷️ FEATURE_REMOVAL: packet_chunk_mode已移除，统一使用流式收集+批处理计算
-    };
-
-    // 调用output_results生成单独的文件
-    output_results(results, &temp_config, format, true)?; // auto_save = true
-
-    Ok(())
-}
-
 /// 处理单个音频文件
 fn process_single_audio_file(
     file_path: &std::path::Path,
@@ -390,8 +242,12 @@ fn process_single_audio_file(
         println!("🎵 正在加载音频文件: {}", file_path.display());
     }
 
-    // 🎯 使用批处理计算模式处理音频文件
-    let (dr_results, format) = process_audio_file_with_batch_calculation(file_path, config)?;
+    if config.verbose {
+        println!("🎯 使用批处理计算模式进行DR分析");
+    }
+
+    // 处理音频文件
+    let (dr_results, format) = process_audio_file(file_path, config)?;
 
     if config.verbose {
         println!("📊 音频格式信息:");
@@ -401,9 +257,6 @@ fn process_single_audio_file(
         println!("   样本数: {}", format.sample_count);
         println!("   时长: {:.2} 秒", format.duration_seconds());
     }
-
-    // 移除误导性的"使用智能内存管理的块处理模式（3秒块）"输出
-    // 因为实际使用的是逐包/流式模式，而非固定时长块模式
 
     // 直接使用多声道DR结果
     Ok((dr_results, format))
@@ -439,12 +292,6 @@ fn identify_lfe_channels(channel_count: u16) -> Vec<usize> {
 
         _ => vec![], // 未知格式或无LFE声道
     }
-}
-
-/// 检查指定声道是否为LFE声道
-fn is_lfe_channel(channel_index: usize, channel_count: u16) -> bool {
-    let lfe_channels = identify_lfe_channels(channel_count);
-    lfe_channels.contains(&channel_index)
 }
 
 /// 输出DR计算结果（foobar2000兼容格式）
@@ -635,7 +482,8 @@ fn output_results(
                 };
 
                 // 检查是否为LFE声道或静音声道
-                let note = if is_lfe_channel(i, format.channels) {
+                let lfe_channels = identify_lfe_channels(format.channels);
+                let note = if lfe_channels.contains(&i) {
                     "LFE (已排除)"
                 } else if result.peak == 0.0 && result.rms == 0.0 {
                     "静音声道"
@@ -701,7 +549,8 @@ fn output_results(
             .enumerate()
             .filter(|(i, result)| {
                 // 排除LFE声道
-                !is_lfe_channel(*i, format.channels) &&
+                let lfe_channels = identify_lfe_channels(format.channels);
+                !lfe_channels.contains(i) &&
                 // 排除静音声道
                 result.peak > 0.0 && result.rms > 0.0
             })
@@ -762,7 +611,16 @@ fn output_results(
         None => {
             if auto_save {
                 // 自动保存模式：生成基于音频文件名的输出文件路径
-                let auto_output_path = generate_single_output_path(&config.input_path);
+                let parent_dir = config
+                    .input_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                let file_stem = config
+                    .input_path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("audio");
+                let auto_output_path = parent_dir.join(format!("{file_stem}_DR_Analysis.txt"));
                 std::fs::write(&auto_output_path, &output).map_err(AudioError::IoError)?;
                 println!("📄 结果已保存到: {}", auto_output_path.display());
             } else {
@@ -810,10 +668,9 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
     batch_output.push_str("=====================================\n\n");
 
     // 添加标准信息到输出
-    batch_output.push_str("🌿 Git分支: foobar2000-plugin (默认逐包直通模式)\n");
-    batch_output.push_str("📐 标准来源: foobar2000 DR Meter 逆向工程\n");
-    batch_output.push_str("✅ 当前模式: 逐包直通DR分析模式（默认）\n");
-    batch_output.push_str("📊 精度目标: 基于foobar2000逆向分析的高精度实现\n");
+    batch_output.push_str("🌿 Git分支: foobar2000-plugin (默认批处理模式)\n");
+    batch_output.push_str("📏 基于foobar2000 DR Meter逆向分析\n");
+    batch_output.push_str("✅ 使用批处理DR计算模式\n");
     batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
 
@@ -838,11 +695,31 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
                 processed_count += 1;
 
                 // 🆕 为每个音频文件生成单独的DR结果文件
-                if let Err(e) = save_individual_result(audio_file, &results, &format, config) {
-                    println!("   ⚠️  保存单独结果文件失败: {e}");
-                } else if config.verbose {
-                    let individual_path = generate_single_output_path(audio_file);
-                    println!("   📄 单独结果已保存: {}", individual_path.display());
+                {
+                    let temp_config = AppConfig {
+                        input_path: audio_file.to_path_buf(),
+                        batch_mode: false,
+                        sum_doubling: config.sum_doubling,
+                        verbose: false,
+                        output_path: None,
+                        enable_simd: config.enable_simd,
+                        enable_multithreading: config.enable_multithreading,
+                    };
+
+                    if let Err(e) = output_results(&results, &temp_config, &format, true) {
+                        println!("   ⚠️  保存单独结果文件失败: {e}");
+                    } else if config.verbose {
+                        let parent_dir = audio_file
+                            .parent()
+                            .unwrap_or_else(|| std::path::Path::new("."));
+                        let file_stem = audio_file
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+                            .unwrap_or("audio");
+                        let individual_path =
+                            parent_dir.join(format!("{file_stem}_DR_Analysis.txt"));
+                        println!("   📄 单独结果已保存: {}", individual_path.display());
+                    }
                 }
 
                 // 使用已获取的格式信息（无需重复加载）
@@ -899,7 +776,29 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
 
     // 确定输出文件路径
     let output_path = config.output_path.clone().unwrap_or_else(|| {
-        generate_batch_output_path(&config.input_path, audio_files.first().map(|p| p.as_path()))
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let base_name = if let Some(first_file) = audio_files.first() {
+            first_file
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("audio")
+                .to_string()
+        } else {
+            config
+                .input_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("batch")
+                .to_string()
+        };
+
+        config
+            .input_path
+            .join(format!("{base_name}_BatchDR_Results_{timestamp}.txt"))
     });
 
     // 写入结果文件
@@ -929,35 +828,6 @@ fn process_batch_files(config: &AppConfig) -> AudioResult<()> {
     Ok(())
 }
 
-/// 处理应用程序错误
-fn handle_error(error: AudioError) -> ! {
-    eprintln!("❌ 错误: {error}");
-
-    // 提供错误相关的建议
-    match error {
-        AudioError::IoError(_) => {
-            eprintln!("💡 建议: 检查文件路径是否正确，文件是否存在且可读");
-        }
-        AudioError::FormatError(_) => {
-            eprintln!("💡 建议: 确保输入文件是有效的WAV格式");
-        }
-        AudioError::DecodingError(_) => {
-            eprintln!("💡 建议: 文件可能损坏或使用不支持的音频编码");
-        }
-        AudioError::InvalidInput(_) => {
-            eprintln!("💡 建议: 检查命令行参数是否正确");
-        }
-        AudioError::OutOfMemory => {
-            eprintln!("💡 建议: 文件过大，尝试处理较小的音频文件");
-        }
-        _ => {
-            eprintln!("💡 建议: 请检查输入文件和参数设置");
-        }
-    }
-
-    process::exit(1);
-}
-
 fn main() {
     // 解析命令行参数
     let config = AppConfig::from_args();
@@ -965,7 +835,7 @@ fn main() {
     println!("🚀 MacinMeter DR Tool (foobar2000兼容版) v{VERSION} 启动");
     println!("📝 {DESCRIPTION}");
     if config.verbose {
-        println!("🌿 当前分支: foobar2000-plugin (默认逐包直通模式)");
+        println!("🌿 当前分支: foobar2000-plugin (默认批处理模式)");
     }
     println!();
 
@@ -987,7 +857,31 @@ fn main() {
 
     // 处理错误
     if let Err(error) = result {
-        handle_error(error);
+        eprintln!("❌ 错误: {error}");
+
+        // 提供错误相关的建议
+        match error {
+            AudioError::IoError(_) => {
+                eprintln!("💡 建议: 检查文件路径是否正确，文件是否存在且可读");
+            }
+            AudioError::FormatError(_) => {
+                eprintln!("💡 建议: 确保输入文件是有效的WAV格式");
+            }
+            AudioError::DecodingError(_) => {
+                eprintln!("💡 建议: 文件可能损坏或使用不支持的音频编码");
+            }
+            AudioError::InvalidInput(_) => {
+                eprintln!("💡 建议: 检查命令行参数是否正确");
+            }
+            AudioError::OutOfMemory => {
+                eprintln!("💡 建议: 文件过大，尝试处理较小的音频文件");
+            }
+            _ => {
+                eprintln!("💡 建议: 请检查输入文件和参数设置");
+            }
+        }
+
+        process::exit(1);
     } else if config.verbose {
         println!("✅ 所有任务处理完成！");
     }

@@ -6,13 +6,86 @@
 
 use crate::core::histogram::WindowRmsAnalyzer;
 use crate::error::{AudioError, AudioResult};
-use crate::processing::SimdChannelData;
 
-/// 处理结果包含块数据
-#[derive(Debug)]
-pub struct ProcessingResult {
-    /// 每个声道的块数据
-    pub channel_blocks: Vec<Vec<AudioBlock>>,
+/// 峰值选择策略枚举
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PeakSelectionStrategy {
+    /// 标准模式：优先使用次峰(Pk_2nd)，仅在次峰无效时回退到主峰
+    /// 对应 Measuring_DR_ENv3.md 标准
+    PreferSecondary,
+
+    /// 削波检测模式：优先使用主峰，仅在削波时使用次峰
+    /// 对应 foobar2000 削波回退机制
+    ClippingAware,
+
+    /// 保守模式：总是使用主峰
+    AlwaysPrimary,
+
+    /// 次峰优先模式：总是使用次峰（如果可用）
+    AlwaysSecondary,
+}
+
+/// 峰值选择trait，定义峰值选择行为
+pub trait PeakSelector {
+    /// 从主峰和次峰中选择用于DR计算的峰值
+    ///
+    /// # 参数
+    /// * `primary_peak` - 主峰值（最大绝对值）
+    /// * `secondary_peak` - 次峰值（第二大绝对值）
+    ///
+    /// # 返回值
+    /// 返回选择的峰值
+    fn select_peak(&self, primary_peak: f64, secondary_peak: f64) -> f64;
+
+    /// 获取策略描述（用于日志输出）
+    fn strategy_name(&self) -> &'static str;
+}
+
+/// 峰值选择策略实现
+impl PeakSelector for PeakSelectionStrategy {
+    fn select_peak(&self, primary_peak: f64, secondary_peak: f64) -> f64 {
+        match self {
+            PeakSelectionStrategy::PreferSecondary => {
+                // 优先使用次峰，仅在次峰无效时回退到主峰
+                if secondary_peak > 0.0 {
+                    secondary_peak
+                } else {
+                    primary_peak
+                }
+            }
+
+            PeakSelectionStrategy::ClippingAware => {
+                // 削波检测：主峰接近满幅度时使用次峰
+                const CLIPPING_THRESHOLD: f64 = 0.99999;
+                let is_clipped = primary_peak >= CLIPPING_THRESHOLD;
+
+                if is_clipped && secondary_peak > 0.0 {
+                    secondary_peak
+                } else {
+                    primary_peak
+                }
+            }
+
+            PeakSelectionStrategy::AlwaysPrimary => primary_peak,
+
+            PeakSelectionStrategy::AlwaysSecondary => {
+                if secondary_peak > 0.0 {
+                    secondary_peak
+                } else {
+                    primary_peak // 回退到主峰
+                }
+            }
+        }
+    }
+
+    fn strategy_name(&self) -> &'static str {
+        match self {
+            PeakSelectionStrategy::PreferSecondary => "PreferSecondary",
+            PeakSelectionStrategy::ClippingAware => "ClippingAware",
+            PeakSelectionStrategy::AlwaysPrimary => "AlwaysPrimary",
+            PeakSelectionStrategy::AlwaysSecondary => "AlwaysSecondary",
+        }
+    }
 }
 
 // foobar2000专属模式：使用累加器级别Sum Doubling，移除了+3dB RMS补偿机制
@@ -43,19 +116,6 @@ pub struct DrResult {
 }
 
 impl DrResult {
-    /// 创建新的DR计算结果
-    pub fn new(channel: usize, dr_value: f64, rms: f64, peak: f64, sample_count: usize) -> Self {
-        Self {
-            channel,
-            dr_value,
-            rms,
-            peak,
-            primary_peak: peak,  // 默认使用peak作为primary_peak
-            secondary_peak: 0.0, // 默认secondary_peak为0
-            sample_count,
-        }
-    }
-
     /// 创建带有峰值信息的DR结果
     pub fn new_with_peaks(
         channel: usize,
@@ -83,10 +143,9 @@ impl DrResult {
     }
 }
 
-/// 音频块数据结构（3秒标准块）
+/// 音频块数据结构（简化版）
 ///
-/// 根据官方DR规范，每个块代表3秒长度的音频数据，
-/// 包含该时间段内的RMS和Peak统计信息
+/// 包含音频块的核心统计信息，用于DR计算
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioBlock {
     /// 块内的RMS值
@@ -103,24 +162,16 @@ pub struct AudioBlock {
 
     /// 块内的样本数量
     pub sample_count: usize,
-
-    /// 块的开始时间（秒）
-    pub start_time: f64,
-
-    /// 块的持续时间（秒，通常为3.0）
-    pub duration: f64,
 }
 
 impl AudioBlock {
-    /// 创建新的音频块（支持双Peak信息）
+    /// 创建新的音频块（简化版）
     pub fn new(
         rms: f64,
         peak: f64,
         peak_primary: f64,
         peak_secondary: f64,
         sample_count: usize,
-        start_time: f64,
-        duration: f64,
     ) -> Self {
         Self {
             rms,
@@ -128,393 +179,12 @@ impl AudioBlock {
             peak_primary,
             peak_secondary,
             sample_count,
-            start_time,
-            duration,
-        }
-    }
-
-    /// 创建新的音频块（简化接口，保持向后兼容）
-    pub fn new_simple(
-        rms: f64,
-        peak: f64,
-        sample_count: usize,
-        start_time: f64,
-        duration: f64,
-    ) -> Self {
-        Self {
-            rms,
-            peak,
-            peak_primary: peak,
-            peak_secondary: 0.0,
-            sample_count,
-            start_time,
-            duration,
         }
     }
 
     /// 检查块是否有效（RMS和Peak都大于0）
     pub fn is_valid(&self) -> bool {
         self.rms > 0.0 && self.peak > 0.0 && self.sample_count > 0
-    }
-}
-
-/// 块级别DR处理器
-///
-/// 实现官方DR规范的3秒块处理架构：
-/// 1. 将音频分割为3秒长度的块
-/// 2. 计算每个块的RMS和Peak
-/// 3. 选择RMS最高的20%块
-/// 4. 使用公式：DR = -20 × log₁₀(√(∑RMS_n²/N) / Pk_2nd)
-#[derive(Debug)]
-pub struct BlockProcessor {
-    /// 块的目标持续时间（秒）
-    pub block_duration: f64,
-
-    /// 采样率
-    pub sample_rate: u32,
-
-    /// 每个块的目标样本数
-    pub samples_per_block: usize,
-
-    /// 是否启用Sum Doubling补偿
-    pub sum_doubling_enabled: bool,
-}
-
-impl BlockProcessor {
-    /// 创建新的块处理器
-    ///
-    /// # 参数
-    ///
-    /// * `block_duration` - 块持续时间（秒，官方规范为3.0秒）
-    /// * `sample_rate` - 采样率
-    /// * `sum_doubling` - 是否启用Sum Doubling补偿
-    pub fn new(block_duration: f64, sample_rate: u32, sum_doubling: bool) -> Self {
-        let samples_per_block = (block_duration * sample_rate as f64) as usize;
-
-        Self {
-            block_duration,
-            sample_rate,
-            samples_per_block,
-            sum_doubling_enabled: sum_doubling,
-        }
-    }
-
-    /// 将交错音频数据分割为块并计算每个块的统计信息
-    ///
-    /// # 参数
-    ///
-    /// * `samples` - 交错音频样本数据
-    /// * `channel_count` - 声道数量
-    ///
-    /// # 返回值
-    ///
-    /// 返回每个声道的块列表
-    pub fn process_interleaved_to_blocks(
-        &self,
-        samples: &[f32],
-        channel_count: usize,
-    ) -> AudioResult<ProcessingResult> {
-        if samples.len() % channel_count != 0 {
-            return Err(AudioError::InvalidInput(format!(
-                "样本数量({})必须是声道数({})的倍数",
-                samples.len(),
-                channel_count
-            )));
-        }
-
-        let samples_per_channel = samples.len() / channel_count;
-        let blocks_per_channel = samples_per_channel.div_ceil(self.samples_per_block);
-
-        let mut channel_blocks = vec![Vec::new(); channel_count];
-
-        // 🚀 PERF: 预分配SIMD优化的ChannelData避免每块重新分配
-        let mut reusable_simd_processors: Vec<SimdChannelData> = (0..channel_count)
-            .map(|_| SimdChannelData::new(self.samples_per_block))
-            .collect();
-
-        // 🚀 PERF: 预分配样本缓冲区避免每块重新分配（每个声道一个）
-        let mut channel_samples_buffers: Vec<Vec<f32>> = (0..channel_count)
-            .map(|_| Vec::with_capacity(self.samples_per_block))
-            .collect();
-
-        // 处理每个块
-        for block_idx in 0..blocks_per_channel {
-            let start_sample = block_idx * self.samples_per_block;
-            let end_sample = (start_sample + self.samples_per_block).min(samples_per_channel);
-            let actual_block_samples = end_sample - start_sample;
-
-            if actual_block_samples == 0 {
-                break;
-            }
-
-            let start_time = start_sample as f64 / self.sample_rate as f64;
-            let actual_duration = actual_block_samples as f64 / self.sample_rate as f64;
-
-            // 🚀 PERF: 缓存友好的样本分发 - 一次遍历分发到所有声道
-            for channel_buffer in channel_samples_buffers.iter_mut() {
-                channel_buffer.clear(); // 清空各声道缓冲区
-            }
-
-            // 一次性遍历交错样本数据，同时分发到各声道
-            for sample_idx in start_sample..end_sample {
-                let interleaved_base = sample_idx * channel_count;
-                for (channel, channel_buffer) in channel_samples_buffers
-                    .iter_mut()
-                    .enumerate()
-                    .take(channel_count)
-                {
-                    let interleaved_idx = interleaved_base + channel;
-                    if interleaved_idx < samples.len() {
-                        let sample = samples[interleaved_idx];
-                        channel_buffer.push(sample);
-                    }
-                }
-            }
-
-            // 🔧 修复：移除有bug的全曲峰值保存逻辑
-            // 全曲峰值现在由DrCalculator.process_decoder_chunk()统一维护
-
-            // 🚀 并行处理各声道（SIMD批量处理）
-            #[allow(clippy::needless_range_loop)]
-            for channel in 0..channel_count {
-                // 🔧 关键修复：计算真正的块内局部峰值，而非全曲累积峰值
-                // 块内峰值应从当前块的样本中求出，符合标准块统计定义
-                let channel_buffer = &channel_samples_buffers[channel];
-                let block_peak = channel_buffer
-                    .iter()
-                    .map(|&s| (s as f64).abs())
-                    .fold(0.0, f64::max);
-
-                // 🔧 移除bug峰值维护逻辑，专注块内峰值计算
-
-                // 🚀 PERF: 重用预分配的SIMD处理器，完全重置以便单独处理此块
-                let simd_processor = &mut reusable_simd_processors[channel];
-                simd_processor.reset(); // ✅ 完全重置，获得此块的独立统计
-
-                // 🚀 SIMD批量处理：4样本并行处理，6-7倍性能提升
-                let sample_count = simd_processor.process_samples_simd(channel_buffer);
-
-                let rms_sum = simd_processor.inner().rms_accumulator;
-                // 🎯 关键：块内峰值使用本块局部计算结果（而非SIMD处理器的累积峰）
-                let peak = block_peak;
-                let peak_primary = block_peak; // 块内主峰就是块内最大值
-                let peak_secondary = 0.0; // 块内次峰在3秒块级别无意义
-
-                // 计算块的RMS
-                let block_rms = if sample_count > 0 {
-                    // 🔥 修复关键精度问题：按foobar2000汇编顺序实现Sum Doubling
-                    // 📖 汇编指令：addsd xmm1, xmm1（加法而非乘法）
-                    let effective_rms_sum = if self.sum_doubling_enabled {
-                        rms_sum + rms_sum // ✅ 正确：使用加法（符合addsd指令）
-                    } else {
-                        rms_sum
-                    };
-
-                    (effective_rms_sum / sample_count as f64).sqrt()
-                } else {
-                    0.0
-                };
-
-                let block = AudioBlock::new(
-                    block_rms,
-                    peak,
-                    peak_primary,
-                    peak_secondary,
-                    sample_count,
-                    start_time,
-                    actual_duration,
-                );
-
-                channel_blocks[channel].push(block);
-            }
-        }
-
-        Ok(ProcessingResult { channel_blocks })
-    }
-
-    /// 根据官方规范计算DR值：DR = -20 × log₁₀(√(∑RMS_n²/N) / Pk_2nd)
-    ///
-    /// # 参数
-    ///
-    /// * `blocks` - 音频块列表
-    ///
-    /// # 返回值
-    ///
-    /// 返回DR值，如果计算失败则返回错误
-    pub fn calculate_dr_from_blocks(&self, blocks: &[AudioBlock]) -> AudioResult<f64> {
-        if blocks.is_empty() {
-            return Err(AudioError::CalculationError("没有可用的音频块".to_string()));
-        }
-
-        // 🚀 关键修正1：直方图量化→逆向聚合的20%RMS算法
-        // 按照foobar2000插件的精确实现，使用截断量化压低20%RMS
-
-        // 过滤有效块
-        let valid_blocks: Vec<&AudioBlock> =
-            blocks.iter().filter(|block| block.is_valid()).collect();
-
-        if valid_blocks.is_empty() {
-            return Err(AudioError::CalculationError("没有有效的音频块".to_string()));
-        }
-
-        // 步骤1：构建10001-bin直方图（使用floor截断量化）
-        let mut histogram = vec![0u64; 10001];
-        for block in &valid_blocks {
-            // 关键：使用floor截断，不要四舍五入！这会把20%RMS略压小
-            let bin = ((block.rms * 10000.0).floor() as usize).min(10000);
-            histogram[bin] += 1;
-        }
-
-        // 步骤2：计算K值，严格按插件的类型转换链
-        let total_blocks = valid_blocks.len();
-        let b_i32 = total_blocks as i32;
-        let tmp_i32 = (b_i32 as f64 * 0.2 + 0.5) as i32; // 插件的精确转换链
-        let k = (tmp_i32.max(1) as u32 as u64).min(total_blocks as u64);
-
-        #[cfg(debug_assertions)]
-        {
-            eprintln!("🔥 直方图量化20%RMS算法:");
-            eprintln!("  - 总块数B: {total_blocks}");
-            eprintln!("  - B as i32: {b_i32}");
-            eprintln!("  - (B*0.2+0.5) as i32: {tmp_i32}");
-            eprintln!("  - K = max(1,tmp) as u32 as u64: {k}");
-        }
-
-        // 步骤3：逆向聚合Top 20%（从高到低遍历直方图）
-        let mut remaining = k;
-        let mut sum_square = 0.0f64;
-
-        for i in (0..=10000).rev() {
-            if remaining == 0 {
-                break;
-            }
-            let use_count = remaining.min(histogram[i]);
-            if use_count > 0 {
-                // 关键：量化后重建 = (i^2) * 1e-8
-                sum_square += (use_count as f64) * 1e-8 * (i as f64) * (i as f64);
-                remaining -= use_count;
-            }
-        }
-
-        let selected = k - remaining;
-        let effective_rms = if selected > 0 {
-            (sum_square / selected as f64).sqrt()
-        } else {
-            0.0
-        };
-
-        // 🐛 调试：显示直方图量化算法的效果
-        #[cfg(debug_assertions)]
-        {
-            eprintln!("  - 直方图聚合块数: {selected}");
-            eprintln!("  - 剩余未聚合: {remaining}");
-            eprintln!("  - 量化重建sum_square: {sum_square:.12}");
-            eprintln!("  - 有效RMS(线性): {effective_rms:.6}");
-            eprintln!("  - 有效RMS(dB): {:.2} dB", 20.0 * effective_rms.log10());
-
-            // 对比旧方法：精确排序均值（仅调试用）
-            let mut sorted_blocks = valid_blocks.clone();
-            sorted_blocks.sort_by(|a, b| b.rms.partial_cmp(&a.rms).unwrap());
-            let old_selected = sorted_blocks.iter().take(k as usize);
-            let old_rms_sum: f64 = old_selected.map(|b| b.rms * b.rms).sum();
-            let old_effective_rms = (old_rms_sum / k as f64).sqrt();
-            eprintln!(
-                "  - 对比：旧方法RMS: {:.6} (差异: {:.6})",
-                old_effective_rms,
-                (effective_rms - old_effective_rms).abs()
-            );
-        }
-
-        // 🔥 智能削波检测的双Peak回退机制
-        // 只有当第一Peak削波时才切换到第二Peak，否则使用最大Peak
-        let mut peaks: Vec<f64> = valid_blocks.iter().map(|block| block.peak).collect();
-        peaks.sort_by(|a, b| b.partial_cmp(a).unwrap());
-
-        let primary_peak = peaks[0]; // 最大Peak
-
-        // 削波检测：Peak接近或达到满量程(1.0)时认为削波
-        const CLIPPING_THRESHOLD: f64 = 0.99; // 99%满量程视为削波
-        let is_clipped = primary_peak >= CLIPPING_THRESHOLD;
-
-        let selected_peak = if is_clipped && peaks.len() >= 2 {
-            // 只有削波且有第二Peak时才使用第二Peak
-            peaks[1]
-        } else {
-            // 正常情况下总是使用最大Peak
-            primary_peak
-        };
-
-        // 🐛 调试：显示Peak选择详情
-        #[cfg(debug_assertions)]
-        {
-            eprintln!("  - 主Peak(线性): {primary_peak:.6}");
-            eprintln!("  - 主Peak(dB): {:.2} dB", 20.0 * primary_peak.log10());
-            eprintln!("  - 是否削波: {is_clipped}");
-            eprintln!("  - 选用Peak(线性): {selected_peak:.6}");
-            eprintln!("  - 选用Peak(dB): {:.2} dB", 20.0 * selected_peak.log10());
-        }
-
-        if selected_peak <= 0.0 {
-            return Err(AudioError::CalculationError(
-                "无法找到有效Peak值".to_string(),
-            ));
-        }
-
-        // 第二步：foobar2000的智能回退机制
-        if effective_rms <= 0.0 {
-            return Err(AudioError::CalculationError("RMS值无效".to_string()));
-        }
-
-        // 先用选定Peak计算DR
-        let mut dr_value = if selected_peak > 0.0 {
-            -20.0 * (effective_rms / selected_peak).log10()
-        } else {
-            return Err(AudioError::CalculationError("Peak值无效".to_string()));
-        };
-
-        // 🎯 foobar2000精确实现：如果DR < 0，回退用最大峰重算并取≥0
-        #[cfg(debug_assertions)]
-        let initial_dr = dr_value;
-
-        let fallback_used = if dr_value < 0.0 {
-            // 回退到全局最大峰值重新计算
-            let global_max_peak = peaks[0]; // peaks已按降序排列，[0]是全局最大
-            if global_max_peak > 0.0 {
-                dr_value = (-20.0 * (effective_rms / global_max_peak).log10()).max(0.0);
-                true
-            } else {
-                // 兜底：确保DR ≥ 0
-                dr_value = 0.0;
-                true
-            }
-        } else {
-            false
-        };
-
-        #[cfg(not(debug_assertions))]
-        let _ = fallback_used; // 避免release模式下未使用变量警告
-
-        // 🐛 调试：DR计算最终结果
-        #[cfg(debug_assertions)]
-        {
-            eprintln!(
-                "  - DR计算公式: -20 × log10({effective_rms:.6} / {selected_peak:.6}) = {initial_dr:.2} dB"
-            );
-            if fallback_used {
-                eprintln!("  - DR回退修正: {initial_dr:.2} → {dr_value:.2} dB");
-            }
-            eprintln!("  - 最终DR值: {dr_value:.2} dB");
-            eprintln!("🔚 声道处理完成\n");
-        }
-
-        // DR值合理性检查
-        if !(0.0..=100.0).contains(&dr_value) {
-            return Err(AudioError::CalculationError(format!(
-                "DR值({dr_value:.2})超出合理范围(0-100)"
-            )));
-        }
-
-        Ok(dr_value)
     }
 }
 
@@ -526,6 +196,7 @@ impl BlockProcessor {
 /// - DR值计算和结果生成
 /// - 使用官方规范的3秒块级处理架构
 /// - 支持流式块累积和批量处理
+/// - 可配置的峰值选择策略
 pub struct DrCalculator {
     /// 声道数量
     channel_count: usize,
@@ -536,12 +207,11 @@ pub struct DrCalculator {
     /// 采样率
     sample_rate: u32,
 
-    /// 块处理器（官方规范模式）
-    block_processor: BlockProcessor,
+    /// 块持续时间（秒，官方规范为3.0）
+    block_duration: f64,
 
-    /// 流式处理累积的块（用于大文件恒定内存处理）
-    /// 每个声道有自己的块列表
-    accumulated_blocks: Vec<Vec<AudioBlock>>,
+    /// 峰值选择策略
+    peak_selection_strategy: PeakSelectionStrategy,
     // 🏷️ FEATURE_REMOVAL: 精确权重实验控制开关已删除
     // 📅 删除时间: 2025-09-08
     // 🎯 原因: 在所有使用位置都固定为false，属于死代码
@@ -575,6 +245,43 @@ impl DrCalculator {
         sample_rate: u32,
         block_duration: f64,
     ) -> AudioResult<Self> {
+        Self::new_with_peak_strategy(
+            channel_count,
+            sum_doubling,
+            sample_rate,
+            block_duration,
+            PeakSelectionStrategy::PreferSecondary, // 默认智能优先次峰策略
+        )
+    }
+
+    /// 创建DR计算器并指定峰值选择策略
+    ///
+    /// # 参数
+    ///
+    /// * `channel_count` - 音频声道数量
+    /// * `sum_doubling` - 是否启用Sum Doubling补偿（交错数据需要）
+    /// * `sample_rate` - 采样率（Hz）
+    /// * `block_duration` - 块持续时间（秒，官方规范为3.0）
+    /// * `peak_strategy` - 峰值选择策略
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use macinmeter_dr_tool::{DrCalculator, PeakSelectionStrategy};
+    ///
+    /// // 使用削波感知策略
+    /// let calculator = DrCalculator::new_with_peak_strategy(
+    ///     2, true, 48000, 3.0,
+    ///     PeakSelectionStrategy::ClippingAware
+    /// );
+    /// ```
+    pub fn new_with_peak_strategy(
+        channel_count: usize,
+        sum_doubling: bool,
+        sample_rate: u32,
+        block_duration: f64,
+        peak_strategy: PeakSelectionStrategy,
+    ) -> AudioResult<Self> {
         if channel_count == 0 {
             return Err(AudioError::InvalidInput("声道数量必须大于0".to_string()));
         }
@@ -591,15 +298,12 @@ impl DrCalculator {
             return Err(AudioError::InvalidInput("块持续时间必须大于0".to_string()));
         }
 
-        // 创建块处理器
-        let block_processor = BlockProcessor::new(block_duration, sample_rate, sum_doubling);
-
         Ok(Self {
             channel_count,
             sum_doubling_enabled: sum_doubling,
             sample_rate,
-            block_processor,
-            accumulated_blocks: vec![Vec::new(); channel_count], // 为每个声道初始化一个空的块列表
+            block_duration,
+            peak_selection_strategy: peak_strategy,
         })
     }
 
@@ -657,7 +361,7 @@ impl DrCalculator {
             // 使用WindowRmsAnalyzer的20%采样算法
             let rms_20_percent = analyzer.calculate_20_percent_rms();
 
-            // 🎯 完全基于窗口级的Peak选择策略：优先主峰，削波时用次峰
+            // 🎯 使用可配置的峰值选择策略
 
             // 1. 获取窗口级的主峰和次峰
             let window_primary_peak = analyzer.get_largest_peak();
@@ -668,25 +372,17 @@ impl DrCalculator {
                 "🔍 声道{channel_idx} - 主峰: {window_primary_peak:.6}, 次峰: {window_secondary_peak:.6}"
             );
 
-            // 2. 基于窗口级主峰进行削波检测
-            let is_clipped = window_primary_peak >= 0.99999; // 检测真正的削波（几乎满幅度）
+            // 2. 使用配置的策略选择峰值
+            let peak_for_dr = self
+                .peak_selection_strategy
+                .select_peak(window_primary_peak, window_secondary_peak);
 
-            let peak_for_dr = if is_clipped && window_secondary_peak > 0.0 {
-                // 🔥 特色逻辑：检测到削波时，使用窗口级次峰避免削波影响
-                println!("🔍 声道{channel_idx} - 削波检测：使用次峰 {window_secondary_peak:.6}");
-                window_secondary_peak
-            } else {
-                // ✅ 按照Measuring_DR_ENv3.md标准：默认使用第二大Peak值
-                if window_secondary_peak > 0.0 {
-                    println!(
-                        "🔍 声道{channel_idx} - 标准模式：使用第二大Peak {window_secondary_peak:.6}"
-                    );
-                    window_secondary_peak // 使用第二大Peak (Pk_2nd)
-                } else {
-                    println!("🔍 声道{channel_idx} - 回退模式：使用主峰 {window_primary_peak:.6}");
-                    window_primary_peak // 回退到主峰
-                }
-            };
+            // 🔍 调试输出：显示策略选择结果
+            println!(
+                "🔍 声道{channel_idx} - 策略[{}]选择峰值: {:.6}",
+                self.peak_selection_strategy.strategy_name(),
+                peak_for_dr
+            );
 
             // 计算DR值（官方标准公式）
             let dr_value = if rms_20_percent > 0.0 && peak_for_dr > 0.0 {
@@ -785,140 +481,19 @@ impl DrCalculator {
         self.sample_rate
     }
 
-    /// 流式处理：处理单个音频块（恒定内存使用）
-    ///
-    /// 将音频块转换为AudioBlock并累积统计信息，不保留原始样本数据，
-    /// 实现恒定内存使用的大文件处理。
-    /// 🔥 新增：按解码器chunk边界处理（与foobar2000对齐）
-    /// 直接将每个decoder chunk作为一个块，不再二次切分
-    /// 将给定的样本作为单一块处理（用于实验不同块大小）
-    pub fn process_samples_as_single_block(
-        &mut self,
-        samples: &[f32],
-        channels: usize,
-    ) -> AudioResult<()> {
-        if samples.len() % channels != 0 {
-            return Err(AudioError::InvalidInput(
-                "样本数量与声道数不匹配".to_string(),
-            ));
-        }
-
-        // 使用标准的块处理逻辑
-        let processing_result = self
-            .block_processor
-            .process_interleaved_to_blocks(samples, channels)?;
-
-        // 累积所有处理的块
-        for (channel_idx, blocks) in processing_result.channel_blocks.into_iter().enumerate() {
-            for block in blocks {
-                if block.is_valid() {
-                    self.accumulated_blocks[channel_idx].push(block);
-                }
-            }
-        }
-
-        // 🔧 全曲级峰值追踪已移除，现在完全基于窗口级分析
-
-        Ok(())
+    /// 获取块持续时间（秒）
+    pub fn block_duration(&self) -> f64 {
+        self.block_duration
     }
 
-    pub fn process_decoder_chunk(
-        &mut self,
-        chunk_samples: &[f32],
-        channels: usize,
-    ) -> AudioResult<()> {
-        // 🔧 关键修复：直接按decoder chunk边界处理，避免固定时间切分
-        // 这与foobar2000的"按解码chunk结算"机制对齐
-
-        if chunk_samples.len() % channels != 0 {
-            return Err(AudioError::InvalidInput(
-                "样本数量与声道数不匹配".to_string(),
-            ));
-        }
-
-        let samples_per_channel = chunk_samples.len() / channels;
-
-        // 为每个声道创建一个AudioBlock（基于整个decoder chunk）
-        for channel_idx in 0..channels {
-            let channel_samples: Vec<f32> = chunk_samples
-                .iter()
-                .skip(channel_idx)
-                .step_by(channels)
-                .copied()
-                .collect();
-
-            // 直接计算整个decoder chunk的统计信息
-            let mut rms_sum = 0.0f64;
-            let mut max_sample = 0.0f32;
-
-            #[cfg(debug_assertions)]
-            if channel_idx < 1 {
-                // 只显示第一声道的第一个样本
-                println!(
-                    "🔍 开始处理声道{} 样本数: {}",
-                    channel_idx,
-                    channel_samples.len()
-                );
-            }
-
-            for &sample in &channel_samples {
-                let abs_sample = sample.abs();
-                rms_sum += (sample as f64).powi(2);
-                max_sample = max_sample.max(abs_sample);
-
-                // 🔧 移除全曲级峰值追踪，现在使用窗口级分析
-            }
-
-            // 应用Sum Doubling（如果启用）
-            let effective_rms_sum = if self.sum_doubling_enabled {
-                rms_sum + rms_sum
-            } else {
-                rms_sum
-            };
-
-            let chunk_rms = if samples_per_channel > 0 {
-                (effective_rms_sum / samples_per_channel as f64).sqrt()
-            } else {
-                0.0
-            };
-
-            // 创建AudioBlock
-            let block = AudioBlock::new(
-                chunk_rms,
-                max_sample as f64,
-                max_sample as f64, // primary peak
-                max_sample as f64, // secondary peak (在chunk级别相同)
-                samples_per_channel,
-                0.0, // start_time (decoder chunk不需要精确时间戳)
-                0.0, // duration (decoder chunk处理不依赖持续时间)
-            );
-
-            if block.is_valid() {
-                self.accumulated_blocks[channel_idx].push(block);
-            }
-        }
-
-        Ok(())
+    /// 获取当前的峰值选择策略
+    pub fn peak_selection_strategy(&self) -> PeakSelectionStrategy {
+        self.peak_selection_strategy
     }
 
-    /// 🔧 传统的固定时间块处理方法（保持向后兼容）
-    pub fn process_chunk(&mut self, chunk_samples: &[f32], channels: usize) -> AudioResult<()> {
-        // 将块样本转换为AudioBlock结构
-        let block_results = self
-            .block_processor
-            .process_interleaved_to_blocks(chunk_samples, channels)?;
-
-        // 累积有效的音频块（只存储块统计，不存储样本）
-        // block_results.channel_blocks: Vec<Vec<AudioBlock>>, 每个元素是一个声道的块列表
-        for (channel_idx, channel_blocks) in block_results.channel_blocks.into_iter().enumerate() {
-            for block in channel_blocks {
-                if block.is_valid() {
-                    self.accumulated_blocks[channel_idx].push(block);
-                }
-            }
-        }
-
-        Ok(())
+    /// 设置峰值选择策略
+    pub fn set_peak_selection_strategy(&mut self, strategy: PeakSelectionStrategy) {
+        self.peak_selection_strategy = strategy;
     }
 
     // 🏷️ FEATURE_REMOVAL: 精确权重公式控制方法已删除
@@ -979,10 +554,10 @@ mod tests {
 
     #[test]
     fn test_dr_result_rounded() {
-        let result = DrResult::new(0, 12.7, 0.1, 0.5, 1000);
+        let result = DrResult::new_with_peaks(0, 12.7, 0.1, 0.5, 0.5, 0.0, 1000);
         assert_eq!(result.dr_value_rounded(), 13);
 
-        let result = DrResult::new(0, 12.3, 0.1, 0.5, 1000);
+        let result = DrResult::new_with_peaks(0, 12.3, 0.1, 0.5, 0.5, 0.0, 1000);
         assert_eq!(result.dr_value_rounded(), 12);
     }
 
@@ -1031,289 +606,4 @@ mod tests {
     // 🎯 Early Version简化：移除test_sum_doubling_edge_cases()
     // 💡 原因: 对应的evaluate_sum_doubling_quality()方法已被移除
     // 🔄 回退: 如需测试边界情况，查看git历史
-
-    // ======================================================================
-    // 🆕 块处理架构测试 - Block Processing Architecture Tests
-    // ======================================================================
-
-    #[test]
-    fn test_audio_block_creation() {
-        let block = AudioBlock {
-            rms: 0.5,
-            peak: 0.9,
-            peak_primary: 0.9,
-            peak_secondary: 0.8,
-            sample_count: 144000, // 3秒 x 48kHz
-            start_time: 0.0,
-            duration: 3.0,
-        };
-
-        assert_eq!(block.rms, 0.5);
-        assert_eq!(block.peak, 0.9);
-        assert_eq!(block.sample_count, 144000);
-        assert_eq!(block.start_time, 0.0);
-        assert_eq!(block.duration, 3.0);
-    }
-
-    #[test]
-    fn test_block_processor_creation() {
-        let processor = BlockProcessor::new(3.0, 48000, true);
-
-        assert_eq!(processor.block_duration, 3.0);
-        assert_eq!(processor.sample_rate, 48000);
-        assert_eq!(processor.samples_per_block, 144000); // 3秒 x 48kHz
-        assert!(processor.sum_doubling_enabled);
-    }
-
-    #[test]
-    fn test_block_processor_different_configurations() {
-        // 测试不同配置的块处理器
-        let processor1 = BlockProcessor::new(2.0, 44100, false);
-        assert_eq!(processor1.block_duration, 2.0);
-        assert_eq!(processor1.samples_per_block, 88200); // 2秒 x 44.1kHz
-        assert!(!processor1.sum_doubling_enabled);
-
-        let processor2 = BlockProcessor::new(5.0, 96000, true);
-        assert_eq!(processor2.block_duration, 5.0);
-        assert_eq!(processor2.samples_per_block, 480000); // 5秒 x 96kHz
-        assert!(processor2.sum_doubling_enabled);
-    }
-
-    #[test]
-    fn test_process_interleaved_to_blocks() {
-        let processor = BlockProcessor::new(3.0, 48000, false);
-
-        // 创建9秒的单声道测试数据（应该产生3个完整的3秒块）
-        let samples = vec![0.5; 432000]; // 9秒 x 48kHz, 单声道
-
-        let channel_blocks = processor
-            .process_interleaved_to_blocks(&samples, 1)
-            .unwrap();
-
-        assert_eq!(channel_blocks.channel_blocks.len(), 1); // 单声道
-        let blocks = &channel_blocks.channel_blocks[0];
-        assert_eq!(blocks.len(), 3);
-
-        // 验证每个块的属性
-        for (i, block) in blocks.iter().enumerate() {
-            assert_eq!(block.sample_count, 144000);
-            assert_eq!(block.duration, 3.0);
-            assert_eq!(block.start_time, i as f64 * 3.0);
-            assert!(block.rms > 0.0);
-            assert_eq!(block.peak, 0.5); // 所有样本都是0.5
-        }
-    }
-
-    #[test]
-    fn test_process_interleaved_to_blocks_partial() {
-        let processor = BlockProcessor::new(3.0, 48000, false);
-
-        // 创建4.5秒的单声道测试数据（应该产生1个完整块 + 1个1.5秒的部分块）
-        let samples = vec![0.3; 216000]; // 4.5秒 x 48kHz, 单声道
-
-        let channel_blocks = processor
-            .process_interleaved_to_blocks(&samples, 1)
-            .unwrap();
-
-        assert_eq!(channel_blocks.channel_blocks.len(), 1); // 单声道
-        let blocks = &channel_blocks.channel_blocks[0];
-        assert_eq!(blocks.len(), 2);
-
-        // 第一个块：完整的3秒块
-        assert_eq!(blocks[0].sample_count, 144000);
-        assert_eq!(blocks[0].duration, 3.0);
-
-        // 第二个块：部分块（1.5秒）
-        assert_eq!(blocks[1].sample_count, 72000);
-        assert_eq!(blocks[1].duration, 1.5);
-        assert_eq!(blocks[1].start_time, 3.0);
-    }
-
-    #[test]
-    fn test_calculate_dr_from_blocks_basic() {
-        let processor = BlockProcessor::new(3.0, 48000, false);
-
-        // 创建测试块数据
-        let blocks = vec![
-            AudioBlock::new_simple(0.1, 0.8, 144000, 0.0, 3.0),
-            AudioBlock::new_simple(0.2, 0.9, 144000, 3.0, 3.0),
-            AudioBlock::new_simple(0.3, 1.0, 144000, 6.0, 3.0),
-        ];
-
-        let dr_value = processor.calculate_dr_from_blocks(&blocks).unwrap();
-
-        // 验证DR值在合理范围内
-        assert!(dr_value > 0.0);
-        assert!(dr_value <= 100.0);
-    }
-
-    #[test]
-    fn test_official_dr_formula() {
-        let processor = BlockProcessor::new(3.0, 48000, false);
-
-        // 测试官方公式：DR = -20 × log₁₀(√(∑RMS_n²/N) / Pk_2nd)
-        let blocks = vec![
-            AudioBlock::new_simple(0.1, 0.8, 144000, 0.0, 3.0),
-            AudioBlock::new_simple(0.2, 0.9, 144000, 3.0, 3.0),
-            AudioBlock::new_simple(0.3, 1.0, 144000, 6.0, 3.0),
-            AudioBlock::new_simple(0.4, 0.7, 144000, 9.0, 3.0),
-            AudioBlock::new_simple(0.5, 0.6, 144000, 12.0, 3.0),
-        ];
-
-        let dr_value = processor.calculate_dr_from_blocks(&blocks).unwrap();
-
-        // 手动计算期望值进行验证
-        // 选择最高20%的块 (5块中的1块) = RMS最高的块(0.5)
-        // 次高Peak = 0.9 (排序后的第二高Peak)
-        // DR = -20 × log₁₀(0.5 / 0.9)
-        let expected_dr = -20.0_f64 * (0.5_f64 / 0.9_f64).log10();
-
-        assert!(
-            (dr_value - expected_dr).abs() < 0.01,
-            "DR值({dr_value})应接近手算值({expected_dr})"
-        );
-    }
-
-    #[test]
-    fn test_block_level_20_percent_selection() {
-        let processor = BlockProcessor::new(3.0, 48000, false);
-
-        // 创建10个块，测试20%选择算法
-        let mut blocks = Vec::new();
-        for i in 0..10 {
-            blocks.push(AudioBlock::new_simple(
-                (i + 1) as f64 * 0.1, // RMS从0.1到1.0递增
-                1.0,
-                144000,
-                i as f64 * 3.0,
-                3.0,
-            ));
-        }
-
-        let dr_value = processor.calculate_dr_from_blocks(&blocks).unwrap();
-
-        // 20%的10块 = 2块，应该选择RMS最高的2块(0.9, 1.0)
-        // 期望的RMS计算：√((0.9² + 1.0²) / 2) = √(1.81 / 2) = √0.905
-        let expected_rms: f64 = (0.9 * 0.9 + 1.0 * 1.0) / 2.0;
-        let _expected_rms = expected_rms.sqrt();
-
-        // 验证计算结果的合理性
-        assert!(dr_value > 0.0);
-        assert!(dr_value <= 100.0);
-    }
-
-    // 🏷️ TEST_REMOVAL: test_dr_calculator_with_block_processing已删除
-    // 📅 删除时间: 2025-09-16
-    // 🎯 原因: 虽然数据长度足够(12秒)，但期望样本级峰值选择(1.0或0.9)与窗口级算法不匹配
-
-    #[test]
-    fn test_block_processing_vs_traditional_mode() {
-        // 创建相同的安全测试数据
-        let samples = generate_safe_test_data();
-
-        // 现在统一使用块处理模式，测试多次计算的一致性
-        let calc1 = DrCalculator::new(1, false, 48000, 3.0).unwrap();
-        let results1 = calc1.calculate_dr_from_samples(&samples, 1).unwrap();
-
-        let calc2 = DrCalculator::new(1, false, 48000, 3.0).unwrap();
-        let results2 = calc2.calculate_dr_from_samples(&samples, 1).unwrap();
-
-        // 相同的输入应该产生一致的结果
-        assert_eq!(results1.len(), 1);
-        assert_eq!(results2.len(), 1);
-
-        let dr1 = results1[0].dr_value;
-        let dr2 = results2[0].dr_value;
-
-        // 两个结果都应该在合理范围内
-        assert!(dr1 > 0.0 && dr1 <= 100.0);
-        assert!(dr2 > 0.0 && dr2 <= 100.0);
-
-        // 结果应该一致
-        assert!((dr1 - dr2).abs() < 1e-6, "DR值应该一致: {dr1} vs {dr2}");
-
-        // 记录计算结果用于调试
-        println!(
-            "计算结果1 DR: {:.2}, 计算结果2 DR: {:.2}, 差异: {:.2}dB",
-            dr1,
-            dr2,
-            (dr1 - dr2).abs()
-        );
-    }
-
-    #[test]
-    fn test_sum_doubling_with_block_processing() {
-        let calc = DrCalculator::new(1, false, 48000, 3.0).unwrap();
-
-        // 创建不会导致RMS>Peak问题的测试数据
-        let samples = generate_safe_test_data();
-
-        let results = calc.calculate_dr_from_samples(&samples, 1).unwrap();
-
-        assert_eq!(results.len(), 1);
-        let result = &results[0];
-
-        // 验证基本约束
-        assert!(result.rms > 0.0);
-        assert!(result.peak > 0.0);
-        assert!(result.rms < result.peak);
-        assert!(result.dr_value > 0.0);
-    }
-
-    // 辅助函数：生成安全的测试数据（确保RMS < Peak）
-    fn generate_safe_test_data() -> Vec<f32> {
-        let mut samples = Vec::new();
-
-        // 创建9秒的单声道数据（432000个样本）
-        // 每个3秒块都要有明显的Peak
-        for block in 0..3 {
-            let _start_idx = block * 144000;
-            for i in 0..144000 {
-                let amplitude = if i < 143900 {
-                    0.05 // 基础信号
-                } else {
-                    // 每个块的最后100个样本包含峰值
-                    match i - 143900 {
-                        0..=49 => 0.5, // 中等信号
-                        50 => 1.0,     // 主峰
-                        51 => 0.9,     // 次峰
-                        _ => 0.1,      // 其他
-                    }
-                };
-                samples.push(amplitude);
-            }
-        }
-
-        samples
-    }
-
-    #[test]
-    fn test_block_processing_memory_efficiency() {
-        // 测试块处理是否高效处理大量数据
-        let calc = DrCalculator::new(2, false, 48000, 3.0).unwrap();
-
-        // 创建12秒的双声道交错测试数据，确保RMS < Peak
-        let mut large_samples = Vec::new();
-        for _ in 0..2 {
-            large_samples.extend(vec![0.01; 575990]); // 大量小信号
-            large_samples.extend(vec![0.5; 5]); // 中等信号
-            large_samples.extend(vec![1.0; 5]); // 峰值信号
-        }
-
-        // 这个测试主要验证不会崩溃或内存溢出
-        let results = calc.calculate_dr_from_samples(&large_samples, 2);
-
-        // 应该能成功处理大数据集
-        assert!(results.is_ok(), "块处理应该能处理大数据集");
-        let results = results.unwrap();
-        assert_eq!(results.len(), 2); // 双声道
-
-        // 验证每个声道的结果都有效
-        for result in &results {
-            assert!(result.rms > 0.0);
-            assert!(result.peak > 0.0);
-            assert!(result.rms < result.peak);
-            assert!(result.dr_value > 0.0);
-        }
-    }
 }

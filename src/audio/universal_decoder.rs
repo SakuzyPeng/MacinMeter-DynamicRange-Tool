@@ -74,32 +74,11 @@ pub trait StreamingDecoder {
     }
 }
 
-/// 解码器能力标识
-#[derive(Debug, Clone, PartialEq)]
-pub enum DecoderCapability {
-    /// PCM格式 (WAV, FLAC, ALAC等)
-    Pcm,
-    /// DSD格式 (DFF, DSF等)
-    Dsd,
-    /// 有损压缩 (MP3, AAC, OGG等)
-    Lossy,
-    /// 专业格式 (BWF, RF64等)
-    Professional,
-    /// 实验性格式
-    Experimental,
-}
-
 /// 格式支持信息
 #[derive(Debug, Clone)]
 pub struct FormatSupport {
     /// 支持的文件扩展名
     pub extensions: &'static [&'static str],
-    /// 解码器能力
-    pub capabilities: &'static [DecoderCapability],
-    /// 优先级 (0-100, 数字越大优先级越高)
-    pub priority: u8,
-    /// 是否支持流式解码
-    pub streaming_support: bool,
 }
 
 /// 音频解码器trait
@@ -124,9 +103,6 @@ pub trait AudioDecoder: Send + Sync {
     /// 探测文件格式（快速，不解码音频数据）
     fn probe_format(&self, path: &Path) -> AudioResult<AudioFormat>;
 
-    /// 完整解码文件（适用于小文件）
-    fn decode_full(&self, path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)>;
-
     /// 创建流式解码器（适用于大文件）
     fn create_streaming(&self, path: &Path) -> AudioResult<Box<dyn StreamingDecoder>>;
 
@@ -145,9 +121,6 @@ impl AudioDecoder for PcmDecoder {
     fn supported_formats(&self) -> &FormatSupport {
         static SUPPORT: FormatSupport = FormatSupport {
             extensions: &["wav", "flac", "alac", "aiff", "au", "caf"],
-            capabilities: &[DecoderCapability::Pcm],
-            priority: 80,
-            streaming_support: true,
         };
         &SUPPORT
     }
@@ -155,26 +128,6 @@ impl AudioDecoder for PcmDecoder {
     fn probe_format(&self, path: &Path) -> AudioResult<AudioFormat> {
         // 使用symphonia探测格式
         self.probe_with_symphonia(path)
-    }
-
-    fn decode_full(&self, path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)> {
-        // 先尝试hound（WAV专用，更快）
-        if path
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|ext| ext.to_lowercase() == "wav")
-        {
-            match self.decode_with_hound(path) {
-                Ok(result) => return Ok(result),
-                Err(_) => {
-                    // hound失败，回退到symphonia
-                    println!("⚠️  hound解码失败，使用symphonia后备解码器...");
-                }
-            }
-        }
-
-        // 使用symphonia通用解码
-        self.decode_with_symphonia(path)
     }
 
     fn create_streaming(&self, path: &Path) -> AudioResult<Box<dyn StreamingDecoder>> {
@@ -200,167 +153,6 @@ impl PcmDecoder {
         Ok(Box::new(PcmStreamingDecoder::new_for_batch_processing(
             path,
         )?))
-    }
-
-    /// 创建流式解码器（可指定逐包模式）
-    ///
-    /// 🏷️ DEPRECATED: 将在后续版本中移除，请使用create_streaming_for_batch_processing
-    #[deprecated(
-        since = "0.1.0",
-        note = "使用 create_streaming_for_batch_processing 替代"
-    )]
-    pub fn create_streaming_with_packet_mode(
-        &self,
-        path: &Path,
-        packet_chunk_mode: bool,
-    ) -> AudioResult<Box<dyn StreamingDecoder>> {
-        Ok(Box::new(PcmStreamingDecoder::new_with_packet_mode(
-            path,
-            packet_chunk_mode,
-        )?))
-    }
-    /// 使用hound解码WAV文件
-    fn decode_with_hound(&self, path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)> {
-        let mut reader = hound::WavReader::open(path)?;
-        let spec = reader.spec();
-
-        let format = AudioFormat::new(
-            spec.sample_rate,
-            spec.channels,
-            spec.bits_per_sample,
-            reader.len() as u64,
-        );
-
-        format.validate()?;
-
-        let samples = match format.bits_per_sample {
-            16 => reader
-                .samples::<i16>()
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .map(|s| s as f32 / 32768.0)
-                .collect(),
-            24 => reader
-                .samples::<i32>()
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .map(|s| s as f32 / 8388608.0)
-                .collect(),
-            32 => {
-                if reader.spec().sample_format == hound::SampleFormat::Float {
-                    reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?
-                } else {
-                    reader
-                        .samples::<i32>()
-                        .collect::<Result<Vec<_>, _>>()?
-                        .into_iter()
-                        .map(|s| s as f64 / 2147483648.0)
-                        .map(|s| s as f32)
-                        .collect()
-                }
-            }
-            _ => {
-                return Err(AudioError::FormatError(format!(
-                    "不支持的位深度: {}位",
-                    format.bits_per_sample
-                )));
-            }
-        };
-
-        Ok((format, samples))
-    }
-
-    /// 使用symphonia通用解码
-    fn decode_with_symphonia(&self, path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)> {
-        use symphonia::core::codecs::DecoderOptions;
-        use symphonia::core::errors::Error as SymphoniaError;
-        use symphonia::core::formats::FormatOptions;
-        use symphonia::core::io::MediaSourceStream;
-        use symphonia::core::meta::MetadataOptions;
-        use symphonia::core::probe::Hint;
-
-        let file = std::fs::File::open(path)?;
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
-
-        let mut hint = Hint::new();
-        if let Some(extension) = path.extension() {
-            hint.with_extension(&extension.to_string_lossy());
-        }
-
-        let meta_opts = MetadataOptions::default();
-        let fmt_opts = FormatOptions::default();
-
-        let probed = symphonia::default::get_probe()
-            .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| AudioError::FormatError(format!("格式探测失败: {e}")))?;
-
-        let mut format_reader = probed.format;
-
-        let track = format_reader
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-            .ok_or_else(|| AudioError::FormatError("未找到音频轨道".to_string()))?;
-
-        let track_id = track.id;
-        let codec_params = &track.codec_params;
-
-        let dec_opts = DecoderOptions::default();
-        let mut decoder = symphonia::default::get_codecs()
-            .make(codec_params, &dec_opts)
-            .map_err(|e| AudioError::FormatError(format!("创建解码器失败: {e}")))?;
-
-        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
-        let channels = codec_params
-            .channels
-            .map(|ch| ch.count())
-            .ok_or_else(|| AudioError::FormatError("无法获取声道数信息".to_string()))?
-            as u16;
-        let bits_per_sample = self.detect_bit_depth(codec_params);
-
-        let mut all_samples = Vec::new();
-        let mut sample_count = 0u64;
-
-        loop {
-            let packet = match format_reader.next_packet() {
-                Ok(packet) => packet,
-                Err(SymphoniaError::ResetRequired) => {
-                    decoder.reset();
-                    continue;
-                }
-                Err(SymphoniaError::IoError(ref e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    break;
-                }
-                Err(e) => return Err(AudioError::FormatError(format!("读取包失败: {e}"))),
-            };
-
-            if packet.track_id() != track_id {
-                continue;
-            }
-
-            match decoder.decode(&packet) {
-                Ok(audio_buf) => {
-                    Self::convert_buffer_to_interleaved(&audio_buf, &mut all_samples)?;
-                    sample_count += audio_buf.frames() as u64;
-                }
-                Err(SymphoniaError::IoError(ref e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    break;
-                }
-                Err(SymphoniaError::DecodeError(_)) => continue,
-                Err(e) => return Err(AudioError::FormatError(format!("解码失败: {e}"))),
-            }
-        }
-
-        if all_samples.is_empty() {
-            return Err(AudioError::FormatError("未解码到任何样本".to_string()));
-        }
-
-        let format = AudioFormat::new(sample_rate, channels, bits_per_sample, sample_count);
-        Ok((format, all_samples))
     }
 
     /// 使用symphonia探测格式
@@ -494,85 +286,42 @@ impl PcmDecoder {
     }
 }
 
-/// DSD解码器 - 为未来的DSD支持做准备
-pub struct DsdDecoder;
-
-impl AudioDecoder for DsdDecoder {
-    fn name(&self) -> &'static str {
-        "DSD Decoder"
-    }
-
-    fn supported_formats(&self) -> &FormatSupport {
-        static SUPPORT: FormatSupport = FormatSupport {
-            extensions: &["dff", "dsf", "dsd"],
-            capabilities: &[DecoderCapability::Dsd],
-            priority: 90,
-            streaming_support: false, // DSD流式解码更复杂
-        };
-        &SUPPORT
-    }
-
-    fn probe_format(&self, _path: &Path) -> AudioResult<AudioFormat> {
-        Err(AudioError::FormatError("DSD格式支持尚未实现".to_string()))
-    }
-
-    fn decode_full(&self, _path: &Path) -> AudioResult<(AudioFormat, Vec<f32>)> {
-        Err(AudioError::FormatError("DSD格式支持尚未实现".to_string()))
-    }
-
-    fn create_streaming(&self, _path: &Path) -> AudioResult<Box<dyn StreamingDecoder>> {
-        Err(AudioError::FormatError("DSD流式解码尚未实现".to_string()))
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
 /// 块大小统计信息
 #[derive(Debug, Clone)]
 pub struct ChunkSizeStats {
     pub total_chunks: usize,
-    pub sizes: Vec<usize>,
     pub min_size: usize,
     pub max_size: usize,
     pub mean_size: f64,
-    pub median_size: usize,
+    sizes_sum: usize,
 }
 
 impl ChunkSizeStats {
     fn new() -> Self {
         Self {
             total_chunks: 0,
-            sizes: Vec::new(),
             min_size: usize::MAX,
             max_size: 0,
             mean_size: 0.0,
-            median_size: 0,
+            sizes_sum: 0,
         }
     }
 
     fn add_chunk(&mut self, size: usize) {
         self.total_chunks += 1;
-        self.sizes.push(size);
+        self.sizes_sum += size;
         self.min_size = self.min_size.min(size);
         self.max_size = self.max_size.max(size);
     }
 
     fn finalize(&mut self) {
-        if !self.sizes.is_empty() {
-            self.mean_size = self.sizes.iter().sum::<usize>() as f64 / self.sizes.len() as f64;
-            self.sizes.sort_unstable();
-            self.median_size = self.sizes[self.sizes.len() / 2];
+        if self.total_chunks > 0 {
+            self.mean_size = self.sizes_sum as f64 / self.total_chunks as f64;
         }
-    }
-
-    pub fn get_percentile(&self, p: f64) -> usize {
-        if self.sizes.is_empty() {
-            return 0;
+        // 修复边界情况
+        if self.min_size == usize::MAX {
+            self.min_size = 0;
         }
-        let idx = ((self.sizes.len() - 1) as f64 * p / 100.0).round() as usize;
-        self.sizes[idx.min(self.sizes.len() - 1)]
     }
 }
 
@@ -857,19 +606,10 @@ impl Default for UniversalDecoder {
 impl UniversalDecoder {
     /// 创建新的统一解码器
     pub fn new() -> Self {
-        let mut decoders: Vec<Box<dyn AudioDecoder>> = vec![
+        let decoders: Vec<Box<dyn AudioDecoder>> = vec![
             // 注册PCM解码器
             Box::new(PcmDecoder),
-            // 注册DSD解码器（未来启用）
-            Box::new(DsdDecoder),
         ];
-
-        // 按优先级排序（优先级高的在前）
-        decoders.sort_by(|a, b| {
-            b.supported_formats()
-                .priority
-                .cmp(&a.supported_formats().priority)
-        });
 
         Self { decoders }
     }
@@ -877,12 +617,6 @@ impl UniversalDecoder {
     /// 添加自定义解码器
     pub fn add_decoder(&mut self, decoder: Box<dyn AudioDecoder>) {
         self.decoders.push(decoder);
-        // 重新排序
-        self.decoders.sort_by(|a, b| {
-            b.supported_formats()
-                .priority
-                .cmp(&a.supported_formats().priority)
-        });
     }
 
     /// 获取能处理指定文件的解码器
@@ -904,12 +638,6 @@ impl UniversalDecoder {
     pub fn probe_format<P: AsRef<Path>>(&self, path: P) -> AudioResult<AudioFormat> {
         let decoder = self.get_decoder(path.as_ref())?;
         decoder.probe_format(path.as_ref())
-    }
-
-    /// 完整解码文件
-    pub fn decode_full<P: AsRef<Path>>(&self, path: P) -> AudioResult<(AudioFormat, Vec<f32>)> {
-        let decoder = self.get_decoder(path.as_ref())?;
-        decoder.decode_full(path.as_ref())
     }
 
     /// 创建流式解码器
@@ -935,15 +663,6 @@ impl UniversalDecoder {
             // 其他解码器使用默认流式模式
             decoder.create_streaming(path.as_ref())
         }
-    }
-
-    pub fn create_streaming_with_packet_mode<P: AsRef<Path>>(
-        &self,
-        path: P,
-        _packet_chunk_mode: bool, // 参数保留但不使用
-    ) -> AudioResult<Box<dyn StreamingDecoder>> {
-        // 🔧 修复：统一使用create_streaming_for_batch_processing替代deprecated方法
-        self.create_streaming_for_batch_processing(path.as_ref())
     }
 
     /// 获取支持的格式列表

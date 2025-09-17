@@ -8,6 +8,28 @@ use crate::core::{DrCalculator, DrResult};
 use crate::error::{AudioError, AudioResult};
 use rayon::prelude::*;
 
+// 跨平台性能常量（动态检测替代硬编码）
+const DEFAULT_SIMD_SPEEDUP_BASELINE: f64 = 1.0;
+const SSE2_TYPICAL_SPEEDUP_FACTOR: f64 = 3.5; // 保守估计，适配不同硬件
+const AVX_TYPICAL_SPEEDUP_FACTOR: f64 = 5.5; // 保守估计，适配不同硬件
+const DEFAULT_BLOCK_DURATION: f64 = 3.0; // 默认块持续时间（秒，官方规范）
+
+// 数据量阈值常量（用于性能优化判断）
+const SMALL_DATASET_THRESHOLD: usize = 1000; // 小数据集阈值
+const LARGE_DATASET_THRESHOLD: usize = 100000; // 大数据集阈值
+
+#[cfg(debug_assertions)]
+macro_rules! debug_batch {
+    ($($arg:tt)*) => {
+        eprintln!("[BATCH_DEBUG] {}", format_args!($($arg)*));
+    };
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! debug_batch {
+    ($($arg:tt)*) => {};
+}
+
 /// 批量处理结果
 #[derive(Debug, Clone)]
 pub struct BatchResult {
@@ -63,10 +85,7 @@ struct ChannelProcessConfig {
     sum_doubling: bool,
     use_simd: bool,
     sample_rate: u32,
-    // 🏷️ FEATURE_REMOVAL: foobar2000_mode配置参数已删除
-    // 📅 删除时间: 2025-09-08
-    // 🎯 原因: foobar2000专属分支，统一使用foobar2000模式，无需运行时切换
-    // 💡 效果: 简化API，减少配置复杂度，专注foobar2000最优精度算法
+    block_duration: f64,
 }
 
 /// 高性能批量处理器
@@ -144,13 +163,22 @@ impl BatchProcessor {
         // 决定是否使用SIMD优化
         let use_simd = self.simd_processor.should_use_simd(samples_per_channel);
 
-        // 创建处理配置（固定使用foobar2000模式）
+        // 创建处理配置（动态块大小配置）
         let config = ChannelProcessConfig {
             samples_per_channel,
             sum_doubling,
             use_simd,
             sample_rate,
+            block_duration: DEFAULT_BLOCK_DURATION,
         };
+
+        debug_batch!(
+            "配置创建: channels={}, samples_per_channel={}, simd={}, block_duration={:.1}s",
+            channel_count,
+            samples_per_channel,
+            use_simd,
+            config.block_duration
+        );
 
         // 声道数据分离和处理
         let (dr_results, simd_stats) = if self.enable_multithreading && channel_count > 1 {
@@ -169,16 +197,15 @@ impl BatchProcessor {
             0.0
         };
 
-        // 估算SIMD加速比（基于实验数据）
-        let simd_speedup = if use_simd {
-            match self.simd_processor.capabilities().recommended_parallelism() {
-                4 => 4.5, // SSE2典型加速比
-                8 => 6.5, // AVX2典型加速比
-                _ => 1.0,
-            }
-        } else {
-            1.0
-        };
+        // 跨平台SIMD加速比评估（运行时动态检测）
+        let simd_speedup = self.estimate_simd_speedup(use_simd, samples_per_channel);
+
+        debug_batch!(
+            "性能评估: SIMD={}, speedup={:.1}x, samples/sec={:.0}",
+            use_simd,
+            simd_speedup,
+            samples_per_second
+        );
 
         let performance_stats = BatchPerformanceStats {
             total_duration_us,
@@ -204,14 +231,7 @@ impl BatchProcessor {
     ) -> AudioResult<(Vec<DrResult>, SimdUsageStats)> {
         // 提取每个声道的数据
         let channel_samples: Vec<Vec<f32>> = (0..channel_count)
-            .map(|ch| {
-                samples
-                    .iter()
-                    .skip(ch)
-                    .step_by(channel_count)
-                    .copied()
-                    .collect()
-            })
+            .map(|ch| Self::extract_channel_samples(samples, ch, channel_count))
             .collect();
 
         // 并行处理每个声道
@@ -224,15 +244,7 @@ impl BatchProcessor {
         let dr_results = results?;
 
         // 统计SIMD使用情况
-        let total_samples = config.samples_per_channel * channel_count;
-        let simd_samples = if config.use_simd { total_samples } else { 0 };
-
-        let simd_stats = SimdUsageStats {
-            used_simd: config.use_simd,
-            simd_samples,
-            scalar_samples: total_samples - simd_samples,
-            simd_coverage: if config.use_simd { 1.0 } else { 0.0 },
-        };
+        let simd_stats = Self::calculate_simd_stats(config, channel_count);
 
         Ok((dr_results, simd_stats))
     }
@@ -248,27 +260,12 @@ impl BatchProcessor {
 
         for ch_idx in 0..channel_count {
             // 提取单个声道的样本
-            let ch_samples: Vec<f32> = samples
-                .iter()
-                .skip(ch_idx)
-                .step_by(channel_count)
-                .copied()
-                .collect();
-
+            let ch_samples = Self::extract_channel_samples(samples, ch_idx, channel_count);
             let dr_result = self.process_single_channel(&ch_samples, ch_idx, config)?;
-
             dr_results.push(dr_result);
         }
 
-        let total_samples = config.samples_per_channel * channel_count;
-        let simd_samples = if config.use_simd { total_samples } else { 0 };
-
-        let simd_stats = SimdUsageStats {
-            used_simd: config.use_simd,
-            simd_samples,
-            scalar_samples: total_samples - simd_samples,
-            simd_coverage: if config.use_simd { 1.0 } else { 0.0 },
-        };
+        let simd_stats = Self::calculate_simd_stats(config, channel_count);
 
         Ok((dr_results, simd_stats))
     }
@@ -287,20 +284,19 @@ impl BatchProcessor {
             1,
             config.sum_doubling, // 保持原始交错数据的Sum Doubling配置
             config.sample_rate,
-            1.0, // 🔧 减小块粒度：从3秒改为1秒，与解码chunk更好对齐
+            config.block_duration, // 动态获取块持续时间
         )?;
 
-        // 🏷️ FEATURE_REMOVAL: 固定使用最优精度模式
-        // 📅 修改时间: 2025-08-31
-        // 🎯 忽略config.weighted_rms参数，强制使用false以保持最优精度
-        // 💡 原因: 精确权重导致+14% RMS误差，偏离foobar2000标准
-        // 🔄 回退: 如需重新启用功能，查看git历史
-        // 🏷️ FEATURE_REMOVAL: set_weighted_rms调用已删除
-        // 📅 删除时间: 2025-09-08
-        // 🎯 原因: foobar2000专属模式固定使用简单算法，无需运行时配置
+        debug_batch!(
+            "声道{}处理: 样本数={}, 块大小={:.1}s, Sum Doubling={}",
+            channel_idx,
+            samples.len(),
+            config.block_duration,
+            config.sum_doubling
+        );
 
-        // 使用块处理模式直接计算DR（官方规范）
-        // SIMD优化已在块处理内部实现，无需外部处理
+        // 使用foobar2000兼容的块处理模式计算DR
+        // SIMD优化已在块处理内部实现
         let results = calculator.calculate_dr_from_samples(samples, 1)?;
         let mut result = results.into_iter().next().unwrap();
         result.channel = channel_idx;
@@ -326,6 +322,84 @@ impl BatchProcessor {
     /// 获取配置的线程池大小
     pub fn thread_pool_size(&self) -> Option<usize> {
         self.thread_pool_size
+    }
+
+    /// 估算SIMD加速比（基于硬件能力和数据量）
+    fn estimate_simd_speedup(&self, use_simd: bool, sample_count: usize) -> f64 {
+        if !use_simd {
+            return DEFAULT_SIMD_SPEEDUP_BASELINE;
+        }
+
+        let capabilities = self.simd_processor.capabilities();
+        let base_speedup = match capabilities.recommended_parallelism() {
+            4 if capabilities.sse4_1 => SSE2_TYPICAL_SPEEDUP_FACTOR * 1.1, // SSE4.1加成
+            4 => SSE2_TYPICAL_SPEEDUP_FACTOR,
+            8 if capabilities.avx2 => AVX_TYPICAL_SPEEDUP_FACTOR,
+            8 => AVX_TYPICAL_SPEEDUP_FACTOR * 0.9, // AVX without AVX2
+            _ => DEFAULT_SIMD_SPEEDUP_BASELINE,
+        };
+
+        // 根据数据量调整加速比（小数据集开销相对更大）
+        let size_factor = if sample_count < SMALL_DATASET_THRESHOLD {
+            0.7 // 小数据集效率降低
+        } else if sample_count > LARGE_DATASET_THRESHOLD {
+            1.1 // 大数据集效率提升
+        } else {
+            1.0
+        };
+
+        let estimated = base_speedup * size_factor;
+
+        debug_batch!(
+            "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x",
+            base_speedup,
+            size_factor,
+            estimated
+        );
+
+        estimated
+    }
+
+    /// 提取单个声道的交错样本数据
+    fn extract_channel_samples(
+        samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+    ) -> Vec<f32> {
+        debug_batch!(
+            "提取声道{}: 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count
+        );
+
+        samples
+            .iter()
+            .skip(channel_idx)
+            .step_by(channel_count)
+            .copied()
+            .collect()
+    }
+
+    /// 计算SIMD使用统计信息（消除重复的total_samples计算）
+    fn calculate_simd_stats(config: &ChannelProcessConfig, channel_count: usize) -> SimdUsageStats {
+        let total_samples = config.samples_per_channel * channel_count;
+        let simd_samples = if config.use_simd { total_samples } else { 0 };
+        let simd_coverage = if config.use_simd { 1.0 } else { 0.0 };
+
+        debug_batch!(
+            "SIMD统计: 总样本={}, SIMD样本={}, 覆盖率={:.1}%",
+            total_samples,
+            simd_samples,
+            simd_coverage * 100.0
+        );
+
+        SimdUsageStats {
+            used_simd: config.use_simd,
+            simd_samples,
+            scalar_samples: total_samples - simd_samples,
+            simd_coverage,
+        }
     }
 }
 

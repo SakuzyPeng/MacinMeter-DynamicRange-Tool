@@ -291,12 +291,6 @@ impl SimdChannelData {
         self.sample_buffer.clear();
     }
 
-    /// 只重置RMS累积器，保留峰值信息（用于块级处理）
-    pub fn reset_rms_only(&mut self) {
-        self.inner.reset_rms_only();
-        self.sample_buffer.clear();
-    }
-
     /// 获取缓冲区容量（字节对齐到SIMD边界）
     pub fn buffer_capacity(&self) -> usize {
         self.buffer_capacity

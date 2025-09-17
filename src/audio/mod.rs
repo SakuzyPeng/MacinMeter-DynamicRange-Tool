@@ -9,6 +9,6 @@ pub mod universal_decoder;
 
 // 导出新的统一解码器（推荐使用）
 pub use universal_decoder::{
-    AudioDecoder as UniversalAudioDecoder, AudioFormat, DecoderCapability, FormatSupport,
+    AudioDecoder as UniversalAudioDecoder, AudioFormat, FormatSupport,
     StreamingDecoder as UniversalStreamingDecoder, UniversalDecoder,
 };
