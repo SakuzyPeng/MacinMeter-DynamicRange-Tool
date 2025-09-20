@@ -1,0 +1,394 @@
+//! 声道样本分离引擎
+//!
+//! 负责1-2声道音频的高性能样本分离，支持单声道直通和立体声SIMD优化。
+//! 结合SSE2/NEON向量化技术，为ProcessingCoordinator提供专业化的技术实现服务。
+
+use super::simd_channel_data::SimdProcessor;
+
+#[cfg(debug_assertions)]
+macro_rules! debug_performance {
+    ($($arg:tt)*) => {
+        eprintln!("[CHANNEL_DEBUG] {}", format_args!($($arg)*));
+    };
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! debug_performance {
+    ($($arg:tt)*) => {};
+}
+
+/// 声道样本分离引擎
+///
+/// 负责1-2声道音频的高性能样本分离：
+/// - 单声道：零开销直通
+/// - 立体声：SIMD向量化优化
+/// - 提供跨平台的SIMD实现(SSE2/NEON)和标量回退
+pub struct ChannelExtractor {
+    /// SIMD处理器实例
+    simd_processor: SimdProcessor,
+}
+
+impl ChannelExtractor {
+    /// 创建新的立体声分离引擎
+    ///
+    /// 自动检测硬件SIMD能力并初始化最优配置。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use macinmeter_dr_tool::processing::ChannelExtractor;
+    ///
+    /// let extractor = ChannelExtractor::new();
+    /// println!("SIMD支持: {}", extractor.has_simd_support());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            simd_processor: SimdProcessor::new(),
+        }
+    }
+
+    /// 检查是否支持SIMD加速
+    pub fn has_simd_support(&self) -> bool {
+        self.simd_processor.capabilities().has_basic_simd()
+    }
+
+    /// 获取SIMD处理器能力
+    pub fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities {
+        self.simd_processor.capabilities()
+    }
+
+    /// 🚀 智能样本分离（自适应单声道/立体声）
+    ///
+    /// 根据声道数量自动选择最优分离策略：
+    /// - 单声道：零开销直通
+    /// - 立体声：SIMD向量化分离
+    ///
+    /// # 参数
+    ///
+    /// * `samples` - 交错的音频样本数据
+    /// * `channel_idx` - 要提取的声道索引
+    /// * `channel_count` - 总声道数量（1或2）
+    ///
+    /// # 返回值
+    ///
+    /// 返回指定声道的样本数据
+    pub fn extract_channel_samples_optimized(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+    ) -> Vec<f32> {
+        debug_performance!(
+            "🚀 智能提取声道{}: 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count
+        );
+
+        // 🔍 [TRACE] SIMD分离决策
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "🔍 [STEREO] extract_channel_samples_optimized: 声道{}/{}, 总样本={}",
+            channel_idx,
+            channel_count,
+            samples.len()
+        );
+
+        // 🎯 智能优化（单声道和立体声自适应）
+        debug_assert!(channel_count <= 2, "ChannelExtractor只应处理1-2声道文件");
+
+        if channel_count == 1 {
+            // 单声道：无需样本分离，直接返回所有样本
+            #[cfg(debug_assertions)]
+            eprintln!("🔍 [STEREO] 单声道模式：无需分离，直接返回样本");
+
+            samples.to_vec()
+        } else {
+            // 立体声：使用SIMD优化
+            #[cfg(debug_assertions)]
+            eprintln!("🔍 [STEREO] 使用立体声SIMD优化路径");
+
+            let result = self.extract_stereo_samples_optimized(samples, channel_idx);
+
+            #[cfg(debug_assertions)]
+            eprintln!("🔍 [STEREO] 立体声SIMD优化完成: {} 个样本", result.len());
+
+            result
+        }
+    }
+
+    /// 🎯 立体声样本分离优化入口
+    fn extract_stereo_samples_optimized(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+        self.extract_stereo_samples_simd_impl(samples, channel_idx)
+    }
+
+    /// 🎯 SSE2优化的立体声样本分离（x86_64专用）
+    #[cfg(target_arch = "x86_64")]
+    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+        if !self.simd_processor.capabilities().has_basic_simd() {
+            return Self::extract_channel_samples_scalar(samples, channel_idx, 2);
+        }
+
+        let samples_per_channel = samples.len() / 2;
+        let mut result = Vec::with_capacity(samples_per_channel);
+
+        unsafe { self.extract_stereo_samples_sse2_unsafe(samples, channel_idx, &mut result) }
+
+        debug_performance!(
+            "🎯 SSE2立体声分离完成: 提取{}=>{}个样本",
+            samples.len(),
+            result.len()
+        );
+
+        result
+    }
+
+    /// 🔥 SSE2立体声样本分离的核心实现（unsafe）
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "sse2")]
+    unsafe fn extract_stereo_samples_sse2_unsafe(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        result: &mut Vec<f32>,
+    ) {
+        use std::arch::x86_64::*;
+
+        let len = samples.len();
+        let mut i = 0;
+
+        // 🚀 SSE2批量处理：一次处理8个样本（4对立体声）
+        while i + 8 <= len {
+            unsafe {
+                // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
+                let samples1 = _mm_loadu_ps(samples.as_ptr().add(i));
+                let samples2 = _mm_loadu_ps(samples.as_ptr().add(i + 4));
+
+                if channel_idx == 0 {
+                    // 提取左声道: [L0, L1, L2, L3]
+                    // samples1 = [L0, R0, L1, R1], samples2 = [L2, R2, L3, R3]
+                    // 使用shuffle提取偶数位置的样本
+                    let left1 = _mm_shuffle_ps(samples1, samples1, 0b10_00_10_00); // [L0, L1, L0, L1]
+                    let left2 = _mm_shuffle_ps(samples2, samples2, 0b10_00_10_00); // [L2, L3, L2, L3]
+                    // 组合成 [L0, L1, L2, L3] - 修复：使用正确的shuffle掩码
+                    let final_left = _mm_shuffle_ps(left1, left2, 0b01_00_01_00);
+
+                    // 存储结果
+                    let mut temp = [0.0f32; 4];
+                    _mm_storeu_ps(temp.as_mut_ptr(), final_left);
+                    result.extend_from_slice(&temp);
+                } else {
+                    // 提取右声道: [R0, R1, R2, R3]
+                    // 使用shuffle提取奇数位置的样本
+                    let right1 = _mm_shuffle_ps(samples1, samples1, 0b11_01_11_01); // [R0, R1, R0, R1]
+                    let right2 = _mm_shuffle_ps(samples2, samples2, 0b11_01_11_01); // [R2, R3, R2, R3]
+                    // 组合成 [R0, R1, R2, R3] - 修复：使用正确的shuffle掩码
+                    let final_right = _mm_shuffle_ps(right1, right2, 0b01_00_01_00);
+
+                    // 存储结果
+                    let mut temp = [0.0f32; 4];
+                    _mm_storeu_ps(temp.as_mut_ptr(), final_right);
+                    result.extend_from_slice(&temp);
+                }
+            }
+
+            i += 8;
+        }
+
+        // 🔄 处理剩余样本（标量方式）
+        while i < len {
+            if i % 2 == channel_idx {
+                result.push(samples[i]);
+            }
+            i += 1;
+        }
+    }
+
+    /// 🍎 ARM NEON优化的立体声样本分离（Apple Silicon专用）
+    #[cfg(target_arch = "aarch64")]
+    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+        if !self.simd_processor.capabilities().has_basic_simd() {
+            return Self::extract_channel_samples_scalar(samples, channel_idx, 2);
+        }
+
+        let samples_per_channel = samples.len() / 2;
+        let mut result = Vec::with_capacity(samples_per_channel);
+
+        unsafe { self.extract_stereo_samples_neon_unsafe(samples, channel_idx, &mut result) }
+
+        debug_performance!(
+            "🍎 NEON立体声分离完成: 提取{}=>{}个样本 (Apple Silicon)",
+            samples.len(),
+            result.len()
+        );
+
+        result
+    }
+
+    /// 🍎 ARM NEON立体声样本分离的核心实现（unsafe）
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn extract_stereo_samples_neon_unsafe(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        result: &mut Vec<f32>,
+    ) {
+        use std::arch::aarch64::*;
+
+        let len = samples.len();
+        let mut i = 0;
+
+        // 🚀 NEON批量处理：一次处理8个样本（4对立体声）
+        while i + 8 <= len {
+            unsafe {
+                // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
+                let samples1 = vld1q_f32(samples.as_ptr().add(i));
+                let samples2 = vld1q_f32(samples.as_ptr().add(i + 4));
+
+                if channel_idx == 0 {
+                    // 提取左声道: [L0, L1, L2, L3]
+                    // 使用NEON的deinterleave指令（更简单的方法）
+                    let left1 = vgetq_lane_f32(samples1, 0);
+                    let left2 = vgetq_lane_f32(samples1, 2);
+                    let left3 = vgetq_lane_f32(samples2, 0);
+                    let left4 = vgetq_lane_f32(samples2, 2);
+
+                    result.extend_from_slice(&[left1, left2, left3, left4]);
+                } else {
+                    // 提取右声道: [R0, R1, R2, R3]
+                    let right1 = vgetq_lane_f32(samples1, 1);
+                    let right2 = vgetq_lane_f32(samples1, 3);
+                    let right3 = vgetq_lane_f32(samples2, 1);
+                    let right4 = vgetq_lane_f32(samples2, 3);
+
+                    result.extend_from_slice(&[right1, right2, right3, right4]);
+                }
+            }
+
+            i += 8;
+        }
+
+        // 🔄 处理剩余样本（标量方式）
+        while i < len {
+            if i % 2 == channel_idx {
+                result.push(samples[i]);
+            }
+            i += 1;
+        }
+    }
+
+    /// 🚀 其他架构的立体声分离回退实现
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+        debug_performance!(
+            "🔄 未支持架构回退到标量实现: arch={}",
+            std::env::consts::ARCH
+        );
+        Self::extract_channel_samples_scalar(samples, channel_idx, 2)
+    }
+
+    /// 📊 标量声道样本分离（通用回退实现）
+    ///
+    /// 使用迭代器的高效标量实现，适用于所有平台和声道配置。
+    pub fn extract_channel_samples_scalar(
+        samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+    ) -> Vec<f32> {
+        debug_performance!(
+            "📊 标量提取声道{}: 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count
+        );
+
+        samples
+            .iter()
+            .skip(channel_idx)
+            .step_by(channel_count)
+            .copied()
+            .collect()
+    }
+}
+
+impl Default for ChannelExtractor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stereo_extractor_creation() {
+        let extractor = ChannelExtractor::new();
+        println!("立体声分离器SIMD能力: {:?}", extractor.simd_capabilities());
+    }
+
+    #[test]
+    fn test_mono_channel_extraction() {
+        let extractor = ChannelExtractor::new();
+        let samples = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+
+        // 单声道：应该返回全部样本
+        let result = extractor.extract_channel_samples_optimized(&samples, 0, 1);
+        assert_eq!(result, samples);
+    }
+
+    #[test]
+    fn test_stereo_channel_separation() {
+        let extractor = ChannelExtractor::new();
+
+        // 立体声测试数据
+        let samples = vec![
+            0.1, 0.2, // L0, R0
+            0.3, 0.4, // L1, R1
+            0.5, 0.6, // L2, R2
+        ];
+
+        // 提取左声道
+        let left = extractor.extract_channel_samples_optimized(&samples, 0, 2);
+        assert_eq!(left, vec![0.1, 0.3, 0.5]);
+
+        // 提取右声道
+        let right = extractor.extract_channel_samples_optimized(&samples, 1, 2);
+        assert_eq!(right, vec![0.2, 0.4, 0.6]);
+    }
+
+    #[test]
+    fn test_scalar_vs_simd_consistency() {
+        let extractor = ChannelExtractor::new();
+
+        // 足够触发SIMD的样本数量
+        let mut samples = Vec::new();
+        for i in 0..100 {
+            samples.push(i as f32); // 左声道
+            samples.push((i + 1000) as f32); // 右声道
+        }
+
+        // SIMD优化提取
+        let simd_left = extractor.extract_channel_samples_optimized(&samples, 0, 2);
+        let simd_right = extractor.extract_channel_samples_optimized(&samples, 1, 2);
+
+        // 标量提取
+        let scalar_left = ChannelExtractor::extract_channel_samples_scalar(&samples, 0, 2);
+        let scalar_right = ChannelExtractor::extract_channel_samples_scalar(&samples, 1, 2);
+
+        // 验证一致性
+        assert_eq!(simd_left.len(), scalar_left.len());
+        assert_eq!(simd_right.len(), scalar_right.len());
+
+        for (simd_val, scalar_val) in simd_left.iter().zip(scalar_left.iter()) {
+            assert!((simd_val - scalar_val).abs() < 1e-6);
+        }
+
+        for (simd_val, scalar_val) in simd_right.iter().zip(scalar_right.iter()) {
+            assert!((simd_val - scalar_val).abs() < 1e-6);
+        }
+
+        println!("✅ SIMD与标量立体声分离一致性验证通过");
+    }
+}

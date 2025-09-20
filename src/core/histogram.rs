@@ -73,7 +73,7 @@ impl WindowRmsAnalyzer {
 
     /// 处理单声道样本，按3秒窗口计算RMS并填入直方图
     pub fn process_samples(&mut self, samples: &[f32]) {
-        // 🎯 **精确对齐dr14_t.meter**: 记录总样本数
+        // 记录总样本数
         self.total_samples_processed += samples.len();
 
         for &sample in samples {
@@ -113,14 +113,13 @@ impl WindowRmsAnalyzer {
 
         // 处理不足一个窗口的剩余样本
         if self.current_count > 0 {
-            // 🎯 **精确复刻dr14_t.meter尾窗行为**:
-            // dr14在尾窗切片时使用 Y[curr_sam:s[0] - 1, :] 排除最后一个样本
+            // 排除最后一个样本
             if self.current_count > 1 {
                 // 排除最后一个样本：从平方和中减去最后样本的平方，样本数-1
                 let adjusted_sum_sq = self.current_sum_sq - (self.last_sample * self.last_sample);
                 let adjusted_count = self.current_count - 1;
 
-                // ✅ dr14兼容RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
+                // RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
                 let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
                 self.histogram.add_window_rms(window_rms);
                 self.window_rms_values.push(window_rms);
@@ -136,7 +135,7 @@ impl WindowRmsAnalyzer {
                 };
                 self.window_peaks.push(adjusted_peak);
             } else {
-                // 尾窗只有1个样本时，dr14_t.meter会完全跳过
+                // 尾窗只有1个样本时会完全跳过
             }
 
             // 重置状态
@@ -149,7 +148,6 @@ impl WindowRmsAnalyzer {
 
     /// 计算"最响20%窗口"的加权RMS值
     ///
-    /// 🎯 **精确对齐dr14_t.meter的20%算法**:
     /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
     /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
     /// - 使用seg_cnt计算n_blk，选择最高20%的RMS值
@@ -177,7 +175,7 @@ impl WindowRmsAnalyzer {
         // 步骤3: 排序（升序，0值会排在前面）
         rms_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        // 步骤4: 计算20%采样窗口数（精确复现dr14_t.meter）
+        // 步骤4: 计算20%采样窗口数
         let cut_best_bins = 0.2;
         let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
 
@@ -193,7 +191,7 @@ impl WindowRmsAnalyzer {
         (rms_sum / n_blk as f64).sqrt()
     }
 
-    /// 获取按照dr14_t.meter标准的最大窗口Peak值（主峰）
+    /// 获取最大窗口Peak值（主峰）
     ///
     /// 实现窗口级最大Peak选择算法：
     /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
@@ -216,21 +214,21 @@ impl WindowRmsAnalyzer {
             self.window_peaks.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
+        // 步骤2: 创建peaks数组
         let mut peaks_array = vec![0.0; seg_cnt];
         for (i, &peak) in self.window_peaks.iter().enumerate() {
             peaks_array[i] = peak;
         }
         // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
-        // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
+        // 步骤3: 升序排序
         peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         // 步骤4: 选择peaks[seg_cnt-1]位置的值（最大值）
         peaks_array[seg_cnt - 1]
     }
 
-    /// 获取按照dr14_t.meter标准的第二大窗口Peak值
+    /// 获取第二大窗口Peak值
     ///
     /// 实现与master分支相同的窗口级Peak选择算法：
     /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
@@ -239,7 +237,7 @@ impl WindowRmsAnalyzer {
     ///
     /// # 返回值
     ///
-    /// 返回按照dr14_t.meter精确算法选择的Peak值
+    /// 返回选择的Peak值
     pub fn get_second_largest_peak(&self) -> f64 {
         if self.window_peaks.is_empty() {
             return 0.0;
@@ -253,19 +251,19 @@ impl WindowRmsAnalyzer {
             self.window_peaks.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 创建peaks数组（模拟dr14_t.meter的行为）
+        // 步骤2: 创建peaks数组
         let mut peaks_array = vec![0.0; seg_cnt];
         for (i, &peak) in self.window_peaks.iter().enumerate() {
             peaks_array[i] = peak;
         }
         // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
-        // 步骤3: 升序排序（模拟np.sort(peaks, 0)）
+        // 步骤3: 升序排序
         peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         // 步骤4: 选择peaks[seg_cnt-2]位置的值
         if seg_cnt >= 2 {
-            peaks_array[seg_cnt - 2] // dr14_t.meter的索引逻辑
+            peaks_array[seg_cnt - 2]
         } else {
             // 只有1个Peak时，使用该Peak
             peaks_array[0]
