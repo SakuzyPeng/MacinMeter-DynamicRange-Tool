@@ -24,3 +24,4 @@ pub use core::{PeakSelectionStrategy, PeakSelector};
 pub use error::{AudioError, AudioResult};
 pub use processing::ChannelData;
 pub use processing::{ProcessingCoordinator, SimdChannelData, SimdProcessor};
+pub use tools::{AppConfig, process_audio_file_streaming, process_streaming_decoder};

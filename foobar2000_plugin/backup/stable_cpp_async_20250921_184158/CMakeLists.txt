@@ -60,8 +60,6 @@ set(PFC_SOURCES
     "${FOOBAR2000_SDK_PATH}/pfc/audio_math.cpp"
     "${FOOBAR2000_SDK_PATH}/pfc/audio_sample.cpp"
     "${FOOBAR2000_SDK_PATH}/pfc/wildcard.cpp"
-    "${FOOBAR2000_SDK_PATH}/pfc/string-conv-lite.cpp"
-    "${FOOBAR2000_SDK_PATH}/pfc/string_conv.cpp"
 )
 
 # SDK源文件
@@ -69,13 +67,6 @@ set(SDK_SOURCES
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/service.cpp"
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/console.cpp"
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/popup_message.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/main_thread_callback.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/threaded_process.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/advconfig.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/config_object.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/commonObjects.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/cfg_var.cpp"
-    "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/configStore.cpp"
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/completion_notify.cpp"
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/input.cpp"
     "${FOOBAR2000_SDK_PATH}/foobar2000/SDK/guids.cpp"
@@ -103,14 +94,15 @@ set(PLUGIN_SOURCES
     # 插件核心
     src/core/plugin_main.cpp
     src/core/foobar2000_stub.cpp
+    src/core/dr_analysis_controller.cpp  # 业务控制器层
 
     # 音频处理层
     src/audio/audio_accessor.cpp
 
     # 用户界面层
     src/ui/context_menu.cpp
-    # ❌ 已移除：src/ui/results_dialog.cpp（冗余，未被使用）
-    src/ui/progress_worker.cpp
+    src/ui/results_dialog.cpp
+    src/ui/progress_dialog.cpp
 
     # FFI桥接层
     src/bridge/rust_bridge.cpp

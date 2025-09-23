@@ -109,7 +109,7 @@ set(PLUGIN_SOURCES
 
     # 用户界面层
     src/ui/context_menu.cpp
-    # ❌ 已移除：src/ui/results_dialog.cpp（冗余，未被使用）
+    src/ui/results_dialog.cpp
     src/ui/progress_worker.cpp
 
     # FFI桥接层

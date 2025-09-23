@@ -23,15 +23,8 @@ GUID contextmenu_item::get_parent_fallback() {
 
 // pfc::stringLite 函数现在在string-lite.cpp中定义了
 
-// fb2k命名空间函数（只保留非冲突的）
-namespace fb2k {
-void inMainThread(std::function<void()> func) {
-    // 简化实现：直接执行
-    if (func) {
-        func();
-    }
-}
-} // namespace fb2k
+// fb2k命名空间函数已移至SDK commonObjects.cpp - 移除冲突实现
+namespace fb2k {} // namespace fb2k
 
 // Mac特定函数实现（只保留非冲突的）
 namespace pfc {
@@ -133,21 +126,6 @@ GUID album_art_extractor::get_guid() {
 
 // fb2k命名空间函数的实现（只提供缺失的实现）
 namespace fb2k {
-// 安全实现：禁止返回nullptr，改为抛异常
-service_ptr_t<arrayMutable> arrayMutable::arrayWithCapacity(unsigned long capacity) {
-    throw std::runtime_error(
-        "arrayMutable::arrayWithCapacity not implemented in DR analysis plugin");
-}
-
-service_ptr_t<string> string::stringWithString(const char* str) {
-    throw std::runtime_error("string::stringWithString not implemented in DR analysis plugin");
-}
-
-service_ptr_t<memBlock> memBlock::blockWithData(pfc::mem_block&& data) {
-    throw std::runtime_error("memBlock::blockWithData not implemented in DR analysis plugin");
-}
-
-service_ptr_t<array> array::makeConst() const {
-    throw std::runtime_error("array::makeConst not implemented in DR analysis plugin");
-}
+// 移除与SDK commonObjects.cpp冲突的实现
+// 这些函数现在由SDK提供
 } // namespace fb2k

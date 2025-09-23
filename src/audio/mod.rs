@@ -19,3 +19,6 @@ pub use universal_decoder::{
     AudioDecoder as UniversalAudioDecoder, AudioFormat, ChunkSizeStats, FormatSupport,
     StreamingDecoder as UniversalStreamingDecoder, UniversalDecoder,
 };
+
+// 导出流式解码器接口（供外部使用）
+pub use streaming::StreamingDecoder;

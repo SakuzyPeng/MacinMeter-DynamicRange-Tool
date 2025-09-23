@@ -14,8 +14,8 @@ pub use formatter::{
     calculate_official_dr, create_output_header, format_dr_results_by_channel_count, write_output,
 };
 pub use processor::{
-    add_failed_to_batch_output, add_to_batch_output, output_results, process_single_audio_file,
-    save_individual_result,
+    add_failed_to_batch_output, add_to_batch_output, output_results, process_audio_file_streaming,
+    process_single_audio_file, process_streaming_decoder, save_individual_result,
 };
 pub use scanner::{
     create_batch_output_footer, create_batch_output_header, generate_batch_output_path,

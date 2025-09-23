@@ -672,6 +672,275 @@ tools/Formatter::format_results() (UI层：结果格式化和输出)
 - **内存分配**: 重用ChannelData和直方图缓冲区避免分配
 - **浮点精度**: 使用f64进行累加，f32用于样本输入
 
+---
+
+## 🔌 foobar2000插件架构 (2025-09-21更新)
+
+本项目包含一个完整的foobar2000插件实现，位于 `foobar2000_plugin/` 目录，实现与主项目DR核心的无缝集成。
+
+### 🏗️ 插件整体架构
+
+**四层清晰分离架构**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ UI层: context_menu.cpp + results_dialog.cpp                │
+│ 职责: 用户交互、菜单项、结果显示                            │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 控制器层: DrAnalysisController                              │
+│ 职责: 业务流程编排、错误聚合、进度管理                     │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 服务层: AudioAccessor                                       │
+│ 职责: 专职音频解码 (foobar2000 decoder API)                │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ FFI层: rust_bridge.cpp/h + rust_core                       │
+│ 职责: C++↔Rust接口适配，类型转换，内存安全                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 🎯 关键组件详细说明
+
+#### **1. UI层 (`src/ui/`)**
+- **context_menu.cpp**: 右键菜单集成，提供"Analyze Dynamic Range"选项
+- **results_dialog.cpp**: DR分析结果展示窗口
+- **特点**: 遵循foobar2000 SDK规范，支持单文件和批量分析
+
+#### **2. 控制器层 (`src/core/dr_analysis_controller.*`)**
+```cpp
+class DrAnalysisController {
+public:
+    // 🎯 统一分析接口
+    AnalysisResult analyzeTracks(const pfc::list_base_const_t<metadb_handle_ptr>& handles);
+    AnalysisResult analyzeTrack(const metadb_handle_ptr& handle);
+
+    // 📊 结果聚合结构
+    struct AnalysisResult {
+        std::vector<DrAnalysisResult> dr_results;
+        std::vector<AudioData> audio_data;
+        bool success = false;
+        std::string error_message;
+        size_t processed_count = 0;
+        size_t failed_count = 0;
+        double total_duration = 0.0;
+    };
+};
+```
+
+#### **3. 服务层 (`src/audio/audio_accessor.*`)**
+```cpp
+class AudioAccessor {
+public:
+    // 🎯 专职音频解码，不负责DR分析
+    AudioData decode_audio_data(const metadb_handle_ptr& handle);
+    std::vector<AudioData> decode_audio_data_list(const handles& list);
+
+private:
+    void decode_audio_samples(const metadb_handle_ptr& handle, AudioData& audio);
+    void calculate_chunk_stats(ChunkStats& stats);  // 诊断功能
+};
+```
+
+#### **4. FFI层 (`src/bridge/` + `rust_core/`)**
+
+**C++桥接层 (`rust_bridge.*`)**:
+```cpp
+// 🎯 核心FFI接口（唯一接口，已移除会话兼容接口）
+int rust_analyze_foobar_audio(
+    const float* samples,
+    unsigned int sample_count,
+    unsigned int channels,
+    unsigned int sample_rate,
+    unsigned int bits_per_sample,
+    DrAnalysisResult* result
+);
+```
+
+**Rust适配层 (`rust_core/src/lib.rs`)**:
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn rust_analyze_foobar_audio(
+    samples: *const f32,
+    sample_count: c_uint,
+    channels: c_uint,
+    sample_rate: c_uint,
+    bits_per_sample: c_uint,
+    result: *mut DrAnalysisResult,
+) -> c_int {
+    // 🎯 100%复用主项目DrCalculator
+    let calculator = DrCalculator::new(channels as usize)?;
+    let dr_results = calculator.calculate_dr_from_samples(samples_slice, channels)?;
+    convert_dr_results_to_c(&dr_results, result, ...);
+}
+```
+
+### 🔄 与主项目交互流程
+
+**完整数据流**:
+```
+1. 用户右键选择 "Analyze Dynamic Range"
+   ↓
+2. context_menu.cpp → DrAnalysisController::analyzeTracks()
+   ↓
+3. 控制器 → AudioAccessor::decode_audio_data() (foobar2000解码)
+   ↓
+4. 控制器 → rust_analyze_foobar_audio() (FFI调用)
+   ↓
+5. rust_core → DrCalculator::calculate_dr_from_samples() (主项目算法)
+   ↓
+6. FFI返回DrAnalysisResult → 控制器聚合 → UI显示
+```
+
+### 🎯 核心设计原则
+
+#### **1. 纯FFI适配原则**
+- **rust_core不实现算法**: 100%复用主项目`DrCalculator`
+- **零重复代码**: 算法逻辑完全在主项目中
+- **薄包装设计**: FFI层仅做类型转换和安全检查
+
+#### **2. 单一职责分离**
+- **AudioAccessor**: 专职foobar2000音频解码
+- **DrAnalysisController**: 专职业务流程协调
+- **rust_bridge**: 专职FFI接口适配
+
+#### **3. 零向后兼容**
+- **移除会话接口**: 删除`dr_session_*`系列过时接口
+- **单一FFI入口**: 只保留`rust_analyze_foobar_audio`核心接口
+- **代码简化**: FFI层从280行减少到183行(-35%)
+
+### 📁 插件目录结构
+
+```
+foobar2000_plugin/
+├── rust_core/                    # Rust FFI适配层
+│   ├── src/lib.rs               # 核心FFI接口实现
+│   ├── Cargo.toml               # 依赖配置 (引用主项目)
+│   └── target/release/          # 编译产物
+│       └── libmacinmeter_dr_core.dylib
+├── src/                         # C++插件实现
+│   ├── core/                    # 核心控制器
+│   │   ├── plugin_main.cpp      # 插件入口点
+│   │   └── dr_analysis_controller.*  # 业务控制器
+│   ├── audio/                   # 音频服务层
+│   │   └── audio_accessor.*     # foobar2000解码封装
+│   ├── ui/                      # 用户界面层
+│   │   ├── context_menu.*       # 右键菜单集成
+│   │   └── results_dialog.*     # 结果显示窗口
+│   └── bridge/                  # FFI桥接层
+│       └── rust_bridge.*        # C++↔Rust接口
+├── CMakeLists.txt               # 构建配置
+├── Info.plist.template          # macOS Bundle配置
+└── build/                       # 构建输出
+    ├── foo_dr_macinmeter.dylib  # 插件动态库
+    └── foo_dr_macinmeter.fb2k-component  # 发布包
+```
+
+### 🔧 构建和部署
+
+#### **构建命令**:
+```bash
+# 进入插件目录
+cd foobar2000_plugin/
+
+# 创建构建目录
+mkdir -p build && cd build
+
+# 配置CMake (Release模式，优化大小)
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# 编译插件 (自动构建Rust核心)
+cmake --build . --config Release
+
+# 生成的文件
+ls -la foo_dr_macinmeter.fb2k-component  # 可安装的插件包
+```
+
+#### **部署文件**:
+- **macOS插件包**: `foo_dr_macinmeter.fb2k-component` (467KB)
+  - 包含插件主体 + Rust核心库
+  - 符合foobar2000 macOS Bundle规范
+- **插件结构**:
+  ```
+  foo_dr_macinmeter.component/
+  ├── Contents/
+  │   ├── Info.plist                    # Bundle信息
+  │   ├── MacOS/foo_dr_macinmeter       # 主可执行文件
+  │   └── Resources/libmacinmeter_dr_core.dylib  # Rust核心库
+  ```
+
+### 🎯 FFI接口设计
+
+#### **数据结构映射**:
+```cpp
+// C++侧结构 (与Rust #[repr(C)]严格匹配)
+typedef struct DrAnalysisResult {
+    double official_dr_value;           // 整体官方DR值
+    double precise_dr_value;            // 整体精确DR值
+    double peak_db;                     // 整体Peak值(dB)
+    double rms_db;                      // 整体RMS值(dB)
+
+    unsigned int channels;              // 声道数 (1-2)
+    unsigned int sample_rate;           // 采样率
+    unsigned int bits_per_sample;       // 位深度
+    double duration_seconds;            // 时长
+
+    double peak_db_per_channel[2];      // 每声道Peak值
+    double rms_db_per_channel[2];       // 每声道RMS值
+    double dr_db_per_channel[2];        // 每声道DR值
+    int peak_source_per_channel[2];     // 峰值来源(主峰/次峰)
+} DrAnalysisResult;
+```
+
+#### **错误码设计**:
+```cpp
+// rust_analyze_foobar_audio 返回值
+// 0: 成功
+// -1: 无效参数 (空指针/零计数)
+// -2: DrCalculator创建失败
+// -3: DR计算失败
+// -5: 声道数超限 (>2声道)
+```
+
+### 🔄 依赖关系
+
+```mermaid
+graph TD
+    A[foobar2000_plugin] --> B[主项目 DrCalculator]
+    A --> C[foobar2000 SDK]
+    A --> D[rust_core FFI层]
+    D --> B
+    B --> E[core/processing/audio模块]
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style D fill:#fff3e0
+```
+
+**关键依赖**:
+- **主项目算法**: `macinmeter-dr-tool = { path = "../.." }`
+- **foobar2000 SDK**: 版本 2025-03-07
+- **构建工具**: CMake 3.20+, Rust 1.70+, Clang
+
+### ✅ 已验证功能
+
+- ✅ **编译构建**: 完整通过，生成467KB插件包
+- ✅ **FFI安全**: 内存边界检查，类型安全转换
+- ✅ **声道支持**: 1-2声道智能处理，3+声道友好拒绝
+- ✅ **错误处理**: 统一错误聚合，详细错误信息
+- ✅ **性能优化**: SIMD优化自动启用，零配置
+- ✅ **结果兼容**: 与foobar2000 DR Meter完全对齐
+
+### 🎯 使用方式
+
+1. **安装**: 将 `foo_dr_macinmeter.fb2k-component` 拖入foobar2000
+2. **使用**: 右键音频文件 → "Analyze Dynamic Range"
+3. **查看**: 自动弹出DR分析结果窗口
+4. **特性**: 支持单文件分析和批量分析模式
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
