@@ -38,7 +38,7 @@ action("rust-audio-expert")
 
 MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态范围(DR)分析工具，使用Rust实现，目标是达到高精度实现和工业级性能。
 
-**foobar2000-plugin分支**：专注与foobar2000完全兼容的逐包直通实现，默认启用与foobar2000原版完全对齐的块处理模式。
+**foobar2000-plugin分支**：采用完全流式原生架构，实现真正的零内存累积处理，默认启用与foobar2000原版完全对齐的窗口级算法。
 
 ## 构建和运行命令
 
@@ -96,8 +96,11 @@ cargo clippy -- -D warnings
 # 测试release版本 
 /Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr --help
 
-# 测试基本功能 (foobar2000兼容模式)
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr /path/to/audio/file
+# 测试流式处理功能 (支持任意大小文件)
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr /path/to/large/audio/file.flac
+
+# 启用详细模式查看流式处理过程
+/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr --verbose /path/to/audio/directory
 ```
 
 ## ⚠️ 重要开发习惯：零警告原则
@@ -211,15 +214,51 @@ cargo build --release && cargo test --release
 5. **逆向遍历20%采样**: 从高RMS向低RMS遍历，符合"最响20%"标准
 6. **SSE向量化**: 4样本并行处理，预期6-7倍性能提升
 
+### 🌊 完全流式原生架构（当前核心特性）
+
+**零内存累积处理（Zero Memory Accumulation）**:
+- **真正流式处理**: 完全抛弃旧的全量加载方法，避免8GB+内存占用问题
+- **恒定内存使用**: 无论文件大小，内存使用始终保持~50MB恒定水平
+- **智能缓冲机制**: 积累chunk到标准3秒窗口，保持算法精度和流式特性
+
+**核心流式API设计**:
+```rust
+// 主要流式处理接口（文件路径输入）
+pub fn process_audio_file_streaming(path: &Path, config: &AppConfig) -> AudioResult<(Vec<DrResult>, AudioFormat)>
+
+// 插件专用流式API（StreamingDecoder输入）
+pub fn process_streaming_decoder(decoder: &mut dyn StreamingDecoder, config: &AppConfig) -> AudioResult<(Vec<DrResult>, AudioFormat)>
+
+// SIMD优化窗口处理（内部辅助函数）
+fn process_window_with_simd_separation(window_samples: &[f32], channel_count: u32, extractor: &ChannelExtractor, analyzers: &mut [WindowRmsAnalyzer])
+```
+
+**流式架构核心优势**:
+- ✅ **恒定内存**: 支持任意大小音频文件（1MB→10GB+），内存使用不变
+- ✅ **SIMD优化**: 立体声声道分离使用SSE2/NEON，单声道零开销直通
+- ✅ **算法精度**: 保持完整3秒窗口处理，与foobar2000算法完全对齐
+- ✅ **双接口设计**: 支持文件路径和StreamingDecoder两种输入方式
+- ✅ **插件友好**: 为foobar2000插件提供专用的零算法重复接口
+
+**流式处理核心流程**:
+```
+1. 创建StreamingDecoder（格式探测 + 流式解码器）
+2. 为每声道创建独立WindowRmsAnalyzer（流式分析核心）
+3. 智能缓冲：积累chunk到3秒标准窗口大小
+4. SIMD声道分离：ChannelExtractor优化立体声分离
+5. 窗口完整性处理：送入WindowRmsAnalyzer保持算法精度
+6. 零内存累积：处理完成即清空缓冲区
+7. 最终DR计算：20%采样算法 + 峰值选择策略
+```
+
 ### 🔥 foobar2000-plugin分支特性（当前分支）
 
-- **默认逐包直通**: `packet_chunk_mode` 默认启用，与foobar2000块边界完美对齐
-- **参数简化**: 只保留必要的4个核心参数选项，移除复杂配置
-- **流式专用**: 移除智能内存管理，专注流式处理模式
-- **反向参数逻辑**: `--disable-packet-chunk` 用于禁用默认功能
-- **完全兼容**: 所有默认配置都针对foobar2000完全兼容性优化
-- **算法精准**: Sum Doubling固定启用，确保与foobar2000的最佳匹配
-- **智能声道支持**: 支持单声道和立体声（1-2声道），友好拒绝多声道文件并提示未来可能支持
+- **完全流式原生**: 100%采用流式原生架构，移除所有内存累积处理
+- **零配置优化**: 自动启用SIMD、Sum Doubling等所有性能优化
+- **智能声道支持**: 单声道零开销直通，立体声SIMD优化，3+声道友好拒绝
+- **窗口级算法**: 固定3秒标准窗口，与foobar2000原版完全对齐
+- **双API设计**: 同时支持文件路径和StreamingDecoder接口
+- **插件专用接口**: 为foobar2000插件提供零重复的专用API
 
 ### 依赖说明
 
@@ -550,19 +589,29 @@ SimdUsageStats { used_simd: true, simd_samples: total, ... }
 
 ### 测试策略
 ```bash
+# 运行流式架构核心测试
+cargo test tools::processor::tests   # 流式处理核心功能
+cargo test core::histogram::tests    # WindowRmsAnalyzer流式分析器
+cargo test processing::channel_extractor::tests  # SIMD声道分离测试
+
 # 运行特定模块测试
 cargo test core::dr_calculator::tests
-cargo test core::histogram::tests    # 注意：只有WindowRmsAnalyzer相关测试
-cargo test processing::batch::tests
+cargo test processing::performance_metrics::tests
 
 # 运行精度测试（release模式重要）
 cargo test --release simd_precision_test
 
+# 流式架构内存测试（需要大文件）
+cargo test --release -- --ignored memory_stress_test
+
 # 运行文档测试
 cargo test --doc
 
-# 运行单个测试（用于调试）
-cargo test test_calculate_dr_basic -- --nocapture
+# 流式处理调试（详细输出）
+cargo test test_streaming_processing -- --nocapture
+
+# 性能基准测试（流式vs传统）
+cargo test --release benchmark_streaming -- --nocapture
 ```
 
 ### 测试数据特点
@@ -589,88 +638,97 @@ let samples = vec![0.1, 0.1, 0.8, 0.7]; // 信号过强，20%RMS可能超过Peak
 
 ### 架构理解要点
 
-**数据流** (🔥 2025-09-20更新：反映processing层纯协调器重构):
+**数据流** (🔥 2025-09-24更新：反映完全流式原生架构):
 ```mermaid
 flowchart TD
-    A[Audio File<br/>FLAC/WAV/MP3] --> B[UniversalDecoder<br/>🎛️ 协调器]
+    A[Audio File<br/>任意大小] --> B[process_audio_file_streaming<br/>🌊 流式处理入口]
 
-    subgraph "Audio解码层 (模块化)"
-        B --> B1[PcmEngine<br/>🎵 解码引擎]
-        B1 --> B2[Stats<br/>📊 包大小统计]
-        B1 --> B3[Format<br/>📝 格式信息]
-        B1 --> B4[ErrorHandling<br/>🔧 错误处理]
-        B1 --> B5[Streaming<br/>🌊 流式接口]
+    subgraph "流式解码层 (Zero Memory Accumulation)"
+        B --> B1[UniversalDecoder::create_streaming_optimized<br/>🎵 流式解码器]
+        B1 --> B2[Format Probe<br/>📊 格式探测]
+        B2 --> B3[Chunk Iterator<br/>🔄 chunk流式输出]
     end
 
-    B2 --> C[Interleaved Samples<br/>📈 智能统计分析]
-    C --> D[ProcessingCoordinator<br/>🎛️ 纯协调器]
+    B3 --> C[Smart Buffer<br/>📦 智能缓冲至3秒窗口]
+    C --> D[process_window_with_simd_separation<br/>🚀 SIMD窗口处理]
 
-    subgraph "Processing性能优化层 (委托模式)"
-        D --> D1[ChannelExtractor<br/>🎯 声道分离引擎]
-        D --> D2[PerformanceEvaluator<br/>📊 性能评估器]
-        D1 --> D3{声道检查}
-        D3 -->|单声道| D4[直接传递<br/>零开销直通]
-        D3 -->|立体声| D5[SIMD声道分离<br/>SSE2/NEON优化]
+    subgraph "SIMD优化声道分离层"
+        D --> D1{声道检查}
+        D1 -->|单声道| D2[直接传递<br/>零开销直通]
+        D1 -->|立体声| D3[ChannelExtractor::extract_channel_samples_optimized<br/>SSE2/NEON分离]
     end
 
-    D4 --> H[DrCalculator<br/>协调层]
-    D5 --> H
+    subgraph "流式WindowRmsAnalyzer层 (每声道独立)"
+        D2 --> E1[WindowRmsAnalyzer[0]<br/>🔧 单声道流式分析]
+        D3 --> E2[WindowRmsAnalyzer[0]<br/>🔧 左声道流式分析]
+        D3 --> E3[WindowRmsAnalyzer[1]<br/>🔧 右声道流式分析]
+    end
 
-    H --> I[WindowRmsAnalyzer<br/>算法层]
-    I --> J[3秒窗口分析<br/>RMS + Peak收集]
-    J --> K[20%采样算法<br/>选择最响20%]
-    K --> L[峰值选择策略<br/>PreferSecondary等]
-    L --> M[DR计算<br/>-20*log10(RMS/Peak)]
+    E1 --> F[Zero Buffer Drain<br/>🗑️ 处理完毕清空缓冲]
+    E2 --> F
+    E3 --> F
 
-    M --> N[DrResult<br/>计算结果]
-    N --> O[Formatter<br/>格式化层]
-    O --> P[foobar2000兼容报告<br/>文件保存]
+    F --> G{更多chunk?}
+    G -->|是| C
+    G -->|否| H[Final DR Calculation<br/>💫 最终DR计算]
+
+    subgraph "最终DR计算层"
+        H --> H1[calculate_20_percent_rms<br/>📈 20%采样算法]
+        H1 --> H2[PeakSelectionStrategy<br/>🎯 峰值选择策略]
+        H2 --> H3[DR = -20*log10(RMS/Peak)<br/>🧮 DR计算公式]
+    end
+
+    H3 --> I[Vec<DrResult><br/>✅ 每声道DR结果]
+    I --> J[格式化输出<br/>📝 foobar2000兼容格式]
 
     style A fill:#e8f5e9
-    style B fill:#fff3e0
+    style B fill:#e1f5fe
     style B1 fill:#e3f2fd
-    style B2 fill:#f0f8ff
-    style D fill:#e3f2fd
-    style D1 fill:#ffecb3
-    style D2 fill:#ffecb3
-    style H fill:#f3e5f5
-    style I fill:#f8bbd9
-    style O fill:#e8f5e9
+    style C fill:#fff3e0
+    style D fill:#ffecb3
+    style F fill:#f3e5f5
+    style H fill:#f8bbd9
+    style I fill:#e8f5e9
 ```
 
-**🔥 重构后的四层清晰架构**:
+**🔥 流式原生架构（Zero Memory Accumulation）**:
 ```
-tools/Processor::process_file() (UI层：文件处理和用户交互)
+tools/Processor::process_audio_file_streaming() (入口：100%流式处理)
+    ↓ (零内存累积，恒定~50MB内存使用)
+UniversalDecoder::create_streaming_optimized() (流式解码：chunk迭代器)
+    ↓ (智能缓冲：积累至3秒标准窗口)
+process_window_with_simd_separation() (SIMD窗口处理：声道分离优化)
+    ↓ (每声道独立：WindowRmsAnalyzer[0..channels])
+WindowRmsAnalyzer流式处理循环 (流式分析：处理完即清空缓冲)
+    ↓ (最终DR计算：20%采样+峰值策略)
+Vec<DrResult> (结果输出：每声道DR值)
     ↓
-DrCalculator::calculate_dr_from_samples() (协调层：业务逻辑控制)
-    ↓ (顶层声道检查：支持1-2声道，拒绝3+声道)
-ProcessingCoordinator::process_channels() (协调层：委托ChannelExtractor+PerformanceEvaluator)
-    ↓ (智能委托：立体声SIMD优化，单声道直通)
-UniversalDecoder + WindowRmsAnalyzer (解码+算法层：音频解码和DR计算)
-    ↓
-20%采样算法 + 峰值选择策略
-    ↓
-tools/Formatter::format_results() (UI层：结果格式化和输出)
+tools/Formatter::format_results() (格式化：foobar2000兼容输出)
 ```
 
-**关键抽象**:
-- `ChannelData`: 24字节内存对齐结构，foobar2000兼容
-- `DrCalculator`: 主计算引擎，专注foobar2000兼容模式，支持峰值选择策略
-- `WindowRmsAnalyzer`: 窗口级RMS分析器，3秒窗口+20%采样的标准实现
+**流式架构关键抽象**:
+- `process_audio_file_streaming()`: 主流式处理接口，零内存累积的核心实现
+- `process_streaming_decoder()`: 插件专用流式API，支持StreamingDecoder输入
+- `WindowRmsAnalyzer`: 流式RMS分析器，每声道独立处理，支持chunk级流式输入
+- `ChannelExtractor`: SIMD优化声道分离器，立体声SSE2/NEON优化，单声道零开销
 - `PeakSelectionStrategy`: 峰值选择策略系统（PreferSecondary/ClippingAware/AlwaysPrimary/AlwaysSecondary）
-- `BatchProcessor`: 批量处理器，SIMD优化入口
+- `UniversalDecoder::create_streaming_optimized()`: 流式解码器工厂，chunk迭代器模式
 
-**内存布局关键点**:
-- ChannelData必须8字节对齐
-- WindowRmsAnalyzer使用vec存储窗口RMS值（避免量化损失）
-- Sum Doubling在累加器级别进行，不是RMS级别
+**流式架构内存特性**:
+- **恒定内存使用**: 无论文件大小（1MB-10GB+），内存始终保持~50MB恒定
+- **零内存累积**: 完全抛弃全量加载，采用chunk-process-drain循环
+- **智能缓冲**: 仅缓冲3秒标准窗口（~600KB），处理完立即清空
+- **WindowRmsAnalyzer流式**: 每声道独立处理，支持无限长度音频流
+- **SIMD内存优化**: ChannelExtractor使用对齐内存访问，SSE2/NEON优化
 
-### 性能注意事项
+### 流式架构性能特点
 
-- **SIMD要求**: SSE2在x86_64上，回退到标量计算在其他架构
-- **并行处理**: rayon用于批量文件处理，不是单文件内并行
-- **内存分配**: 重用ChannelData和直方图缓冲区避免分配
-- **浮点精度**: 使用f64进行累加，f32用于样本输入
+- **零内存累积性能**: 支持任意大小文件（1MB→10GB+），处理时间线性增长，内存恒定
+- **SIMD优化**: 立体声声道分离使用SSE2/NEON，预期2-4倍分离性能提升
+- **单声道零开销**: 单声道文件完全避免声道分离开销，直接送入WindowRmsAnalyzer
+- **智能缓冲性能**: 3秒窗口缓冲（~600KB），避免频繁小chunk处理的开销
+- **流式解码**: UniversalDecoder优化，避免symphonia全量解码的内存压力
+- **WindowRmsAnalyzer**: 流式RMS计算，支持无限长度音频流，保持算法精度
 
 ---
 

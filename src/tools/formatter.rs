@@ -77,12 +77,14 @@ pub fn create_output_header(config: &AppConfig, format: &AudioFormat) -> String 
 /// 格式化单声道DR结果
 pub fn format_mono_results(result: &DrResult) -> String {
     let mut output = String::new();
-    let peak_db = utils::linear_to_db(result.peak);
-    let rms_db = utils::linear_to_db(result.rms);
+    // 保留用于将来可能的显示需求
+    // let peak_db = utils::linear_to_db(result.peak);
+    // let rms_db = utils::linear_to_db(result.rms);
 
     output.push_str("                 Mono\n\n");
-    output.push_str(&format!("Peak Value:     {peak_db:.2} dB   \n"));
-    output.push_str(&format!("Avg RMS:       {rms_db:.2} dB   \n"));
+    // 暂时隐藏Peak和RMS显示
+    // output.push_str(&format!("Peak Value:     {peak_db:.2} dB   \n"));
+    // output.push_str(&format!("Avg RMS:       {rms_db:.2} dB   \n"));
     output.push_str(&format!("DR channel:      {:.2} dB   \n", result.dr_value));
 
     output
@@ -91,18 +93,20 @@ pub fn format_mono_results(result: &DrResult) -> String {
 /// 格式化立体声DR结果
 pub fn format_stereo_results(results: &[DrResult]) -> String {
     let mut output = String::new();
-    let left_peak_db = utils::linear_to_db(results[0].peak);
-    let right_peak_db = utils::linear_to_db(results[1].peak);
-    let left_rms_db = utils::linear_to_db(results[0].rms);
-    let right_rms_db = utils::linear_to_db(results[1].rms);
+    // 保留用于将来可能的显示需求
+    // let left_peak_db = utils::linear_to_db(results[0].peak);
+    // let right_peak_db = utils::linear_to_db(results[1].peak);
+    // let left_rms_db = utils::linear_to_db(results[0].rms);
+    // let right_rms_db = utils::linear_to_db(results[1].rms);
 
     output.push_str("                 Left              Right\n\n");
-    output.push_str(&format!(
-        "Peak Value:     {left_peak_db:.2} dB   ---     {right_peak_db:.2} dB   \n"
-    ));
-    output.push_str(&format!(
-        "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
-    ));
+    // 暂时隐藏Peak和RMS显示
+    // output.push_str(&format!(
+    //     "Peak Value:     {left_peak_db:.2} dB   ---     {right_peak_db:.2} dB   \n"
+    // ));
+    // output.push_str(&format!(
+    //     "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
+    // ));
     output.push_str(&format!(
         "DR channel:      {:.2} dB   ---     {:.2} dB   \n",
         results[0].dr_value, results[1].dr_value
@@ -123,29 +127,29 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
     output.push_str(&header);
     output.push_str("\n\n");
 
-    // Peak Value行
-    output.push_str("Peak Value:");
-    for (i, result) in results.iter().enumerate() {
-        let peak_db_str = format!("{} dB", utils::linear_to_db_string(result.peak));
-        if i < results.len() - 1 {
-            output.push_str(&format!("     {peak_db_str:>8}   ---"));
-        } else {
-            output.push_str(&format!("     {peak_db_str:>8}   "));
-        }
-    }
-    output.push('\n');
+    // 暂时隐藏Peak Value行
+    // output.push_str("Peak Value:");
+    // for (i, result) in results.iter().enumerate() {
+    //     let peak_db_str = format!("{} dB", utils::linear_to_db_string(result.peak));
+    //     if i < results.len() - 1 {
+    //         output.push_str(&format!("     {peak_db_str:>8}   ---"));
+    //     } else {
+    //         output.push_str(&format!("     {peak_db_str:>8}   "));
+    //     }
+    // }
+    // output.push('\n');
 
-    // Avg RMS行
-    output.push_str("Avg RMS:");
-    for (i, result) in results.iter().enumerate() {
-        let rms_db_str = format!("{} dB", utils::linear_to_db_string(result.rms));
-        if i < results.len() - 1 {
-            output.push_str(&format!("       {rms_db_str:>8}   ---"));
-        } else {
-            output.push_str(&format!("       {rms_db_str:>8}   "));
-        }
-    }
-    output.push('\n');
+    // 暂时隐藏Avg RMS行
+    // output.push_str("Avg RMS:");
+    // for (i, result) in results.iter().enumerate() {
+    //     let rms_db_str = format!("{} dB", utils::linear_to_db_string(result.rms));
+    //     if i < results.len() - 1 {
+    //         output.push_str(&format!("       {rms_db_str:>8}   ---"));
+    //     } else {
+    //         output.push_str(&format!("       {rms_db_str:>8}   "));
+    //     }
+    // }
+    // output.push('\n');
 
     // DR channel行
     output.push_str("DR channel:");
@@ -170,13 +174,18 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
 pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
+    // 暂时隐藏Peak和RMS列的表头
+    // output.push_str(
+    //     "              声道             Peak dB        RMS dB         DR值        备注\n\n",
+    // );
     output.push_str(
-        "              声道             Peak dB        RMS dB         DR值        备注\n\n",
+        "              声道                                            DR值        备注\n\n",
     );
 
     for (i, result) in results.iter().enumerate() {
-        let peak_db_str = utils::linear_to_db_string(result.peak);
-        let rms_db_str = utils::linear_to_db_string(result.rms);
+        // 保留用于将来可能的显示需求
+        // let peak_db_str = utils::linear_to_db_string(result.peak);
+        // let rms_db_str = utils::linear_to_db_string(result.rms);
 
         let dr_value_str = if result.peak > 0.0 && result.rms > 0.0 {
             format!("{:.2}", result.dr_value)
@@ -194,11 +203,18 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
             ""
         };
 
+        // 暂时隐藏Peak和RMS的显示
+        // output.push_str(&format!(
+        //     "            Channel {:2}:     {:>8} dB     {:>8} dB      {:>6} dB    {}\n",
+        //     i + 1,
+        //     peak_db_str,
+        //     rms_db_str,
+        //     dr_value_str,
+        //     note
+        // ));
         output.push_str(&format!(
-            "            Channel {:2}:     {:>8} dB     {:>8} dB      {:>6} dB    {}\n",
+            "            Channel {:2}:                                     {:>6} dB    {}\n",
             i + 1,
-            peak_db_str,
-            rms_db_str,
             dr_value_str,
             note
         ));
