@@ -157,7 +157,7 @@ impl WindowRmsAnalyzer {
         }
 
         // 🎯 **关键修复**: 判断是否需要虚拟0窗
-        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
         let seg_cnt = if has_virtual_zero {
             self.window_rms_values.len() + 1 // 恰好整除：添加0窗
         } else {
@@ -207,7 +207,7 @@ impl WindowRmsAnalyzer {
         }
 
         // 🎯 **关键修复**: 判断是否需要虚拟0窗
-        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
         let seg_cnt = if has_virtual_zero {
             self.window_peaks.len() + 1 // 恰好整除：添加0窗
         } else {
@@ -244,7 +244,7 @@ impl WindowRmsAnalyzer {
         }
 
         // 🎯 **关键修复**: 判断是否需要虚拟0窗
-        let has_virtual_zero = self.total_samples_processed % self.window_len == 0;
+        let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
         let seg_cnt = if has_virtual_zero {
             self.window_peaks.len() + 1 // 恰好整除：添加0窗
         } else {

@@ -275,7 +275,7 @@ impl DrCalculator {
         channel_count: usize,
     ) -> AudioResult<Vec<DrResult>> {
         // 验证输入参数
-        if samples.len() % channel_count != 0 {
+        if !samples.len().is_multiple_of(channel_count) {
             return Err(AudioError::InvalidInput(
                 "样本数量必须是声道数的整数倍".to_string(),
             ));

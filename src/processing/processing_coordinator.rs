@@ -88,7 +88,7 @@ impl ProcessingCoordinator {
             return Err(AudioError::InvalidInput("样本数据不能为空".to_string()));
         }
 
-        if samples.len() % channel_count != 0 {
+        if !samples.len().is_multiple_of(channel_count) {
             return Err(AudioError::InvalidInput(format!(
                 "样本数量({})必须是声道数({})的倍数",
                 samples.len(),
