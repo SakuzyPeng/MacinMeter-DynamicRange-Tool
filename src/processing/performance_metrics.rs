@@ -154,16 +154,14 @@ impl PerformanceEvaluator {
             1.0
         };
 
-        let estimated = base_speedup * size_factor;
-
         debug_performance!(
             "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x",
             base_speedup,
             size_factor,
-            estimated
+            base_speedup * size_factor
         );
 
-        estimated
+        base_speedup * size_factor
     }
 
     /// 计算性能统计信息
