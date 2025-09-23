@@ -163,7 +163,7 @@ impl PerformanceEvaluator {
             estimated
         );
 
-        base_speedup * size_factor
+        estimated
     }
 
     /// 计算性能统计信息
