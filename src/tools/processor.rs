@@ -449,15 +449,25 @@ pub fn add_to_batch_output(
 
     // foobar2000兼容模式：显示分声道结果
     for result in results {
-        let peak_db = utils::linear_to_db(result.peak);
-        let rms_db = utils::linear_to_db(result.rms);
+        // 暂时隐藏Peak和RMS输出 (为未来恢复保留注释)
+        // let peak_db = utils::linear_to_db(result.peak);
+        // let rms_db = utils::linear_to_db(result.rms);
+        // batch_output.push_str(&format!(
+        //     "{}_Ch{}\tDR{}\t{:.2}\t{:.2}\t{}Hz\t{}\t{:.1}s\n",
+        //     file_name,
+        //     result.channel + 1,
+        //     result.dr_value_rounded(),
+        //     peak_db,
+        //     rms_db,
+        //     format.sample_rate,
+        //     format.channels,
+        //     format.duration_seconds()
+        // ));
         batch_output.push_str(&format!(
-            "{}_Ch{}\tDR{}\t{:.2}\t{:.2}\t{}Hz\t{}\t{:.1}s\n",
+            "{}_Ch{}\tDR{}\t{}Hz\t{}\t{:.1}s\n",
             file_name,
             result.channel + 1,
             result.dr_value_rounded(),
-            peak_db,
-            rms_db,
             format.sample_rate,
             format.channels,
             format.duration_seconds()
@@ -468,7 +478,9 @@ pub fn add_to_batch_output(
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    batch_output.push_str(&format!("{file_name}\t处理失败\t-\t-\t-\t-\t-\n"));
+    // 暂时隐藏Peak和RMS列，对应减少占位符 (为未来恢复保留注释)
+    // batch_output.push_str(&format!("{file_name}\t处理失败\t-\t-\t-\t-\t-\n"));
+    batch_output.push_str(&format!("{file_name}\t处理失败\t-\t-\t-\n"));
 }
 
 /// 为单个文件生成独立的DR结果文件
