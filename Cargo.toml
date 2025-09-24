@@ -11,7 +11,14 @@ path = "src/main.rs"
 [dependencies]
 # 音频文件解码
 hound = "3.5"
-symphonia = { version = "0.5", features = ["all"] }
+# 🔥 优化：只启用必要的编解码器，减少二进制文件大小
+symphonia = { version = "0.5", features = [
+    "flac",      # FLAC支持（音质测试常用）
+    "mp3",       # MP3支持（通用格式）
+    "aac",       # AAC/M4A支持
+    "vorbis",    # OGG Vorbis支持
+    "wav",       # WAV支持（基础格式）
+] }
 
 # 工具库
 walkdir = "2.5"
@@ -31,7 +38,9 @@ sysinfo = "0.30"
 lazy_static = "1.4"
 
 [profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
+opt-level = 3          # 最高优化级别
+lto = true             # 链接时优化
+codegen-units = 1      # 单个代码生成单元（更好的优化）
+panic = "abort"        # panic时直接abort（减少代码体积）
+strip = true           # 🔥 移除调试符号和其他元数据（大幅减小体积）
+overflow-checks = false # 禁用整数溢出检查（release模式下通常安全）
