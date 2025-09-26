@@ -18,6 +18,9 @@ macinmeter-dr-tool = { path = "../.." }
 # C FFI支持
 libc = "0.2"
 
+# 时间格式化
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+
 [features]
 default = ["simd"]
 simd = []

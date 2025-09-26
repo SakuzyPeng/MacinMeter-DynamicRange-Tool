@@ -14,6 +14,7 @@
 struct AudioInfo {
     uint32_t sample_rate;
     uint32_t channels;
+    uint32_t bits_per_sample; // 🔧 添加位深度信息
     double duration;
 };
 

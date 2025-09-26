@@ -1,15 +1,6 @@
 #include "context_menu.h"
-#include "../audio/audio_accessor.h"
-#include "../bridge/rust_bridge.h"
 #include "foobar2000.h"
 #include "progress_worker.h"
-// ❌ 已移除：#include "results_dialog.h" （冗余，ResultsDialog类未被使用）
-#include <atomic>
-#include <memory>
-#include <mutex>
-#include <thread>
-#include <unordered_map>
-#include <vector>
 
 // 🎯 MacinMeter DR菜单组GUID
 static const GUID guid_macinmeter_group = {

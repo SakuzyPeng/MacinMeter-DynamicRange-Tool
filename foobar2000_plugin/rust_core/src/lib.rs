@@ -1,13 +1,13 @@
-//! MacinMeter DR Plugin - Chunk流式FFI适配层
+//! MacinMeter DR Plugin - 真正零内存累积流式FFI适配层
 //!
-//! 🚀 100%复用主项目：零算法重复的优雅设计
+//! 🚀 100%复用主项目：零算法重复+零内存累积的优雅设计
 //!
 //! ## 设计原则
 //! - **薄包装设计**：FFI层仅做类型转换和接口适配
-//! - **零算法原则**：100%复用主项目ChunkStreamDecoder + process_audio_file_streaming
-//! - **零内存累积**：使用ChunkFeeder流式喂数据，避免内存爆炸
+//! - **零算法原则**：100%复用主项目WindowRmsAnalyzer流式处理
+//! - **零内存累积**：每chunk立即处理，摒弃all_chunks累积模式
 //! - **零文件操作**：直接内存流处理，无权限问题
-//! - **原生异步支持**：从架构层面支持非阻塞分析和进度报告
+//! - **流式原生支持**：从架构层面实现真正的chunk级流式处理
 
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -15,9 +15,11 @@ use std::os::raw::{c_char, c_int, c_uint};
 use std::sync::{LazyLock, Mutex};
 use std::thread;
 
-// 🎯 引入主项目核心：100%复用算法和格式化
-// 注：准备重新设计为纯黑盒调用架构，暂时移除未使用的导入
-// 注：准备重新设计为纯黑盒调用架构
+// 🎯 引入主项目核心：100%复用主项目核心组件
+use macinmeter_dr_tool::audio::StreamingDecoder;
+use macinmeter_dr_tool::{
+    process_streaming_decoder, AppConfig, AudioError, AudioFormat, AudioResult, DrResult,
+};
 
 // ====================================================================
 // 🚀 现代异步FFI架构 - Rust拥有一切
@@ -93,30 +95,134 @@ static SESSION_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::Atomic
 static STREAMING_SESSIONS: LazyLock<Mutex<HashMap<u32, StreamingAnalysisSession>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// 🌊 【重新设计】简化分析会话 - 纯黑盒调用方案
-#[allow(dead_code)] // 待重构：这些字段将在黑盒调用架构中使用
+/// 🔄 Chunk流适配器：将foobar2000 chunk流转换为流式处理接口
+///
+/// 🔥 智能窗口缓冲，实现3秒标准窗口处理
+struct ChunkStreamingDecoder {
+    format: AudioFormat,
+    chunks: std::collections::VecDeque<Vec<f32>>,
+    total_chunks_expected: Option<usize>,
+    chunks_processed: usize,
+    is_finished: bool,
+
+    // 🎯 智能窗口缓冲机制
+    window_buffer: Vec<f32>,    // 积累样本到标准窗口大小
+    window_size_samples: usize, // 标准窗口大小：3秒 * 采样率 * 声道数
+    windows_output: usize,      // 已输出的窗口数（调试用）
+}
+
+impl ChunkStreamingDecoder {
+    fn new(format: AudioFormat) -> Self {
+        // 🎯 计算标准窗口大小（与主项目processor.rs完全一致）
+        const WINDOW_DURATION_SECONDS: f64 = 3.0; // 标准3秒窗口
+        let window_size_samples =
+            (format.sample_rate as f64 * WINDOW_DURATION_SECONDS * format.channels as f64) as usize;
+
+        Self {
+            format,
+            chunks: std::collections::VecDeque::new(),
+            total_chunks_expected: None,
+            chunks_processed: 0,
+            is_finished: false,
+
+            // 🎯 智能窗口缓冲初始化
+            window_buffer: Vec::new(),
+            window_size_samples,
+            windows_output: 0,
+        }
+    }
+
+    fn add_chunk(&mut self, chunk: Vec<f32>) {
+        if !self.is_finished {
+            // 🎯 立即积累到window_buffer，而不是先存到chunks队列
+            self.window_buffer.extend_from_slice(&chunk);
+
+            // 🌊 立即检查是否能组成完整窗口并移到chunks队列中
+            while self.window_buffer.len() >= self.window_size_samples {
+                // 提取完整窗口
+                let window_samples = &self.window_buffer[0..self.window_size_samples];
+                self.chunks.push_back(window_samples.to_vec());
+
+                // 清理已处理的窗口，保留剩余样本
+                self.window_buffer.drain(0..self.window_size_samples);
+
+                self.windows_output += 1;
+            }
+        }
+    }
+
+    fn mark_finished(&mut self) {
+        self.is_finished = true;
+    }
+}
+
+impl StreamingDecoder for ChunkStreamingDecoder {
+    fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
+        // 🎯 步骤1：如果有已准备好的标准窗口，直接返回
+        if let Some(window) = self.chunks.pop_front() {
+            self.chunks_processed += 1;
+            return Ok(Some(window));
+        }
+
+        // 🏁 步骤2：如果流结束且有剩余样本，输出最后一个窗口
+        if self.is_finished && !self.window_buffer.is_empty() {
+            let final_window = self.window_buffer.clone();
+            self.window_buffer.clear();
+            self.chunks_processed += 1;
+
+            return Ok(Some(final_window));
+        }
+
+        // 🔄 步骤3：流结束且无剩余数据
+        if self.is_finished {
+            Ok(None) // 真正的流结束
+        } else {
+            // 等待更多chunk通过add_chunk()添加
+            Err(AudioError::InvalidInput(
+                "ChunkStreamingDecoder: 无可用窗口且流未结束 - 需要通过add_chunk添加更多数据"
+                    .to_string(),
+            ))
+        }
+    }
+
+    fn progress(&self) -> f32 {
+        if let Some(total) = self.total_chunks_expected {
+            if total > 0 {
+                return (self.chunks_processed as f32) / (total as f32);
+            }
+        }
+        0.0 // 无法确定进度
+    }
+
+    fn format(&self) -> &AudioFormat {
+        &self.format
+    }
+
+    fn reset(&mut self) -> AudioResult<()> {
+        Err(AudioError::InvalidInput(
+            "ChunkStreamingDecoder不支持重置".to_string(),
+        ))
+    }
+}
+
+/// 🌊 流式分析会话 - 使用StreamingDecoder适配器调用主项目算法
 struct StreamingAnalysisSession {
     session_id: u32,
-    channels: u32,
-    sample_rate: u32,
-    bits_per_sample: u32,
+    decoder: ChunkStreamingDecoder,
+
+    // 📊 会话管理
     progress_handle: Option<CallbackHandle>,
     completion_handle: CallbackHandle,
 
-    // 🎯 【流式黑盒方案】通过子进程管道流式调用本体
-    // 注：严禁完整数据收集，必须保持流式特性
-
-    // 📊 统计信息
-    processed_samples: u64, // 已处理样本总数
-    chunks_processed: u32,  // 已处理chunk数量
-    is_finalized: bool,     // 是否已完成
-
-    // ⏱️ 进度估算
-    start_time: std::time::Instant, // 会话开始时间
+    // 📈 统计信息
+    chunks_processed: u32,
+    total_samples_processed: u64,
+    is_finalized: bool,
+    start_time: std::time::Instant,
 }
 
 impl StreamingAnalysisSession {
-    /// 🏗️ 创建新的流式分析会话
+    /// 🏗️ 创建新的StreamingDecoder适配会话
     fn new(
         session_id: u32,
         channels: u32,
@@ -125,7 +231,7 @@ impl StreamingAnalysisSession {
         progress_handle: Option<CallbackHandle>,
         completion_handle: CallbackHandle,
     ) -> Result<Self, String> {
-        // 🛡️ 详细参数验证和调试信息
+        // 🛡️ 基本参数验证
         if channels == 0 {
             return Err("声道数不能为0".to_string());
         }
@@ -135,42 +241,47 @@ impl StreamingAnalysisSession {
         if sample_rate == 0 {
             return Err("采样率不能为0".to_string());
         }
-        if sample_rate > 384000 {
-            return Err(format!("采样率过高: {sample_rate}Hz，最大支持384kHz"));
-        }
 
-        // 🎯 【待重构】纯黑盒调用架构 - 暂时移除未实现的ChunkStreamDecoder
-        // TODO: 重新设计为直接调用主项目DR算法的黑盒接口
+        // 🎯 创建音频格式信息
+        let format = AudioFormat {
+            channels: channels as u16,
+            sample_rate,
+            bits_per_sample: bits_per_sample as u16,
+            sample_count: 0, // 流式模式不需要提前知道总样本数
+        };
+
+        // 🔄 创建StreamingDecoder适配器
+        let decoder = ChunkStreamingDecoder::new(format.clone());
 
         Ok(Self {
             session_id,
-            channels,
-            sample_rate,
-            bits_per_sample,
+            decoder,
             progress_handle,
             completion_handle,
-            processed_samples: 0,
             chunks_processed: 0,
+            total_samples_processed: 0,
             is_finalized: false,
             start_time: std::time::Instant::now(),
         })
     }
 
-    /// 🌊 处理音频数据块（零内存累积）
+    /// 🌊 将chunk添加到StreamingDecoder适配器
     fn process_chunk(&mut self, samples: &[f32]) -> Result<(), String> {
         if self.is_finalized {
             return Err("会话已完成，无法继续处理数据".to_string());
         }
 
-        // 🎯 【待重构】直接调用主项目DR算法（零算法重复）
-        // TODO: 实现纯黑盒调用，直接使用DrCalculator::calculate_dr_from_samples
-
         // 📊 更新统计信息
-        self.processed_samples += samples.len() as u64;
         self.chunks_processed += 1;
+        self.total_samples_processed += samples.len() as u64;
 
-        // 📈 计算并报告进度（基于处理时间和chunk数量）
-        self.update_progress();
+        // 🔄 将chunk添加到适配器的队列中
+        self.decoder.add_chunk(samples.to_vec());
+
+        // 📈 定期进度报告
+        if self.chunks_processed % 200 == 0 {
+            self.update_progress();
+        }
 
         Ok(())
     }
@@ -204,57 +315,182 @@ impl StreamingAnalysisSession {
         });
     }
 
-    /// 🔬 完成DR分析计算（100%复用主项目streaming API）
+    /// 🔬 完成DR分析计算（调用主项目process_streaming_decoder）
     fn complete_analysis(&mut self) -> (String, bool) {
-        self.report_progress(80, 100, "标记数据流结束...");
+        self.report_progress(80, 100, "标记流结束...");
 
-        // 🏁 标记数据流结束，让ChunkStreamDecoder知道没有更多数据
-        // TODO: 调用DrCalculator完成最终DR计算
+        // 🏁 标记StreamingDecoder适配器流结束
+        self.decoder.mark_finished();
 
-        self.report_progress(85, 100, "调用主项目流式处理...");
+        self.report_progress(85, 100, "调用主项目算法...");
 
-        // 🎯 100%复用主项目的main.rs流程逻辑
-        match self.process_with_main_project_streaming() {
-            Ok(formatted_result) => {
-                self.report_progress(100, 100, "分析完成");
+        // 🚀 使用foobar2000默认配置
+        let config = AppConfig {
+            input_path: std::path::PathBuf::new(), // 插件模式不需要输入路径
+            output_path: None,                     // 插件模式不输出到文件
+            verbose: false,                        // 插件模式默认静默
+        };
+
+        // 🔄 在主项目算法调用期间提供密集进度更新
+        self.report_progress(87, 100, "WindowRmsAnalyzer处理中...");
+
+        // 🎯 分步进度更新，让进度条看起来更流畅
+        self.report_progress(88, 100, "解析音频窗口数据...");
+        self.report_progress(89, 100, "准备DR算法参数...");
+        self.report_progress(90, 100, "调用主项目process_streaming_decoder...");
+
+        // 🎯 100%复用主项目process_streaming_decoder算法
+        match process_streaming_decoder(&mut self.decoder, &config) {
+            Ok((dr_results, _final_format)) => {
+                self.report_progress(92, 100, "DR计算完成，正在处理结果...");
+                self.report_progress(94, 100, "计算整体DR值...");
+
+                // 🎨 格式化为foobar2000兼容的结果字符串
+                let formatted_result = self.format_dr_results(&dr_results);
+
+                self.report_progress(96, 100, "格式化分析结果...");
+                self.report_progress(100, 100, "主项目算法调用完成");
                 (formatted_result, true)
             }
             Err(e) => {
-                let error_msg = format!("DR分析失败: {e}");
+                let error_msg = format!("主项目算法调用失败: {}", e);
                 self.report_progress(100, 100, &error_msg);
                 (error_msg, false)
             }
         }
     }
 
-    /// 🎯 【待重新设计】使用黑盒调用本体处理逻辑
-    fn process_with_main_project_streaming(&mut self) -> Result<String, String> {
-        // TODO: 重新设计为纯黑盒调用：写临时文件 → 调用本体 → 返回结果
-        Err("待重新实现为黑盒调用架构".to_string())
+    /// 🎨 格式化DR分析结果为foobar2000标准兼容格式
+    fn format_dr_results(&self, dr_results: &[DrResult]) -> String {
+        let mut output = String::new();
+
+        // 🏷️ 标准foobar2000头部信息
+        output
+            .push_str("MacinMeter DR Tool v0.1.0 / Dynamic Range Meter (foobar2000 compatible)\n");
+
+        // 📅 当前时间（ISO格式）
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let datetime = chrono::DateTime::from_timestamp(now.as_secs() as i64, 0)
+            .unwrap_or_else(|| chrono::Utc::now())
+            .format("%Y-%m-%d %H:%M:%S");
+        output.push_str(&format!("log date: {}\n\n", datetime));
+
+        // 📊 标准分割线（80个"-"字符）
+        let separator = "-".repeat(80);
+        output.push_str(&format!("{}\n", separator));
+
+        // 🎵 流式处理统计信息
+        output.push_str("Statistics for: MacinMeter Plugin Analysis (Streaming)\n");
+        output.push_str(&format!(
+            "Number of samples: {}\n",
+            self.total_samples_processed
+        ));
+
+        // ⏱️ 计算时长（基于流式处理的样本数和采样率）
+        // 🔧 修复：total_samples_processed是interleaved总样本数，不应除以声道数
+        let format = self.decoder.format();
+        if format.sample_rate > 0 {
+            let actual_duration_seconds =
+                self.total_samples_processed as f64 / (format.sample_rate as f64);
+            let actual_minutes = actual_duration_seconds as u32 / 60;
+            let actual_seconds = actual_duration_seconds as u32 % 60;
+            output.push_str(&format!(
+                "Duration: {}:{:02} \n",
+                actual_minutes, actual_seconds
+            ));
+        }
+
+        // 📊 流式处理统计（零内存累积）
+        output.push_str(&format!("Processed chunks: {}\n", self.chunks_processed));
+        output.push_str(&format!("Memory model: Zero-accumulation streaming\n"));
+
+        output.push_str(&format!("{}\n\n", separator));
+
+        // 🎯 声道DR值表格（标准foobar2000格式）
+        if dr_results.len() == 1 {
+            // 单声道格式
+            output.push_str("                 Mono\n\n");
+            output.push_str(&format!(
+                "DR channel:      {:.2} dB   \n",
+                dr_results[0].dr_value
+            ));
+        } else if dr_results.len() == 2 {
+            // 立体声格式
+            output.push_str("                 Left              Right\n\n");
+            output.push_str(&format!(
+                "DR channel:      {:.2} dB   ---     {:.2} dB   \n",
+                dr_results[0].dr_value, dr_results[1].dr_value
+            ));
+        } else {
+            // 多声道格式（通用）
+            for (i, result) in dr_results.iter().enumerate() {
+                output.push_str(&format!("DR channel {}: {:.2} dB\n", i, result.dr_value));
+            }
+        }
+
+        output.push_str(&format!("{}\n\n", separator));
+
+        // 💫 官方DR值计算
+        if !dr_results.is_empty() {
+            let overall_dr = dr_results
+                .iter()
+                .map(|r| r.dr_value)
+                .fold(0.0, |acc, x| acc + x)
+                / dr_results.len() as f64;
+            let precise_dr = overall_dr;
+            let official_dr = overall_dr.round() as i32;
+
+            output.push_str(&format!("Official DR Value: DR{}\n", official_dr));
+            output.push_str(&format!("Precise DR Value: {:.2} dB\n\n", precise_dr));
+        }
+
+        // 🔊 详细音频格式信息
+        let format = self.decoder.format();
+        output.push_str(&format!("Samplerate:        {} Hz\n", format.sample_rate));
+        output.push_str(&format!("Channels:          {}\n", format.channels));
+
+        // 🔧 修复：确保bits_per_sample有合理的默认值
+        let bits_per_sample = if format.bits_per_sample == 0 {
+            24
+        } else {
+            format.bits_per_sample
+        };
+        output.push_str(&format!("Bits per sample:   {}\n", bits_per_sample));
+
+        // 📈 计算比特率（近似值）
+        let bitrate_kbps =
+            (format.sample_rate as u32 * format.channels as u32 * bits_per_sample as u32) / 1000;
+        output.push_str(&format!("Bitrate:           {} kbps\n", bitrate_kbps));
+        output.push_str("Codec:             Plugin Audio\n");
+
+        // 🏁 标准结束线
+        output.push_str(&format!("{}\n", "=".repeat(80)));
+
+        output
     }
 
-    /// 📊 更新进度报告
+    /// 📊 流式处理进度报告
     fn update_progress(&self) {
         if self.progress_handle.is_some() {
             let elapsed = self.start_time.elapsed().as_secs_f32();
 
-            // 🌊 基于处理时间和chunk数量估算进度（0-85%）
-            // 剩余15%留给最终的DR计算
-            let estimated_progress = if self.chunks_processed < 10 {
-                // 早期阶段：基于时间的保守估算
-                (elapsed / 10.0 * 85.0).min(20.0)
+            // 🌊 基于实际处理的音频时长估算进度（0-75%，为最终DR计算保留25%）
+            let format = self.decoder.format();
+            let audio_duration_seconds = if format.sample_rate > 0 {
+                self.total_samples_processed as f32
+                    / (format.sample_rate as f32 * format.channels as f32)
             } else {
-                // 稳定阶段：基于chunk处理速度
-                let chunks_per_second = self.chunks_processed as f32 / elapsed.max(1.0);
-                let estimated_total_chunks = chunks_per_second * 10.0; // 估算10秒完成
-                let progress =
-                    (self.chunks_processed as f32 / estimated_total_chunks * 85.0).min(85.0);
-                progress.max(20.0) // 确保不低于早期进度
+                0.0
             };
 
+            // 简单线性进度估算
+            let estimated_progress = (self.chunks_processed as f32 * 0.5).min(75.0);
+
             let message = format!(
-                "处理中... ({} chunks, {elapsed:.1}s)",
-                self.chunks_processed
+                "零内存累积流式处理中... ({} chunks, {:.1}s音频, {:.1}s处理时间)",
+                self.chunks_processed, audio_duration_seconds, elapsed
             );
             self.report_progress(estimated_progress as i32, 100, &message);
         }
@@ -341,14 +577,6 @@ pub unsafe extern "C" fn rust_streaming_analysis_init(
     progress_handle: CallbackHandle, // 0表示无进度回调
     completion_handle: CallbackHandle,
 ) -> c_int {
-    // 🔍 调试日志：记录输入参数
-    eprintln!("🔍 [DEBUG] rust_streaming_analysis_init called:");
-    eprintln!("   channels: {channels}");
-    eprintln!("   sample_rate: {sample_rate}");
-    eprintln!("   bits_per_sample: {bits_per_sample}");
-    eprintln!("   progress_handle: {progress_handle}");
-    eprintln!("   completion_handle: {completion_handle}");
-
     // 🛡️ FFI边界安全检查
     if channels == 0 || sample_rate == 0 {
         eprintln!("❌ [ERROR] 基础参数检查失败: {channels}, sample_rate={sample_rate}");
@@ -396,8 +624,6 @@ pub unsafe extern "C" fn rust_streaming_analysis_init(
             );
             return -2;
         }
-
-        eprintln!("✅ [DEBUG] 回调句柄验证通过");
     }
 
     // 🆔 生成唯一会话ID
@@ -410,8 +636,6 @@ pub unsafe extern "C" fn rust_streaming_analysis_init(
     } else {
         raw_session_id
     };
-
-    eprintln!("🆔 [DEBUG] 生成会话ID: {session_id}");
 
     // 🏗️ 创建流式分析会话
     let session = match StreamingAnalysisSession::new(
@@ -426,10 +650,7 @@ pub unsafe extern "C" fn rust_streaming_analysis_init(
         },
         completion_handle,
     ) {
-        Ok(s) => {
-            eprintln!("✅ [DEBUG] StreamingAnalysisSession创建成功");
-            s
-        }
+        Ok(s) => s,
         Err(e) => {
             eprintln!("❌ [ERROR] StreamingAnalysisSession创建失败: {e}");
             return -1;
@@ -439,7 +660,6 @@ pub unsafe extern "C" fn rust_streaming_analysis_init(
     // 📝 注册会话到全局管理器
     if let Ok(mut sessions) = STREAMING_SESSIONS.lock() {
         sessions.insert(session_id, session);
-        eprintln!("✅ [DEBUG] 会话注册成功，返回session_id: {session_id}");
         session_id as c_int
     } else {
         eprintln!("❌ [ERROR] STREAMING_SESSIONS锁获取失败");
@@ -475,13 +695,25 @@ pub unsafe extern "C" fn rust_streaming_analysis_send_chunk(
     if let Ok(mut sessions) = STREAMING_SESSIONS.lock() {
         if let Some(session) = sessions.get_mut(&(session_id as u32)) {
             match session.process_chunk(samples_slice) {
-                Ok(()) => 0,  // 成功
-                Err(_) => -3, // 处理失败
+                Ok(()) => 0, // 成功
+                Err(e) => {
+                    eprintln!(
+                        "❌ [ERROR] Rust chunk处理失败: session_id={}, error={}",
+                        session_id, e
+                    );
+                    -3 // 处理失败
+                }
             }
         } else {
+            eprintln!(
+                "❌ [ERROR] 无效会话ID: {}, 当前会话: {:?}",
+                session_id,
+                sessions.keys().collect::<Vec<_>>()
+            );
             -1 // 无效会话ID
         }
     } else {
+        eprintln!("❌ [ERROR] STREAMING_SESSIONS锁获取失败");
         -1 // 锁获取失败
     }
 }

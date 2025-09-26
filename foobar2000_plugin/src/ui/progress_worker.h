@@ -28,13 +28,20 @@ class MacinMeterProgressWorker : public threaded_process_callback {
     bool m_analysis_completed;
     bool m_analysis_success;
     pfc::string8 m_result_text;
-    int m_task_id;                         // 🎯 保存任务ID用于取消
-    std::atomic<bool> m_should_abort;      // 🎯 取消标志
-    std::atomic<float> m_current_progress; // 🎯 当前进度(来自Rust的实时进度)
+    int m_task_id;                    // 🎯 保存任务ID用于取消
+    std::atomic<bool> m_should_abort; // 🎯 取消标志
 
-    // 静态回调函数（用于Rust桥接）
-    static void progress_callback(int current, int total, const char* message);
-    static void completion_callback(const char* result, bool success);
+    // 🕐 计时器和阶段信息
+    std::chrono::steady_clock::time_point m_start_time; // 开始时间
+    pfc::string8 m_current_stage;                       // 当前阶段描述
+
+    // 🎭 双进度条滑块动画
+    float m_slider_center;                                         // 滑块中心位置 (0.0-1.0)
+    bool m_animation_direction;                                    // 移动方向 (true=右, false=左)
+    std::chrono::steady_clock::time_point m_last_animation_update; // 上次动画更新时间
+
+    // 🎭 动画和显示更新
+    void updateAnimationAndDisplay();
 
     // 当前活跃的工作器实例（用于静态回调）
     static MacinMeterProgressWorker* s_current_worker;
