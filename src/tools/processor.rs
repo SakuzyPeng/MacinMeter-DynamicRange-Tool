@@ -442,45 +442,45 @@ pub fn output_results(
 pub fn add_to_batch_output(
     batch_output: &mut String,
     results: &[DrResult],
-    format: &AudioFormat,
+    _format: &AudioFormat,
     file_path: &std::path::Path,
 ) {
     let file_name = utils::extract_filename_lossy(file_path);
 
-    // foobar2000兼容模式：显示分声道结果
-    for result in results {
-        // 暂时隐藏Peak和RMS输出 (为未来恢复保留注释)
-        // let peak_db = utils::linear_to_db(result.peak);
-        // let rms_db = utils::linear_to_db(result.rms);
-        // batch_output.push_str(&format!(
-        //     "{}_Ch{}\tDR{}\t{:.2}\t{:.2}\t{}Hz\t{}\t{:.1}s\n",
-        //     file_name,
-        //     result.channel + 1,
-        //     result.dr_value_rounded(),
-        //     peak_db,
-        //     rms_db,
-        //     format.sample_rate,
-        //     format.channels,
-        //     format.duration_seconds()
-        // ));
-        batch_output.push_str(&format!(
-            "{}_Ch{}\tDR{}\t{}Hz\t{}\t{:.1}s\n",
-            file_name,
-            result.channel + 1,
-            result.dr_value_rounded(),
-            format.sample_rate,
-            format.channels,
-            format.duration_seconds()
-        ));
+    // 计算整体DR值（与formatter.rs中的calculate_official_dr逻辑一致）
+    if !results.is_empty() {
+        // 筛选有效声道：只排除静音声道（简化版本）
+        let valid_results: Vec<&DrResult> = results
+            .iter()
+            .filter(|result| {
+                // 只排除静音声道
+                result.peak > 0.0 && result.rms > 0.0
+            })
+            .collect();
+
+        if !valid_results.is_empty() {
+            let avg_dr: f64 =
+                valid_results.iter().map(|r| r.dr_value).sum::<f64>() / valid_results.len() as f64;
+            let official_dr = avg_dr.round() as i32;
+            let precise_dr = avg_dr;
+
+            // 简化显示：只显示文件名和DR值
+            batch_output.push_str(&format!(
+                "{file_name}\tDR{official_dr}\t{precise_dr:.2} dB\n"
+            ));
+        } else {
+            batch_output.push_str(&format!("{file_name}\t无有效声道\t-\n"));
+        }
+    } else {
+        batch_output.push_str(&format!("{file_name}\t处理失败\t-\n"));
     }
 }
 
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    // 暂时隐藏Peak和RMS列，对应减少占位符 (为未来恢复保留注释)
-    // batch_output.push_str(&format!("{file_name}\t处理失败\t-\t-\t-\t-\t-\n"));
-    batch_output.push_str(&format!("{file_name}\t处理失败\t-\t-\t-\n"));
+    // 匹配新的简化表头格式：文件名\tOfficial DR\tPrecise DR
+    batch_output.push_str(&format!("{file_name}\t处理失败\t-\n"));
 }
 
 /// 为单个文件生成独立的DR结果文件

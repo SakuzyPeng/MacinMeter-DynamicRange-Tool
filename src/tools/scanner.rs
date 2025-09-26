@@ -95,10 +95,8 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
     batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
 
-    // 添加结果表头
-    // 暂时隐藏Peak和RMS列显示 (为未来恢复保留注释)
-    // batch_output.push_str("文件名\tDR\tPeak(dB)\tRMS(dB)\t采样率\t声道\t时长\n");
-    batch_output.push_str("文件名\tDR\t采样率\t声道\t时长\n");
+    // 添加结果表头（简化显示，只保留DR信息）
+    batch_output.push_str("文件名\tOfficial DR\tPrecise DR\n");
     batch_output.push_str("--------------------------------------------------------\n");
 
     batch_output
