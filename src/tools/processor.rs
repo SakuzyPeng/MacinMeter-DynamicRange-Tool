@@ -464,23 +464,23 @@ pub fn add_to_batch_output(
             let official_dr = avg_dr.round() as i32;
             let precise_dr = avg_dr;
 
-            // 简化显示：只显示文件名和DR值
+            // 🎯 DR值在第一列，方便对齐
             batch_output.push_str(&format!(
-                "{file_name}\tDR{official_dr}\t{precise_dr:.2} dB\n"
+                "DR{official_dr}\t{precise_dr:.2} dB\t{file_name}\n"
             ));
         } else {
-            batch_output.push_str(&format!("{file_name}\t无有效声道\t-\n"));
+            batch_output.push_str(&format!("-\t无有效声道\t{file_name}\n"));
         }
     } else {
-        batch_output.push_str(&format!("{file_name}\t处理失败\t-\n"));
+        batch_output.push_str(&format!("-\t处理失败\t{file_name}\n"));
     }
 }
 
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    // 匹配新的简化表头格式：文件名\tOfficial DR\tPrecise DR
-    batch_output.push_str(&format!("{file_name}\t处理失败\t-\n"));
+    // 🎯 匹配新格式：Official DR\tPrecise DR\t文件名
+    batch_output.push_str(&format!("-\t处理失败\t{file_name}\n"));
 }
 
 /// 为单个文件生成独立的DR结果文件

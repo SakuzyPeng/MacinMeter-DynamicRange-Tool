@@ -49,8 +49,13 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
         return Ok(());
     }
 
-    // 准备批量输出
-    let mut batch_output = tools::create_batch_output_header(config, &audio_files);
+    // 🎯 根据文件数量选择输出策略
+    let is_single_file = audio_files.len() == 1;
+    let mut batch_output = if !is_single_file {
+        tools::create_batch_output_header(config, &audio_files)
+    } else {
+        String::new()
+    };
     let mut processed_count = 0;
     let mut failed_count = 0;
 
@@ -67,11 +72,13 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             Ok((results, format)) => {
                 processed_count += 1;
 
-                // 为每个音频文件生成单独的DR结果文件
-                let _ = tools::save_individual_result(&results, &format, audio_file, config);
-
-                // 添加到批量输出
-                tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file);
+                if is_single_file {
+                    // 🎯 单文件模式：只生成单独的DR结果文件
+                    let _ = tools::save_individual_result(&results, &format, audio_file, config);
+                } else {
+                    // 🎯 多文件模式：只添加到批量输出
+                    tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file);
+                }
 
                 if config.verbose {
                     println!("   ✅ 处理成功");
@@ -80,28 +87,39 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             Err(e) => {
                 failed_count += 1;
                 println!("   ❌ 处理失败: {e}");
-                tools::add_failed_to_batch_output(&mut batch_output, audio_file);
+                if !is_single_file {
+                    tools::add_failed_to_batch_output(&mut batch_output, audio_file);
+                }
             }
         }
     }
 
-    // 生成批量输出文件
-    batch_output.push_str(&tools::create_batch_output_footer(
-        &audio_files,
-        processed_count,
-        failed_count,
-    ));
-    let output_path = tools::generate_batch_output_path(config, &audio_files);
-    std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
+    // 🎯 只有多文件模式才生成批量输出文件
+    if !is_single_file {
+        batch_output.push_str(&tools::create_batch_output_footer(
+            &audio_files,
+            processed_count,
+            failed_count,
+        ));
+        let output_path = tools::generate_batch_output_path(config);
+        std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
 
-    // 显示完成信息
-    tools::show_batch_completion_info(
-        &output_path,
-        processed_count,
-        audio_files.len(),
-        failed_count,
-        config,
-    );
+        // 显示批量完成信息
+        tools::show_batch_completion_info(
+            &output_path,
+            processed_count,
+            audio_files.len(),
+            failed_count,
+            config,
+        );
+    } else {
+        // 🎯 单文件模式：显示简单的完成信息
+        if processed_count > 0 {
+            println!("✅ 单文件处理完成");
+        } else {
+            println!("❌ 单文件处理失败");
+        }
+    }
 
     Ok(())
 }

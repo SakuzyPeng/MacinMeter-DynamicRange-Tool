@@ -95,8 +95,8 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
     batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
 
-    // 添加结果表头（简化显示，只保留DR信息）
-    batch_output.push_str("文件名\tOfficial DR\tPrecise DR\n");
+    // 🎯 添加结果表头（DR值在第一列，方便对齐）
+    batch_output.push_str("Official DR\tPrecise DR\t文件名\n");
     batch_output.push_str("--------------------------------------------------------\n");
 
     batch_output
@@ -131,24 +131,26 @@ pub fn create_batch_output_footer(
 }
 
 /// 生成批量输出文件路径
-pub fn generate_batch_output_path(config: &AppConfig, audio_files: &[PathBuf]) -> PathBuf {
+pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
     config.output_path.clone().unwrap_or_else(|| {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let base_name = if let Some(first_file) = audio_files.first() {
-            utils::extract_file_stem_string(first_file)
-        } else {
-            utils::extract_filename(config.input_path.as_path())
-                .to_string()
-                .replace(".", "_batch")
+        // 🎯 生成友好的时间格式 YYYY-MM-DD_HH-MM-SS
+        let readable_time = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+            let secs = duration.as_secs();
+            let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                .unwrap_or_else(chrono::Utc::now);
+            datetime.format("%Y-%m-%d_%H-%M-%S").to_string()
         };
+
+        // 🎯 使用目录名作为基础名称，而非第一个文件名
+        let dir_name = utils::extract_filename(config.input_path.as_path())
+            .replace(".", "_")
+            .replace(" ", "_");
 
         config
             .input_path
-            .join(format!("{base_name}_BatchDR_Results_{timestamp}.txt"))
+            .join(format!("{dir_name}_BatchDR_{readable_time}.txt"))
     })
 }
 
