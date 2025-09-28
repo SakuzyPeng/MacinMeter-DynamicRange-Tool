@@ -302,6 +302,8 @@ jobs:
             matrix.target == 'x86_64-unknown-linux-gnu' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
             '-C opt-level=3'
           }}
+        # 🛠️ 修复audiopus_sys CMake版本兼容性问题（仅macOS需要）
+        CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(matrix.os, 'macos') && '3.5' || '' }}
       run: |
         echo "🚀 Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
         echo "📋 Build environment info:"
@@ -315,15 +317,22 @@ jobs:
         rustc --version
         cargo --version
         rustup show
-        
+
         echo "🎯 Using GitHub Actions native runner strategy:"
         echo "  Runner OS: ${{ matrix.os }}"
         echo "  Target: ${{ matrix.target }}"
-        
+
         # 🎯 统一使用原生构建策略避免跨编译复杂性
         echo "🏗️ Building for target: ${{ matrix.target }}"
         echo "💡 Using GitHub Actions native runner for ${{ matrix.target }}"
-        
+
+        # 🛠️ macOS特定的CMake兼容性处理
+        if [[ "${{ matrix.os }}" == macos* ]]; then
+          echo "🍎 macOS detected: Setting CMake compatibility flags for audiopus_sys"
+          export CMAKE_POLICY_VERSION_MINIMUM=3.5
+          export CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        fi
+
         # 直接构建，依赖GitHub Actions的runner原生支持
         cargo build --release --verbose
       shell: bash
