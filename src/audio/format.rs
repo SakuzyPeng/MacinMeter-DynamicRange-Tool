@@ -3,6 +3,7 @@
 //! 定义音频格式相关的数据结构和格式支持信息
 
 use crate::error::{AudioError, AudioResult};
+use symphonia::core::codecs::CodecType;
 
 /// 音频格式信息
 #[derive(Debug, Clone, PartialEq)]
@@ -11,6 +12,8 @@ pub struct AudioFormat {
     pub channels: u16,
     pub bits_per_sample: u16,
     pub sample_count: u64,
+    /// 真实的编解码器类型（从解码器获取，比文件扩展名更准确）
+    pub codec_type: Option<CodecType>,
 }
 
 impl AudioFormat {
@@ -21,6 +24,24 @@ impl AudioFormat {
             channels,
             bits_per_sample,
             sample_count,
+            codec_type: None,
+        }
+    }
+
+    /// 创建包含编解码器信息的音频格式
+    pub fn with_codec(
+        sample_rate: u32,
+        channels: u16,
+        bits_per_sample: u16,
+        sample_count: u64,
+        codec_type: CodecType,
+    ) -> Self {
+        Self {
+            sample_rate,
+            channels,
+            bits_per_sample,
+            sample_count,
+            codec_type: Some(codec_type),
         }
     }
 
@@ -49,6 +70,11 @@ impl AudioFormat {
     /// 获取持续时长（秒）
     pub fn duration_seconds(&self) -> f64 {
         self.sample_count as f64 / self.sample_rate as f64
+    }
+
+    /// 更新样本数（用于动态格式更新）
+    pub fn update_sample_count(&mut self, sample_count: u64) {
+        self.sample_count = sample_count;
     }
 }
 

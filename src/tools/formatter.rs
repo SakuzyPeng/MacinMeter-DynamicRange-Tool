@@ -6,8 +6,69 @@ use super::cli::AppConfig;
 use super::utils;
 use crate::{AudioError, AudioFormat, AudioResult, DrResult};
 
+// 引入symphonia编解码器类型用于精确判断
+use symphonia::core::codecs::{
+    CODEC_TYPE_AAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS, CodecType,
+};
+
 /// 应用程序版本信息
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 🎯 根据真实编解码器类型判断是否为有损压缩
+///
+/// 使用symphonia的编解码器常量进行精确判断，比文件扩展名更准确
+fn is_lossy_codec_type(codec_type: CodecType) -> bool {
+    matches!(
+        codec_type,
+        CODEC_TYPE_AAC |      // AAC - 有损
+        CODEC_TYPE_MP3 |      // MP3 - 有损
+        CODEC_TYPE_VORBIS |   // OGG Vorbis - 有损
+        CODEC_TYPE_OPUS // Opus - 有损
+    )
+    // 无损格式：CODEC_TYPE_FLAC, CODEC_TYPE_ALAC, CODEC_TYPE_PCM_*
+}
+
+/// 🎯 智能比特率计算：根据真实编解码器类型选择合适的计算方法
+///
+/// 有损压缩格式(OPUS/MP3/AAC/OGG): 使用文件大小÷时长计算真实比特率
+/// 无损格式(WAV/FLAC/ALAC): 使用采样率×声道×位深计算PCM比特率
+///
+/// 优先使用从解码器获取的真实codec信息，回退到文件扩展名
+/// 如果无法计算有损格式的真实比特率，返回错误而不是估算值
+fn calculate_actual_bitrate(
+    file_path: &std::path::Path,
+    format: &AudioFormat,
+    codec_fallback: &str,
+) -> AudioResult<u32> {
+    // 🎯 优先使用真实的编解码器信息
+    let is_lossy_compressed = if let Some(codec_type) = format.codec_type {
+        is_lossy_codec_type(codec_type)
+    } else {
+        // 回退到扩展名判断
+        matches!(codec_fallback, "OPUS" | "MP3" | "AAC" | "OGG")
+    };
+
+    if is_lossy_compressed {
+        // 有损压缩格式：使用文件大小和时长计算真实比特率
+        let metadata = std::fs::metadata(file_path).map_err(AudioError::IoError)?;
+
+        let file_size_bytes = metadata.len();
+        let duration_seconds = format.sample_count as f64 / format.sample_rate as f64;
+
+        if duration_seconds <= 0.0 {
+            return Err(AudioError::InvalidInput(
+                "音频时长为零，无法计算比特率".to_string(),
+            ));
+        }
+
+        // 计算实际比特率：(文件大小 × 8) ÷ 时长 ÷ 1000 = kbps
+        let bitrate_bps = (file_size_bytes as f64 * 8.0) / duration_seconds;
+        Ok((bitrate_bps / 1000.0).round() as u32)
+    } else {
+        // 无损格式(WAV/FLAC/M4A-ALAC)：使用PCM比特率公式
+        Ok(format.sample_rate * format.channels as u32 * format.bits_per_sample as u32 / 1000)
+    }
+}
 
 /// 识别LFE(低频效果)声道的索引位置
 ///
@@ -303,13 +364,14 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     output.push_str(&format!("Channels:          {}\n", format.channels));
     output.push_str(&format!("Bits per sample:   {}\n", format.bits_per_sample));
 
-    // 计算码率
-    let bitrate =
-        format.sample_rate * format.channels as u32 * format.bits_per_sample as u32 / 1000;
-    output.push_str(&format!("Bitrate:           {bitrate} kbps\n"));
-
-    // 推断编解码器
+    // 🎯 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
     let codec = utils::extract_extension_uppercase(&config.input_path);
+    let bitrate_display = match calculate_actual_bitrate(&config.input_path, format, &codec) {
+        Ok(bitrate) => format!("{bitrate} kbps"),
+        Err(_) => "N/A".to_string(), // 计算失败时显示N/A，不影响整体分析
+    };
+    output.push_str(&format!("Bitrate:           {bitrate_display}\n"));
+
     output.push_str(&format!("Codec:             {codec}\n"));
 
     output.push_str(

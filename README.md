@@ -46,16 +46,13 @@ cargo build --release
 ### 基本使用
 
 ```bash
-# 分析单个文件（默认逐包直通模式）
+# 分析单个文件（默认智能缓冲流式处理）
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr audio.flac
 
-# 详细输出（显示逐包处理信息）
+# 详细输出（显示流式处理统计信息）
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr --verbose audio.wav
 
-# 禁用逐包模式（使用传统700ms固定块）
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr --disable-packet-chunk audio.flac
-
-# 保存结果到文件
+# 指定输出文件（保存结果到指定路径）
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr --output result.txt audio.flac
 
 # 批量处理目录
@@ -107,21 +104,19 @@ DR13	13.17 dB	肖邦第一钢琴协奏曲.flac
 
 ```bash
 参数:
-  [INPUT]              音频文件或目录路径（可选，未指定时扫描当前目录）
+  [INPUT]              音频文件或目录路径（可选，未指定时扫描可执行文件所在目录）
 
 选项:
   -v, --verbose               显示详细处理信息（包括流式处理统计）
   -o, --output <FILE>         输出结果到文件
-      --disable-simd          禁用SIMD向量化优化（降低性能但提高兼容性）
-      --single-thread         禁用多线程处理（单线程模式）
   -h, --help                  显示帮助信息
   -V, --version               显示版本信息
 
 默认行为:
 ✅ 智能缓冲流式处理 - 包级解码 + 3秒窗口级算法
 ✅ Sum Doubling补偿 - 自动启用，匹配foobar2000行为
-✅ SIMD向量化优化 - 自动启用，可手动禁用
-✅ 多线程处理 - 自动启用，可切换单线程
+✅ SIMD向量化优化 - 自动启用，无配置选项
+✅ 智能输出策略 - 单文件/多文件自适应处理
 ```
 
 ## 🔬 技术实现说明

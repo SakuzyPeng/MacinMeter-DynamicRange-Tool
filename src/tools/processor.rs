@@ -212,7 +212,10 @@ pub fn process_audio_file_streaming(
         println!("✅ DR计算完成，共 {} 个声道", dr_results.len());
     }
 
-    Ok((dr_results, format))
+    // 🎯 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
+    let final_format = streaming_decoder.format();
+
+    Ok((dr_results, final_format))
 }
 
 /// 🚀 SIMD优化窗口声道分离处理（辅助函数）
@@ -261,7 +264,7 @@ pub fn process_streaming_decoder(
         println!("🌊 使用StreamingDecoder进行DR分析...");
     }
 
-    let format = streaming_decoder.format().clone();
+    let format = streaming_decoder.format();
 
     // 🎯 声道数检查：支持单声道和立体声，拒绝多声道
     if format.channels > 2 {
@@ -402,7 +405,10 @@ pub fn process_streaming_decoder(
         println!("✅ DR计算完成，共 {} 个声道", dr_results.len());
     }
 
-    Ok((dr_results, format))
+    // 🎯 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
+    let final_format = streaming_decoder.format();
+
+    Ok((dr_results, final_format))
 }
 
 /// 输出DR计算结果（foobar2000兼容格式）

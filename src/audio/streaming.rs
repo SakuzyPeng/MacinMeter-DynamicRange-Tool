@@ -17,8 +17,8 @@ pub trait StreamingDecoder {
     /// 获取解码进度 (0.0-1.0)
     fn progress(&self) -> f32;
 
-    /// 获取音频格式信息
-    fn format(&self) -> &AudioFormat;
+    /// 获取音频格式信息（动态构造，包含实时样本数）
+    fn format(&self) -> AudioFormat;
 
     /// 重置到开头
     fn reset(&mut self) -> AudioResult<()>;

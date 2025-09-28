@@ -7,8 +7,14 @@ use super::utils;
 use crate::{AudioError, AudioResult};
 use std::path::PathBuf;
 
-/// 支持的音频格式扩展名
-const SUPPORTED_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac", "ogg"];
+/// 获取支持的音频格式扩展名
+///
+/// 🚀 从UniversalDecoder获取统一的格式支持声明，确保一致性
+fn get_supported_extensions() -> &'static [&'static str] {
+    use crate::audio::UniversalDecoder;
+    let decoder = UniversalDecoder::new();
+    decoder.supported_formats().extensions
+}
 
 /// 扫描目录中的音频文件
 pub fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>> {
@@ -45,7 +51,7 @@ pub fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>>
             && let Some(ext_str) = extension.to_str()
         {
             let ext_lower = ext_str.to_lowercase();
-            if SUPPORTED_EXTENSIONS.contains(&ext_lower.as_str()) {
+            if get_supported_extensions().contains(&ext_lower.as_str()) {
                 audio_files.push(path);
             }
         }
@@ -64,7 +70,12 @@ pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
             "⚠️  在目录 {} 中没有找到支持的音频文件",
             config.input_path.display()
         );
-        println!("   支持的格式: WAV, FLAC, MP3, AAC, OGG");
+        let supported_formats = get_supported_extensions()
+            .iter()
+            .map(|ext| ext.to_uppercase())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("   支持的格式: {supported_formats}");
         return;
     }
 

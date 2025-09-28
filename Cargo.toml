@@ -11,13 +11,19 @@ path = "src/main.rs"
 [dependencies]
 # 音频文件解码
 hound = "3.5"
-# 🔥 优化：只启用必要的编解码器，减少二进制文件大小
+# 🔥 优化：启用所有必要的编解码器，支持多格式兼容
 symphonia = { version = "0.5", features = [
     "flac",      # FLAC支持（音质测试常用）
     "mp3",       # MP3支持（通用格式）
-    "aac",       # AAC/M4A支持
+    "mp1",       # MP1支持（MPEG Audio Layer I）
+    "aac",       # AAC支持
     "vorbis",    # OGG Vorbis支持
     "wav",       # WAV支持（基础格式）
+    "aiff",      # AIFF支持（关键修复）
+    "alac",      # Apple Lossless编解码器
+    "isomp4",    # MP4/M4A容器格式支持（关键修复）
+    "mkv",       # MKV/WebM容器格式支持
+    "pcm",       # 通用PCM支持（AU, CAF等）
 ] }
 
 # 工具库
@@ -36,6 +42,11 @@ sysinfo = "0.30"
 
 # 全局静态变量支持
 lazy_static = "1.4"
+
+# Opus音频支持
+songbird = { version = "0.4", default-features = false, features = ["driver", "rustls"] }
+symphonia-core = "0.5.4"
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 
 [profile.release]
 opt-level = 3          # 最高优化级别
