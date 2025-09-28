@@ -293,15 +293,8 @@ jobs:
       
     - name: 🏗️ Build Release Binary
       env:
-        # 🎯 CI专用RUSTFLAGS - 覆盖.cargo/config.toml避免CPU兼容问题
-        RUSTFLAGS: >-
-          ${{
-            matrix.target == 'aarch64-apple-darwin' && '-C target-feature=+neon -C opt-level=3' ||
-            matrix.target == 'x86_64-apple-darwin' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
-            matrix.target == 'x86_64-pc-windows-msvc' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
-            matrix.target == 'x86_64-unknown-linux-gnu' && '-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3' ||
-            '-C opt-level=3'
-          }}
+        # 🎯 CI专用环境变量 - RUSTFLAGS在脚本中动态设置
+        CI_TARGET: ${{ matrix.target }}
         # 🛠️ 修复audiopus_sys CMake版本兼容性问题（仅macOS需要）
         CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(matrix.os, 'macos') && '3.5' || '' }}
       run: |
@@ -311,6 +304,22 @@ jobs:
         echo "  OS: ${{ matrix.os }}"
         echo "  Platform: ${{ matrix.platform }}"
         echo "  Arch: ${{ matrix.arch }}"
+
+        # 🎯 动态设置RUSTFLAGS避免架构冲突
+        case "$CI_TARGET" in
+          "aarch64-apple-darwin")
+            export RUSTFLAGS="-C target-feature=+neon -C opt-level=3"
+            echo "🍎 ARM64 macOS: Using NEON optimizations"
+            ;;
+          "x86_64-apple-darwin"|"x86_64-pc-windows-msvc"|"x86_64-unknown-linux-gnu")
+            export RUSTFLAGS="-C target-feature=+sse2,+sse3,+sse4.1,+sse4.2,+avx,+avx2 -C opt-level=3"
+            echo "💻 x86_64: Using SSE/AVX optimizations"
+            ;;
+          *)
+            export RUSTFLAGS="-C opt-level=3"
+            echo "🔧 Generic: Using standard optimizations"
+            ;;
+        esac
         echo "  RUSTFLAGS: $RUSTFLAGS"
         
         echo "🔍 Verifying Rust setup:"
