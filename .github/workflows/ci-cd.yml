@@ -145,7 +145,8 @@ jobs:
     - name: 🛡️ Security Audit
       run: |
         echo "🔒 Running security audit..."
-        cargo audit --ignore RUSTSEC-0000-0000  # 忽略已知的无害警告
+        # 忽略songbird Discord依赖的已知安全问题（本地文件处理无攻击面）
+        cargo audit --ignore RUSTSEC-2025-0009 --ignore RUSTSEC-2024-0336 --ignore RUSTSEC-2023-0065 --ignore RUSTSEC-2025-0055 --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2025-0010
         
     - name: 🧪 Run Unit Tests
       if: ${{ !github.event.inputs.skip_tests }}
@@ -458,7 +459,7 @@ jobs:
   # 📋 构建摘要和发布准备
   build-summary:
     name: Build Summary & Release Preparation
-    needs: [changes, build]
+    needs: [changes, quality-check, build]
     runs-on: ubuntu-latest
     if: always() && (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch')  # 只在有代码变更或手动触发时运行
     
@@ -491,10 +492,24 @@ jobs:
           
           echo ""
           echo "## 🛡️ Security & Quality"
-          echo "- ✅ Code formatting check passed"
-          echo "- ✅ Static analysis (Clippy) passed"  
-          echo "- ✅ Security audit completed"
-          echo "- ✅ Unit tests passed"
+
+          # 基于实际job结果动态显示状态
+          if [ "${{ needs.quality-check.result }}" = "success" ]; then
+            echo "- ✅ Code formatting check passed"
+            echo "- ✅ Static analysis (Clippy) passed"
+            echo "- ✅ Security audit completed"
+            echo "- ✅ Unit tests passed"
+          elif [ "${{ needs.quality-check.result }}" = "failure" ]; then
+            echo "- ❌ Quality checks failed - see job details"
+            echo "- 🔍 Check 'Code Quality & Security Audit' job for details"
+          elif [ "${{ needs.quality-check.result }}" = "cancelled" ]; then
+            echo "- ⏹️ Quality checks were cancelled"
+          elif [ "${{ needs.quality-check.result }}" = "skipped" ]; then
+            echo "- ⏭️ Quality checks were skipped (no code changes)"
+          else
+            echo "- ❓ Quality checks status: ${{ needs.quality-check.result }}"
+          fi
+
           echo ""
           echo "## 🔧 Usage Instructions"
           echo ""

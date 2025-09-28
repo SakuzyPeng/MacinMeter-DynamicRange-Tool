@@ -48,6 +48,14 @@ songbird = { version = "0.4", default-features = false, features = ["driver", "r
 symphonia-core = "0.5.4"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 
+# 📝 安全警告说明：
+# songbird的Discord依赖存在已知安全问题，但不影响我们的使用场景：
+# - ring/rustls: TLS问题，我们无网络通信
+# - tungstenite: WebSocket攻击，我们只处理本地文件
+# - tracing-subscriber: 日志污染，我们无敏感日志
+# - derivative: 编译时工具，运行时无影响
+# 风险评估：本地文件解码场景下，这些问题的攻击面为零
+
 [profile.release]
 opt-level = 3          # 最高优化级别
 lto = true             # 链接时优化

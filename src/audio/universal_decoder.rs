@@ -64,13 +64,13 @@ impl UniversalDecoder {
         let path = path.as_ref();
 
         // 🎵 检查是否为Opus格式，使用专用探测方法
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            if ext.to_lowercase() == "opus" {
-                // 暂时创建一个临时解码器来获取格式信息
-                // 这不是最优的，但能确保格式探测的一致性
-                let temp_decoder = SongbirdOpusDecoder::new(path)?;
-                return Ok(temp_decoder.format());
-            }
+        if let Some(ext) = path.extension().and_then(|s| s.to_str())
+            && ext.to_lowercase() == "opus"
+        {
+            // 暂时创建一个临时解码器来获取格式信息
+            // 这不是最优的，但能确保格式探测的一致性
+            let temp_decoder = SongbirdOpusDecoder::new(path)?;
+            return Ok(temp_decoder.format());
         }
 
         // 其他格式使用Symphonia探测
@@ -85,10 +85,10 @@ impl UniversalDecoder {
         let path = path.as_ref();
 
         // 🎵 检查是否为Opus格式，使用专用解码器
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            if ext.to_lowercase() == "opus" {
-                return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
-            }
+        if let Some(ext) = path.extension().and_then(|s| s.to_str())
+            && ext.to_lowercase() == "opus"
+        {
+            return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
         }
 
         // 其他格式使用通用解码器
@@ -106,10 +106,10 @@ impl UniversalDecoder {
         let path = path.as_ref();
 
         // 🎵 检查是否为Opus格式，使用专用解码器
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            if ext.to_lowercase() == "opus" {
-                return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
-            }
+        if let Some(ext) = path.extension().and_then(|s| s.to_str())
+            && ext.to_lowercase() == "opus"
+        {
+            return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
         }
 
         // 其他格式使用通用解码器
@@ -220,13 +220,12 @@ impl UniversalDecoder {
         // 对于AAC等格式，尝试从时长和采样率估算
         if let (Some(duration), Some(sample_rate)) =
             (codec_params.time_base, codec_params.sample_rate)
+            && duration.denom > 0
         {
-            if duration.denom > 0 {
-                let time_base_seconds = duration.numer as f64 / duration.denom as f64;
-                let estimated_samples = (time_base_seconds * sample_rate as f64) as u64;
-                if estimated_samples > 0 {
-                    return estimated_samples;
-                }
+            let time_base_seconds = duration.numer as f64 / duration.denom as f64;
+            let estimated_samples = (time_base_seconds * sample_rate as f64) as u64;
+            if estimated_samples > 0 {
+                return estimated_samples;
             }
         }
 

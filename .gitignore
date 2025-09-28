@@ -55,6 +55,7 @@ wheels/
 # IDE文件
 .vscode/
 .idea/
+.claude/
 
 # 临时文件
 *.tmp
