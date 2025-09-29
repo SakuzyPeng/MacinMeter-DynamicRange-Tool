@@ -4,6 +4,7 @@
 //! 基于Symphonia提供完整的多格式支持
 
 use crate::error::{AudioError, AudioResult};
+use crate::processing::{SampleConversion, SampleConverter};
 use std::path::Path;
 
 // 重新导出公共接口
@@ -247,6 +248,9 @@ pub struct UniversalStreamProcessor {
     // 🚀 智能缓冲统计信息（固定启用高性能模式）
     chunk_stats: ChunkSizeStats,
 
+    // 🚀 SIMD样本转换器（高性能优化）
+    sample_converter: SampleConverter,
+
     // symphonia组件
     format_reader: Option<Box<dyn symphonia::core::formats::FormatReader>>,
     decoder: Option<Box<dyn symphonia::core::codecs::Decoder>>,
@@ -269,6 +273,7 @@ impl UniversalStreamProcessor {
             current_position: 0,
             total_samples: format.sample_count,
             chunk_stats: ChunkSizeStats::new(),
+            sample_converter: SampleConverter::new(),
             format_reader: None,
             decoder: None,
             track_id: None,
@@ -322,15 +327,17 @@ impl UniversalStreamProcessor {
 
     /// 从解码的音频缓冲区提取样本
     fn extract_samples_from_decoded(
+        sample_converter: &SampleConverter,
         decoded: &symphonia::core::audio::AudioBufferRef,
     ) -> AudioResult<Vec<f32>> {
         let mut samples = Vec::new();
-        Self::convert_buffer_to_interleaved(decoded, &mut samples)?;
+        Self::convert_buffer_to_interleaved_with_simd(sample_converter, decoded, &mut samples)?;
         Ok(samples)
     }
 
-    /// 转换symphonia缓冲区为交错格式
-    fn convert_buffer_to_interleaved(
+    /// 🚀 转换symphonia缓冲区为交错格式 (SIMD优化)
+    fn convert_buffer_to_interleaved_with_simd(
+        sample_converter: &SampleConverter,
         audio_buf: &symphonia::core::audio::AudioBufferRef,
         samples: &mut Vec<f32>,
     ) -> AudioResult<()> {
@@ -368,13 +375,28 @@ impl UniversalStreamProcessor {
             }};
         }
 
-        // 转换为交错格式 - 每种格式使用专门的转换器
+        // 🚀 转换为交错格式 - 使用SIMD优化的高性能转换器
         match audio_buf {
             AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
-            AudioBufferRef::S16(buf) => convert_samples!(buf, |s| (s as f32) / 32768.0),
+            // 🚀 S16 SIMD优化路径
+            AudioBufferRef::S16(buf) => {
+                Self::convert_s16_with_simd_optimization(
+                    sample_converter,
+                    buf,
+                    channel_count,
+                    frame_count,
+                    samples,
+                )?;
+            }
+            // 🚀 S24 SIMD优化路径 (主要性能提升点)
             AudioBufferRef::S24(buf) => {
-                convert_samples!(buf, |s: symphonia::core::sample::i24| (s.inner() as f32)
-                    / 8388608.0)
+                Self::convert_s24_with_simd_optimization(
+                    sample_converter,
+                    buf,
+                    channel_count,
+                    frame_count,
+                    samples,
+                )?;
             }
             AudioBufferRef::S32(buf) => convert_samples!(buf, |s| (s as f64 / 2147483648.0) as f32),
             AudioBufferRef::F64(buf) => convert_samples!(buf, |s| s as f32),
@@ -389,6 +411,96 @@ impl UniversalStreamProcessor {
                 convert_samples!(buf, |s| (((s as f64) - 2147483648.0) / 2147483648.0) as f32)
             }
             AudioBufferRef::S8(buf) => convert_samples!(buf, |s| (s as f32) / 128.0),
+        }
+
+        Ok(())
+    }
+
+    /// 🚀 S16格式SIMD优化转换
+    fn convert_s16_with_simd_optimization(
+        sample_converter: &SampleConverter,
+        buf: &symphonia::core::audio::AudioBuffer<i16>,
+        channel_count: usize,
+        frame_count: usize,
+        samples: &mut Vec<f32>,
+    ) -> AudioResult<()> {
+        use symphonia::core::audio::Signal;
+
+        // 预分配足够的空间
+        samples.reserve(channel_count * frame_count);
+
+        // 为每个声道分别进行SIMD转换，然后交错合并
+        for ch in 0..channel_count {
+            let channel_data = buf.chan(ch);
+            let mut converted_channel = Vec::new();
+
+            // 🚀 使用SIMD转换单个声道的数据
+            let _stats = sample_converter
+                .convert_i16_to_f32(channel_data, &mut converted_channel)
+                .map_err(|e| AudioError::CalculationError(format!("S16 SIMD转换失败: {e}")))?;
+
+            // 交错插入到结果中
+            for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+                let interleaved_idx = frame_idx * channel_count + ch;
+                if samples.len() <= interleaved_idx {
+                    samples.resize(interleaved_idx + 1, 0.0);
+                }
+                samples[interleaved_idx] = sample;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 🚀 S24格式SIMD优化转换 (主要性能提升点)
+    fn convert_s24_with_simd_optimization(
+        sample_converter: &SampleConverter,
+        buf: &symphonia::core::audio::AudioBuffer<symphonia::core::sample::i24>,
+        channel_count: usize,
+        frame_count: usize,
+        samples: &mut Vec<f32>,
+    ) -> AudioResult<()> {
+        use symphonia::core::audio::Signal;
+
+        // 预分配足够的空间
+        samples.reserve(channel_count * frame_count);
+
+        // 为每个声道分别进行SIMD转换，然后交错合并
+        for ch in 0..channel_count {
+            let channel_data = buf.chan(ch);
+            let mut converted_channel = Vec::new();
+
+            // 🚀 使用SIMD转换单个声道的数据 (关键优化点！)
+            #[cfg(debug_assertions)]
+            let stats = sample_converter
+                .convert_i24_to_f32(channel_data, &mut converted_channel)
+                .map_err(|e| AudioError::CalculationError(format!("S24 SIMD转换失败: {e}")))?;
+
+            #[cfg(not(debug_assertions))]
+            let _stats = sample_converter
+                .convert_i24_to_f32(channel_data, &mut converted_channel)
+                .map_err(|e| AudioError::CalculationError(format!("S24 SIMD转换失败: {e}")))?;
+
+            // 在调试模式下显示SIMD效率
+            #[cfg(debug_assertions)]
+            if ch == 0 {
+                // 只在第一个声道显示，避免输出过多
+                eprintln!(
+                    "🚀 [S24_SIMD] 声道{}: SIMD效率={:.1}%, 样本数={}",
+                    ch,
+                    stats.simd_efficiency(),
+                    stats.input_samples
+                );
+            }
+
+            // 交错插入到结果中
+            for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+                let interleaved_idx = frame_idx * channel_count + ch;
+                if samples.len() <= interleaved_idx {
+                    samples.resize(interleaved_idx + 1, 0.0);
+                }
+                samples[interleaved_idx] = sample;
+            }
         }
 
         Ok(())
@@ -433,7 +545,8 @@ impl StreamingDecoder for UniversalStreamProcessor {
                 // 解码音频包
                 match decoder.decode(&packet) {
                     Ok(decoded) => {
-                        let samples = Self::extract_samples_from_decoded(&decoded)?;
+                        let samples =
+                            Self::extract_samples_from_decoded(&self.sample_converter, &decoded)?;
                         let samples_per_channel =
                             samples.len() as u64 / self.format.channels as u64;
                         self.current_position += samples_per_channel;
