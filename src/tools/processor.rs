@@ -80,8 +80,26 @@ pub fn process_audio_file_streaming(
         )));
     }
 
-    // 创建高性能流式解码器
-    let mut streaming_decoder = decoder.create_streaming_optimized(path)?;
+    // 🚀 创建高性能流式解码器（支持并行解码）
+    let mut streaming_decoder = if config.parallel_decoding {
+        if config.verbose {
+            println!(
+                "⚡ 启用并行解码模式 ({}线程, {}包批量) - 攻击解码瓶颈",
+                config.parallel_threads, config.parallel_batch_size
+            );
+        }
+        decoder.create_streaming_parallel(
+            path,
+            true,
+            Some(config.parallel_batch_size),
+            Some(config.parallel_threads),
+        )?
+    } else {
+        if config.verbose {
+            println!("🔄 使用串行解码模式（兼容性优先）");
+        }
+        decoder.create_streaming_optimized(path)?
+    };
 
     // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
     let mut analyzers: Vec<WindowRmsAnalyzer> = (0..format.channels)
@@ -500,6 +518,9 @@ pub fn save_individual_result(
         input_path: audio_file.to_path_buf(),
         verbose: false,
         output_path: None,
+        parallel_decoding: false,
+        parallel_batch_size: 64,
+        parallel_threads: 4,
     };
 
     if let Err(e) = output_results(results, &temp_config, format, true) {

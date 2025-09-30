@@ -8,6 +8,9 @@
 //! - **3秒窗口处理**: 按照DR测量标准的窗口长度
 //! - **20%采样算法**: 逆向遍历选择最响20%窗口
 //! - **精确峰值选择**: 主峰/次峰智能切换机制
+//! - **🚀 SIMD优化**: 平方和计算使用SSE2并行加速
+
+use crate::processing::simd_channel_data::SimdProcessor;
 
 /// WindowRmsAnalyzer - 基于master分支的正确20%采样算法
 ///
@@ -35,6 +38,8 @@ pub struct WindowRmsAnalyzer {
     last_sample: f64,
     /// 当前窗口样本缓存（用于尾窗Peak重新计算）
     current_window_samples: Vec<f64>,
+    /// 🚀 **SIMD优化**: SIMD处理器用于平方和计算加速
+    simd_processor: SimdProcessor,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +73,7 @@ impl WindowRmsAnalyzer {
             total_samples_processed: 0,
             last_sample: 0.0,
             current_window_samples: Vec::new(),
+            simd_processor: SimdProcessor::new(),
         }
     }
 
@@ -172,20 +178,21 @@ impl WindowRmsAnalyzer {
         }
         // 如果has_virtual_zero为true，最后一个位置保持0.0
 
-        // 步骤3: 排序（升序，0值会排在前面）
-        rms_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-        // 步骤4: 计算20%采样窗口数
+        // 🚀 **性能优化**: 部分选择算法 O(n log n) → O(n)
+        // 步骤3: 计算20%采样窗口数
         let cut_best_bins = 0.2;
         let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
 
-        // 步骤5: 选择最高20%的RMS值
+        // 步骤4: 使用部分选择找到最高20%的RMS值
         let start_index = seg_cnt - n_blk;
-        let mut rms_sum = 0.0;
 
-        for &rms_value in rms_array.iter().skip(start_index).take(n_blk) {
-            rms_sum += rms_value * rms_value; // 平方和
-        }
+        // 使用select_nth_unstable进行O(n)部分选择
+        // 这会将数组重新排列，使得index≥start_index的元素都是最大的n_blk个
+        rms_array.select_nth_unstable_by(start_index, |a, b| a.partial_cmp(b).unwrap());
+
+        // 步骤5: 🚀 **SIMD优化**: 计算最高20%RMS值的平方和
+        let top_20_values = &rms_array[start_index..start_index + n_blk];
+        let rms_sum = self.simd_processor.calculate_square_sum(top_20_values);
 
         // 步骤6: 开方平均
         (rms_sum / n_blk as f64).sqrt()

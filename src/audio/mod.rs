@@ -12,6 +12,9 @@ mod streaming;
 // Opus音频支持模块
 mod opus_decoder;
 
+// 🚀 有序并行解码器 - 攻击解码瓶颈的核心性能优化
+pub mod parallel_decoder;
+
 // 统一解码器架构 - 唯一推荐的解码器
 pub mod universal_decoder;
 

@@ -649,7 +649,7 @@ impl SampleConverter {
         Ok(())
     }
 
-    /// ARM NEON i24→f32转换的unsafe实现
+    /// ARM NEON i24→f32转换的unsafe实现（优化版）
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn convert_i24_to_f32_neon_unsafe(
@@ -665,27 +665,80 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // NEON处理：一次处理4个i24样本
-        while i + 4 <= len {
-            unsafe {
-                // 提取4个i24值为i32
-                let i32_vals = [
-                    input[i].inner(),
+        // 🚀 **性能优化**: 预分配输出容量，避免重复realloc
+        output.reserve(len);
+
+        // 🚀 **NEON优化**: 一次处理8个i24样本（双向量并行）
+        while i + 8 <= len {
+            // 🔧 **内存优化**: 直接构造NEON向量，避免临时数组
+            // 第一组4个样本
+            let i32_vec1 = vsetq_lane_s32(
+                input[i].inner(),
+                vsetq_lane_s32(
                     input[i + 1].inner(),
-                    input[i + 2].inner(),
-                    input[i + 3].inner(),
-                ];
+                    vsetq_lane_s32(
+                        input[i + 2].inner(),
+                        vsetq_lane_s32(input[i + 3].inner(), vdupq_n_s32(0), 3),
+                        2,
+                    ),
+                    1,
+                ),
+                0,
+            );
 
-                // 加载为NEON向量
-                let i32_vec = vld1q_s32(i32_vals.as_ptr());
+            // 第二组4个样本
+            let i32_vec2 = vsetq_lane_s32(
+                input[i + 4].inner(),
+                vsetq_lane_s32(
+                    input[i + 5].inner(),
+                    vsetq_lane_s32(
+                        input[i + 6].inner(),
+                        vsetq_lane_s32(input[i + 7].inner(), vdupq_n_s32(0), 3),
+                        2,
+                    ),
+                    1,
+                ),
+                0,
+            );
 
-                // 转换为浮点数并缩放
-                let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);
+            // 🚀 **并行转换**: 同时处理两个向量
+            let f32_vec1 = vmulq_f32(vcvtq_f32_s32(i32_vec1), scale_vec);
+            let f32_vec2 = vmulq_f32(vcvtq_f32_s32(i32_vec2), scale_vec);
 
-                // 存储结果
-                let mut temp = [0.0f32; 4];
-                vst1q_f32(temp.as_mut_ptr(), f32_vec);
-                output.extend_from_slice(&temp);
+            // 🔧 **高效存储**: 直接写入output内存，避免临时分配
+            let current_len = output.len();
+            unsafe {
+                output.set_len(current_len + 8); // 安全：已预分配容量
+                vst1q_f32(output.as_mut_ptr().add(current_len), f32_vec1);
+                vst1q_f32(output.as_mut_ptr().add(current_len + 4), f32_vec2);
+            }
+
+            i += 8;
+            stats.simd_samples += 8;
+        }
+
+        // 🔄 **回退处理**: 处理剩余4个样本（单向量）
+        if i + 4 <= len {
+            let i32_vec = vsetq_lane_s32(
+                input[i].inner(),
+                vsetq_lane_s32(
+                    input[i + 1].inner(),
+                    vsetq_lane_s32(
+                        input[i + 2].inner(),
+                        vsetq_lane_s32(input[i + 3].inner(), vdupq_n_s32(0), 3),
+                        2,
+                    ),
+                    1,
+                ),
+                0,
+            );
+
+            let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);
+
+            let current_len = output.len();
+            unsafe {
+                output.set_len(current_len + 4);
+                vst1q_f32(output.as_mut_ptr().add(current_len), f32_vec);
             }
 
             i += 4;

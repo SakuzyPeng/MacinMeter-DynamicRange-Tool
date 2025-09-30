@@ -20,6 +20,16 @@ pub struct AppConfig {
 
     /// 输出文件路径（可选，批量模式时自动生成）
     pub output_path: Option<PathBuf>,
+
+    /// 🚀 并行解码配置 - 攻击解码瓶颈的核心优化
+    /// 是否启用并行解码（默认：true）
+    pub parallel_decoding: bool,
+
+    /// 并行解码批大小（默认：64包）
+    pub parallel_batch_size: usize,
+
+    /// 并行解码线程数（默认：4线程）
+    pub parallel_threads: usize,
 }
 
 impl AppConfig {
@@ -62,6 +72,33 @@ pub fn parse_args() -> AppConfig {
                 .help("输出结果到文件")
                 .value_name("FILE"),
         )
+        .arg(
+            Arg::new("parallel")
+                .long("parallel")
+                .short('p')
+                .help("启用并行解码（默认：启用）")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("no-parallel")
+                .long("no-parallel")
+                .help("禁用并行解码（回退到串行模式）")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("parallel-batch")
+                .long("parallel-batch")
+                .help("并行解码批大小（默认：64）")
+                .value_name("SIZE")
+                .value_parser(clap::value_parser!(usize)),
+        )
+        .arg(
+            Arg::new("parallel-threads")
+                .long("parallel-threads")
+                .help("并行解码线程数（默认：4）")
+                .value_name("COUNT")
+                .value_parser(clap::value_parser!(usize)),
+        )
         .get_matches();
 
     // 确定输入路径（智能路径处理）
@@ -74,10 +111,30 @@ pub fn parse_args() -> AppConfig {
         }
     };
 
+    // 🚀 并行解码配置逻辑
+    let parallel_decoding = if matches.get_flag("no-parallel") {
+        false // 明确禁用并行解码
+    } else {
+        true // 默认启用并行解码（性能优先原则）
+    };
+
+    let parallel_batch_size = matches
+        .get_one::<usize>("parallel-batch")
+        .copied()
+        .unwrap_or(64); // 默认64包批量
+
+    let parallel_threads = matches
+        .get_one::<usize>("parallel-threads")
+        .copied()
+        .unwrap_or(4); // 默认4线程
+
     AppConfig {
         input_path,
         verbose: matches.get_flag("verbose"),
         output_path: matches.get_one::<String>("output").map(PathBuf::from),
+        parallel_decoding,
+        parallel_batch_size,
+        parallel_threads,
     }
 }
 
@@ -87,6 +144,14 @@ pub fn show_startup_info(config: &AppConfig) {
     println!("📝 {DESCRIPTION}");
     if config.verbose {
         println!("🌿 当前分支: foobar2000-plugin (默认批处理模式)");
+        if config.parallel_decoding {
+            println!(
+                "⚡ 并行解码: 启用 ({}线程, {}包批量) - 预期3-5倍性能提升",
+                config.parallel_threads, config.parallel_batch_size
+            );
+        } else {
+            println!("⚡ 并行解码: 禁用 (串行模式)");
+        }
     }
     println!();
 }
