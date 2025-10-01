@@ -26,10 +26,7 @@ pub enum AudioError {
     /// 内存不足错误 - 第6层防护
     OutOfMemory,
 
-    /// 数值溢出错误 - 第7层防护  
-    NumericOverflow(String),
-
-    /// 资源访问错误 - 第8层防护
+    /// 资源访问错误 - 第7层防护
     ResourceError(String),
 }
 
@@ -42,7 +39,6 @@ impl fmt::Display for AudioError {
             AudioError::DecodingError(msg) => write!(f, "音频解码失败: {msg}"),
             AudioError::CalculationError(msg) => write!(f, "计算异常: {msg}"),
             AudioError::OutOfMemory => write!(f, "内存不足"),
-            AudioError::NumericOverflow(msg) => write!(f, "数值溢出: {msg}"),
             AudioError::ResourceError(msg) => write!(f, "资源访问错误: {msg}"),
         }
     }
@@ -71,3 +67,24 @@ impl From<hound::Error> for AudioError {
 
 /// 音频处理操作的标准Result类型
 pub type AudioResult<T> = Result<T, AudioError>;
+
+// ==================== 错误转换Helper函数 ====================
+// 消除重复的 .map_err(|e| AudioError::XXX(format!(...))) 模式
+
+/// 创建格式错误的helper函数
+#[inline]
+pub fn format_error<E: fmt::Display>(context: &str, err: E) -> AudioError {
+    AudioError::FormatError(format!("{context}: {err}"))
+}
+
+/// 创建解码错误的helper函数
+#[inline]
+pub fn decoding_error<E: fmt::Display>(context: &str, err: E) -> AudioError {
+    AudioError::DecodingError(format!("{context}: {err}"))
+}
+
+/// 创建计算错误的helper函数
+#[inline]
+pub fn calculation_error<E: fmt::Display>(context: &str, err: E) -> AudioError {
+    AudioError::CalculationError(format!("{context}: {err}"))
+}

@@ -18,7 +18,7 @@
 //!                 固定批大小           4-8线程并行              序列号排序重组
 //! ```
 
-use crate::error::{AudioError, AudioResult};
+use crate::error::{self, AudioError, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
 use std::{
     collections::HashMap,
@@ -209,7 +209,7 @@ impl DecoderFactory {
     fn create_decoder(&self) -> AudioResult<Box<dyn Decoder>> {
         let decoder = symphonia::default::get_codecs()
             .make(&self.codec_params, &self.decoder_options)
-            .map_err(|e| AudioError::DecodingError(format!("创建并行解码器失败: {e}")))?;
+            .map_err(|e| error::decoding_error("创建并行解码器失败", e))?;
         Ok(decoder)
     }
 

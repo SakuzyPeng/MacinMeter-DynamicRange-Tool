@@ -17,11 +17,8 @@ pub mod processing;
 pub mod tools;
 
 // 重新导出核心类型 - 统一解码器
-pub use audio::universal_decoder::{AudioFormat, FormatSupport, UniversalDecoder};
-pub use core::DrCalculator;
+pub use audio::universal_decoder::AudioFormat;
 pub use core::dr_calculator::DrResult;
-pub use core::{PeakSelectionStrategy, PeakSelector};
 pub use error::{AudioError, AudioResult};
-pub use processing::ChannelData;
-pub use processing::{ProcessingCoordinator, SimdChannelData, SimdProcessor};
-pub use tools::{AppConfig, process_audio_file_streaming, process_streaming_decoder};
+pub use processing::ProcessingCoordinator;
+pub use tools::{AppConfig, process_streaming_decoder};

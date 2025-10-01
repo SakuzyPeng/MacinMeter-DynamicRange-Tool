@@ -5,9 +5,9 @@
 use super::cli::AppConfig;
 use super::{formatter, utils};
 use crate::{
-    AudioError, AudioFormat, AudioResult, DrResult, PeakSelectionStrategy,
+    AudioError, AudioFormat, AudioResult, DrResult,
     audio::UniversalDecoder,
-    core::{histogram::WindowRmsAnalyzer, peak_selection::PeakSelector},
+    core::{PeakSelectionStrategy, histogram::WindowRmsAnalyzer, peak_selection::PeakSelector},
     processing::ChannelExtractor,
 };
 

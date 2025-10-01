@@ -445,19 +445,21 @@ impl SimdProcessor {
 
         // SIMD主循环：每次处理2个f64值（SSE2限制）
         while i + 2 <= len {
-            // 加载2个f64值
-            let vals = _mm_loadu_pd(values.as_ptr().add(i));
-            // 计算平方
-            let squares = _mm_mul_pd(vals, vals);
-            // 累加到总和
-            sum_vec = _mm_add_pd(sum_vec, squares);
+            unsafe {
+                // 加载2个f64值
+                let vals = _mm_loadu_pd(values.as_ptr().add(i));
+                // 计算平方
+                let squares = _mm_mul_pd(vals, vals);
+                // 累加到总和
+                sum_vec = _mm_add_pd(sum_vec, squares);
+            }
 
             i += 2;
         }
 
         // 提取并累加向量中的两个值
         let mut total_sum = 0.0;
-        let sum_array: [f64; 2] = std::mem::transmute(sum_vec);
+        let sum_array: [f64; 2] = unsafe { std::mem::transmute(sum_vec) };
         total_sum += sum_array[0] + sum_array[1];
 
         // 处理剩余的奇数个元素（标量）

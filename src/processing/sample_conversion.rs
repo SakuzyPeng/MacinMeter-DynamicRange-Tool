@@ -347,106 +347,83 @@ impl Default for SampleConverter {
     }
 }
 
+// ==================== 宏：消除convert函数的重复模式 ====================
+
+/// 生成标准的样本转换函数实现
+///
+/// 统一实现模式：统计→预留→SIMD选择→日志
+macro_rules! impl_sample_conversion_method {
+    (
+        $method_name:ident,
+        $input_type:ty,
+        $simd_impl:ident,
+        $scalar_impl:ident,
+        $format_name:expr
+    ) => {
+        fn $method_name(
+            &self,
+            input: &[$input_type],
+            output: &mut Vec<f32>,
+        ) -> AudioResult<ConversionStats> {
+            let mut stats = ConversionStats::new(input.len());
+
+            // 确保输出容量足够
+            output.reserve(input.len());
+            let start_len = output.len();
+
+            debug_conversion!("🔄 {}→f32转换: {} 个样本", $format_name, input.len());
+
+            if self.has_simd_support() && input.len() >= 8 {
+                // 使用SIMD优化路径
+                stats.used_simd = true;
+                self.$simd_impl(input, output, &mut stats)?;
+            } else {
+                // 使用标量路径
+                self.$scalar_impl(input, output, &mut stats);
+            }
+
+            stats.output_samples = output.len() - start_len;
+
+            debug_conversion!(
+                "✅ {}→f32完成: SIMD={}, 效率={:.1}%",
+                $format_name,
+                stats.used_simd,
+                stats.simd_efficiency()
+            );
+
+            Ok(stats)
+        }
+    };
+}
+
 // 为SampleConverter实现SampleConversion trait
 impl SampleConversion for SampleConverter {
-    fn convert_i16_to_f32(
-        &self,
-        input: &[i16],
-        output: &mut Vec<f32>,
-    ) -> AudioResult<ConversionStats> {
-        let mut stats = ConversionStats::new(input.len());
+    // 使用宏生成i16→f32转换实现
+    impl_sample_conversion_method!(
+        convert_i16_to_f32,
+        i16,
+        convert_i16_to_f32_simd_impl,
+        convert_i16_to_f32_scalar,
+        "i16"
+    );
 
-        // 确保输出容量足够
-        output.reserve(input.len());
-        let start_len = output.len();
+    // 使用宏生成i24→f32转换实现
+    impl_sample_conversion_method!(
+        convert_i24_to_f32,
+        symphonia::core::sample::i24,
+        convert_i24_to_f32_simd_impl,
+        convert_i24_to_f32_scalar,
+        "i24"
+    );
 
-        debug_conversion!("🔄 i16→f32转换: {} 个样本", input.len());
-
-        if self.has_simd_support() && input.len() >= 8 {
-            // 使用SIMD优化路径
-            stats.used_simd = true;
-            self.convert_i16_to_f32_simd_impl(input, output, &mut stats)?;
-        } else {
-            // 使用标量路径
-            self.convert_i16_to_f32_scalar(input, output, &mut stats);
-        }
-
-        stats.output_samples = output.len() - start_len;
-
-        debug_conversion!(
-            "✅ i16→f32完成: SIMD={}, 效率={:.1}%",
-            stats.used_simd,
-            stats.simd_efficiency()
-        );
-
-        Ok(stats)
-    }
-
-    fn convert_i24_to_f32(
-        &self,
-        input: &[symphonia::core::sample::i24],
-        output: &mut Vec<f32>,
-    ) -> AudioResult<ConversionStats> {
-        let mut stats = ConversionStats::new(input.len());
-
-        // 确保输出容量足够
-        output.reserve(input.len());
-        let start_len = output.len();
-
-        debug_conversion!("🔄 i24→f32转换: {} 个样本", input.len());
-
-        if self.has_simd_support() && input.len() >= 8 {
-            // 使用SIMD优化路径
-            stats.used_simd = true;
-            self.convert_i24_to_f32_simd_impl(input, output, &mut stats)?;
-        } else {
-            // 使用标量路径
-            self.convert_i24_to_f32_scalar(input, output, &mut stats);
-        }
-
-        stats.output_samples = output.len() - start_len;
-
-        debug_conversion!(
-            "✅ i24→f32完成: SIMD={}, 效率={:.1}%",
-            stats.used_simd,
-            stats.simd_efficiency()
-        );
-
-        Ok(stats)
-    }
-
-    fn convert_i32_to_f32(
-        &self,
-        input: &[i32],
-        output: &mut Vec<f32>,
-    ) -> AudioResult<ConversionStats> {
-        let mut stats = ConversionStats::new(input.len());
-
-        // 确保输出容量足够
-        output.reserve(input.len());
-        let start_len = output.len();
-
-        debug_conversion!("🔄 i32→f32转换: {} 个样本", input.len());
-
-        if self.has_simd_support() && input.len() >= 8 {
-            // 使用SIMD优化路径
-            stats.used_simd = true;
-            self.convert_i32_to_f32_simd_impl(input, output, &mut stats)?;
-        } else {
-            // 使用标量路径
-            self.convert_i32_to_f32_scalar(input, output, &mut stats);
-        }
-
-        stats.output_samples = output.len() - start_len;
-
-        debug_conversion!(
-            "✅ i32→f32完成: SIMD={}, 效率={:.1}%",
-            stats.used_simd,
-            stats.simd_efficiency()
-        );
-
-        Ok(stats)
-    }
+    // 使用宏生成i32→f32转换实现
+    impl_sample_conversion_method!(
+        convert_i32_to_f32,
+        i32,
+        convert_i32_to_f32_simd_impl,
+        convert_i32_to_f32_scalar,
+        "i32"
+    );
 
     fn convert_f64_to_f32(
         &self,

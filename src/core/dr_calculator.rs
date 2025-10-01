@@ -202,7 +202,7 @@ impl DrCalculator {
     /// # 示例
     ///
     /// ```rust
-    /// use macinmeter_dr_tool::{DrCalculator, PeakSelectionStrategy};
+    /// use macinmeter_dr_tool::core::{DrCalculator, PeakSelectionStrategy};
     ///
     /// // 调试模式 - 使用削波感知策略
     /// let calculator = DrCalculator::for_debugging(2, PeakSelectionStrategy::ClippingAware).unwrap();

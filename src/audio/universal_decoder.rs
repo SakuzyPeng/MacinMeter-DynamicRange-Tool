@@ -3,7 +3,7 @@
 //! 真正的UniversalDecoder - 直接处理所有音频格式的解码
 //! 基于Symphonia提供完整的多格式支持
 
-use crate::error::{AudioError, AudioResult};
+use crate::error::{self, AudioError, AudioResult};
 use crate::processing::{SampleConversion, SampleConverter};
 use std::path::Path;
 
@@ -153,7 +153,7 @@ impl UniversalDecoder {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| AudioError::FormatError(format!("格式探测失败: {e}")))?;
+            .map_err(|e| error::format_error("格式探测失败", e))?;
 
         let format_reader = probed.format;
 
@@ -431,7 +431,7 @@ impl UniversalStreamProcessor {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| AudioError::FormatError(format!("创建解码器失败: {e}")))?;
+            .map_err(|e| error::format_error("创建解码器失败", e))?;
 
         let format_reader = probed.format;
 
@@ -447,7 +447,7 @@ impl UniversalStreamProcessor {
         let decoder_opts = DecoderOptions::default();
         let decoder = symphonia::default::get_codecs()
             .make(codec_params, &decoder_opts)
-            .map_err(|e| AudioError::FormatError(format!("创建解码器失败: {e}")))?;
+            .map_err(|e| error::format_error("创建解码器失败", e))?;
 
         // 🚀 创建批量包预读器：核心I/O优化
         self.batch_packet_reader = Some(BatchPacketReader::new(format_reader));
@@ -569,7 +569,7 @@ impl UniversalStreamProcessor {
             // 🚀 使用SIMD转换单个声道的数据
             let _stats = sample_converter
                 .convert_i16_to_f32(channel_data, &mut converted_channel)
-                .map_err(|e| AudioError::CalculationError(format!("S16 SIMD转换失败: {e}")))?;
+                .map_err(|e| error::calculation_error("S16 SIMD转换失败", e))?;
 
             // 交错插入到结果中
             for (frame_idx, &sample) in converted_channel.iter().enumerate() {
@@ -606,12 +606,12 @@ impl UniversalStreamProcessor {
             #[cfg(debug_assertions)]
             let stats = sample_converter
                 .convert_i24_to_f32(channel_data, &mut converted_channel)
-                .map_err(|e| AudioError::CalculationError(format!("S24 SIMD转换失败: {e}")))?;
+                .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
 
             #[cfg(not(debug_assertions))]
             let _stats = sample_converter
                 .convert_i24_to_f32(channel_data, &mut converted_channel)
-                .map_err(|e| AudioError::CalculationError(format!("S24 SIMD转换失败: {e}")))?;
+                .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
 
             // 在调试模式下显示SIMD效率
             #[cfg(debug_assertions)]
@@ -779,7 +779,7 @@ impl ParallelUniversalStreamProcessor {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| AudioError::FormatError(format!("并行解码器探测失败: {e}")))?;
+            .map_err(|e| error::format_error("并行解码器探测失败", e))?;
 
         let format_reader = probed.format;
 
@@ -869,13 +869,14 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         }
 
         // 🔄 首先尝试获取已解码的样本
-        if let Some(samples) = self.parallel_decoder.as_mut().unwrap().next_samples() {
-            if !samples.is_empty() {
+        match self.parallel_decoder.as_mut().unwrap().next_samples() {
+            Some(samples) if !samples.is_empty() => {
                 // ✅ 有可用样本，更新进度并返回
                 self.state
                     .update_position(&samples, self.state.format.channels);
                 return Ok(Some(samples));
             }
+            _ => {}
         }
 
         // 🔄 没有可用样本，需要处理更多包
@@ -888,15 +889,17 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         const WAIT_INTERVAL_MS: u64 = 1;
 
         for _ in 0..MAX_WAIT_ATTEMPTS {
-            if let Some(samples) = self.parallel_decoder.as_mut().unwrap().next_samples() {
-                if !samples.is_empty() {
+            match self.parallel_decoder.as_mut().unwrap().next_samples() {
+                Some(samples) if !samples.is_empty() => {
                     self.state
                         .update_position(&samples, self.state.format.channels);
                     return Ok(Some(samples));
                 }
+                _ => {
+                    // 短暂等待，让后台线程有时间完成解码
+                    std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
+                }
             }
-            // 短暂等待，让后台线程有时间完成解码
-            std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
         }
 
         // 🏁 等待超时后仍没有样本，可能到达文件末尾
