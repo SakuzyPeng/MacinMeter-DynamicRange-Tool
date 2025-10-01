@@ -96,9 +96,9 @@ pub fn process_audio_file_streaming(
         )?
     } else {
         if config.verbose {
-            println!("🔄 使用串行解码模式（兼容性优先）");
+            println!("🔄 使用串行解码模式（BatchPacketReader优化）");
         }
-        decoder.create_streaming_optimized(path)?
+        decoder.create_streaming(path)?
     };
 
     // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）

@@ -199,6 +199,7 @@ pub trait SampleConversion {
 /// - 跨平台SIMD优化：SSE2/AVX2(x86_64), NEON(ARM64)
 /// - 自动fallback到高效标量实现
 /// - 详细的性能统计和监控
+#[derive(Clone, Debug)]
 pub struct SampleConverter {
     /// SIMD处理器实例，复用现有基础设施
     simd_processor: SimdProcessor,
@@ -293,6 +294,13 @@ impl SampleConverter {
                     )
                 };
                 self.convert_i24_to_f32(i24_input, output)
+            }
+            SampleFormat::S32 => {
+                // S32转换
+                let i32_input = unsafe {
+                    std::slice::from_raw_parts(input.as_ptr() as *const i32, input.len())
+                };
+                self.convert_i32_to_f32(i32_input, output)
             }
             SampleFormat::F32 => {
                 // F32直接复制，无需转换
@@ -409,13 +417,35 @@ impl SampleConversion for SampleConverter {
 
     fn convert_i32_to_f32(
         &self,
-        _input: &[i32],
-        _output: &mut Vec<f32>,
+        input: &[i32],
+        output: &mut Vec<f32>,
     ) -> AudioResult<ConversionStats> {
-        // TODO: 实现i32转换
-        Err(crate::error::AudioError::FormatError(
-            "i32转换暂未实现".to_string(),
-        ))
+        let mut stats = ConversionStats::new(input.len());
+
+        // 确保输出容量足够
+        output.reserve(input.len());
+        let start_len = output.len();
+
+        debug_conversion!("🔄 i32→f32转换: {} 个样本", input.len());
+
+        if self.has_simd_support() && input.len() >= 8 {
+            // 使用SIMD优化路径
+            stats.used_simd = true;
+            self.convert_i32_to_f32_simd_impl(input, output, &mut stats)?;
+        } else {
+            // 使用标量路径
+            self.convert_i32_to_f32_scalar(input, output, &mut stats);
+        }
+
+        stats.output_samples = output.len() - start_len;
+
+        debug_conversion!(
+            "✅ i32→f32完成: SIMD={}, 效率={:.1}%",
+            stats.used_simd,
+            stats.simd_efficiency()
+        );
+
+        Ok(stats)
     }
 
     fn convert_f64_to_f32(
@@ -924,6 +954,201 @@ impl SampleConverter {
             stats.scalar_samples += 1;
         }
     }
+
+    /// 标量i32→f32转换实现
+    fn convert_i32_to_f32_scalar(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) {
+        debug_conversion!("📊 使用标量i32→f32转换");
+
+        const SCALE: f64 = 1.0 / 2147483648.0; // 2^31 = 2147483648
+
+        for &sample in input {
+            output.push((sample as f64 * SCALE) as f32);
+        }
+
+        stats.scalar_samples = input.len();
+    }
+
+    /// SIMD优化的i32→f32转换（平台自适应）
+    fn convert_i32_to_f32_simd_impl(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) -> AudioResult<()> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            self.convert_i32_to_f32_sse2(input, output, stats)
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            self.convert_i32_to_f32_neon(input, output, stats)
+        }
+
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            eprintln!(
+                "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量i32→f32转换，性能将显著下降",
+                std::env::consts::ARCH
+            );
+            self.convert_i32_to_f32_scalar(input, output, stats);
+            Ok(())
+        }
+    }
+
+    /// SSE2优化的i32→f32转换实现（x86_64）
+    #[cfg(target_arch = "x86_64")]
+    fn convert_i32_to_f32_sse2(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) -> AudioResult<()> {
+        debug_conversion!("🚀 使用SSE2优化i32→f32转换");
+
+        if !self.simd_processor.capabilities().has_basic_simd() {
+            eprintln!("⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量i32→f32转换，性能将显著下降");
+            self.convert_i32_to_f32_scalar(input, output, stats);
+            return Ok(());
+        }
+
+        unsafe { self.convert_i32_to_f32_sse2_unsafe(input, output, stats) }
+        Ok(())
+    }
+
+    /// SSE2 i32→f32转换的unsafe实现
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "sse2")]
+    unsafe fn convert_i32_to_f32_sse2_unsafe(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) {
+        use std::arch::x86_64::*;
+
+        const SCALE: f32 = 1.0 / 2147483648.0;
+        let len = input.len();
+        let mut i = 0;
+
+        // SSE2处理：一次处理4个i32样本
+        unsafe {
+            let scale_vec = _mm_set1_ps(SCALE);
+            while i + 4 <= len {
+                // 加载4个i32值
+                let i32_vec = _mm_loadu_si128(input.as_ptr().add(i) as *const __m128i);
+
+                // 转换为浮点数并缩放
+                let f32_vec = _mm_mul_ps(_mm_cvtepi32_ps(i32_vec), scale_vec);
+
+                // 存储结果
+                let mut temp = [0.0f32; 4];
+                _mm_storeu_ps(temp.as_mut_ptr(), f32_vec);
+                output.extend_from_slice(&temp);
+
+                i += 4;
+                stats.simd_samples += 4;
+            }
+        }
+
+        // 处理剩余样本（标量方式）
+        const SCALAR_SCALE: f64 = 1.0 / 2147483648.0;
+        while i < len {
+            output.push((input[i] as f64 * SCALAR_SCALE) as f32);
+            i += 1;
+            stats.scalar_samples += 1;
+        }
+    }
+
+    /// ARM NEON优化的i32→f32转换实现（ARM64）
+    #[cfg(target_arch = "aarch64")]
+    fn convert_i32_to_f32_neon(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) -> AudioResult<()> {
+        debug_conversion!("🍎 使用NEON优化i32→f32转换");
+
+        if !self.simd_processor.capabilities().has_basic_simd() {
+            eprintln!("⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量i32→f32转换，性能将显著下降");
+            self.convert_i32_to_f32_scalar(input, output, stats);
+            return Ok(());
+        }
+
+        unsafe { self.convert_i32_to_f32_neon_unsafe(input, output, stats) }
+        Ok(())
+    }
+
+    /// ARM NEON i32→f32转换的unsafe实现
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn convert_i32_to_f32_neon_unsafe(
+        &self,
+        input: &[i32],
+        output: &mut Vec<f32>,
+        stats: &mut ConversionStats,
+    ) {
+        use std::arch::aarch64::*;
+
+        const SCALE: f32 = 1.0 / 2147483648.0;
+        let scale_vec = vdupq_n_f32(SCALE);
+        let len = input.len();
+        let mut i = 0;
+
+        // 预分配输出容量
+        output.reserve(len);
+
+        // NEON优化：一次处理8个i32样本（双向量并行）
+        while i + 8 <= len {
+            unsafe {
+                // 加载8个i32值（两个向量）
+                let i32_vec1 = vld1q_s32(input.as_ptr().add(i));
+                let i32_vec2 = vld1q_s32(input.as_ptr().add(i + 4));
+
+                // 并行转换为f32并缩放
+                let f32_vec1 = vmulq_f32(vcvtq_f32_s32(i32_vec1), scale_vec);
+                let f32_vec2 = vmulq_f32(vcvtq_f32_s32(i32_vec2), scale_vec);
+
+                // 直接写入output内存
+                let current_len = output.len();
+                output.set_len(current_len + 8);
+                vst1q_f32(output.as_mut_ptr().add(current_len), f32_vec1);
+                vst1q_f32(output.as_mut_ptr().add(current_len + 4), f32_vec2);
+            }
+
+            i += 8;
+            stats.simd_samples += 8;
+        }
+
+        // 处理剩余4个样本（单向量）
+        if i + 4 <= len {
+            unsafe {
+                let i32_vec = vld1q_s32(input.as_ptr().add(i));
+                let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);
+
+                let current_len = output.len();
+                output.set_len(current_len + 4);
+                vst1q_f32(output.as_mut_ptr().add(current_len), f32_vec);
+            }
+
+            i += 4;
+            stats.simd_samples += 4;
+        }
+
+        // 处理剩余样本（标量方式）
+        const SCALAR_SCALE: f64 = 1.0 / 2147483648.0;
+        while i < len {
+            output.push((input[i] as f64 * SCALAR_SCALE) as f32);
+            i += 1;
+            stats.scalar_samples += 1;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1082,5 +1307,59 @@ mod tests {
         let result2 = converter.convert_to_f32(&f32_data, SampleFormat::F32, &mut output2);
         assert!(result2.is_ok());
         assert_eq!(output2, f32_data);
+    }
+
+    #[test]
+    fn test_i32_to_f32_scalar_conversion() {
+        let converter = SampleConverter::new();
+
+        // 测试典型的i32值
+        let input = vec![
+            0,
+            1073741824,  // 2^30 = 0.5
+            -1073741824, // -2^30 = -0.5
+            2147483647,  // 最大值 ≈ 1.0
+            -2147483648, // 最小值 = -1.0
+        ];
+        let mut output = Vec::new();
+
+        let mut stats = ConversionStats::new(input.len());
+        converter.convert_i32_to_f32_scalar(&input, &mut output, &mut stats);
+
+        assert_eq!(output.len(), input.len());
+
+        // 验证转换精度
+        assert!((output[0] - 0.0).abs() < 1e-6); // 0
+        assert!((output[1] - 0.5).abs() < 1e-6); // 1073741824/2147483648 = 0.5
+        assert!((output[2] - (-0.5)).abs() < 1e-6); // -1073741824/2147483648 = -0.5
+        assert!((output[3] - 0.999_999_999_5).abs() < 1e-6); // 2147483647/2147483648
+        assert!((output[4] - (-1.0)).abs() < 1e-6); // -2147483648/2147483648 = -1.0
+
+        assert_eq!(stats.scalar_samples, input.len());
+        assert_eq!(stats.simd_samples, 0);
+    }
+
+    #[test]
+    fn test_i32_to_f32_full_conversion() {
+        let converter = SampleConverter::new();
+
+        // 创建测试数据 - 使用i32范围内的值
+        let input: Vec<i32> = (0..100).map(|i| i * 21474836).collect();
+        let mut output = Vec::new();
+
+        let result = converter.convert_i32_to_f32(&input, &mut output);
+        assert!(result.is_ok());
+
+        let stats = result.unwrap();
+        assert_eq!(stats.input_samples, 100);
+        assert_eq!(stats.output_samples, 100);
+        assert_eq!(output.len(), 100);
+
+        println!(
+            "i32转换统计: 输入={}, 输出={}, SIMD效率={:.1}%",
+            stats.input_samples,
+            stats.output_samples,
+            stats.simd_efficiency()
+        );
     }
 }

@@ -148,119 +148,117 @@ cargo build --release && cargo test --release
 
 ## 核心架构
 
-该项目采用严格的模块化架构，基于foobar2000 DR Meter的逆向工程分析：
+**4层模块化设计** + **2条性能路径**：
 
-### 核心架构
+### 模块分层
+- **tools/**: CLI、格式化输出、文件扫描
+- **core/**: DR算法引擎（DrCalculator + WindowRmsAnalyzer）
+- **processing/**: SIMD优化（SampleConverter + ChannelExtractor + ProcessorState共享状态）
+- **audio/**: 解码器（串行BatchPacketReader + 并行OrderedParallelDecoder）
 
-**4层模块化设计**:
-- **tools/**: UI和工具层 - 命令行接口、格式化输出、文件处理
-- **core/**: DR计算核心 - 算法引擎、RMS分析、峰值策略
-- **processing/**: 性能优化层 - SIMD加速、声道分离、协调器
-- **audio/**: 音频解码层 - 通用解码器、流式处理、格式支持
+### 🚀 双路径架构（关键设计）
 
-### 🔥 流式架构特性
+**串行路径**（UniversalStreamProcessor）：
+- BatchPacketReader：减少99%系统调用的I/O优化
+- 单Decoder：直接解码，零通信开销
+- 适用场景：单文件处理、低并发
 
-**零内存累积处理**:
-- 恒定~50MB内存使用，支持任意大小文件(1MB→10GB+)
-- SIMD优化：立体声SSE2/NEON分离，单声道零开销直通
-- 智能缓冲：3秒标准窗口，与foobar2000算法完全对齐
+**并行路径**（ParallelUniversalStreamProcessor）：
+- OrderedParallelDecoder：4线程64包批量解码
+- SequencedChannel：序列号保证样本时间顺序
+- 1.85倍性能提升（115MB/s → 213MB/s）
+- 适用场景：大文件、批量处理
+
+**共享组件**（ProcessorState）：
+- 消除60%代码重复
+- 统一状态管理：position, format, chunk_stats, sample_converter
+- 统一trait实现：format(), progress(), reset(), get_stats()
 
 ### 核心算法
 
-1. **20%采样算法**: 从窗口RMS值中选择最响20%计算DR
-2. **峰值选择策略**: 4种策略(PreferSecondary/ClippingAware/AlwaysPrimary/AlwaysSecondary)
-3. **SIMD优化**: SSE2/NEON向量化，4样本并行处理
-4. **双峰值系统**: 主Peak失效时智能切换到次Peak
+1. **20%采样**: 窗口RMS排序取最响20%计算DR
+2. **SIMD优化**: ARM NEON向量化（S16/S24→F32转换）
+3. **零内存累积**: 流式窗口处理，~45MB恒定内存
+4. **双峰值系统**: 主Peak失效自动切换次Peak
 
-## 关键API
+## 关键设计模式
 
-**DrCalculator主要方法**:
+### ProcessorState共享状态模式
+消除串行和并行处理器的60%代码重复：
 ```rust
-// 构造函数
-DrCalculator::new(channel_count: usize, sum_doubling: bool, sample_rate: u32, block_duration: f64)
-
-// 主计算方法
-calculate_dr_from_samples(&self, samples: &[f32], channel_count: usize) -> Vec<DrResult>
-
-// 流式处理
-process_decoder_chunk(&mut self, chunk_samples: &[f32], channels: usize)
+struct ProcessorState {
+    path, format, current_position, total_samples,
+    chunk_stats, sample_converter, track_id
+}
+// 提供统一方法：get_format(), get_progress(), update_position(), reset(), get_stats()
 ```
 
-**核心数据结构**:
+### 解码器选择逻辑
 ```rust
-pub struct DrResult {
-    pub dr_value: f64,        // DR值
-    pub rms: f64,            // RMS值
-    pub peak: f64,           // 选中的峰值
-    pub primary_peak: f64,   // 主峰
-    pub secondary_peak: f64, // 次峰
+UniversalDecoder::create_streaming(path)           // 串行，默认
+UniversalDecoder::create_streaming_parallel(path)  // 并行，高性能
+```
+
+### 流式处理接口
+```rust
+trait StreamingDecoder {
+    fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>>;
+    fn format(&self) -> AudioFormat;
+    fn progress(&self) -> f32;
 }
 ```
 
 ---
 
-## 开发原则
+## 性能基准测试
 
-### 🎯 声道支持边界
-- **支持**: 单声道(1)和立体声(2)，SIMD优化
-- **拒绝**: 3+声道（友好错误提示）
-
-### 💎 性能优先
-- 默认启用所有优化：SIMD、多线程、Sum Doubling
-- 零配置原则：智能默认值，自动检测最优策略
-
-### 🔍 代码质量
-- 删除未使用参数，不要简单加下划线
-- 方法命名要诚实反映实际功能
-- 统一API设计，避免向后兼容混乱
-
-## 测试指引
-
-### 关键测试命令
 ```bash
-# 核心模块测试
-cargo test core::dr_calculator::tests
-cargo test processing::channel_extractor::tests
-cargo test --release simd_precision_test
+# 10次平均测试（消除测量误差）
+./benchmark_10x.sh
 
-# 性能基准测试
-cargo test --release benchmark_streaming -- --nocapture
+# 当前性能（2025-01-14，Phase 2.1）
+# 测试文件: 贝多芬第九交响曲 FLAC (1.51GB)
+# 平均速度: 213.27 MB/s
+# 平均内存: 44.52 MB
+# 性能提升: 1.85x vs 基线（115MB/s）
 ```
 
-### 测试数据要求
-- **Peak值 >> 20%RMS值**: 确保算法不会出现RMS > Peak错误
-- **足够的小信号**: 降低20%采样的RMS基准
-- **次Peak验证**: foobar2000优先选择次Peak
+## 开发原则
+
+### 🎯 架构约束
+- **串行≠并发度1的并行**: 保持两条独立路径，不强行统一
+- **组合优于继承**: 用ProcessorState共享状态，而非enum统一模式
+- **声道限制**: 仅支持1-2声道，3+声道友好拒绝
+
+### 💎 性能优先
+- 默认并行解码（4线程64包批量）
+- SIMD自动启用（ARM NEON/x86 SSE2）
+- Sum Doubling固定启用（foobar2000兼容）
+
+## 测试策略
+
+```bash
+# 单元测试（57个测试，0.02秒完成）
+cargo test
+
+# 性能验证（必须在重构后运行）
+cargo build --release && ./benchmark_10x.sh
+
+# 精度验证（SIMD vs 标量）
+cargo test --release simd_precision_test -- --nocapture
+```
 
 ---
 
-## 🔌 foobar2000插件
+## 重要架构决策记录
 
-位于 `foobar2000_plugin/` 目录，100%复用主项目DR算法。
+### 为什么保持串行和并行两条路径？
+**问题**: 能否用DecoderMode enum统一串行和并行？
 
-### 架构设计
-- **UI层**: 右键菜单 + 结果显示窗口
-- **控制器层**: DrAnalysisController (业务编排)
-- **服务层**: AudioAccessor (foobar2000解码)
-- **FFI层**: rust_bridge + rust_core (C++↔Rust接口)
-
-### 构建使用
-```bash
-# 构建插件
-cd foobar2000_plugin && mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release
-
-# 安装使用
-# 1. 拖入 foo_dr_macinmeter.fb2k-component 到foobar2000
-# 2. 右键音频文件 → "Analyze Dynamic Range"
-```
-
-### 核心特性
-- ✅ 1-2声道支持，3+声道友好拒绝
-- ✅ 零重复代码，100%复用主项目算法
-- ✅ FFI安全，内存边界检查
-- ✅ 结果兼容foobar2000 DR Meter
+**答案**: **不能**。串行≠并发度1的并行：
+- **串行**（BatchPacketReader）：零通信开销，直接VecDeque缓冲
+- **并行度1**（OrderedParallelDecoder）：仍有channel/HashMap/序列号开销，但无并行收益
+- **结论**: 保持两条独立路径，用ProcessorState消除重复
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

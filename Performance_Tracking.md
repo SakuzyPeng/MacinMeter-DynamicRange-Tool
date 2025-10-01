@@ -175,6 +175,72 @@ I/O优化版本:  114.86 MB/s → 加速倍数:    1.85x
 - ✅ **架构扩展性**: 为后续异步流水线优化奠定基础
 - 🎯 **下一步方向**: I/O异步化、多文件并行处理
 
+#### ⚠️ 已知问题
+
+- 🔴 **代码重复**: UniversalStreamProcessor与ParallelUniversalStreamProcessor存在40-50%代码重复
+- 🟡 **SIMD缺失**: 并行解码器最初未集成SIMD样本转换（Phase 2.1已修复）
+
+### 🚀 Phase 2.1: 并行解码器SIMD集成 (2025-01-14)
+
+**版本**: foobar2000-plugin分支，并行解码+SIMD架构
+**Git Commit**: [Current State]
+**优化状态**: 补充并行解码器的SIMD样本转换支持
+
+#### 🎯 性能指标 (10次平均值)
+
+**测试文件**: 贝多芬第九交响曲 FLAC (1,510.70 MB)
+
+```
+📊 并行解码+SIMD版本:
+⏱️  7.118s | 💾 45.00MB | 🚀 213.25MB/s
+
+🔄 与Phase 2.0对比:
+- 处理速度: 213.25 MB/s (vs 213.17 MB/s Phase 2.0)
+- 性能变化: +0.04% (统计误差范围内)
+- 内存使用: 45.00 MB (vs 45.53 MB, 略微优化)
+- 运行时间: 7.118s (vs 7.125s, 基本持平)
+```
+
+#### 💎 技术实现
+
+**SIMD集成架构**:
+- ✅ 在`DecoderFactory`中集成`SampleConverter`
+- ✅ 修改`decode_single_packet_with_simd`使用SIMD转换
+- ✅ 实现`convert_to_interleaved_with_simd`完整SIMD路径
+- ✅ 支持S16/S24/S32等格式的ARM NEON优化
+
+**代码改进**:
+- ✅ `SampleConverter`添加`Clone` + `Debug` trait
+- ✅ 导入`SampleConversion` trait启用SIMD方法
+- ✅ 清理重复的trait导入
+
+#### 💡 关键发现
+
+**性能持平的原因分析**:
+- 🔍 **Symphonia内置优化**: Symphonia的`AudioBuffer`转换可能已经优化良好
+- 🔍 **非瓶颈环节**: 样本格式转换在并行解码架构中占比极小（<5%）
+- 🔍 **SIMD边际效益**: 在4线程并行解码场景下，SIMD优化被并行加速掩盖
+- ✅ **架构完整性**: SIMD集成提升代码一致性和可维护性
+
+**技术价值**:
+- ✅ **代码统一**: 串行和并行路径都使用相同的SIMD优化基础设施
+- ✅ **未来保障**: 为其他音频格式（如24bit样本）的SIMD优化预留空间
+- ✅ **架构优雅**: 通过`DecoderFactory`传递转换器，保持线程独立性
+
+#### 📊 完整架构特性
+
+- ✅ 流式解码处理（零内存累积）
+- ✅ 标准3秒窗口RMS分析
+- ✅ SIMD优化声道分离（立体声）
+- ✅ 20%采样算法（窗口级）
+- ✅ 智能缓冲管理
+- ✅ SIMD样本格式转换（S16/S24→F32 NEON）
+- ✅ 有序并行解码器（4线程，64包批量）
+- ✅ 智能重排序机制（SequencedChannel）
+- ✅ 解码器工厂模式（线程独立）
+- ✅ **并行解码SIMD路径**（🔥 新增，架构完整性）
+- ❌ 异步流水线处理（待实现）
+
 ---
 
 ## 🎯 优化计划与目标

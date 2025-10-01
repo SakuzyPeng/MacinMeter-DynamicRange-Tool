@@ -19,6 +19,7 @@
 //! ```
 
 use crate::error::{AudioError, AudioResult};
+use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
 use std::{
     collections::HashMap,
     sync::{
@@ -29,7 +30,7 @@ use std::{
     thread,
 };
 use symphonia::core::{
-    audio::SampleBuffer,
+    audio::{AudioBufferRef, SampleBuffer, Signal},
     codecs::{Decoder, DecoderOptions},
     formats::Packet,
 };
@@ -189,13 +190,18 @@ impl ParallelDecodingStats {
 struct DecoderFactory {
     codec_params: symphonia::core::codecs::CodecParameters,
     decoder_options: DecoderOptions,
+    sample_converter: SampleConverter, // 🚀 新增：SIMD样本转换器
 }
 
 impl DecoderFactory {
-    fn new(codec_params: symphonia::core::codecs::CodecParameters) -> Self {
+    fn new(
+        codec_params: symphonia::core::codecs::CodecParameters,
+        sample_converter: SampleConverter,
+    ) -> Self {
         Self {
             codec_params,
             decoder_options: DecoderOptions::default(),
+            sample_converter,
         }
     }
 
@@ -206,18 +212,30 @@ impl DecoderFactory {
             .map_err(|e| AudioError::DecodingError(format!("创建并行解码器失败: {e}")))?;
         Ok(decoder)
     }
+
+    /// 获取样本转换器的克隆
+    fn get_sample_converter(&self) -> SampleConverter {
+        self.sample_converter.clone()
+    }
 }
 
 impl OrderedParallelDecoder {
     /// 创建新的有序并行解码器
-    pub fn new(codec_params: symphonia::core::codecs::CodecParameters) -> Self {
+    ///
+    /// # 参数
+    /// - `codec_params`: 编解码器参数
+    /// - `sample_converter`: SIMD样本转换器
+    pub fn new(
+        codec_params: symphonia::core::codecs::CodecParameters,
+        sample_converter: SampleConverter,
+    ) -> Self {
         Self {
             batch_size: DEFAULT_BATCH_SIZE,
             thread_pool_size: DEFAULT_PARALLEL_THREADS,
             current_batch: Vec::new(),
             sequence_counter: 0,
             samples_channel: SequencedChannel::new(),
-            decoder_factory: DecoderFactory::new(codec_params),
+            decoder_factory: DecoderFactory::new(codec_params, sample_converter),
             stats: ParallelDecodingStats::default(),
         }
     }
@@ -340,15 +358,20 @@ impl OrderedParallelDecoder {
             let decoder_factory = decoder_factory.clone();
 
             let handle = thread::spawn(move || {
-                // 每个线程创建自己的解码器实例
+                // 每个线程创建自己的解码器实例和SIMD转换器
                 let mut decoder = match decoder_factory.create_decoder() {
                     Ok(d) => d,
                     Err(_) => return, // 解码器创建失败，线程退出
                 };
+                let sample_converter = decoder_factory.get_sample_converter();
 
                 // 🔄 持续处理解码任务
                 while let Ok(sequenced_packet) = { task_receiver.lock().unwrap().recv() } {
-                    match Self::decode_single_packet(&mut *decoder, sequenced_packet.packet) {
+                    match Self::decode_single_packet_with_simd(
+                        &mut *decoder,
+                        sequenced_packet.packet,
+                        &sample_converter,
+                    ) {
                         Ok(samples) => {
                             // 🎯 发送解码结果，带上原始序列号
                             if result_sender
@@ -388,7 +411,8 @@ impl OrderedParallelDecoder {
         }
     }
 
-    /// 🎵 解码单个数据包为样本数据
+    /// 🎵 解码单个数据包为样本数据（原始版本，无SIMD）
+    #[allow(dead_code)]
     fn decode_single_packet(decoder: &mut dyn Decoder, packet: Packet) -> AudioResult<Vec<f32>> {
         match decoder.decode(&packet) {
             Ok(audio_buf) => {
@@ -401,6 +425,127 @@ impl OrderedParallelDecoder {
             }
             Err(e) => Err(AudioError::DecodingError(format!("并行解码包失败: {e}"))),
         }
+    }
+
+    /// 🚀 解码单个数据包为样本数据（带SIMD优化）
+    fn decode_single_packet_with_simd(
+        decoder: &mut dyn Decoder,
+        packet: Packet,
+        sample_converter: &SampleConverter,
+    ) -> AudioResult<Vec<f32>> {
+        match decoder.decode(&packet) {
+            Ok(audio_buf) => {
+                // 🚀 使用SIMD优化转换样本
+                let mut samples = Vec::new();
+                Self::convert_to_interleaved_with_simd(sample_converter, &audio_buf, &mut samples)?;
+                Ok(samples)
+            }
+            Err(e) => Err(AudioError::DecodingError(format!("并行解码包失败: {e}"))),
+        }
+    }
+
+    /// 🚀 将音频缓冲区转换为交错f32样本（SIMD优化）
+    fn convert_to_interleaved_with_simd(
+        sample_converter: &SampleConverter,
+        audio_buf: &AudioBufferRef,
+        samples: &mut Vec<f32>,
+    ) -> AudioResult<()> {
+        // 提取缓冲区信息
+        macro_rules! extract_buffer_info {
+            ($buf:expr) => {{ ($buf.spec().channels.count(), $buf.frames()) }};
+        }
+
+        let (channel_count, frame_count) = match audio_buf {
+            AudioBufferRef::F32(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::S16(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::S24(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::S32(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::F64(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::U8(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::U16(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::U24(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::U32(buf) => extract_buffer_info!(buf),
+            AudioBufferRef::S8(buf) => extract_buffer_info!(buf),
+        };
+
+        samples.reserve(channel_count * frame_count);
+
+        // 样本转换宏
+        macro_rules! convert_samples {
+            ($buf:expr, $converter:expr) => {{
+                for frame in 0..frame_count {
+                    for ch in 0..channel_count {
+                        let sample_f32 = $converter($buf.chan(ch)[frame]);
+                        samples.push(sample_f32);
+                    }
+                }
+            }};
+        }
+
+        // 🚀 针对不同格式使用SIMD优化
+        match audio_buf {
+            AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
+            // 🚀 S16 SIMD优化
+            AudioBufferRef::S16(buf) => {
+                for ch in 0..channel_count {
+                    let channel_data = buf.chan(ch);
+                    let mut converted_channel = Vec::new();
+
+                    sample_converter
+                        .convert_i16_to_f32(channel_data, &mut converted_channel)
+                        .map_err(|e| {
+                            AudioError::CalculationError(format!("S16 SIMD转换失败: {e}"))
+                        })?;
+
+                    // 交错插入
+                    for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+                        let interleaved_idx = frame_idx * channel_count + ch;
+                        if samples.len() <= interleaved_idx {
+                            samples.resize(interleaved_idx + 1, 0.0);
+                        }
+                        samples[interleaved_idx] = sample;
+                    }
+                }
+            }
+            // 🚀 S24 SIMD优化 (主要性能提升点)
+            AudioBufferRef::S24(buf) => {
+                for ch in 0..channel_count {
+                    let channel_data = buf.chan(ch);
+                    let mut converted_channel = Vec::new();
+
+                    sample_converter
+                        .convert_i24_to_f32(channel_data, &mut converted_channel)
+                        .map_err(|e| {
+                            AudioError::CalculationError(format!("S24 SIMD转换失败: {e}"))
+                        })?;
+
+                    // 交错插入
+                    for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+                        let interleaved_idx = frame_idx * channel_count + ch;
+                        if samples.len() <= interleaved_idx {
+                            samples.resize(interleaved_idx + 1, 0.0);
+                        }
+                        samples[interleaved_idx] = sample;
+                    }
+                }
+            }
+            // 其他格式使用标准转换
+            AudioBufferRef::S32(buf) => convert_samples!(buf, |s| (s as f64 / 2147483648.0) as f32),
+            AudioBufferRef::F64(buf) => convert_samples!(buf, |s| s as f32),
+            AudioBufferRef::U8(buf) => convert_samples!(buf, |s| ((s as f32) - 128.0) / 128.0),
+            AudioBufferRef::U16(buf) => convert_samples!(buf, |s| ((s as f32) - 32768.0) / 32768.0),
+            AudioBufferRef::U24(buf) => {
+                convert_samples!(buf, |s: symphonia::core::sample::u24| {
+                    ((s.inner() as f32) - 8388608.0) / 8388608.0
+                })
+            }
+            AudioBufferRef::U32(buf) => {
+                convert_samples!(buf, |s| (((s as f64) - 2147483648.0) / 2147483648.0) as f32)
+            }
+            AudioBufferRef::S8(buf) => convert_samples!(buf, |s| (s as f32) / 128.0),
+        }
+
+        Ok(())
     }
 }
 
@@ -431,10 +576,14 @@ mod tests {
 
     #[test]
     fn test_parallel_decoder_config() {
+        use crate::processing::SampleConverter;
+
         let mut codec_params = symphonia::core::codecs::CodecParameters::new();
         codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
 
-        let decoder = OrderedParallelDecoder::new(codec_params).with_config(128, 8);
+        let sample_converter = SampleConverter::new();
+        let decoder =
+            OrderedParallelDecoder::new(codec_params, sample_converter).with_config(128, 8);
 
         assert_eq!(decoder.batch_size, 128);
         assert_eq!(decoder.thread_pool_size, 8);
