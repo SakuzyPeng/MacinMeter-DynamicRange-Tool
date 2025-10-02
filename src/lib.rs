@@ -22,3 +22,8 @@ pub use core::dr_calculator::DrResult;
 pub use error::{AudioError, AudioResult};
 pub use processing::ProcessingCoordinator;
 pub use tools::{AppConfig, process_streaming_decoder};
+
+// 重新导出样本转换类型（用于SIMD精度和性能测试）
+pub use processing::sample_conversion::{
+    ConversionStats, SampleConversion, SampleConverter, SampleFormat,
+};

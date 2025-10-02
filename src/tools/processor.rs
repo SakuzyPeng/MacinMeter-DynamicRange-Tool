@@ -8,7 +8,7 @@ use crate::{
     AudioError, AudioFormat, AudioResult, DrResult,
     audio::UniversalDecoder,
     core::{PeakSelectionStrategy, histogram::WindowRmsAnalyzer, peak_selection::PeakSelector},
-    processing::ChannelExtractor,
+    processing::ChannelSeparator,
 };
 
 /// 处理单个音频文件
@@ -107,7 +107,7 @@ pub fn process_audio_file_streaming(
         .collect();
 
     // 🚀 创建SIMD优化的声道分离器
-    let channel_extractor = ChannelExtractor::new();
+    let channel_separator = ChannelSeparator::new();
 
     // 🎯 可配置的窗口大小：支持未来调试需求
     const WINDOW_DURATION_SECONDS: f64 = 3.0; // 可配置：未来可从config获取
@@ -157,7 +157,7 @@ pub fn process_audio_file_streaming(
             process_window_with_simd_separation(
                 window_samples,
                 format.channels as u32,
-                &channel_extractor,
+                &channel_separator,
                 &mut analyzers,
             );
 
@@ -179,7 +179,7 @@ pub fn process_audio_file_streaming(
         process_window_with_simd_separation(
             &sample_buffer,
             format.channels as u32,
-            &channel_extractor,
+            &channel_separator,
             &mut analyzers,
         );
     }
@@ -238,11 +238,11 @@ pub fn process_audio_file_streaming(
 
 /// 🚀 SIMD优化窗口声道分离处理（辅助函数）
 ///
-/// 使用ChannelExtractor的SIMD优化方法分离声道并送入WindowRmsAnalyzer
+/// 使用ChannelSeparator的SIMD优化方法分离声道并送入WindowRmsAnalyzer
 fn process_window_with_simd_separation(
     window_samples: &[f32],
     channel_count: u32,
-    channel_extractor: &ChannelExtractor,
+    channel_separator: &ChannelSeparator,
     analyzers: &mut [WindowRmsAnalyzer],
 ) {
     if channel_count == 1 {
@@ -252,14 +252,14 @@ fn process_window_with_simd_separation(
         // 立体声：使用SIMD优化分离左右声道
 
         // 🚀 SIMD优化提取左声道
-        let left_samples = channel_extractor.extract_channel_samples_optimized(
+        let left_samples = channel_separator.extract_channel_samples_optimized(
             window_samples,
             0, // 左声道索引
             2, // 总声道数
         );
 
         // 🚀 SIMD优化提取右声道
-        let right_samples = channel_extractor.extract_channel_samples_optimized(
+        let right_samples = channel_separator.extract_channel_samples_optimized(
             window_samples,
             1, // 右声道索引
             2, // 总声道数
@@ -300,7 +300,7 @@ pub fn process_streaming_decoder(
         .collect();
 
     // 🚀 创建SIMD优化的声道分离器
-    let channel_extractor = ChannelExtractor::new();
+    let channel_separator = ChannelSeparator::new();
 
     // 🎯 可配置的窗口大小：支持未来调试需求
     const WINDOW_DURATION_SECONDS: f64 = 3.0; // 可配置：未来可从config获取
@@ -350,7 +350,7 @@ pub fn process_streaming_decoder(
             process_window_with_simd_separation(
                 window_samples,
                 format.channels as u32,
-                &channel_extractor,
+                &channel_separator,
                 &mut analyzers,
             );
 
@@ -372,7 +372,7 @@ pub fn process_streaming_decoder(
         process_window_with_simd_separation(
             &sample_buffer,
             format.channels as u32,
-            &channel_extractor,
+            &channel_separator,
             &mut analyzers,
         );
     }

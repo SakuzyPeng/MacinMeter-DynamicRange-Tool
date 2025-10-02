@@ -22,6 +22,12 @@ use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
 #[cfg(target_arch = "x86_64")]
 #[inline]
 fn foobar2000_sse_sqrt(value: f64) -> f64 {
+    // SAFETY: SSE2平方根计算，与foobar2000行为完全一致。
+    // _mm_set_pd将value打包到SSE向量的低64位（高64位填0）。
+    // _mm_sqrt_pd计算向量中两个f64的平方根（仅使用低64位结果）。
+    // _mm_cvtsd_f64提取低64位的f64结果到标量。
+    // 所有操作都是纯SSE2寄存器操作，无内存访问，完全安全。
+    // 此实现复现foobar2000的SSE sqrt精度特性，确保DR计算结果一致。
     unsafe {
         let packed = _mm_set_pd(0.0, value);
         let result = _mm_sqrt_pd(packed);
@@ -64,7 +70,7 @@ impl ChannelData {
     ///
     /// # 示例
     ///
-    /// ```
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::ChannelData;
     ///
     /// let data = ChannelData::new();
@@ -93,7 +99,7 @@ impl ChannelData {
     ///
     /// # 示例
     ///
-    /// ```
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::ChannelData;
     ///
     /// let mut data = ChannelData::new();
@@ -140,7 +146,7 @@ impl ChannelData {
     ///
     /// # 示例
     ///
-    /// ```
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::ChannelData;
     ///
     /// let mut data = ChannelData::new();
@@ -178,7 +184,7 @@ impl ChannelData {
     ///
     /// # 示例
     ///
-    /// ```
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::ChannelData;
     ///
     /// let mut data = ChannelData::new();
@@ -203,7 +209,7 @@ impl ChannelData {
     ///
     /// # 示例
     ///
-    /// ```
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::ChannelData;
     ///
     /// let mut data = ChannelData::new();

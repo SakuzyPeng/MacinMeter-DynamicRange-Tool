@@ -3,9 +3,10 @@
 //! 纯流程控制器，负责协调各个工具模块完成DR分析任务。
 
 use macinmeter_dr_tool::{
-    error::AudioError,
+    error::{AudioError, ErrorCategory},
     tools::{self, AppConfig},
 };
+use std::collections::HashMap;
 use std::process;
 
 /// 错误处理和建议
@@ -58,6 +59,8 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
     };
     let mut processed_count = 0;
     let mut failed_count = 0;
+    // 🎯 错误分类统计：记录每种错误类型及对应的失败文件列表
+    let mut error_stats: HashMap<ErrorCategory, Vec<String>> = HashMap::new();
 
     // 逐个处理音频文件
     for (index, audio_file) in audio_files.iter().enumerate() {
@@ -86,7 +89,28 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             }
             Err(e) => {
                 failed_count += 1;
-                println!("   ❌ 处理失败: {e}");
+
+                // 🎯 错误分类统计
+                let category = ErrorCategory::from_audio_error(&e);
+                let filename = tools::utils::extract_filename_lossy(audio_file);
+                error_stats
+                    .entry(category)
+                    .or_default()
+                    .push(filename.clone());
+
+                // 🎯 详细错误输出（verbose模式）
+                if config.verbose {
+                    println!("   ❌ 处理失败");
+                    println!("      文件: {}", audio_file.display());
+                    println!("      类别: {}", category.display_name());
+                    println!("      错误: {e}");
+                    if let Some(source) = std::error::Error::source(&e) {
+                        println!("      原因: {source}");
+                    }
+                } else {
+                    println!("   ❌ [{}] {e}", category.display_name());
+                }
+
                 if !is_single_file {
                     tools::add_failed_to_batch_output(&mut batch_output, audio_file);
                 }
@@ -100,6 +124,7 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             &audio_files,
             processed_count,
             failed_count,
+            &error_stats,
         ));
         let output_path = tools::generate_batch_output_path(config);
         std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;

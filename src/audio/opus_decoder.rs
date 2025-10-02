@@ -6,7 +6,7 @@
 use super::format::AudioFormat;
 use super::stats::ChunkSizeStats;
 use super::streaming::StreamingDecoder;
-use crate::error::AudioResult;
+use crate::error::{self, AudioResult};
 use songbird::input::Input;
 use std::path::Path;
 use symphonia_core::{audio::Signal, codecs::CODEC_TYPE_OPUS, errors::Error as SymphError};
@@ -70,9 +70,8 @@ impl SongbirdOpusDecoder {
         let input = Input::from(songbird::input::File::new(path.to_path_buf()));
 
         // 使用tokio运行时进行异步解析
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            crate::error::AudioError::DecodingError(format!("无法创建tokio运行时: {e}"))
-        })?;
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| error::decoding_error("创建tokio运行时失败", e))?;
 
         let parsed_input = rt
             .block_on(async {
@@ -83,24 +82,23 @@ impl SongbirdOpusDecoder {
                     )
                     .await
             })
-            .map_err(|e| {
-                crate::error::AudioError::DecodingError(format!("无法解析opus文件: {e}"))
-            })?;
+            .map_err(|e| error::decoding_error("解析opus文件失败", e))?;
 
         // 获取真实的格式信息
         if let Some(parsed) = parsed_input.parsed() {
-            let track = parsed.format.default_track().ok_or_else(|| {
-                crate::error::AudioError::DecodingError("未找到默认音轨".to_string())
-            })?;
+            let track = parsed
+                .format
+                .default_track()
+                .ok_or_else(|| error::decoding_error("未找到默认音轨", ""))?;
 
             let codec_params = &track.codec_params;
 
             // 验证这确实是Opus编解码器
             if codec_params.codec != CODEC_TYPE_OPUS {
-                return Err(crate::error::AudioError::DecodingError(format!(
-                    "预期Opus编解码器，但找到: {:?}",
-                    codec_params.codec
-                )));
+                return Err(error::decoding_error(
+                    "编解码器类型不匹配",
+                    format!("预期Opus，但找到: {:?}", codec_params.codec),
+                ));
             }
 
             let sample_rate = codec_params.sample_rate.unwrap_or(48000); // Opus默认48kHz
@@ -125,8 +123,9 @@ impl SongbirdOpusDecoder {
             format.validate()?;
             Ok(format)
         } else {
-            Err(crate::error::AudioError::DecodingError(
-                "无法解析音频文件".to_string(),
+            Err(error::decoding_error(
+                "解析音频文件失败",
+                "输入源无解析数据",
             ))
         }
     }
@@ -182,9 +181,8 @@ impl SongbirdOpusDecoder {
         let input = Input::from(songbird::input::File::new(self.file_path.clone()));
 
         // 使用tokio运行时进行异步解析
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            crate::error::AudioError::DecodingError(format!("无法创建tokio运行时: {e}"))
-        })?;
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| error::decoding_error("创建tokio运行时失败", e))?;
 
         let parsed_input = rt
             .block_on(async {
@@ -195,9 +193,7 @@ impl SongbirdOpusDecoder {
                     )
                     .await
             })
-            .map_err(|e| {
-                crate::error::AudioError::DecodingError(format!("无法解析opus文件: {e}"))
-            })?;
+            .map_err(|e| error::decoding_error("解析opus文件失败", e))?;
 
         // 验证输入已正确解析
         match &parsed_input {
@@ -206,14 +202,10 @@ impl SongbirdOpusDecoder {
                     self.input = Some(parsed_input);
                     Ok(())
                 } else {
-                    Err(crate::error::AudioError::DecodingError(
-                        "输入未被正确解析".to_string(),
-                    ))
+                    Err(error::decoding_error("输入未被正确解析", ""))
                 }
             }
-            _ => Err(crate::error::AudioError::DecodingError(
-                "输入未处于Live状态".to_string(),
-            )),
+            _ => Err(error::decoding_error("输入未处于Live状态", "")),
         }
     }
 
@@ -227,20 +219,17 @@ impl SongbirdOpusDecoder {
             self.initialize_songbird()?;
         }
 
-        let input = self.input.as_mut().ok_or_else(|| {
-            crate::error::AudioError::DecodingError("未初始化的解析输入".to_string())
-        })?;
+        let input = self
+            .input
+            .as_mut()
+            .ok_or_else(|| error::decoding_error("未初始化的解析输入", ""))?;
 
         // 获取parsed数据的可变引用
         let parsed = match input {
-            Input::Live(live_input, _) => live_input.parsed_mut().ok_or_else(|| {
-                crate::error::AudioError::DecodingError("输入未被解析".to_string())
-            })?,
-            _ => {
-                return Err(crate::error::AudioError::DecodingError(
-                    "输入不是Live状态".to_string(),
-                ));
-            }
+            Input::Live(live_input, _) => live_input
+                .parsed_mut()
+                .ok_or_else(|| error::decoding_error("输入未被解析", ""))?,
+            _ => return Err(error::decoding_error("输入不是Live状态", "")),
         };
 
         let mut output_samples = Vec::new();
@@ -258,11 +247,7 @@ impl SongbirdOpusDecoder {
                     self.is_finished = true;
                     break;
                 }
-                Err(e) => {
-                    return Err(crate::error::AudioError::DecodingError(format!(
-                        "读取包失败: {e}"
-                    )));
-                }
+                Err(e) => return Err(error::decoding_error("读取包失败", e)),
             };
 
             // 只处理我们目标音轨的包
@@ -281,11 +266,7 @@ impl SongbirdOpusDecoder {
                     // 跳过解码错误的包，继续处理
                     continue;
                 }
-                Err(e) => {
-                    return Err(crate::error::AudioError::DecodingError(format!(
-                        "解码失败: {e}"
-                    )));
-                }
+                Err(e) => return Err(error::decoding_error("解码失败", e)),
             }
         }
 
@@ -365,9 +346,7 @@ impl SongbirdOpusDecoder {
 
                 Ok(output)
             }
-            _ => Err(crate::error::AudioError::DecodingError(
-                "不支持的音频格式".to_string(),
-            )),
+            _ => Err(error::decoding_error("不支持的音频格式", "")),
         }
     }
 }

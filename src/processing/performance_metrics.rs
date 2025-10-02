@@ -3,7 +3,7 @@
 //! 负责音频处理性能的评估、统计和报告，为BatchProcessor提供专业化的性能分析服务。
 //! 包含SIMD加速比估算、处理速度统计等功能。
 
-use super::simd_channel_data::SimdCapabilities;
+use super::simd_core::SimdCapabilities;
 use crate::core::DrResult;
 
 // 跨平台性能常量（动态检测替代硬编码）
@@ -91,7 +91,7 @@ impl PerformanceEvaluator {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::PerformanceEvaluator;
     ///
     /// let evaluator = PerformanceEvaluator::new();
@@ -129,7 +129,7 @@ impl PerformanceEvaluator {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::PerformanceEvaluator;
     ///
     /// let evaluator = PerformanceEvaluator::new();

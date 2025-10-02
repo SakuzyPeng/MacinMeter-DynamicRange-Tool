@@ -88,3 +88,45 @@ pub fn decoding_error<E: fmt::Display>(context: &str, err: E) -> AudioError {
 pub fn calculation_error<E: fmt::Display>(context: &str, err: E) -> AudioError {
     AudioError::CalculationError(format!("{context}: {err}"))
 }
+
+// ==================== 错误分类系统 ====================
+// 用于批量处理中的错误统计和分析
+
+/// 错误类别枚举（用于批量处理统计）
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum ErrorCategory {
+    /// 格式相关错误（不支持的格式、格式损坏等）
+    Format,
+    /// 解码相关错误（解码器失败、音频数据损坏等）
+    Decoding,
+    /// I/O相关错误（文件不存在、权限不足等）
+    Io,
+    /// 计算相关错误（数值异常、内存不足等）
+    Calculation,
+    /// 其他未分类错误
+    Other,
+}
+
+impl ErrorCategory {
+    /// 从AudioError提取错误类别
+    pub fn from_audio_error(e: &AudioError) -> Self {
+        match e {
+            AudioError::FormatError(_) => Self::Format,
+            AudioError::DecodingError(_) => Self::Decoding,
+            AudioError::IoError(_) => Self::Io,
+            AudioError::CalculationError(_) | AudioError::OutOfMemory => Self::Calculation,
+            AudioError::InvalidInput(_) | AudioError::ResourceError(_) => Self::Other,
+        }
+    }
+
+    /// 获取错误类别的显示名称
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Format => "格式错误",
+            Self::Decoding => "解码错误",
+            Self::Io => "I/O错误",
+            Self::Calculation => "计算错误",
+            Self::Other => "其他错误",
+        }
+    }
+}

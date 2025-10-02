@@ -18,6 +18,21 @@ use super::opus_decoder::SongbirdOpusDecoder;
 // 内部模块
 // (所有错误处理现在内联到方法中)
 
+/// 宏：为包含ProcessorState的StreamingDecoder实现统一的format()和progress()方法
+///
+/// 消除UniversalStreamProcessor和ParallelUniversalStreamProcessor中的重复代码
+macro_rules! impl_streaming_decoder_state_methods {
+    () => {
+        fn format(&self) -> AudioFormat {
+            self.state.get_format()
+        }
+
+        fn progress(&self) -> f32 {
+            self.state.get_progress()
+        }
+    };
+}
+
 /// 🌟 统一音频解码器 - 真正的Universal
 ///
 /// 直接基于Symphonia处理所有音频格式，无需中间层抽象
@@ -161,7 +176,9 @@ impl UniversalDecoder {
             .tracks()
             .iter()
             .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-            .ok_or_else(|| AudioError::FormatError("未找到音频轨道".to_string()))?;
+            .ok_or_else(|| {
+                AudioError::FormatError(format!("未找到音频轨道: 文件 {}", path.display()))
+            })?;
 
         let codec_params = &track.codec_params;
         let sample_rate = codec_params.sample_rate.unwrap_or(44100);
@@ -302,7 +319,7 @@ impl BatchPacketReader {
                     {
                         break; // 正常EOF，停止预读
                     }
-                    Err(e) => return Err(AudioError::FormatError(format!("预读包错误: {e}"))),
+                    Err(e) => return Err(error::format_error("预读包失败", e)),
                 }
             }
         }
@@ -332,6 +349,8 @@ struct ProcessorState {
     chunk_stats: ChunkSizeStats,
     sample_converter: SampleConverter,
     track_id: Option<u32>,
+    /// 跳过的损坏包数量（用于容错处理）
+    skipped_packets: usize,
 }
 
 impl ProcessorState {
@@ -344,6 +363,7 @@ impl ProcessorState {
             chunk_stats: ChunkSizeStats::new(),
             sample_converter: SampleConverter::new(),
             track_id: None,
+            skipped_packets: 0,
         }
     }
 
@@ -351,6 +371,10 @@ impl ProcessorState {
     fn get_format(&self) -> AudioFormat {
         let mut current_format = self.format.clone();
         current_format.update_sample_count(self.total_samples);
+        // 🎯 如果跳过了损坏包，标记为部分分析
+        if self.skipped_packets > 0 {
+            current_format.mark_as_partial(self.skipped_packets);
+        }
         current_format
     }
 
@@ -439,7 +463,12 @@ impl UniversalStreamProcessor {
             .tracks()
             .iter()
             .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-            .ok_or_else(|| AudioError::FormatError("未找到音频轨道".to_string()))?;
+            .ok_or_else(|| {
+                AudioError::FormatError(format!(
+                    "未找到音频轨道: 文件 {}",
+                    self.state.path.display()
+                ))
+            })?;
 
         let track_id = track.id;
         let codec_params = &track.codec_params;
@@ -640,22 +669,26 @@ impl UniversalStreamProcessor {
 }
 
 impl StreamingDecoder for UniversalStreamProcessor {
-    fn format(&self) -> AudioFormat {
-        self.state.get_format()
-    }
-
-    fn progress(&self) -> f32 {
-        self.state.get_progress()
-    }
+    // 使用宏实现通用方法（format和progress）
+    impl_streaming_decoder_state_methods!();
 
     fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
         if self.batch_packet_reader.is_none() {
             self.initialize_symphonia()?;
         }
 
-        let batch_reader = self.batch_packet_reader.as_mut().unwrap();
-        let decoder = self.decoder.as_mut().unwrap();
-        let track_id = self.state.track_id.unwrap();
+        let batch_reader = self
+            .batch_packet_reader
+            .as_mut()
+            .expect("batch_packet_reader必须已初始化，initialize_symphonia()已设置");
+        let decoder = self
+            .decoder
+            .as_mut()
+            .expect("decoder必须已初始化，initialize_symphonia()已设置");
+        let track_id = self
+            .state
+            .track_id
+            .expect("track_id必须已初始化，initialize_symphonia()已设置");
 
         // 🚀 使用批量预读器获取包：大幅减少I/O系统调用
         match batch_reader.next_packet()? {
@@ -683,10 +716,21 @@ impl StreamingDecoder for UniversalStreamProcessor {
                     }
                     Err(e) => match e {
                         symphonia::core::errors::Error::DecodeError(_) => {
-                            // 跳过解码错误的包，继续处理
+                            // 🎯 容错处理：跳过解码错误的包，继续处理
+                            self.state.skipped_packets += 1;
+
+                            // 🎯 安全检查：防止无限递归（连续错误过多）
+                            const MAX_CONSECUTIVE_ERRORS: usize = 100;
+                            if self.state.skipped_packets > MAX_CONSECUTIVE_ERRORS {
+                                return Err(error::decoding_error(
+                                    "连续解码失败过多，文件严重损坏",
+                                    format!("跳过了{}个包", self.state.skipped_packets),
+                                ));
+                            }
+
                             self.next_chunk()
                         }
-                        _ => Err(AudioError::FormatError(format!("解码错误: {e}"))),
+                        _ => Err(error::decoding_error("音频包解码失败", e)),
                     },
                 }
             }
@@ -788,7 +832,12 @@ impl ParallelUniversalStreamProcessor {
             .tracks()
             .iter()
             .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-            .ok_or_else(|| AudioError::FormatError("并行解码器未找到音频轨道".to_string()))?;
+            .ok_or_else(|| {
+                AudioError::FormatError(format!(
+                    "未找到音频轨道: 文件 {} (并行解码器)",
+                    self.state.path.display()
+                ))
+            })?;
 
         let track_id = track.id;
         let codec_params = track.codec_params.clone();
@@ -817,9 +866,18 @@ impl ParallelUniversalStreamProcessor {
 
     /// 🔄 处理一批包并返回下一个可用样本
     fn process_packets_batch(&mut self, batch_size: usize) -> AudioResult<()> {
-        let format_reader = self.format_reader.as_mut().unwrap();
-        let parallel_decoder = self.parallel_decoder.as_mut().unwrap();
-        let target_track_id = self.state.track_id.unwrap();
+        let format_reader = self
+            .format_reader
+            .as_mut()
+            .expect("format_reader必须已初始化，initialize_parallel_symphonia()已设置");
+        let parallel_decoder = self
+            .parallel_decoder
+            .as_mut()
+            .expect("parallel_decoder必须已初始化，initialize_parallel_symphonia()已设置");
+        let target_track_id = self
+            .state
+            .track_id
+            .expect("track_id必须已初始化，initialize_parallel_symphonia()已设置");
 
         // 🎯 批量读取包并提交给并行解码器
         let mut packets_added = 0;
@@ -843,23 +901,25 @@ impl ParallelUniversalStreamProcessor {
                     break;
                 }
                 Err(e) => {
-                    return Err(AudioError::FormatError(format!("并行读包错误: {e}")));
+                    return Err(error::format_error("并行读包失败", e));
                 }
             }
         }
 
         Ok(())
     }
+
+    /// 🎯 同步跳过包计数（从并行解码器到ProcessorState）
+    fn sync_skipped_packets(&mut self) {
+        if let Some(decoder) = &self.parallel_decoder {
+            self.state.skipped_packets = decoder.get_skipped_packets();
+        }
+    }
 }
 
 impl StreamingDecoder for ParallelUniversalStreamProcessor {
-    fn format(&self) -> AudioFormat {
-        self.state.get_format()
-    }
-
-    fn progress(&self) -> f32 {
-        self.state.get_progress()
-    }
+    // 使用宏实现通用方法（format和progress）
+    impl_streaming_decoder_state_methods!();
 
     /// 🚀 并行解码的核心方法
     fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
@@ -869,11 +929,18 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         }
 
         // 🔄 首先尝试获取已解码的样本
-        match self.parallel_decoder.as_mut().unwrap().next_samples() {
+        match self
+            .parallel_decoder
+            .as_mut()
+            .expect("parallel_decoder必须已初始化，initialize_parallel()已设置")
+            .next_samples()
+        {
             Some(samples) if !samples.is_empty() => {
                 // ✅ 有可用样本，更新进度并返回
                 self.state
                     .update_position(&samples, self.state.format.channels);
+                // 🎯 同步跳过包计数（容错处理统计）
+                self.sync_skipped_packets();
                 return Ok(Some(samples));
             }
             _ => {}
@@ -889,10 +956,17 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         const WAIT_INTERVAL_MS: u64 = 1;
 
         for _ in 0..MAX_WAIT_ATTEMPTS {
-            match self.parallel_decoder.as_mut().unwrap().next_samples() {
+            match self
+                .parallel_decoder
+                .as_mut()
+                .expect("parallel_decoder必须已初始化，initialize_parallel()已设置")
+                .next_samples()
+            {
                 Some(samples) if !samples.is_empty() => {
                     self.state
                         .update_position(&samples, self.state.format.channels);
+                    // 🎯 同步跳过包计数（容错处理统计）
+                    self.sync_skipped_packets();
                     return Ok(Some(samples));
                 }
                 _ => {
@@ -903,6 +977,8 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         }
 
         // 🏁 等待超时后仍没有样本，可能到达文件末尾
+        // 最后一次同步跳过包计数
+        self.sync_skipped_packets();
         Ok(None)
     }
 

@@ -4,6 +4,7 @@ echo "🚀 开始10次批量缓冲I/O优化性能测试..."
 echo "========================================================"
 
 BENCHMARK_SCRIPT="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/audio/large audio/未命名文件夹/benchmark.sh"
+RELEASE_EXECUTABLE="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr"
 TOTAL_TIME=0
 TOTAL_MEMORY=0
 TOTAL_SPEED=0
@@ -14,7 +15,7 @@ for i in $(seq 1 $TESTS); do
 
     # 运行benchmark脚本并捕获输出和时间
     START_TIME=$(date +%s.%N)
-    OUTPUT=$("$BENCHMARK_SCRIPT" 2>&1)
+    OUTPUT=$("$BENCHMARK_SCRIPT" "$RELEASE_EXECUTABLE" 2>&1)
     END_TIME=$(date +%s.%N)
 
     # 计算运行时间

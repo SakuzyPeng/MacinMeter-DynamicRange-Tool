@@ -383,13 +383,27 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
 
 /// 根据声道数选择合适的格式化方法
 pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFormat) -> String {
-    match results.len() {
+    let mut output = String::new();
+
+    // 🎯 部分分析警告（如果跳过了损坏的音频包）
+    if format.is_partial {
+        output.push_str(&format!(
+            "⚠️  部分分析警告：跳过了 {} 个损坏的音频包\n",
+            format.skipped_packets
+        ));
+        output.push_str("    分析结果可能不完整，建议检查源文件质量。\n\n");
+    }
+
+    // 根据声道数选择格式化方法
+    output.push_str(&match results.len() {
         0 => "ERROR: 无音频数据\n".to_string(),
         1 => format_mono_results(&results[0]),
         2 => format_stereo_results(results),
         3..=8 => format_medium_multichannel_results(results),
         _ => format_large_multichannel_results(results, format),
-    }
+    });
+
+    output
 }
 
 /// 处理输出写入（文件或控制台）

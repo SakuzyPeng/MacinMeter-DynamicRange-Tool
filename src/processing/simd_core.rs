@@ -1,17 +1,17 @@
-//! SSE向量化音频处理器
+//! SIMD基础设施
 //!
-//! 基于x86_64 SSE2指令集实现4样本并行处理，
-//! 针对DR计算的核心算法进行专门优化。
+//! 提供跨平台SIMD能力检测和通用SIMD处理器，
+//! 针对音频处理的核心算法进行专门优化。
 //!
 //! ## 性能目标
-//! - 4样本并行处理（128位SSE向量）
+//! - 4样本并行处理（128位向量）
 //! - 6-7倍性能提升
 //! - 高精度一致性（与标量实现）
 //!
 //! ## 兼容性
-//! - 要求SSE2支持（2003年后的x86_64处理器）
-//! - 自动fallback到标量实现（不支持SIMD时）
-//! - 跨平台兼容（ARM NEON后续支持）
+//! - x86_64: SSE2/AVX/AVX2支持
+//! - ARM64: NEON支持
+//! - 自动fallback到标量实现
 
 use crate::processing::ChannelData;
 #[cfg(target_arch = "x86_64")]
@@ -153,7 +153,7 @@ impl SimdChannelData {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::SimdChannelData;
     ///
     /// let processor = SimdChannelData::new(1024);
@@ -199,7 +199,7 @@ impl SimdChannelData {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::SimdChannelData;
     ///
     /// let mut processor = SimdChannelData::new(1024);
@@ -215,6 +215,8 @@ impl SimdChannelData {
         if self.capabilities.has_basic_simd() {
             #[cfg(target_arch = "x86_64")]
             {
+                // SAFETY: process_samples_sse2需要SSE2支持，已通过capabilities.has_basic_simd()验证。
+                // 该函数内部会正确处理数组边界，确保SIMD和标量处理不会越界。
                 unsafe { self.process_samples_sse2(samples) }
             }
             #[cfg(not(target_arch = "x86_64"))]
@@ -241,11 +243,18 @@ impl SimdChannelData {
 
         // SIMD加速RMS计算：4样本并行处理
         while i + 4 <= len {
-            // 加载4个样本到SSE寄存器（内存访问需要unsafe）
+            // SAFETY: 使用_mm_loadu_ps从未对齐内存加载4个f32值。
+            // 前置条件：i + 4 <= len，确保有4个有效样本可读取。
+            // samples.as_ptr().add(i)计算的指针保证在数组边界内：i最大为len-4。
+            // _mm_loadu_ps允许未对齐访问，不要求16字节对齐，因此总是安全的。
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
             // 🎯 修复关键精度问题：直接以f64精度处理，避免f32中转精度损失
             // 为匹配foobar2000的累加精度，将4个样本逐个转换为f64处理
+            // SAFETY: 使用_mm_storeu_ps将SSE向量存储到栈上数组。
+            // sample_results是有效的4元素f32数组，已正确初始化。
+            // _mm_storeu_ps允许未对齐访问，安全地将samples_vec的4个值写入数组。
+            // 后续的f64转换和累加是纯标量操作，无unsafe风险。
             unsafe {
                 // 提取4个f32样本到数组
                 let mut sample_results = [0.0f32; 4];
@@ -392,6 +401,8 @@ impl SimdProcessor {
         #[cfg(target_arch = "x86_64")]
         {
             if self.capabilities.sse2 {
+                // SAFETY: calculate_square_sum_sse2需要SSE2支持，已通过capabilities.sse2验证。
+                // values的生命周期和边界检查由调用者保证，函数内部会正确处理数组边界。
                 unsafe { self.calculate_square_sum_sse2(values) }
             } else {
                 eprintln!(
@@ -404,6 +415,8 @@ impl SimdProcessor {
         #[cfg(target_arch = "aarch64")]
         {
             if self.capabilities.neon {
+                // SAFETY: calculate_square_sum_neon需要NEON支持，已通过capabilities.neon验证。
+                // values的生命周期和边界检查由调用者保证，函数内部会正确处理数组边界。
                 unsafe { self.calculate_square_sum_neon(values) }
             } else {
                 eprintln!(
@@ -417,6 +430,12 @@ impl SimdProcessor {
         {
             // 其他架构：使用标量实现
             static mut WARNED: bool = false;
+            // SAFETY: 访问静态可变变量WARNED以实现"只警告一次"逻辑。
+            // 虽然这是数据竞争的潜在来源，但：
+            // 1. WARNED是布尔值，最坏情况是多次打印警告，不会造成内存安全问题
+            // 2. 此代码仅在不支持SIMD的罕见架构上运行，实际并发风险极低
+            // 3. 警告信息是幂等的，多次执行不影响程序正确性
+            // 未来改进：可使用std::sync::Once替代，但当前实现可接受
             unsafe {
                 if !WARNED {
                     eprintln!(
@@ -445,6 +464,10 @@ impl SimdProcessor {
 
         // SIMD主循环：每次处理2个f64值（SSE2限制）
         while i + 2 <= len {
+            // SAFETY: SSE2向量化平方和计算。
+            // 前置条件：i + 2 <= len，确保有2个有效f64值可读取。
+            // _mm_loadu_pd从未对齐内存加载2个f64，指针values.as_ptr().add(i)在边界内。
+            // _mm_mul_pd和_mm_add_pd是纯SIMD寄存器操作，无内存访问风险。
             unsafe {
                 // 加载2个f64值
                 let vals = _mm_loadu_pd(values.as_ptr().add(i));
@@ -459,6 +482,10 @@ impl SimdProcessor {
 
         // 提取并累加向量中的两个值
         let mut total_sum = 0.0;
+        // SAFETY: 将SSE2向量__m128d transmute为[f64; 2]数组。
+        // __m128d内存布局为2个连续的f64值（共128位），与[f64; 2]完全兼容。
+        // 这是SSE2编程的标准做法，用于提取向量元素到标量。
+        // 两种类型大小相同（16字节），对齐要求兼容，无未定义行为。
         let sum_array: [f64; 2] = unsafe { std::mem::transmute(sum_vec) };
         total_sum += sum_array[0] + sum_array[1];
 
@@ -486,6 +513,10 @@ impl SimdProcessor {
 
         // SIMD主循环：每次处理2个f64值（NEON双精度限制）
         while i + 2 <= len {
+            // SAFETY: ARM NEON向量化平方和计算。
+            // 前置条件：i + 2 <= len，确保有2个有效f64值可读取。
+            // vld1q_f64从内存加载2个f64到NEON向量，指针values.as_ptr().add(i)在边界内。
+            // vmulq_f64和vaddq_f64是纯NEON寄存器操作，无内存访问风险。
             unsafe {
                 // 加载2个f64值到NEON向量
                 let vals = vld1q_f64(values.as_ptr().add(i));

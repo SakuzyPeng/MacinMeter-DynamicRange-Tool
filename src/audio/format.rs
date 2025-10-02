@@ -2,7 +2,7 @@
 //!
 //! 定义音频格式相关的数据结构和格式支持信息
 
-use crate::error::{AudioError, AudioResult};
+use crate::error::{self, AudioResult};
 use symphonia::core::codecs::CodecType;
 
 /// 音频格式信息
@@ -14,6 +14,10 @@ pub struct AudioFormat {
     pub sample_count: u64,
     /// 真实的编解码器类型（从解码器获取，比文件扩展名更准确）
     pub codec_type: Option<CodecType>,
+    /// 是否为部分分析（解码过程中跳过了损坏的音频包）
+    pub is_partial: bool,
+    /// 跳过的损坏包数量
+    pub skipped_packets: usize,
 }
 
 impl AudioFormat {
@@ -25,6 +29,8 @@ impl AudioFormat {
             bits_per_sample,
             sample_count,
             codec_type: None,
+            is_partial: false,
+            skipped_packets: 0,
         }
     }
 
@@ -42,22 +48,30 @@ impl AudioFormat {
             bits_per_sample,
             sample_count,
             codec_type: Some(codec_type),
+            is_partial: false,
+            skipped_packets: 0,
         }
+    }
+
+    /// 标记为部分分析并记录跳过的包数量
+    pub fn mark_as_partial(&mut self, skipped_packets: usize) {
+        self.is_partial = true;
+        self.skipped_packets = skipped_packets;
     }
 
     /// 验证格式参数的有效性
     pub fn validate(&self) -> AudioResult<()> {
         if self.sample_rate == 0 {
-            return Err(AudioError::FormatError("采样率不能为0".to_string()));
+            return Err(error::format_error("采样率不能为0", ""));
         }
         if self.channels == 0 {
-            return Err(AudioError::FormatError("声道数不能为0".to_string()));
+            return Err(error::format_error("声道数不能为0", ""));
         }
         if ![16, 24, 32].contains(&self.bits_per_sample) {
-            return Err(AudioError::FormatError(format!(
-                "不支持的位深度: {}位",
-                self.bits_per_sample
-            )));
+            return Err(error::format_error(
+                "不支持的位深度",
+                format!("{}位", self.bits_per_sample),
+            ));
         }
         Ok(())
     }

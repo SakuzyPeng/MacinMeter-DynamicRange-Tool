@@ -118,6 +118,7 @@ pub fn create_batch_output_footer(
     audio_files: &[PathBuf],
     processed_count: usize,
     failed_count: usize,
+    error_stats: &std::collections::HashMap<crate::error::ErrorCategory, Vec<String>>,
 ) -> String {
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     let mut output = String::new();
@@ -133,6 +134,43 @@ pub fn create_batch_output_footer(
         "   处理成功率: {:.1}%\n",
         processed_count as f64 / audio_files.len() as f64 * 100.0
     ));
+
+    // 🎯 错误分类统计（仅在有失败时显示）
+    if !error_stats.is_empty() {
+        output.push('\n');
+        output.push_str("错误分类统计:\n");
+
+        // 按错误类别排序以确保输出稳定
+        let mut sorted_stats: Vec<_> = error_stats.iter().collect();
+        sorted_stats.sort_by_key(|(category, files)| {
+            (std::cmp::Reverse(files.len()), format!("{category:?}"))
+        });
+
+        for (category, files) in sorted_stats {
+            output.push_str(&format!(
+                "   {}: {} 个文件\n",
+                category.display_name(),
+                files.len()
+            ));
+
+            // 如果失败文件少于等于5个，列出所有文件名
+            if files.len() <= 5 {
+                for filename in files {
+                    output.push_str(&format!("      - {filename}\n"));
+                }
+            } else {
+                // 如果失败文件超过5个，只显示前3个和后2个
+                for filename in files.iter().take(3) {
+                    output.push_str(&format!("      - {filename}\n"));
+                }
+                output.push_str(&format!("      ... (省略{}个文件) ...\n", files.len() - 5));
+                for filename in files.iter().skip(files.len() - 2) {
+                    output.push_str(&format!("      - {filename}\n"));
+                }
+            }
+        }
+    }
+
     output.push('\n');
     output.push_str(&format!(
         "生成工具: MacinMeter DR Tool (foo_dr_meter兼容) v{VERSION}\n"
@@ -147,7 +185,9 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
         // 🎯 生成友好的时间格式 YYYY-MM-DD_HH-MM-SS
         let readable_time = {
             use std::time::{SystemTime, UNIX_EPOCH};
-            let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+            let duration = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("系统时间必须晚于UNIX_EPOCH（1970-01-01），系统时钟配置异常");
             let secs = duration.as_secs();
             let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
                 .unwrap_or_else(chrono::Utc::now);

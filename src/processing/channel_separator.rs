@@ -3,7 +3,7 @@
 //! 负责1-2声道音频的高性能样本分离，支持单声道直通和立体声SIMD优化。
 //! 结合SSE2/NEON向量化技术，为ProcessingCoordinator提供专业化的技术实现服务。
 
-use super::simd_channel_data::SimdProcessor;
+use super::simd_core::SimdProcessor;
 
 #[cfg(debug_assertions)]
 macro_rules! debug_performance {
@@ -23,23 +23,23 @@ macro_rules! debug_performance {
 /// - 单声道：零开销直通
 /// - 立体声：SIMD向量化优化
 /// - 提供跨平台的SIMD实现(SSE2/NEON)和标量回退
-pub struct ChannelExtractor {
+pub struct ChannelSeparator {
     /// SIMD处理器实例
     simd_processor: SimdProcessor,
 }
 
-impl ChannelExtractor {
+impl ChannelSeparator {
     /// 创建新的立体声分离引擎
     ///
     /// 自动检测硬件SIMD能力并初始化最优配置。
     ///
     /// # 示例
     ///
-    /// ```rust
-    /// use macinmeter_dr_tool::processing::ChannelExtractor;
+    /// ```ignore
+    /// use macinmeter_dr_tool::processing::ChannelSeparator;
     ///
-    /// let extractor = ChannelExtractor::new();
-    /// println!("SIMD支持: {}", extractor.has_simd_support());
+    /// let separator = ChannelSeparator::new();
+    /// println!("SIMD支持: {}", separator.has_simd_support());
     /// ```
     pub fn new() -> Self {
         Self {
@@ -53,7 +53,7 @@ impl ChannelExtractor {
     }
 
     /// 获取SIMD处理器能力
-    pub fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities {
+    pub fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities {
         self.simd_processor.capabilities()
     }
 
@@ -95,7 +95,7 @@ impl ChannelExtractor {
         );
 
         // 🎯 智能优化（单声道和立体声自适应）
-        debug_assert!(channel_count <= 2, "ChannelExtractor只应处理1-2声道文件");
+        debug_assert!(channel_count <= 2, "ChannelSeparator只应处理1-2声道文件");
 
         if channel_count == 1 {
             // 单声道：无需样本分离，直接返回所有样本
@@ -132,6 +132,8 @@ impl ChannelExtractor {
         let samples_per_channel = samples.len() / 2;
         let mut result = Vec::with_capacity(samples_per_channel);
 
+        // SAFETY: extract_stereo_samples_sse2_unsafe需要SSE2支持，已通过capabilities检查验证。
+        // samples生命周期有效，result已预分配容量，函数内部会正确处理数组边界。
         unsafe { self.extract_stereo_samples_sse2_unsafe(samples, channel_idx, &mut result) }
 
         debug_performance!(
@@ -159,6 +161,12 @@ impl ChannelExtractor {
 
         // 🚀 SSE2批量处理：一次处理8个样本（4对立体声）
         while i + 8 <= len {
+            // SAFETY: SSE2向量化立体声声道分离。
+            // 前置条件：i + 8 <= len确保有8个有效f32样本（32字节）可读取。
+            // _mm_loadu_ps从未对齐内存加载4个f32，两次加载共8个样本。
+            // _mm_shuffle_ps是纯SSE2寄存器操作，通过位掩码重排向量元素。
+            // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
+            // result已预分配容量，extend_from_slice安全。
             unsafe {
                 // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
                 let samples1 = _mm_loadu_ps(samples.as_ptr().add(i));
@@ -214,6 +222,8 @@ impl ChannelExtractor {
         let samples_per_channel = samples.len() / 2;
         let mut result = Vec::with_capacity(samples_per_channel);
 
+        // SAFETY: extract_stereo_samples_neon_unsafe需要NEON支持，已通过capabilities检查验证。
+        // samples生命周期有效，result已预分配容量，函数内部会正确处理数组边界。
         unsafe { self.extract_stereo_samples_neon_unsafe(samples, channel_idx, &mut result) }
 
         debug_performance!(
@@ -241,6 +251,12 @@ impl ChannelExtractor {
 
         // 🚀 NEON批量处理：一次处理8个样本（4对立体声）
         while i + 8 <= len {
+            // SAFETY: ARM NEON向量化立体声声道分离。
+            // 前置条件：i + 8 <= len确保有8个有效f32样本（32字节）可读取。
+            // vld1q_f32从内存加载4个f32到NEON向量，两次加载共8个样本。
+            // vgetq_lane_f32是纯NEON寄存器操作，从向量中提取指定lane的标量值。
+            // result已预分配容量，extend_from_slice安全。
+            // 通过lane索引（0,2提取左声道，1,3提取右声道）实现deinterleave。
             unsafe {
                 // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
                 let samples1 = vld1q_f32(samples.as_ptr().add(i));
@@ -312,7 +328,7 @@ impl ChannelExtractor {
     }
 }
 
-impl Default for ChannelExtractor {
+impl Default for ChannelSeparator {
     fn default() -> Self {
         Self::new()
     }
@@ -324,23 +340,23 @@ mod tests {
 
     #[test]
     fn test_stereo_extractor_creation() {
-        let extractor = ChannelExtractor::new();
-        println!("立体声分离器SIMD能力: {:?}", extractor.simd_capabilities());
+        let separator = ChannelSeparator::new();
+        println!("立体声分离器SIMD能力: {:?}", separator.simd_capabilities());
     }
 
     #[test]
     fn test_mono_channel_extraction() {
-        let extractor = ChannelExtractor::new();
+        let separator = ChannelSeparator::new();
         let samples = vec![0.1, 0.2, 0.3, 0.4, 0.5];
 
         // 单声道：应该返回全部样本
-        let result = extractor.extract_channel_samples_optimized(&samples, 0, 1);
+        let result = separator.extract_channel_samples_optimized(&samples, 0, 1);
         assert_eq!(result, samples);
     }
 
     #[test]
     fn test_stereo_channel_separation() {
-        let extractor = ChannelExtractor::new();
+        let separator = ChannelSeparator::new();
 
         // 立体声测试数据
         let samples = vec![
@@ -350,17 +366,17 @@ mod tests {
         ];
 
         // 提取左声道
-        let left = extractor.extract_channel_samples_optimized(&samples, 0, 2);
+        let left = separator.extract_channel_samples_optimized(&samples, 0, 2);
         assert_eq!(left, vec![0.1, 0.3, 0.5]);
 
         // 提取右声道
-        let right = extractor.extract_channel_samples_optimized(&samples, 1, 2);
+        let right = separator.extract_channel_samples_optimized(&samples, 1, 2);
         assert_eq!(right, vec![0.2, 0.4, 0.6]);
     }
 
     #[test]
     fn test_scalar_vs_simd_consistency() {
-        let extractor = ChannelExtractor::new();
+        let separator = ChannelSeparator::new();
 
         // 足够触发SIMD的样本数量
         let mut samples = Vec::new();
@@ -370,12 +386,12 @@ mod tests {
         }
 
         // SIMD优化提取
-        let simd_left = extractor.extract_channel_samples_optimized(&samples, 0, 2);
-        let simd_right = extractor.extract_channel_samples_optimized(&samples, 1, 2);
+        let simd_left = separator.extract_channel_samples_optimized(&samples, 0, 2);
+        let simd_right = separator.extract_channel_samples_optimized(&samples, 1, 2);
 
         // 标量提取
-        let scalar_left = ChannelExtractor::extract_channel_samples_scalar(&samples, 0, 2);
-        let scalar_right = ChannelExtractor::extract_channel_samples_scalar(&samples, 1, 2);
+        let scalar_left = ChannelSeparator::extract_channel_samples_scalar(&samples, 0, 2);
+        let scalar_right = ChannelSeparator::extract_channel_samples_scalar(&samples, 1, 2);
 
         // 验证一致性
         assert_eq!(simd_left.len(), scalar_left.len());

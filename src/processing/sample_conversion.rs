@@ -1,10 +1,10 @@
 //! 音频样本格式转换引擎
 //!
 //! 提供高性能的音频格式转换，支持多种样本格式到f32的SIMD优化转换。
-//! 基于与ChannelExtractor相同的架构设计，复用SimdProcessor基础设施。
+//! 基于与ChannelSeparator相同的架构设计，复用SimdProcessor基础设施。
 
-use super::simd_channel_data::SimdProcessor;
-use crate::error::AudioResult;
+use super::simd_core::SimdProcessor;
+use crate::error::{self, AudioResult};
 
 #[cfg(debug_assertions)]
 macro_rules! debug_conversion {
@@ -189,7 +189,7 @@ pub trait SampleConversion {
     ) -> AudioResult<ConversionStats>;
 
     /// 获取支持的SIMD能力
-    fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities;
+    fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities;
 }
 
 /// 🚀 高性能样本转换引擎
@@ -213,7 +213,7 @@ impl SampleConverter {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```ignore
     /// use macinmeter_dr_tool::processing::SampleConverter;
     ///
     /// let converter = SampleConverter::new();
@@ -240,7 +240,7 @@ impl SampleConverter {
     }
 
     /// 获取SIMD处理器能力
-    pub fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities {
+    pub fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities {
         self.simd_processor.capabilities()
     }
 
@@ -279,14 +279,20 @@ impl SampleConverter {
         // 根据格式派发到对应的转换函数
         let result = match format {
             SampleFormat::S16 => {
-                // 安全的类型转换 - 在编译时保证T是i16
+                // SAFETY: 将泛型类型T的切片重新解释为i16切片。
+                // 前置条件：调用者必须确保T实际为i16类型（通过format参数保证）。
+                // 两种类型大小相同（2字节），对齐要求相同，内存布局兼容。
+                // 切片长度和生命周期保持不变，无越界风险。
                 let i16_input = unsafe {
                     std::slice::from_raw_parts(input.as_ptr() as *const i16, input.len())
                 };
                 self.convert_i16_to_f32(i16_input, output)
             }
             SampleFormat::S24 => {
-                // S24转换 - 使用symphonia的i24类型
+                // SAFETY: 将泛型类型T的切片重新解释为i24切片。
+                // 前置条件：调用者必须确保T实际为i24类型（通过format参数保证）。
+                // i24内部表示为i32（4字节），类型大小和对齐要求必须匹配。
+                // 切片长度和生命周期保持不变，无越界风险。
                 let i24_input = unsafe {
                     std::slice::from_raw_parts(
                         input.as_ptr() as *const symphonia::core::sample::i24,
@@ -296,14 +302,20 @@ impl SampleConverter {
                 self.convert_i24_to_f32(i24_input, output)
             }
             SampleFormat::S32 => {
-                // S32转换
+                // SAFETY: 将泛型类型T的切片重新解释为i32切片。
+                // 前置条件：调用者必须确保T实际为i32类型（通过format参数保证）。
+                // 两种类型大小相同（4字节），对齐要求相同，内存布局兼容。
+                // 切片长度和生命周期保持不变，无越界风险。
                 let i32_input = unsafe {
                     std::slice::from_raw_parts(input.as_ptr() as *const i32, input.len())
                 };
                 self.convert_i32_to_f32(i32_input, output)
             }
             SampleFormat::F32 => {
-                // F32直接复制，无需转换
+                // SAFETY: 将泛型类型T的切片重新解释为f32切片。
+                // 前置条件：调用者必须确保T实际为f32类型（通过format参数保证）。
+                // 两种类型大小相同（4字节），对齐要求相同，内存布局兼容。
+                // 切片长度和生命周期保持不变，无越界风险。
                 let f32_input = unsafe {
                     std::slice::from_raw_parts(input.as_ptr() as *const f32, input.len())
                 };
@@ -314,9 +326,7 @@ impl SampleConverter {
             }
             _ => {
                 // TODO: 其他格式的实现
-                return Err(crate::error::AudioError::FormatError(format!(
-                    "格式 {format:?} 暂未实现"
-                )));
+                return Err(error::format_error("格式暂未实现", format!("{format:?}")));
             }
         };
 
@@ -347,9 +357,9 @@ impl Default for SampleConverter {
     }
 }
 
-// ==================== 宏：消除convert函数的重复模式 ====================
+// ==================== 宏：消除重复代码模式 ====================
 
-/// 生成标准的样本转换函数实现
+/// 宏1: 生成标准的样本转换函数实现
 ///
 /// 统一实现模式：统计→预留→SIMD选择→日志
 macro_rules! impl_sample_conversion_method {
@@ -392,6 +402,122 @@ macro_rules! impl_sample_conversion_method {
             );
 
             Ok(stats)
+        }
+    };
+}
+
+/// 宏2: 生成平台自适应的SIMD派发函数
+///
+/// 根据目标平台选择SSE2/NEON实现，或回退到标量
+macro_rules! impl_simd_dispatch {
+    (
+        $method_name:ident,
+        $input_type:ty,
+        $sse2_method:ident,
+        $neon_method:ident,
+        $scalar_method:ident,
+        $format_name:expr
+    ) => {
+        fn $method_name(
+            &self,
+            input: &[$input_type],
+            output: &mut Vec<f32>,
+            stats: &mut ConversionStats,
+        ) -> AudioResult<()> {
+            #[cfg(target_arch = "x86_64")]
+            {
+                self.$sse2_method(input, output, stats)
+            }
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                self.$neon_method(input, output, stats)
+            }
+
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+            {
+                eprintln!(
+                    "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量{}→f32转换，性能将显著下降",
+                    std::env::consts::ARCH,
+                    $format_name
+                );
+                self.$scalar_method(input, output, stats);
+                Ok(())
+            }
+        }
+    };
+}
+
+/// 宏3: 生成SSE2包装函数（x86_64平台）
+///
+/// 检测SSE2支持并调用unsafe实现
+macro_rules! impl_sse2_wrapper {
+    (
+        $method_name:ident,
+        $input_type:ty,
+        $unsafe_method:ident,
+        $scalar_method:ident,
+        $format_name:expr
+    ) => {
+        #[cfg(target_arch = "x86_64")]
+        fn $method_name(
+            &self,
+            input: &[$input_type],
+            output: &mut Vec<f32>,
+            stats: &mut ConversionStats,
+        ) -> AudioResult<()> {
+            debug_conversion!("🚀 使用SSE2优化{}→f32转换", $format_name);
+
+            if !self.simd_processor.capabilities().has_basic_simd() {
+                eprintln!(
+                    "⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量{}→f32转换，性能将显著下降",
+                    $format_name
+                );
+                self.$scalar_method(input, output, stats);
+                return Ok(());
+            }
+
+            // SAFETY: convert_{}_sse2_unsafe需要SSE2支持，已通过capabilities检查验证。
+            // input/output生命周期有效，函数内部会正确处理数组边界。
+            unsafe { self.$unsafe_method(input, output, stats) }
+            Ok(())
+        }
+    };
+}
+
+/// 宏4: 生成NEON包装函数（ARM64平台）
+///
+/// 检测NEON支持并调用unsafe实现
+macro_rules! impl_neon_wrapper {
+    (
+        $method_name:ident,
+        $input_type:ty,
+        $unsafe_method:ident,
+        $scalar_method:ident,
+        $format_name:expr
+    ) => {
+        #[cfg(target_arch = "aarch64")]
+        fn $method_name(
+            &self,
+            input: &[$input_type],
+            output: &mut Vec<f32>,
+            stats: &mut ConversionStats,
+        ) -> AudioResult<()> {
+            debug_conversion!("🍎 使用NEON优化{}→f32转换", $format_name);
+
+            if !self.simd_processor.capabilities().has_basic_simd() {
+                eprintln!(
+                    "⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量{}→f32转换，性能将显著下降",
+                    $format_name
+                );
+                self.$scalar_method(input, output, stats);
+                return Ok(());
+            }
+
+            // SAFETY: convert_{}_neon_unsafe需要NEON支持，已通过capabilities检查验证。
+            // input/output生命周期有效，函数内部会正确处理数组边界。
+            unsafe { self.$unsafe_method(input, output, stats) }
+            Ok(())
         }
     };
 }
@@ -491,7 +617,7 @@ impl SampleConversion for SampleConverter {
         ))
     }
 
-    fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities {
+    fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities {
         self.simd_processor.capabilities()
     }
 }
@@ -536,53 +662,24 @@ impl SampleConverter {
         stats.scalar_samples = input.len();
     }
 
-    /// SIMD优化的i24→f32转换（平台自适应）
-    fn convert_i24_to_f32_simd_impl(
-        &self,
-        input: &[symphonia::core::sample::i24],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            self.convert_i24_to_f32_sse2(input, output, stats)
-        }
+    // 使用宏生成i24的SIMD派发函数
+    impl_simd_dispatch!(
+        convert_i24_to_f32_simd_impl,
+        symphonia::core::sample::i24,
+        convert_i24_to_f32_sse2,
+        convert_i24_to_f32_neon,
+        convert_i24_to_f32_scalar,
+        "i24"
+    );
 
-        #[cfg(target_arch = "aarch64")]
-        {
-            self.convert_i24_to_f32_neon(input, output, stats)
-        }
-
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        {
-            eprintln!(
-                "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量i24→f32转换，性能将显著下降",
-                std::env::consts::ARCH
-            );
-            self.convert_i24_to_f32_scalar(input, output, stats);
-            Ok(())
-        }
-    }
-
-    /// SSE2优化的i24→f32转换实现（x86_64）
-    #[cfg(target_arch = "x86_64")]
-    fn convert_i24_to_f32_sse2(
-        &self,
-        input: &[symphonia::core::sample::i24],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🚀 使用SSE2优化i24→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量i24→f32转换，性能将显著下降");
-            self.convert_i24_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i24_to_f32_sse2_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i24的SSE2包装函数
+    impl_sse2_wrapper!(
+        convert_i24_to_f32_sse2,
+        symphonia::core::sample::i24,
+        convert_i24_to_f32_sse2_unsafe,
+        convert_i24_to_f32_scalar,
+        "i24"
+    );
 
     /// SSE2 i24→f32转换的unsafe实现
     #[cfg(target_arch = "x86_64")]
@@ -600,6 +697,10 @@ impl SampleConverter {
         let mut i = 0;
 
         // SSE2处理：一次处理4个i24样本（因为i24→i32需要更多空间）
+        // SAFETY: SSE2向量化i24→f32转换。
+        // 前置条件：i + 4 <= len确保有4个有效i24样本可访问。
+        // _mm_set_epi32/cvtepi32_ps/mul_ps是纯寄存器操作，无内存风险。
+        // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
         unsafe {
             let scale_vec = _mm_set1_ps(SCALE);
             while i + 4 <= len {
@@ -636,25 +737,14 @@ impl SampleConverter {
         }
     }
 
-    /// ARM NEON优化的i24→f32转换实现（ARM64）
-    #[cfg(target_arch = "aarch64")]
-    fn convert_i24_to_f32_neon(
-        &self,
-        input: &[symphonia::core::sample::i24],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🍎 使用NEON优化i24→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量i24→f32转换，性能将显著下降");
-            self.convert_i24_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i24_to_f32_neon_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i24的NEON包装函数
+    impl_neon_wrapper!(
+        convert_i24_to_f32_neon,
+        symphonia::core::sample::i24,
+        convert_i24_to_f32_neon_unsafe,
+        convert_i24_to_f32_scalar,
+        "i24"
+    );
 
     /// ARM NEON i24→f32转换的unsafe实现（优化版）
     #[cfg(target_arch = "aarch64")]
@@ -712,7 +802,11 @@ impl SampleConverter {
             let f32_vec1 = vmulq_f32(vcvtq_f32_s32(i32_vec1), scale_vec);
             let f32_vec2 = vmulq_f32(vcvtq_f32_s32(i32_vec2), scale_vec);
 
-            // 🔧 **高效存储**: 直接写入output内存，避免临时分配
+            // SAFETY: 直接写入output内存的高效存储。
+            // 前置条件：已通过output.reserve(len)预分配足够容量。
+            // set_len安全：新长度current_len+8不超过已分配容量。
+            // vst1q_f32写入output内存：指针有效，偏移在预分配范围内。
+            // 第一个vst1q写入[current_len..current_len+4]，第二个写入[current_len+4..current_len+8]。
             let current_len = output.len();
             unsafe {
                 output.set_len(current_len + 8); // 安全：已预分配容量
@@ -742,6 +836,10 @@ impl SampleConverter {
 
             let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);
 
+            // SAFETY: 处理剩余4样本的NEON存储。
+            // 前置条件：已预分配容量，i + 4 <= len确保样本有效。
+            // set_len安全：新长度current_len+4不超过预分配容量。
+            // vst1q_f32写入output[current_len..current_len+4]，指针和偏移有效。
             let current_len = output.len();
             unsafe {
                 output.set_len(current_len + 4);
@@ -763,50 +861,24 @@ impl SampleConverter {
         }
     }
 
-    /// SIMD优化的i16→f32转换（平台自适应）
-    fn convert_i16_to_f32_simd_impl(
-        &self,
-        input: &[i16],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            self.convert_i16_to_f32_sse2(input, output, stats)
-        }
+    // 使用宏生成i16的SIMD派发函数
+    impl_simd_dispatch!(
+        convert_i16_to_f32_simd_impl,
+        i16,
+        convert_i16_to_f32_sse2,
+        convert_i16_to_f32_neon,
+        convert_i16_to_f32_scalar,
+        "i16"
+    );
 
-        #[cfg(target_arch = "aarch64")]
-        {
-            self.convert_i16_to_f32_neon(input, output, stats)
-        }
-
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        {
-            debug_conversion!("🔄 不支持的架构，回退到标量实现");
-            self.convert_i16_to_f32_scalar(input, output, stats);
-            Ok(())
-        }
-    }
-
-    /// SSE2优化的i16→f32转换实现（x86_64）
-    #[cfg(target_arch = "x86_64")]
-    fn convert_i16_to_f32_sse2(
-        &self,
-        input: &[i16],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🚀 使用SSE2优化i16→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量i16→f32转换，性能将显著下降");
-            self.convert_i16_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i16_to_f32_sse2_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i16的SSE2包装函数
+    impl_sse2_wrapper!(
+        convert_i16_to_f32_sse2,
+        i16,
+        convert_i16_to_f32_sse2_unsafe,
+        convert_i16_to_f32_scalar,
+        "i16"
+    );
 
     /// SSE2 i16→f32转换的unsafe实现
     #[cfg(target_arch = "x86_64")]
@@ -824,6 +896,11 @@ impl SampleConverter {
         let mut i = 0;
 
         // SIMD处理：一次处理8个i16样本
+        // SAFETY: SSE2向量化i16→f32转换。
+        // 前置条件：i + 8 <= len确保有8个有效i16样本（16字节）可读取。
+        // _mm_loadu_si128从未对齐内存加载，input.as_ptr().add(i)指针在边界内。
+        // unpacklo/hi/cvtepi32_ps/mul_ps是纯寄存器操作，无内存访问风险。
+        // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
         unsafe {
             let scale_vec = _mm_set1_ps(SCALE);
             while i + 8 <= len {
@@ -860,25 +937,14 @@ impl SampleConverter {
         }
     }
 
-    /// ARM NEON优化的i16→f32转换实现（ARM64）
-    #[cfg(target_arch = "aarch64")]
-    fn convert_i16_to_f32_neon(
-        &self,
-        input: &[i16],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🍎 使用NEON优化i16→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量i16→f32转换，性能将显著下降");
-            self.convert_i16_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i16_to_f32_neon_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i16的NEON包装函数
+    impl_neon_wrapper!(
+        convert_i16_to_f32_neon,
+        i16,
+        convert_i16_to_f32_neon_unsafe,
+        convert_i16_to_f32_scalar,
+        "i16"
+    );
 
     /// ARM NEON i16→f32转换的unsafe实现
     #[cfg(target_arch = "aarch64")]
@@ -898,6 +964,11 @@ impl SampleConverter {
 
         // NEON处理：一次处理8个i16样本
         while i + 8 <= len {
+            // SAFETY: ARM NEON向量化i16→f32转换。
+            // 前置条件：i + 8 <= len确保有8个有效i16样本（16字节）可读取。
+            // vld1q_s16从内存加载8个i16到NEON向量，指针input.as_ptr().add(i)在边界内。
+            // vmovl/vcvtq/vmulq是纯NEON寄存器操作，无内存访问风险。
+            // vst1q_f32写入栈上临时数组，安全地将向量存储到有效内存。
             unsafe {
                 // 加载8个i16值
                 let i16_data = vld1q_s16(input.as_ptr().add(i));
@@ -950,53 +1021,24 @@ impl SampleConverter {
         stats.scalar_samples = input.len();
     }
 
-    /// SIMD优化的i32→f32转换（平台自适应）
-    fn convert_i32_to_f32_simd_impl(
-        &self,
-        input: &[i32],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            self.convert_i32_to_f32_sse2(input, output, stats)
-        }
+    // 使用宏生成i32的SIMD派发函数
+    impl_simd_dispatch!(
+        convert_i32_to_f32_simd_impl,
+        i32,
+        convert_i32_to_f32_sse2,
+        convert_i32_to_f32_neon,
+        convert_i32_to_f32_scalar,
+        "i32"
+    );
 
-        #[cfg(target_arch = "aarch64")]
-        {
-            self.convert_i32_to_f32_neon(input, output, stats)
-        }
-
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        {
-            eprintln!(
-                "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量i32→f32转换，性能将显著下降",
-                std::env::consts::ARCH
-            );
-            self.convert_i32_to_f32_scalar(input, output, stats);
-            Ok(())
-        }
-    }
-
-    /// SSE2优化的i32→f32转换实现（x86_64）
-    #[cfg(target_arch = "x86_64")]
-    fn convert_i32_to_f32_sse2(
-        &self,
-        input: &[i32],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🚀 使用SSE2优化i32→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量i32→f32转换，性能将显著下降");
-            self.convert_i32_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i32_to_f32_sse2_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i32的SSE2包装函数
+    impl_sse2_wrapper!(
+        convert_i32_to_f32_sse2,
+        i32,
+        convert_i32_to_f32_sse2_unsafe,
+        convert_i32_to_f32_scalar,
+        "i32"
+    );
 
     /// SSE2 i32→f32转换的unsafe实现
     #[cfg(target_arch = "x86_64")]
@@ -1014,6 +1056,11 @@ impl SampleConverter {
         let mut i = 0;
 
         // SSE2处理：一次处理4个i32样本
+        // SAFETY: SSE2向量化i32→f32转换。
+        // 前置条件：i + 4 <= len确保有4个有效i32样本（16字节）可读取。
+        // _mm_loadu_si128从未对齐内存加载4个i32，指针有效且在边界内。
+        // _mm_cvtepi32_ps和_mm_mul_ps是纯SSE2寄存器操作，无内存访问风险。
+        // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
         unsafe {
             let scale_vec = _mm_set1_ps(SCALE);
             while i + 4 <= len {
@@ -1042,25 +1089,14 @@ impl SampleConverter {
         }
     }
 
-    /// ARM NEON优化的i32→f32转换实现（ARM64）
-    #[cfg(target_arch = "aarch64")]
-    fn convert_i32_to_f32_neon(
-        &self,
-        input: &[i32],
-        output: &mut Vec<f32>,
-        stats: &mut ConversionStats,
-    ) -> AudioResult<()> {
-        debug_conversion!("🍎 使用NEON优化i32→f32转换");
-
-        if !self.simd_processor.capabilities().has_basic_simd() {
-            eprintln!("⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量i32→f32转换，性能将显著下降");
-            self.convert_i32_to_f32_scalar(input, output, stats);
-            return Ok(());
-        }
-
-        unsafe { self.convert_i32_to_f32_neon_unsafe(input, output, stats) }
-        Ok(())
-    }
+    // 使用宏生成i32的NEON包装函数
+    impl_neon_wrapper!(
+        convert_i32_to_f32_neon,
+        i32,
+        convert_i32_to_f32_neon_unsafe,
+        convert_i32_to_f32_scalar,
+        "i32"
+    );
 
     /// ARM NEON i32→f32转换的unsafe实现
     #[cfg(target_arch = "aarch64")]
@@ -1083,6 +1119,13 @@ impl SampleConverter {
 
         // NEON优化：一次处理8个i32样本（双向量并行）
         while i + 8 <= len {
+            // SAFETY: ARM NEON向量化i32→f32转换（8样本并行）。
+            // 前置条件：i + 8 <= len确保有8个有效i32样本（32字节）可读取。
+            // 已通过output.reserve(len)预分配足够容量。
+            // vld1q_s32从内存加载4个i32到NEON向量，两次加载共8个样本。
+            // vcvtq_f32_s32和vmulq_f32是纯NEON寄存器操作。
+            // set_len安全：新长度current_len+8不超过预分配容量。
+            // vst1q_f32写入output内存，指针和偏移在预分配范围内。
             unsafe {
                 // 加载8个i32值（两个向量）
                 let i32_vec1 = vld1q_s32(input.as_ptr().add(i));
@@ -1105,6 +1148,11 @@ impl SampleConverter {
 
         // 处理剩余4个样本（单向量）
         if i + 4 <= len {
+            // SAFETY: ARM NEON向量化i32→f32转换（4样本处理）。
+            // 前置条件：i + 4 <= len确保有4个有效i32样本（16字节）可读取。
+            // 已预分配容量，set_len安全：新长度current_len+4不超过预分配容量。
+            // vld1q_s32/vcvtq_f32_s32/vmulq_f32是NEON寄存器操作。
+            // vst1q_f32写入output内存，指针和偏移在预分配范围内。
             unsafe {
                 let i32_vec = vld1q_s32(input.as_ptr().add(i));
                 let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);

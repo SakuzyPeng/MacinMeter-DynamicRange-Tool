@@ -18,7 +18,7 @@
 //!                 固定批大小           4-8线程并行              序列号排序重组
 //! ```
 
-use crate::error::{self, AudioError, AudioResult};
+use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
 use std::{
     collections::HashMap,
@@ -105,7 +105,10 @@ pub struct OrderedSender<T> {
 impl<T> OrderedSender<T> {
     /// 发送带序列号的数据，自动处理重排序
     pub fn send_sequenced(&self, sequence: usize, data: T) -> Result<(), mpsc::SendError<T>> {
-        let mut buffer = self.reorder_buffer.lock().unwrap();
+        let mut buffer = self
+            .reorder_buffer
+            .lock()
+            .expect("重排序缓冲区Mutex被poison，可能有解码线程panic");
         let next_expected = self.next_expected.load(Ordering::SeqCst);
 
         if sequence == next_expected {
@@ -129,7 +132,10 @@ impl<T> OrderedSender<T> {
     fn flush_consecutive_from_buffer(&self) {
         loop {
             let next_expected = self.next_expected.load(Ordering::SeqCst);
-            let mut buffer = self.reorder_buffer.lock().unwrap();
+            let mut buffer = self
+                .reorder_buffer
+                .lock()
+                .expect("重排序缓冲区Mutex被poison，可能有解码线程panic");
 
             if let Some(data) = buffer.remove(&next_expected) {
                 drop(buffer); // 释放锁后再发送
@@ -299,6 +305,11 @@ impl OrderedParallelDecoder {
         }
     }
 
+    /// 获取跳过的损坏包数量（容错处理统计）
+    pub fn get_skipped_packets(&self) -> usize {
+        self.stats.failed_packets
+    }
+
     /// 🚀 处理当前批次 - 核心并行解码逻辑
     fn process_current_batch(&mut self) -> AudioResult<()> {
         if self.current_batch.is_empty() {
@@ -366,7 +377,12 @@ impl OrderedParallelDecoder {
                 let sample_converter = decoder_factory.get_sample_converter();
 
                 // 🔄 持续处理解码任务
-                while let Ok(sequenced_packet) = { task_receiver.lock().unwrap().recv() } {
+                while let Ok(sequenced_packet) = {
+                    task_receiver
+                        .lock()
+                        .expect("任务接收器Mutex被poison，可能有解码线程panic")
+                        .recv()
+                } {
                     match Self::decode_single_packet_with_simd(
                         &mut *decoder,
                         sequenced_packet.packet,
@@ -423,7 +439,7 @@ impl OrderedParallelDecoder {
                 sample_buffer.copy_interleaved_ref(audio_buf);
                 Ok(sample_buffer.samples().to_vec())
             }
-            Err(e) => Err(AudioError::DecodingError(format!("并行解码包失败: {e}"))),
+            Err(e) => Err(error::decoding_error("并行解码包失败", e)),
         }
     }
 
@@ -440,7 +456,13 @@ impl OrderedParallelDecoder {
                 Self::convert_to_interleaved_with_simd(sample_converter, &audio_buf, &mut samples)?;
                 Ok(samples)
             }
-            Err(e) => Err(AudioError::DecodingError(format!("并行解码包失败: {e}"))),
+            Err(e) => match e {
+                symphonia::core::errors::Error::DecodeError(_) => {
+                    // 🎯 容错处理：返回空样本，让调用者知道跳过了这个包
+                    Ok(vec![])
+                }
+                _ => Err(error::decoding_error("并行解码包失败", e)),
+            },
         }
     }
 
@@ -493,9 +515,7 @@ impl OrderedParallelDecoder {
 
                     sample_converter
                         .convert_i16_to_f32(channel_data, &mut converted_channel)
-                        .map_err(|e| {
-                            AudioError::CalculationError(format!("S16 SIMD转换失败: {e}"))
-                        })?;
+                        .map_err(|e| error::calculation_error("S16 SIMD转换失败", e))?;
 
                     // 交错插入
                     for (frame_idx, &sample) in converted_channel.iter().enumerate() {
@@ -515,9 +535,7 @@ impl OrderedParallelDecoder {
 
                     sample_converter
                         .convert_i24_to_f32(channel_data, &mut converted_channel)
-                        .map_err(|e| {
-                            AudioError::CalculationError(format!("S24 SIMD转换失败: {e}"))
-                        })?;
+                        .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
 
                     // 交错插入
                     for (frame_idx, &sample) in converted_channel.iter().enumerate() {

@@ -1,9 +1,9 @@
 //! Processing层协调器
 //!
 //! 负责协调processing层各种服务的纯粹协调器，专注于服务编排和业务流程控制。
-//! 委托技术实现给专门的模块：ChannelExtractor负责SIMD分离，PerformanceEvaluator负责统计。
+//! 委托技术实现给专门的模块：ChannelSeparator负责SIMD分离，PerformanceEvaluator负责统计。
 
-use super::channel_extractor::ChannelExtractor;
+use super::channel_separator::ChannelSeparator;
 use super::performance_metrics::{PerformanceEvaluator, PerformanceResult};
 use crate::core::DrResult;
 use crate::error::{AudioError, AudioResult};
@@ -24,13 +24,13 @@ macro_rules! debug_coordinator {
 /// Processing层协调器
 ///
 /// 纯粹的协调器，负责编排processing层的各种高性能服务：
-/// - 委托声道分离给ChannelExtractor
+/// - 委托声道分离给ChannelSeparator
 /// - 委托性能评估给PerformanceEvaluator
 /// - 专注并行协调和回调管理
 /// - 为DrCalculator提供零配置的高性能服务
 pub struct ProcessingCoordinator {
     /// 声道分离引擎
-    channel_extractor: ChannelExtractor,
+    channel_separator: ChannelSeparator,
 
     /// 性能评估器
     performance_evaluator: PerformanceEvaluator,
@@ -51,7 +51,7 @@ impl ProcessingCoordinator {
     /// ```
     pub fn new() -> Self {
         Self {
-            channel_extractor: ChannelExtractor::new(),
+            channel_separator: ChannelSeparator::new(),
             performance_evaluator: PerformanceEvaluator::new(),
         }
     }
@@ -170,9 +170,9 @@ impl ProcessingCoordinator {
             .map(|channel_idx| {
                 // 🎛️ 委托声道分离服务
                 #[cfg(debug_assertions)]
-                eprintln!("🔍 [COORDINATOR] 并行处理声道{channel_idx} - 委托ChannelExtractor");
+                eprintln!("🔍 [COORDINATOR] 并行处理声道{channel_idx} - 委托ChannelSeparator");
 
-                let channel_samples = self.channel_extractor.extract_channel_samples_optimized(
+                let channel_samples = self.channel_separator.extract_channel_samples_optimized(
                     samples,
                     channel_idx,
                     channel_count,
@@ -227,7 +227,7 @@ impl ProcessingCoordinator {
 
         for channel_idx in 0..channel_count {
             // 🎛️ 委托声道分离服务
-            let channel_samples = self.channel_extractor.extract_channel_samples_optimized(
+            let channel_samples = self.channel_separator.extract_channel_samples_optimized(
                 samples,
                 channel_idx,
                 channel_count,
@@ -248,8 +248,8 @@ impl ProcessingCoordinator {
     }
 
     /// 获取委托的SIMD能力信息
-    pub fn simd_capabilities(&self) -> &super::simd_channel_data::SimdCapabilities {
-        self.channel_extractor.simd_capabilities()
+    pub fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities {
+        self.channel_separator.simd_capabilities()
     }
 
     /// 获取委托的性能评估器

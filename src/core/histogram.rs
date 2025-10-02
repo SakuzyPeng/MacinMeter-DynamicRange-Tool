@@ -10,7 +10,7 @@
 //! - **精确峰值选择**: 主峰/次峰智能切换机制
 //! - **🚀 SIMD优化**: 平方和计算使用SSE2并行加速
 
-use crate::processing::simd_channel_data::SimdProcessor;
+use crate::processing::simd_core::SimdProcessor;
 
 /// WindowRmsAnalyzer - 基于master分支的正确20%采样算法
 ///
@@ -188,7 +188,8 @@ impl WindowRmsAnalyzer {
 
         // 使用select_nth_unstable进行O(n)部分选择
         // 这会将数组重新排列，使得index≥start_index的元素都是最大的n_blk个
-        rms_array.select_nth_unstable_by(start_index, |a, b| a.partial_cmp(b).unwrap());
+        // 使用total_cmp安全处理NaN：NaN会被排序到最后
+        rms_array.select_nth_unstable_by(start_index, |a: &f64, b: &f64| a.total_cmp(b));
 
         // 步骤5: 🚀 **SIMD优化**: 计算最高20%RMS值的平方和
         let top_20_values = &rms_array[start_index..start_index + n_blk];
@@ -229,7 +230,8 @@ impl WindowRmsAnalyzer {
         // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
         // 步骤3: 升序排序
-        peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // 使用total_cmp安全处理NaN：NaN会被排序到最后
+        peaks_array.sort_by(|a, b| a.total_cmp(b));
 
         // 步骤4: 选择peaks[seg_cnt-1]位置的值（最大值）
         peaks_array[seg_cnt - 1]
@@ -266,7 +268,8 @@ impl WindowRmsAnalyzer {
         // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
         // 步骤3: 升序排序
-        peaks_array.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // 使用total_cmp安全处理NaN：NaN会被排序到最后
+        peaks_array.sort_by(|a, b| a.total_cmp(b));
 
         // 步骤4: 选择peaks[seg_cnt-2]位置的值
         if seg_cnt >= 2 {
