@@ -85,9 +85,9 @@ pub fn parse_args() -> AppConfig {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("no-parallel")
-                .long("no-parallel")
-                .help("禁用并行解码（回退到串行模式）")
+            Arg::new("parallel")
+                .long("parallel")
+                .help("⚠️ 实验性：启用并行解码（可能影响DR精度，默认禁用）")
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
@@ -130,10 +130,12 @@ pub fn parse_args() -> AppConfig {
     };
 
     // 🚀 并行解码配置逻辑
-    let parallel_decoding = if matches.get_flag("no-parallel") {
-        false // 明确禁用并行解码
+    // ⚠️ HOTFIX: 并行解码存在DR计算精度问题，临时默认禁用
+    // TODO: 修复并行解码器的样本顺序问题 (Issue #TBD)
+    let parallel_decoding = if matches.get_flag("parallel") {
+        true // 明确启用并行解码（实验性）
     } else {
-        true // 默认启用并行解码（性能优先原则）
+        false // 默认禁用并行解码（精度优先）
     };
 
     let parallel_batch_size = matches

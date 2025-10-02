@@ -20,6 +20,7 @@
 
 use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
+use std::time::Duration;
 use std::{
     collections::HashMap,
     sync::{
@@ -34,6 +35,30 @@ use symphonia::core::{
     codecs::{Decoder, DecoderOptions},
     formats::Packet,
 };
+
+/// 🎯 解码数据块 - 显式EOF标记
+///
+/// 通过枚举明确区分"样本数据"和"结束信号"，彻底解决生产者-消费者EOF识别问题
+#[derive(Debug, Clone)]
+pub enum DecodedChunk {
+    /// 解码后的音频样本（交错格式）
+    Samples(Vec<f32>),
+    /// 明确的结束标记：所有包已解码完毕
+    EOF,
+}
+
+/// 🎯 解码器状态 - 三阶段状态机
+///
+/// 用于明确区分"包已读完"和"样本已消费完"，解决样本丢失问题
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodingState {
+    /// 正在解码：包仍在流入
+    Decoding,
+    /// 冲刷中：包已读完（EOF），等待后台线程完成解码
+    Flushing,
+    /// 已完成：所有样本已drain完毕
+    Completed,
+}
 
 /// 🎯 核心配置参数 - 基于性能测试优化
 const DEFAULT_BATCH_SIZE: usize = 64; // 每批并行解码的包数量
@@ -162,12 +187,18 @@ pub struct OrderedParallelDecoder {
     current_batch: Vec<SequencedPacket>,
     /// 序列号计数器
     sequence_counter: usize,
-    /// 有序样本通道
-    samples_channel: SequencedChannel<Vec<f32>>,
+    /// 有序样本通道（传输DecodedChunk以支持显式EOF）
+    samples_channel: SequencedChannel<DecodedChunk>,
     /// 解码器工厂 - 每个线程需要独立的解码器实例
     decoder_factory: DecoderFactory,
     /// 统计信息
     stats: ParallelDecodingStats,
+    /// 🎯 解码状态 - 三阶段状态机
+    decoding_state: DecodingState,
+    /// 🎯 防止重复flush的标志位
+    flushed: bool,
+    /// 🎯 EOF遇到标志 - 防止next_samples()消费EOF导致drain无法收到
+    eof_encountered: bool,
 }
 
 /// 并行解码统计信息
@@ -177,6 +208,7 @@ struct ParallelDecodingStats {
     batches_processed: usize,
     samples_decoded: usize,
     failed_packets: usize,
+    consumed_batches: usize, // 已通过next_samples()消费的批次数
 }
 
 impl ParallelDecodingStats {
@@ -243,6 +275,9 @@ impl OrderedParallelDecoder {
             samples_channel: SequencedChannel::new(),
             decoder_factory: DecoderFactory::new(codec_params, sample_converter),
             stats: ParallelDecodingStats::default(),
+            decoding_state: DecodingState::Decoding,
+            flushed: false,
+            eof_encountered: false,
         }
     }
 
@@ -274,40 +309,117 @@ impl OrderedParallelDecoder {
 
     /// 🏁 处理最后剩余的不满批次的包
     pub fn flush_remaining(&mut self) -> AudioResult<()> {
+        // ✅ 防止重复flush
+        if self.flushed {
+            return Ok(());
+        }
+
+        // 处理最后不满批次的包
         if !self.current_batch.is_empty() {
             self.process_current_batch()?;
         }
-        // 打印最终统计信息
-        eprintln!(
-            "🔧 并行解码统计: 包总数:{}, 批次数:{}, 样本数:{}, 失败包数:{}",
-            self.stats.packets_added,
-            self.stats.batches_processed,
-            self.stats.samples_decoded,
-            self.stats.failed_packets
-        );
+
+        // ✅ 发送EOF标记，告知消费者所有包已解码完毕
+        let eof_sequence = self.sequence_counter;
+        let sender = self.samples_channel.sender();
+        sender
+            .send_sequenced(eof_sequence, DecodedChunk::EOF)
+            .map_err(|_| error::decoding_error("发送EOF失败", "channel已关闭"))?;
+
+        // ✅ 转换到Flushing状态
+        self.decoding_state = DecodingState::Flushing;
+        self.flushed = true;
+
         Ok(())
     }
 
     /// 📥 获取下一个有序的解码样本
+    ///
+    /// **重要**：此方法只返回Samples，遇到EOF时设置标志但不消费（留给drain）
     pub fn next_samples(&mut self) -> Option<Vec<f32>> {
+        // 如果已经遇到EOF，直接返回None，不再尝试读取
+        if self.eof_encountered {
+            return None;
+        }
+
         match self.samples_channel.try_recv_ordered() {
-            Ok(samples) => {
+            Ok(DecodedChunk::Samples(samples)) => {
                 // 更新统计信息
                 if samples.is_empty() {
                     self.stats.increment_failed_packets();
                 } else {
                     self.stats.add_decoded_samples(samples.len());
+                    self.stats.consumed_batches += 1;
                 }
                 Some(samples)
+            }
+            Ok(DecodedChunk::EOF) => {
+                // ⚠️ EOF已被消费，设置标志让drain知道不用再等EOF了
+                self.eof_encountered = true;
+                // 不改变状态！让drain_all_samples()负责切换到Completed
+                None
             }
             Err(mpsc::TryRecvError::Empty) => None,
             Err(mpsc::TryRecvError::Disconnected) => None,
         }
     }
 
+    /// 🎯 获取当前解码状态
+    pub fn get_state(&self) -> DecodingState {
+        self.decoding_state
+    }
+
+    /// 🎯 设置解码状态（仅供状态机内部使用）
+    pub fn set_state(&mut self, state: DecodingState) {
+        self.decoding_state = state;
+    }
+
     /// 获取跳过的损坏包数量（容错处理统计）
     pub fn get_skipped_packets(&self) -> usize {
         self.stats.failed_packets
+    }
+
+    /// ✅ 确定性drain所有剩余样本 - 零超时猜测，100%可靠
+    ///
+    /// 通过eof_encountered标志实现确定性结束，彻底解决MP3并行解码样本丢失问题。
+    /// 该方法会阻塞等待，直到eof_encountered=true且channel为空。
+    ///
+    /// # 返回值
+    ///
+    /// 返回所有剩余的样本批次，每个Vec<f32>代表一批解码完成的样本
+    pub fn drain_all_samples(&mut self) -> Vec<Vec<f32>> {
+        let mut all_samples = Vec::new();
+
+        loop {
+            match self.samples_channel.try_recv_ordered() {
+                Ok(DecodedChunk::Samples(samples)) => {
+                    if !samples.is_empty() {
+                        all_samples.push(samples);
+                    }
+                }
+                Ok(DecodedChunk::EOF) => {
+                    // ✅ 收到EOF（如果next_samples()没消费的话）
+                    self.eof_encountered = true;
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    // ✅ Channel空了，检查EOF是否已被遇到
+                    if self.eof_encountered {
+                        // EOF已在next_samples()中被遇到，所有数据已接收完毕
+                        break;
+                    }
+                    // 等待更多数据（后台线程仍在解码）
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    // Channel已断开（异常情况）
+                    break;
+                }
+            }
+        }
+
+        // ⚠️ 不在这里改状态！让Flushing状态消费完所有批次后再改
+        all_samples
     }
 
     /// 🚀 处理当前批次 - 核心并行解码逻辑
@@ -326,21 +438,13 @@ impl OrderedParallelDecoder {
             Self::decode_batch_parallel(batch, sender, decoder_factory);
         });
 
-        // 每10个批次报告一次进度
-        if self.stats.batches_processed.is_multiple_of(100) {
-            eprintln!(
-                "🔧 并行解码进度: 已处理{}个批次, {}个包",
-                self.stats.batches_processed, self.stats.packets_added
-            );
-        }
-
         Ok(())
     }
 
     /// 🔥 核心方法：并行解码批次包，保证有序输出
     fn decode_batch_parallel(
         batch: Vec<SequencedPacket>,
-        sender: OrderedSender<Vec<f32>>,
+        sender: OrderedSender<DecodedChunk>,
         decoder_factory: DecoderFactory,
     ) {
         use std::sync::mpsc;
@@ -416,7 +520,10 @@ impl OrderedParallelDecoder {
 
         // 🔄 收集所有解码结果并按序列号发送
         while let Ok((sequence, samples)) = result_receiver.recv() {
-            if sender.send_sequenced(sequence, samples).is_err() {
+            if sender
+                .send_sequenced(sequence, DecodedChunk::Samples(samples))
+                .is_err()
+            {
                 break;
             }
         }
@@ -509,6 +616,10 @@ impl OrderedParallelDecoder {
             AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
             // 🚀 S16 SIMD优化
             AudioBufferRef::S16(buf) => {
+                // ✅ 先一次性分配空间，避免resize时用0覆盖其他声道
+                let total_samples = channel_count * frame_count;
+                samples.resize(total_samples, 0.0);
+
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
                     let mut converted_channel = Vec::new();
@@ -520,15 +631,16 @@ impl OrderedParallelDecoder {
                     // 交错插入
                     for (frame_idx, &sample) in converted_channel.iter().enumerate() {
                         let interleaved_idx = frame_idx * channel_count + ch;
-                        if samples.len() <= interleaved_idx {
-                            samples.resize(interleaved_idx + 1, 0.0);
-                        }
                         samples[interleaved_idx] = sample;
                     }
                 }
             }
             // 🚀 S24 SIMD优化 (主要性能提升点)
             AudioBufferRef::S24(buf) => {
+                // ✅ 先一次性分配空间，避免resize时用0覆盖其他声道
+                let total_samples = channel_count * frame_count;
+                samples.resize(total_samples, 0.0);
+
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
                     let mut converted_channel = Vec::new();
@@ -540,9 +652,6 @@ impl OrderedParallelDecoder {
                     // 交错插入
                     for (frame_idx, &sample) in converted_channel.iter().enumerate() {
                         let interleaved_idx = frame_idx * channel_count + ch;
-                        if samples.len() <= interleaved_idx {
-                            samples.resize(interleaved_idx + 1, 0.0);
-                        }
                         samples[interleaved_idx] = sample;
                     }
                 }

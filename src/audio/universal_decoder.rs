@@ -15,6 +15,9 @@ pub use super::streaming::StreamingDecoder;
 // Opus解码器支持
 use super::opus_decoder::SongbirdOpusDecoder;
 
+// 并行解码器状态机
+use super::parallel_decoder::DecodingState;
+
 // 内部模块
 // (所有错误处理现在内联到方法中)
 
@@ -138,7 +141,19 @@ impl UniversalDecoder {
             return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
         }
 
-        // 🚀 创建并行流式处理器
+        // ⚠️ MP3是有状态解码，每个包依赖前一个包的解码器状态，必须串行解码
+        // 检测到MP3格式时回退到串行模式，避免并行解码导致样本错误
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            let ext_lower = ext.to_lowercase();
+            if ext_lower == "mp3" {
+                #[cfg(debug_assertions)]
+                eprintln!("⚠️  MP3格式检测到，使用串行解码器（MP3需要有状态解码）");
+
+                return Ok(Box::new(UniversalStreamProcessor::new(path)?));
+            }
+        }
+
+        // 🚀 创建并行流式处理器（支持FLAC、WAV、AAC等格式）
         let parallel_processor = ParallelUniversalStreamProcessor::new(path)?.with_parallel_config(
             parallel_enabled,
             batch_size.unwrap_or(64),  // 默认64包批量
@@ -633,7 +648,7 @@ impl UniversalStreamProcessor {
 
             // 🚀 使用SIMD转换单个声道的数据 (关键优化点！)
             #[cfg(debug_assertions)]
-            let stats = sample_converter
+            let _stats = sample_converter
                 .convert_i24_to_f32(channel_data, &mut converted_channel)
                 .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
 
@@ -641,18 +656,6 @@ impl UniversalStreamProcessor {
             let _stats = sample_converter
                 .convert_i24_to_f32(channel_data, &mut converted_channel)
                 .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
-
-            // 在调试模式下显示SIMD效率
-            #[cfg(debug_assertions)]
-            if ch == 0 {
-                // 只在第一个声道显示，避免输出过多
-                eprintln!(
-                    "🚀 [S24_SIMD] 声道{}: SIMD效率={:.1}%, 样本数={}",
-                    ch,
-                    stats.simd_efficiency(),
-                    stats.input_samples
-                );
-            }
 
             // 交错插入到结果中
             for (frame_idx, &sample) in converted_channel.iter().enumerate() {
@@ -767,6 +770,10 @@ pub struct ParallelUniversalStreamProcessor {
     // 📊 并行优化配置
     parallel_enabled: bool,   // 是否启用并行解码
     processed_packets: usize, // 已处理包数量
+
+    // 🔧 Flushing状态样本缓存
+    drained_samples: Option<Vec<Vec<f32>>>, // 缓存drain_all_samples()的结果
+    drain_index: usize,                     // 当前返回的批次索引
 }
 
 impl ParallelUniversalStreamProcessor {
@@ -782,6 +789,8 @@ impl ParallelUniversalStreamProcessor {
             format_reader: None,
             parallel_enabled: true, // 默认启用并行解码
             processed_packets: 0,
+            drained_samples: None,
+            drain_index: 0,
         })
     }
 
@@ -921,65 +930,125 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
     // 使用宏实现通用方法（format和progress）
     impl_streaming_decoder_state_methods!();
 
-    /// 🚀 并行解码的核心方法
+    /// 🚀 并行解码的核心方法 - 三阶段状态机驱动
     fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
         // 🎯 延迟初始化：首次调用时设置并行解码器
         if self.parallel_decoder.is_none() {
             self.initialize_parallel()?;
         }
 
-        // 🔄 首先尝试获取已解码的样本
-        match self
+        // ✅ 获取当前状态
+        let current_state = self
             .parallel_decoder
-            .as_mut()
-            .expect("parallel_decoder必须已初始化，initialize_parallel()已设置")
-            .next_samples()
-        {
-            Some(samples) if !samples.is_empty() => {
-                // ✅ 有可用样本，更新进度并返回
-                self.state
-                    .update_position(&samples, self.state.format.channels);
-                // 🎯 同步跳过包计数（容错处理统计）
-                self.sync_skipped_packets();
-                return Ok(Some(samples));
-            }
-            _ => {}
-        }
+            .as_ref()
+            .expect("parallel_decoder必须已初始化")
+            .get_state();
 
-        // 🔄 没有可用样本，需要处理更多包
-        // 批量处理包以提高I/O效率，确保能触发解码批次
-        const PACKET_BATCH_SIZE: usize = 64; // 每次处理64个包，匹配批次大小
-        self.process_packets_batch(PACKET_BATCH_SIZE)?;
-
-        // 🔄 再次尝试获取解码样本，给后台线程一些时间
-        const MAX_WAIT_ATTEMPTS: usize = 100;
-        const WAIT_INTERVAL_MS: u64 = 1;
-
-        for _ in 0..MAX_WAIT_ATTEMPTS {
-            match self
-                .parallel_decoder
-                .as_mut()
-                .expect("parallel_decoder必须已初始化，initialize_parallel()已设置")
-                .next_samples()
-            {
-                Some(samples) if !samples.is_empty() => {
-                    self.state
-                        .update_position(&samples, self.state.format.channels);
-                    // 🎯 同步跳过包计数（容错处理统计）
-                    self.sync_skipped_packets();
-                    return Ok(Some(samples));
+        // ✅ 状态机驱动
+        match current_state {
+            DecodingState::Decoding => {
+                // 🔄 尝试获取已解码样本
+                match self
+                    .parallel_decoder
+                    .as_mut()
+                    .expect("parallel_decoder必须已初始化")
+                    .next_samples()
+                {
+                    Some(samples) if !samples.is_empty() => {
+                        self.state
+                            .update_position(&samples, self.state.format.channels);
+                        self.sync_skipped_packets();
+                        return Ok(Some(samples));
+                    }
+                    _ => {}
                 }
-                _ => {
-                    // 短暂等待，让后台线程有时间完成解码
+
+                // 🔄 没有样本，读取更多包
+                const PACKET_BATCH_SIZE: usize = 64;
+                self.process_packets_batch(PACKET_BATCH_SIZE)?;
+
+                // 🔄 等待后台线程解码，最多等待100ms
+                const MAX_WAIT_ATTEMPTS: usize = 100;
+                const WAIT_INTERVAL_MS: u64 = 1;
+
+                for _attempt in 0..MAX_WAIT_ATTEMPTS {
+                    match self
+                        .parallel_decoder
+                        .as_mut()
+                        .expect("parallel_decoder必须已初始化")
+                        .next_samples()
+                    {
+                        Some(samples) if !samples.is_empty() => {
+                            self.state
+                                .update_position(&samples, self.state.format.channels);
+                            self.sync_skipped_packets();
+                            return Ok(Some(samples));
+                        }
+                        _ => {}
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
                 }
+
+                // ✅ 等待超时，检查状态是否已切换到Flushing（process_packets_batch遇到EOF）
+                let new_state = self
+                    .parallel_decoder
+                    .as_ref()
+                    .expect("parallel_decoder必须已初始化")
+                    .get_state();
+
+                if new_state == DecodingState::Flushing {
+                    // 状态已切换，递归调用进入Flushing分支
+                    return self.next_chunk();
+                }
+
+                // 仍在Decoding，暂无样本
+                Ok(None)
+            }
+
+            DecodingState::Flushing => {
+                // ✅ EOF已到，drain所有剩余样本
+                // 首次进入Flushing状态时，调用drain_all_samples()并缓存结果
+                if self.drained_samples.is_none() {
+                    let remaining = self
+                        .parallel_decoder
+                        .as_mut()
+                        .expect("parallel_decoder必须已初始化")
+                        .drain_all_samples();
+                    self.drained_samples = Some(remaining);
+                    self.drain_index = 0;
+                }
+
+                // 逐批返回缓存的样本
+                if let Some(ref samples_batches) = self.drained_samples {
+                    if self.drain_index < samples_batches.len() {
+                        let samples = samples_batches[self.drain_index].clone();
+                        self.drain_index += 1;
+
+                        if !samples.is_empty() {
+                            self.state
+                                .update_position(&samples, self.state.format.channels);
+                            self.sync_skipped_packets();
+                            return Ok(Some(samples));
+                        }
+                    } else {
+                        // ✅ 所有批次已消费完，切换到Completed状态
+                        self.parallel_decoder
+                            .as_mut()
+                            .unwrap()
+                            .set_state(DecodingState::Completed);
+                    }
+                }
+
+                // 所有样本已消费完
+                self.sync_skipped_packets();
+                Ok(None)
+            }
+
+            DecodingState::Completed => {
+                // ✅ 真正的EOF
+                Ok(None)
             }
         }
-
-        // 🏁 等待超时后仍没有样本，可能到达文件末尾
-        // 最后一次同步跳过包计数
-        self.sync_skipped_packets();
-        Ok(None)
     }
 
     fn reset(&mut self) -> AudioResult<()> {
@@ -987,6 +1056,8 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         self.parallel_decoder = None;
         self.state.reset();
         self.processed_packets = 0;
+        self.drained_samples = None;
+        self.drain_index = 0;
         Ok(())
     }
 

@@ -7,6 +7,7 @@ use macinmeter_dr_tool::{
     tools::{self, AppConfig},
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process;
 
 /// 错误处理和建议
@@ -50,10 +51,37 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
         return Ok(());
     }
 
+    // 🎯 根据parallel_files配置选择处理模式
+    match config.parallel_files {
+        None => {
+            // 串行模式（明确禁用）
+            process_batch_serial(config, &audio_files)
+        }
+        Some(degree) => {
+            // 并行模式
+            let actual_degree = degree.min(audio_files.len()).min(16);
+
+            if actual_degree == 1 {
+                // 并发度为1，使用串行模式避免开销
+                println!("💡 并发度为1，使用串行模式");
+                process_batch_serial(config, &audio_files)
+            } else {
+                // 尝试并行处理，失败则降级串行
+                tools::process_batch_parallel(&audio_files, config, actual_degree).or_else(|e| {
+                    eprintln!("⚠️  并行处理失败: {e}，回退到串行模式");
+                    process_batch_serial(config, &audio_files)
+                })
+            }
+        }
+    }
+}
+
+/// 串行批量处理音频文件（原有逻辑）
+fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(), AudioError> {
     // 🎯 根据文件数量选择输出策略
     let is_single_file = audio_files.len() == 1;
     let mut batch_output = if !is_single_file {
-        tools::create_batch_output_header(config, &audio_files)
+        tools::create_batch_output_header(config, audio_files)
     } else {
         String::new()
     };
@@ -121,7 +149,7 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
     // 🎯 只有多文件模式才生成批量输出文件
     if !is_single_file {
         batch_output.push_str(&tools::create_batch_output_footer(
-            &audio_files,
+            audio_files,
             processed_count,
             failed_count,
             &error_stats,

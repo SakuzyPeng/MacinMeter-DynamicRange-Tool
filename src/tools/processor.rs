@@ -57,7 +57,7 @@ pub fn process_audio_file_streaming(
         println!("🌊 使用流式处理模式进行DR分析...");
     }
 
-    let decoder = UniversalDecoder::new();
+    let decoder = UniversalDecoder;
 
     // 先探测格式获取音频参数
     let format = decoder.probe_format(path)?;
