@@ -4,6 +4,7 @@
 
 pub mod cli;
 pub mod formatter;
+pub mod parallel_processor;
 pub mod processor;
 pub mod scanner;
 pub mod utils;
@@ -13,6 +14,7 @@ pub use cli::{AppConfig, parse_args, show_completion_info, show_startup_info};
 pub use formatter::{
     calculate_official_dr, create_output_header, format_dr_results_by_channel_count, write_output,
 };
+pub use parallel_processor::process_batch_parallel;
 pub use processor::{
     add_failed_to_batch_output, add_to_batch_output, output_results, process_audio_file_streaming,
     process_single_audio_file, process_streaming_decoder, save_individual_result,

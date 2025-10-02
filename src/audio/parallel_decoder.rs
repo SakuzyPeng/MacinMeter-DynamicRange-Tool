@@ -327,7 +327,7 @@ impl OrderedParallelDecoder {
         });
 
         // 每10个批次报告一次进度
-        if self.stats.batches_processed % 100 == 0 {
+        if self.stats.batches_processed.is_multiple_of(100) {
             eprintln!(
                 "🔧 并行解码进度: 已处理{}个批次, {}个包",
                 self.stats.batches_processed, self.stats.packets_added

@@ -25,6 +25,7 @@ fn default_test_config() -> AppConfig {
         parallel_decoding: false,
         parallel_batch_size: 64,
         parallel_threads: 4,
+        parallel_files: None, // 测试不需要多文件并行
     }
 }
 

@@ -521,6 +521,7 @@ pub fn save_individual_result(
         parallel_decoding: false,
         parallel_batch_size: 64,
         parallel_threads: 4,
+        parallel_files: None, // 单文件处理不需要并行
     };
 
     if let Err(e) = output_results(results, &temp_config, format, true) {

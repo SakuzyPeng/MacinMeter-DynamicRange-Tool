@@ -30,6 +30,11 @@ pub struct AppConfig {
 
     /// 并行解码线程数（默认：4线程）
     pub parallel_threads: usize,
+
+    /// 🚀 多文件并行配置
+    /// - None: 禁用多文件并行（串行处理）
+    /// - Some(n): 并发度n（默认：4）
+    pub parallel_files: Option<usize>,
 }
 
 impl AppConfig {
@@ -99,6 +104,19 @@ pub fn parse_args() -> AppConfig {
                 .value_name("COUNT")
                 .value_parser(clap::value_parser!(usize)),
         )
+        .arg(
+            Arg::new("parallel-files")
+                .long("parallel-files")
+                .help("并行处理文件数（1-16，默认：4）")
+                .value_name("COUNT")
+                .value_parser(clap::value_parser!(usize)),
+        )
+        .arg(
+            Arg::new("no-parallel-files")
+                .long("no-parallel-files")
+                .help("禁用多文件并行处理（使用串行模式）")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     // 确定输入路径（智能路径处理）
@@ -128,6 +146,19 @@ pub fn parse_args() -> AppConfig {
         .copied()
         .unwrap_or(4); // 默认4线程
 
+    // 🚀 多文件并行配置逻辑
+    let parallel_files = if matches.get_flag("no-parallel-files") {
+        None // 明确禁用多文件并行
+    } else {
+        let degree = matches
+            .get_one::<usize>("parallel-files")
+            .copied()
+            .unwrap_or(4); // 默认4并发度
+
+        // 限制并发度范围：1-16
+        Some(degree.clamp(1, 16))
+    };
+
     AppConfig {
         input_path,
         verbose: matches.get_flag("verbose"),
@@ -135,6 +166,7 @@ pub fn parse_args() -> AppConfig {
         parallel_decoding,
         parallel_batch_size,
         parallel_threads,
+        parallel_files,
     }
 }
 
@@ -151,6 +183,13 @@ pub fn show_startup_info(config: &AppConfig) {
             );
         } else {
             println!("⚡ 并行解码: 禁用 (串行模式)");
+        }
+
+        // 多文件并行配置
+        if let Some(degree) = config.parallel_files {
+            println!("🔥 多文件并行: 启用 ({degree}并发度) - 预期2-16倍加速");
+        } else {
+            println!("🔥 多文件并行: 禁用 (串行处理)");
         }
     }
     println!();
