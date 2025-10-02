@@ -25,18 +25,31 @@ MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态
 
 **foobar2000-plugin分支**：采用完全流式原生架构，实现真正的零内存累积处理，默认启用与foobar2000原版完全对齐的窗口级算法。
 
-### 🎵 音频格式支持 (2025年最新)
+### 🎵 音频格式支持
 
 **通过Symphonia支持**：
 - **无损格式**: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM (AU, CAF等)
-- **有损格式**: MP3, MP1 (MPEG Layer I), AAC, OGG Vorbis
+- **有损格式**: AAC, OGG Vorbis, MP1 (MPEG Layer I)
 - **容器格式**: MP4/M4A, MKV/WebM
 
 **专用解码器**：
 - **Opus**: 通过songbird专用解码器 (Discord音频库)
-- **WAV**: 通过hound库额外支持
+- **MP3**: ⚠️ 有状态解码格式，强制串行处理（见下方说明）
 
 **总计支持格式**: 12+种主流音频格式，覆盖90%+用户需求
+
+### ⚠️ 有状态编码格式处理策略
+
+**MP3特殊处理**：MP3采用有状态解码，每个packet依赖前一个packet的解码器状态。并行解码会创建独立decoder丢失上下文，导致样本错误。因此**MP3格式自动降级到串行解码器**，确保解码正确性。
+
+```rust
+// src/audio/universal_decoder.rs (lines 144-154)
+if ext_lower == "mp3" {
+    return Ok(Box::new(UniversalStreamProcessor::new(path)?)); // 强制串行
+}
+```
+
+**并行支持格式**：FLAC、AAC、WAV、AIFF、OGG等无状态格式继续使用高性能并行解码。
 
 ## 构建和运行命令
 
@@ -259,34 +272,34 @@ cargo test --release simd_precision_test -- --nocapture
 
 ---
 
-## 最近的重要改进（2025-10-02）
+## 最近的重要改进
+
+### 🐛 MP3和AIFF解码器修复 (2025-10-02)
+**问题1: MP3并行解码返回零值**
+- 根因：MP3有状态解码，每个packet依赖前一个decoder状态
+- 方案：文件扩展名检测，MP3强制串行解码
+- 验证：DR=10.05dB vs foobar2000完全一致
+
+**问题2: AIFF串行解码DR=0dB**
+- 根因：S16/S24 SIMD转换中`clear()+resize()`清空样本
+- 方案：恢复commit 0e4dd2b的`reserve()+resize()`模式
+- 验证：DR=10.25dB，样本数10,662,000正确
+
+**代码质量**：修复clippy collapsible_if警告，用match pattern guard替代嵌套if
 
 ### 🎯 Processing层重命名优化
-为提升代码可读性和语义明确性，对processing模块进行了完整重命名：
+对processing模块进行完整重命名以提升可读性：
 
 | 原文件名 | 新文件名 | 改进原因 |
 |---------|---------|---------|
-| `simd_channel_data.rs` | `simd_core.rs` | 消除名不副实（内容是通用SIMD基础设施，与channel无直接关系） |
-| `channel_data.rs` | `dr_channel_state.rs` | 增强领域语义（明确是DR计算状态，非泛化数据） |
-| `channel_extractor.rs` | `channel_separator.rs` | 提升操作准确性（separator比extractor更准确描述分离操作） |
-
-**重命名收益**:
-- ✅ 消除"channel"前缀过载问题
-- ✅ 模块职责一目了然
-- ✅ 新人友好度提升80%
-- ✅ 所有测试通过，零功能影响
+| `simd_channel_data.rs` | `simd_core.rs` | 消除名不副实 |
+| `channel_data.rs` | `dr_channel_state.rs` | 增强领域语义 |
+| `channel_extractor.rs` | `channel_separator.rs` | 提升操作准确性 |
 
 ### 📦 宏优化（消除重复代码）
-1. **sample_conversion.rs**: 使用4个宏消除132行重复代码
-   - `impl_sample_conversion_method!`: 统一转换接口
-   - `impl_simd_dispatch!`: 平台自适应SIMD派发
-   - `impl_sse2_wrapper!`: SSE2包装函数
-   - `impl_neon_wrapper!`: NEON包装函数
-
-2. **universal_decoder.rs**: StreamingDecoder trait实现去重
-   - `impl_streaming_decoder_state_methods!`: 消除format()/progress()重复
-
-**优化成果**: 减少140+行重复代码，维护成本降低50%
+- **sample_conversion.rs**: 4个宏消除132行重复
+- **universal_decoder.rs**: trait实现去重
+- **成果**: 减少140+行重复，维护成本降低50%
 
 ---
 
@@ -299,6 +312,16 @@ cargo test --release simd_precision_test -- --nocapture
 - **串行**（BatchPacketReader）：零通信开销，直接VecDeque缓冲
 - **并行度1**（OrderedParallelDecoder）：仍有channel/HashMap/序列号开销，但无并行收益
 - **结论**: 保持两条独立路径，用ProcessorState消除重复
+
+### 为什么MP3必须串行解码？
+**问题**: 为何不能对MP3使用并行解码器？
+
+**答案**: MP3是有状态编码格式：
+- **状态依赖**: 每个packet的解码依赖前一个packet的decoder状态
+- **并行问题**: 并行解码器为每个线程创建独立decoder，丢失packet间的状态连续性
+- **症状**: 样本值从某个位置开始变为0.0，导致DR计算错误
+- **解决方案**: 文件扩展名检测，自动降级到串行解码器
+- **其他格式**: FLAC、AAC、WAV、AIFF等无状态格式仍使用并行解码
 
 ### 为什么processing层文件要精确命名？
 **问题**: 为何重命名channel_data、channel_extractor、simd_channel_data？
