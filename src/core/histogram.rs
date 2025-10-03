@@ -322,3 +322,350 @@ impl DrHistogram {
         self.total_windows = 0;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_window_size_calculation() {
+        // 44.1kHz特殊情况
+        assert_eq!(
+            WindowRmsAnalyzer::calculate_standard_window_size(44100),
+            132480
+        );
+
+        // 其他采样率：3秒标准窗口
+        assert_eq!(
+            WindowRmsAnalyzer::calculate_standard_window_size(48000),
+            144000
+        );
+        assert_eq!(
+            WindowRmsAnalyzer::calculate_standard_window_size(96000),
+            288000
+        );
+        assert_eq!(
+            WindowRmsAnalyzer::calculate_standard_window_size(192000),
+            576000
+        );
+    }
+
+    #[test]
+    fn test_window_rms_analyzer_creation() {
+        let analyzer = WindowRmsAnalyzer::new(44100, false);
+        assert_eq!(analyzer.window_len, 132480);
+        assert_eq!(analyzer.current_count, 0);
+        assert_eq!(analyzer.total_samples_processed, 0);
+        assert_eq!(analyzer.window_rms_values.len(), 0);
+        assert_eq!(analyzer.window_peaks.len(), 0);
+    }
+
+    #[test]
+    fn test_process_samples_single_window() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建一个完整的3秒窗口（144000样本）
+        let samples = vec![0.5f32; 144000];
+        analyzer.process_samples(&samples);
+
+        // 应该产生1个完整窗口
+        assert_eq!(analyzer.window_rms_values.len(), 1);
+        assert_eq!(analyzer.window_peaks.len(), 1);
+        assert_eq!(analyzer.total_samples_processed, 144000);
+
+        // 验证Peak值
+        assert!((analyzer.window_peaks[0] - 0.5).abs() < 1e-10);
+
+        // 验证RMS计算（0.5的样本，RMS = sqrt(2 * 0.5^2) ≈ 0.707）
+        let expected_rms = (2.0 * 0.5 * 0.5_f64).sqrt();
+        assert!((analyzer.window_rms_values[0] - expected_rms).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_process_samples_multiple_windows() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建2.5个窗口的样本
+        let samples = vec![0.3f32; 360000]; // 2.5 * 144000 = 360000
+        analyzer.process_samples(&samples);
+
+        // 应该产生3个窗口（2个完整+1个尾窗）
+        assert_eq!(analyzer.window_rms_values.len(), 3);
+        assert_eq!(analyzer.window_peaks.len(), 3);
+    }
+
+    #[test]
+    fn test_process_samples_with_tail_window() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 1个完整窗口 + 小于1个窗口的尾部
+        let full_window = vec![0.5f32; 144000];
+        let tail = vec![0.3f32; 72000]; // 0.5个窗口
+
+        analyzer.process_samples(&full_window);
+        analyzer.process_samples(&tail);
+
+        // 应该有2个窗口（1个完整+1个尾窗）
+        assert_eq!(analyzer.window_rms_values.len(), 2);
+        assert_eq!(analyzer.window_peaks.len(), 2);
+    }
+
+    #[test]
+    fn test_process_samples_single_sample_tail() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 1个完整窗口 + 1个样本的尾部
+        let full_window = vec![0.5f32; 144000];
+        let tail = vec![0.8f32]; // 只有1个样本
+
+        analyzer.process_samples(&full_window);
+        analyzer.process_samples(&tail);
+
+        // 只有1个样本的尾窗应该被跳过
+        assert_eq!(analyzer.window_rms_values.len(), 1);
+        assert_eq!(analyzer.window_peaks.len(), 1);
+    }
+
+    #[test]
+    fn test_calculate_20_percent_rms_empty() {
+        let analyzer = WindowRmsAnalyzer::new(44100, false);
+        assert_eq!(analyzer.calculate_20_percent_rms(), 0.0);
+    }
+
+    #[test]
+    fn test_calculate_20_percent_rms_with_virtual_zero() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 恰好1个完整窗口（应该添加虚拟0窗）
+        let samples = vec![0.5f32; 144000];
+        analyzer.process_samples(&samples);
+
+        let rms_20 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20 > 0.0, "RMS应该大于0");
+    }
+
+    #[test]
+    fn test_calculate_20_percent_rms_without_virtual_zero() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 不完整的窗口（不应该添加虚拟0窗）
+        let samples = vec![0.5f32; 145000]; // 144000 + 1000
+        analyzer.process_samples(&samples);
+
+        let rms_20 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20 > 0.0);
+    }
+
+    #[test]
+    fn test_get_largest_peak_empty() {
+        let analyzer = WindowRmsAnalyzer::new(44100, false);
+        assert_eq!(analyzer.get_largest_peak(), 0.0);
+    }
+
+    #[test]
+    fn test_get_largest_peak() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建多个窗口，峰值递增
+        let window1 = vec![0.3f32; 144000];
+        let window2 = vec![0.7f32; 144000];
+        let window3 = vec![0.5f32; 144000];
+
+        analyzer.process_samples(&window1);
+        analyzer.process_samples(&window2);
+        analyzer.process_samples(&window3);
+
+        let largest_peak = analyzer.get_largest_peak();
+        // f32精度限制，使用1e-6精度
+        assert!(
+            (largest_peak - 0.7).abs() < 1e-6,
+            "应该选择最大Peak: actual={largest_peak}"
+        );
+    }
+
+    #[test]
+    fn test_get_second_largest_peak_empty() {
+        let analyzer = WindowRmsAnalyzer::new(44100, false);
+        assert_eq!(analyzer.get_second_largest_peak(), 0.0);
+    }
+
+    #[test]
+    fn test_get_second_largest_peak_single() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建1个窗口+小尾窗（避免虚拟0窗）
+        let window1 = vec![0.6f32; 144000];
+        let tail = vec![0.1f32; 100]; // 小尾窗，避免虚拟0窗
+        analyzer.process_samples(&window1);
+        analyzer.process_samples(&tail);
+
+        let second_peak = analyzer.get_second_largest_peak();
+
+        // 有2个窗口（1个完整+1个尾窗），第二大Peak应该是较小的那个
+        // 因为尾窗会排除最后一个样本重新计算Peak，所以会比较小
+        // 第二大Peak应该是尾窗的Peak（约0.1左右）
+        assert!(
+            (0.0..0.6).contains(&second_peak),
+            "第二大Peak应该小于最大Peak: actual={second_peak}"
+        );
+    }
+
+    #[test]
+    fn test_get_second_largest_peak() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建多个窗口，峰值不同
+        let window1 = vec![0.3f32; 144000];
+        let window2 = vec![0.8f32; 144000];
+        let window3 = vec![0.6f32; 144000];
+
+        analyzer.process_samples(&window1);
+        analyzer.process_samples(&window2);
+        analyzer.process_samples(&window3);
+
+        let second_peak = analyzer.get_second_largest_peak();
+        // f32精度限制，使用1e-6精度
+        assert!((second_peak - 0.6).abs() < 1e-6, "应该选择第二大Peak");
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 添加一些数据
+        let samples = vec![0.5f32; 288000]; // 2个窗口
+        analyzer.process_samples(&samples);
+
+        assert!(!analyzer.window_rms_values.is_empty());
+        assert!(!analyzer.window_peaks.is_empty());
+        assert!(analyzer.total_samples_processed > 0);
+
+        // 清空
+        analyzer.clear();
+
+        assert_eq!(analyzer.window_rms_values.len(), 0);
+        assert_eq!(analyzer.window_peaks.len(), 0);
+        assert_eq!(analyzer.total_samples_processed, 0);
+        assert_eq!(analyzer.current_count, 0);
+        assert_eq!(analyzer.current_sum_sq, 0.0);
+        assert_eq!(analyzer.current_peak, 0.0);
+    }
+
+    #[test]
+    fn test_dr_histogram_creation() {
+        let hist = DrHistogram::new();
+        assert_eq!(hist.bins.len(), 10000);
+        assert_eq!(hist.total_windows, 0);
+    }
+
+    #[test]
+    fn test_dr_histogram_add_window_rms() {
+        let mut hist = DrHistogram::new();
+
+        // 添加有效RMS值
+        hist.add_window_rms(0.5);
+        assert_eq!(hist.total_windows, 1);
+
+        hist.add_window_rms(0.8);
+        assert_eq!(hist.total_windows, 2);
+
+        // 添加无效值（负数）
+        hist.add_window_rms(-0.1);
+        assert_eq!(hist.total_windows, 2, "负数RMS应该被忽略");
+
+        // 添加无效值（NaN）
+        hist.add_window_rms(f64::NAN);
+        assert_eq!(hist.total_windows, 2, "NaN应该被忽略");
+
+        // 添加无效值（无穷）
+        hist.add_window_rms(f64::INFINITY);
+        assert_eq!(hist.total_windows, 2, "无穷值应该被忽略");
+    }
+
+    #[test]
+    fn test_dr_histogram_clear() {
+        let mut hist = DrHistogram::new();
+
+        hist.add_window_rms(0.5);
+        hist.add_window_rms(0.8);
+        assert_eq!(hist.total_windows, 2);
+
+        hist.clear();
+        assert_eq!(hist.total_windows, 0);
+        assert!(hist.bins.iter().all(|&bin| bin == 0));
+    }
+
+    #[test]
+    fn test_virtual_zero_window_logic() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 恰好144000样本（1个完整窗口）
+        let samples = vec![0.5f32; 144000];
+        analyzer.process_samples(&samples);
+
+        // 验证虚拟0窗逻辑
+        assert!(
+            analyzer
+                .total_samples_processed
+                .is_multiple_of(analyzer.window_len)
+        );
+
+        // 145000样本（1个完整窗口+尾窗）
+        let mut analyzer2 = WindowRmsAnalyzer::new(48000, false);
+        let samples2 = vec![0.5f32; 145000];
+        analyzer2.process_samples(&samples2);
+
+        assert!(
+            !analyzer2
+                .total_samples_processed
+                .is_multiple_of(analyzer2.window_len)
+        );
+    }
+
+    #[test]
+    fn test_rms_calculation_accuracy() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 使用已知值测试RMS计算精度
+        // 样本值为0.3，预期RMS = sqrt(2 * 0.3^2) = sqrt(0.18) ≈ 0.424264
+        let samples = vec![0.3f32; 144000];
+        analyzer.process_samples(&samples);
+
+        assert!(!analyzer.window_rms_values.is_empty(), "应该有至少1个RMS值");
+
+        let expected_rms = (2.0 * 0.3 * 0.3_f64).sqrt();
+        let actual_rms = analyzer.window_rms_values[0];
+
+        eprintln!(
+            "Expected RMS: {}, Actual RMS: {}, Diff: {}",
+            expected_rms,
+            actual_rms,
+            (actual_rms - expected_rms).abs()
+        );
+
+        assert!(
+            (actual_rms - expected_rms).abs() < 1e-5,
+            "RMS计算误差过大: expected={expected_rms}, actual={actual_rms}"
+        );
+    }
+
+    #[test]
+    fn test_peak_selection_with_varying_values() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建3个窗口，峰值分别为0.2, 0.9, 0.5
+        let window1 = vec![0.2f32; 144000];
+        let window2 = vec![0.9f32; 144000];
+        let window3 = vec![0.5f32; 144000];
+
+        analyzer.process_samples(&window1);
+        analyzer.process_samples(&window2);
+        analyzer.process_samples(&window3);
+
+        // 最大Peak应该是0.9，f32精度限制使用1e-6
+        assert!((analyzer.get_largest_peak() - 0.9).abs() < 1e-6);
+
+        // 第二大Peak应该是0.5
+        assert!((analyzer.get_second_largest_peak() - 0.5).abs() < 1e-6);
+    }
+}

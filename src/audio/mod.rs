@@ -26,3 +26,6 @@ pub use universal_decoder::{
 
 // 导出流式解码器接口（供外部使用）
 pub use streaming::StreamingDecoder;
+
+// 导出Opus解码器（供测试使用）
+pub use opus_decoder::SongbirdOpusDecoder;

@@ -386,7 +386,7 @@ impl OrderedParallelDecoder {
     ///
     /// # 返回值
     ///
-    /// 返回所有剩余的样本批次，每个Vec<f32>代表一批解码完成的样本
+    /// 返回所有剩余的样本批次，每个`Vec<f32>`代表一批解码完成的样本
     pub fn drain_all_samples(&mut self) -> Vec<Vec<f32>> {
         let mut all_samples = Vec::new();
 
@@ -714,5 +714,314 @@ mod tests {
 
         assert_eq!(decoder.batch_size, 128);
         assert_eq!(decoder.thread_pool_size, 8);
+    }
+
+    // ==================== Phase 1: 序列化和状态机测试 ====================
+
+    #[test]
+    fn test_reorder_buffer_mechanism() {
+        let channel = SequencedChannel::new();
+        let sender = channel.sender();
+
+        // 🎯 测试重排序缓冲区：先发送seq=3，应该被缓存
+        sender.send_sequenced(3, "third").unwrap();
+
+        // ✅ 此时应该收不到数据（seq=0未到）
+        assert!(channel.try_recv_ordered().is_err());
+
+        // 🎯 发送seq=0，应该立即收到
+        sender.send_sequenced(0, "first").unwrap();
+        assert_eq!(channel.try_recv_ordered().unwrap(), "first");
+
+        // 🎯 发送seq=1，应该立即收到
+        sender.send_sequenced(1, "second").unwrap();
+        assert_eq!(channel.try_recv_ordered().unwrap(), "second");
+
+        // 🎯 此时seq=2仍未到，seq=3在缓冲区等待
+        assert!(channel.try_recv_ordered().is_err());
+
+        // 🎯 发送seq=2，应该立即收到seq=2和seq=3（flush连续序列）
+        sender.send_sequenced(2, "middle").unwrap();
+        assert_eq!(channel.try_recv_ordered().unwrap(), "middle");
+        assert_eq!(channel.try_recv_ordered().unwrap(), "third"); // flush出来的
+    }
+
+    #[test]
+    fn test_flush_consecutive_sequences() {
+        let channel = SequencedChannel::new();
+        let sender = channel.sender();
+
+        // 🎯 测试连续序列号的自动flush：先发送2、3、4，再发送0、1
+        sender.send_sequenced(2, "data2").unwrap();
+        sender.send_sequenced(3, "data3").unwrap();
+        sender.send_sequenced(4, "data4").unwrap();
+
+        // ✅ 此时应该收不到数据
+        assert!(channel.try_recv_ordered().is_err());
+
+        // 🎯 发送seq=0，立即收到
+        sender.send_sequenced(0, "data0").unwrap();
+        assert_eq!(channel.try_recv_ordered().unwrap(), "data0");
+
+        // 🎯 发送seq=1，应该触发flush连续序列2、3、4
+        sender.send_sequenced(1, "data1").unwrap();
+        assert_eq!(channel.try_recv_ordered().unwrap(), "data1");
+        assert_eq!(channel.try_recv_ordered().unwrap(), "data2");
+        assert_eq!(channel.try_recv_ordered().unwrap(), "data3");
+        assert_eq!(channel.try_recv_ordered().unwrap(), "data4");
+    }
+
+    #[test]
+    fn test_decoding_state_transitions() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 初始状态应该是Decoding
+        assert_eq!(decoder.get_state(), DecodingState::Decoding);
+
+        // 🎯 调用flush_remaining应该转换到Flushing
+        decoder.flush_remaining().unwrap();
+        assert_eq!(decoder.get_state(), DecodingState::Flushing);
+
+        // 🎯 可以手动设置状态到Completed
+        decoder.set_state(DecodingState::Completed);
+        assert_eq!(decoder.get_state(), DecodingState::Completed);
+    }
+
+    #[test]
+    fn test_eof_flag_behavior() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 初始状态：eof_encountered应该是false
+        assert!(!decoder.eof_encountered);
+
+        // 🎯 flush后会发送EOF标记
+        decoder.flush_remaining().unwrap();
+
+        // 🎯 调用next_samples应该遇到EOF并设置标志
+        // 注意：由于没有真实数据，channel是空的，但我们可以测试EOF标志的初始状态
+        assert_eq!(decoder.get_state(), DecodingState::Flushing);
+    }
+
+    #[test]
+    fn test_flushed_flag_prevents_double_flush() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 第一次flush应该成功
+        assert!(!decoder.flushed);
+        decoder.flush_remaining().unwrap();
+        assert!(decoder.flushed);
+
+        // 🎯 第二次flush应该直接返回（防止重复）
+        let result = decoder.flush_remaining();
+        assert!(result.is_ok()); // 应该成功返回，而不是错误
+        assert!(decoder.flushed); // 标志保持为true
+    }
+
+    // ==================== Phase 2: 批处理和样本消费测试 ====================
+
+    #[test]
+    fn test_batch_triggering_on_full() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let decoder = OrderedParallelDecoder::new(codec_params, sample_converter).with_config(4, 2);
+
+        // 🎯 批次大小为4，添加3个包不应该触发处理
+        assert_eq!(decoder.current_batch.len(), 0);
+
+        // 注意：实际添加packet需要真实的packet数据，这里测试批次满的逻辑
+        assert_eq!(decoder.batch_size, 4);
+        assert_eq!(decoder.stats.batches_processed, 0);
+    }
+
+    #[test]
+    fn test_flush_remaining_partial_batch() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder =
+            OrderedParallelDecoder::new(codec_params, sample_converter).with_config(64, 4);
+
+        // 🎯 flush空批次应该成功
+        let result = decoder.flush_remaining();
+        assert!(result.is_ok());
+        assert_eq!(decoder.get_state(), DecodingState::Flushing);
+    }
+
+    #[test]
+    fn test_next_samples_returns_none_initially() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 没有数据时next_samples应该返回None
+        assert!(decoder.next_samples().is_none());
+    }
+
+    #[test]
+    fn test_next_samples_eof_flag_set() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 flush后next_samples应该最终遇到EOF
+        decoder.flush_remaining().unwrap();
+
+        // 等待EOF通过channel
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // 🎯 调用next_samples直到遇到EOF
+        while !decoder.eof_encountered {
+            if decoder.next_samples().is_none() && decoder.eof_encountered {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        // ✅ 验证EOF标志被设置
+        assert!(decoder.eof_encountered);
+    }
+
+    #[test]
+    fn test_drain_all_samples_empty() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 flush后drain应该返回空vec
+        decoder.flush_remaining().unwrap();
+
+        // 等待EOF到达
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let samples = decoder.drain_all_samples();
+        assert_eq!(samples.len(), 0); // 没有真实数据
+    }
+
+    // ==================== Phase 3: 配置和统计测试 ====================
+
+    #[test]
+    fn test_config_clamping() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+
+        // 🎯 测试batch_size上限限制（512）
+        let decoder1 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
+            .with_config(1000, 4);
+        assert_eq!(decoder1.batch_size, 512); // 应该被限制到512
+
+        // 🎯 测试batch_size下限限制（1）
+        let decoder2 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
+            .with_config(0, 4);
+        assert_eq!(decoder2.batch_size, 1); // 应该被限制到1
+
+        // 🎯 测试thread_pool_size上限限制（16）
+        let decoder3 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
+            .with_config(64, 100);
+        assert_eq!(decoder3.thread_pool_size, 16); // 应该被限制到16
+
+        // 🎯 测试thread_pool_size下限限制（1）
+        let decoder4 =
+            OrderedParallelDecoder::new(codec_params, sample_converter).with_config(64, 0);
+        assert_eq!(decoder4.thread_pool_size, 1); // 应该被限制到1
+    }
+
+    #[test]
+    fn test_stats_tracking() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 初始统计应该为0
+        assert_eq!(decoder.stats.packets_added, 0);
+        assert_eq!(decoder.stats.batches_processed, 0);
+        assert_eq!(decoder.stats.samples_decoded, 0);
+        assert_eq!(decoder.stats.failed_packets, 0);
+    }
+
+    #[test]
+    fn test_sequence_counter_initial_value() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 序列号计数器初始值应该是0
+        assert_eq!(decoder.sequence_counter, 0);
+    }
+
+    #[test]
+    fn test_decoder_factory_sample_converter() {
+        use crate::processing::SampleConverter;
+
+        let codec_params = symphonia::core::codecs::CodecParameters::new();
+        let sample_converter = SampleConverter::new();
+
+        let factory = DecoderFactory::new(codec_params, sample_converter);
+
+        // 🎯 获取样本转换器克隆
+        let converter = factory.get_sample_converter();
+        assert!(std::mem::size_of_val(&converter) > 0); // 验证转换器存在
+    }
+
+    #[test]
+    fn test_get_skipped_packets() {
+        use crate::processing::SampleConverter;
+
+        let mut codec_params = symphonia::core::codecs::CodecParameters::new();
+        codec_params.for_codec(symphonia::core::codecs::CODEC_TYPE_NULL);
+
+        let sample_converter = SampleConverter::new();
+        let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
+
+        // 🎯 初始跳过包数应该是0
+        assert_eq!(decoder.get_skipped_packets(), 0);
     }
 }

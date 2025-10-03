@@ -403,4 +403,331 @@ mod tests {
 
         println!("✅ 协调器一致性验证通过");
     }
+
+    // ==================== Phase 1: 参数验证和错误处理 ====================
+
+    #[test]
+    fn test_empty_samples_error() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 测试空样本应该返回错误
+        let result = coordinator.process_channels(&[], 1, |_samples, _idx| {
+            use crate::core::DrResult;
+            Ok(DrResult {
+                channel: 0,
+                dr_value: 0.0,
+                rms: 0.0,
+                peak: 0.0,
+                primary_peak: 0.0,
+                secondary_peak: 0.0,
+                sample_count: 0,
+            })
+        });
+
+        assert!(result.is_err());
+        if let Err(AudioError::InvalidInput(msg)) = result {
+            assert!(msg.contains("样本数据不能为空"));
+        } else {
+            panic!("Expected InvalidInput error");
+        }
+    }
+
+    #[test]
+    fn test_sample_channel_mismatch_error() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 测试样本数不是声道数倍数的错误
+        let samples = vec![0.5, 0.3, 0.7]; // 3个样本，无法整除2声道
+        let result = coordinator.process_channels(&samples, 2, |_samples, _idx| {
+            use crate::core::DrResult;
+            Ok(DrResult {
+                channel: 0,
+                dr_value: 0.0,
+                rms: 0.0,
+                peak: 0.0,
+                primary_peak: 0.0,
+                secondary_peak: 0.0,
+                sample_count: 0,
+            })
+        });
+
+        assert!(result.is_err());
+        if let Err(AudioError::InvalidInput(msg)) = result {
+            assert!(msg.contains("必须是声道数"));
+            assert!(msg.contains("的倍数"));
+        } else {
+            panic!("Expected InvalidInput error with mismatch message");
+        }
+    }
+
+    #[test]
+    fn test_callback_error_propagation() {
+        let coordinator = ProcessingCoordinator::new();
+
+        let samples = vec![0.5, 0.3, 0.7, 0.4]; // 2声道，2个样本每声道
+
+        // 🎯 测试回调函数错误应该被传播
+        let result = coordinator.process_channels(&samples, 2, |_samples, _idx| {
+            Err(AudioError::CalculationError("模拟DR计算失败".to_string()))
+        });
+
+        assert!(result.is_err());
+        if let Err(AudioError::CalculationError(msg)) = result {
+            assert_eq!(msg, "模拟DR计算失败");
+        } else {
+            panic!("Expected CalculationError");
+        }
+    }
+
+    // ==================== Phase 2: 单声道路径测试 ====================
+
+    #[test]
+    fn test_mono_sequential_processing() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 单声道样本数据
+        let samples = vec![0.1, 0.2, 0.3, 0.5, 1.0, 0.8]; // 6个单声道样本
+
+        let result = coordinator
+            .process_channels(&samples, 1, |channel_samples, channel_idx| {
+                use crate::core::DrResult;
+                // 验证是单声道
+                assert_eq!(channel_idx, 0);
+                assert_eq!(channel_samples.len(), 6);
+
+                Ok(DrResult {
+                    channel: channel_idx,
+                    dr_value: 12.0,
+                    rms: 0.3,
+                    peak: 1.0,
+                    primary_peak: 1.0,
+                    secondary_peak: 0.8,
+                    sample_count: channel_samples.len(),
+                })
+            })
+            .unwrap();
+
+        // ✅ 验证单声道结果
+        assert_eq!(result.dr_results.len(), 1);
+        assert_eq!(result.performance_stats.channels_processed, 1);
+        assert_eq!(result.performance_stats.total_samples, 6);
+    }
+
+    #[test]
+    fn test_mono_channel_extraction() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 单声道数据，验证声道分离逻辑
+        let samples = vec![0.5, 0.6, 0.7, 0.8];
+
+        coordinator
+            .process_channels(&samples, 1, |channel_samples, _idx| {
+                use crate::core::DrResult;
+                // ✅ 单声道应该提取所有样本
+                assert_eq!(channel_samples, &samples[..]);
+
+                Ok(DrResult {
+                    channel: 0,
+                    dr_value: 10.0,
+                    rms: 0.5,
+                    peak: 0.8,
+                    primary_peak: 0.8,
+                    secondary_peak: 0.7,
+                    sample_count: channel_samples.len(),
+                })
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_mono_vs_stereo_performance_stats() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 单声道样本
+        let mono_samples = vec![0.5; 100];
+        let mono_result = coordinator
+            .process_channels(&mono_samples, 1, |samples, idx| {
+                use crate::core::DrResult;
+                Ok(DrResult {
+                    channel: idx,
+                    dr_value: 10.0,
+                    rms: 0.3,
+                    peak: 0.5,
+                    primary_peak: 0.5,
+                    secondary_peak: 0.4,
+                    sample_count: samples.len(),
+                })
+            })
+            .unwrap();
+
+        // 🎯 立体声样本（相同总样本数）
+        let stereo_samples = vec![0.5; 100];
+        let stereo_result = coordinator
+            .process_channels(&stereo_samples, 2, |samples, idx| {
+                use crate::core::DrResult;
+                Ok(DrResult {
+                    channel: idx,
+                    dr_value: 10.0,
+                    rms: 0.3,
+                    peak: 0.5,
+                    primary_peak: 0.5,
+                    secondary_peak: 0.4,
+                    sample_count: samples.len(),
+                })
+            })
+            .unwrap();
+
+        // ✅ 验证统计信息差异
+        assert_eq!(mono_result.performance_stats.channels_processed, 1);
+        assert_eq!(stereo_result.performance_stats.channels_processed, 2);
+        assert_eq!(mono_result.performance_stats.total_samples, 100);
+        assert_eq!(stereo_result.performance_stats.total_samples, 100);
+
+        // 验证每声道样本数通过DrResult获得
+        assert_eq!(mono_result.dr_results[0].sample_count, 100);
+        assert_eq!(stereo_result.dr_results[0].sample_count, 50);
+    }
+
+    // ==================== Phase 3: 辅助方法和报告测试 ====================
+
+    #[test]
+    fn test_simd_capabilities_access() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 访问委托的SIMD能力
+        let capabilities = coordinator.simd_capabilities();
+
+        // ✅ 验证SIMD能力信息存在
+        assert!(std::mem::size_of_val(capabilities) > 0);
+        println!("SIMD能力: {capabilities:?}");
+    }
+
+    #[test]
+    fn test_performance_evaluator_access() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 访问委托的性能评估器
+        let evaluator = coordinator.performance_evaluator();
+
+        // ✅ 验证评估器存在
+        assert!(std::mem::size_of_val(evaluator) > 0);
+    }
+
+    #[test]
+    fn test_performance_report_generation() {
+        let coordinator = ProcessingCoordinator::new();
+
+        let samples = vec![0.5; 100];
+        let result = coordinator
+            .process_channels(&samples, 2, |samples, idx| {
+                use crate::core::DrResult;
+                Ok(DrResult {
+                    channel: idx,
+                    dr_value: 12.0,
+                    rms: 0.4,
+                    peak: 0.5,
+                    primary_peak: 0.5,
+                    secondary_peak: 0.45,
+                    sample_count: samples.len(),
+                })
+            })
+            .unwrap();
+
+        // 🎯 生成性能报告
+        let report = coordinator.generate_performance_report(&result);
+
+        // ✅ 验证报告包含关键信息
+        assert!(!report.is_empty());
+        assert!(report.contains("SIMD") || report.contains("性能") || report.contains("samples"));
+        println!("性能报告:\n{report}");
+    }
+
+    // ==================== Phase 4: 高级功能测试 ====================
+
+    #[test]
+    fn test_default_trait() {
+        // 🎯 测试Default trait实现
+        let coordinator = ProcessingCoordinator::default();
+
+        // ✅ 验证通过default创建的协调器功能正常
+        let samples = vec![0.5; 10];
+        let result = coordinator.process_channels(&samples, 1, |samples, idx| {
+            use crate::core::DrResult;
+            Ok(DrResult {
+                channel: idx,
+                dr_value: 10.0,
+                rms: 0.3,
+                peak: 0.5,
+                primary_peak: 0.5,
+                secondary_peak: 0.4,
+                sample_count: samples.len(),
+            })
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_large_sample_processing() {
+        let coordinator = ProcessingCoordinator::new();
+
+        // 🎯 测试大样本处理（模拟真实场景）
+        let large_samples = vec![0.5; 48000 * 2]; // 1秒立体声@48kHz
+
+        let result = coordinator
+            .process_channels(&large_samples, 2, |samples, idx| {
+                use crate::core::DrResult;
+                // 验证每声道样本数正确
+                assert_eq!(samples.len(), 48000);
+
+                Ok(DrResult {
+                    channel: idx,
+                    dr_value: 15.0,
+                    rms: 0.2,
+                    peak: 0.5,
+                    primary_peak: 0.5,
+                    secondary_peak: 0.45,
+                    sample_count: samples.len(),
+                })
+            })
+            .unwrap();
+
+        // ✅ 验证大样本处理结果
+        assert_eq!(result.dr_results.len(), 2);
+        assert_eq!(result.performance_stats.total_samples, 96000);
+        assert_eq!(result.dr_results[0].sample_count, 48000); // 每声道样本数
+        assert!(result.performance_stats.samples_per_second > 0.0);
+    }
+
+    #[test]
+    fn test_simd_usage_stats() {
+        let coordinator = ProcessingCoordinator::new();
+
+        let samples = vec![0.5; 1000];
+        let result = coordinator
+            .process_channels(&samples, 2, |samples, idx| {
+                use crate::core::DrResult;
+                Ok(DrResult {
+                    channel: idx,
+                    dr_value: 12.0,
+                    rms: 0.3,
+                    peak: 0.5,
+                    primary_peak: 0.5,
+                    secondary_peak: 0.4,
+                    sample_count: samples.len(),
+                })
+            })
+            .unwrap();
+
+        // 🎯 验证SIMD使用统计
+        assert!(result.simd_usage.used_simd);
+        assert_eq!(result.simd_usage.simd_samples, 1000);
+        assert_eq!(result.simd_usage.scalar_samples, 0);
+        // 验证SIMD覆盖率为1.0（即100%，允许浮点误差）
+        assert!(
+            (result.simd_usage.simd_coverage - 1.0).abs() < 0.01,
+            "SIMD coverage was {}, expected ~1.0 (100%)",
+            result.simd_usage.simd_coverage
+        );
+    }
 }

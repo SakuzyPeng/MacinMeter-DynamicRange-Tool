@@ -72,3 +72,4 @@ master-branch/
 # foobar2000 SDK (在foobar2000-plugin分支中需要包含以支持CI构建)
 # SDK-2025-03-07/  # 暂时注释掉，在foobar2000-plugin分支中需要包含
 # SDK*/            # 暂时注释掉，在foobar2000-plugin分支中需要包含
+coverage/

@@ -115,7 +115,7 @@ fn test_throughput() {
     let mb_per_sec = (total_samples * 2) as f64 / elapsed.as_secs_f64() / 1_000_000.0; // i16=2字节
 
     println!("\n📊 吞吐量测试:");
-    println!("   总样本: {} (x{})", input.len(), iterations);
+    println!("   总样本: {total_samples} (x{iterations})");
     println!("   耗时: {:.2} 秒", elapsed.as_secs_f64());
     println!("   吞吐量: {:.2} M样本/秒", samples_per_sec / 1_000_000.0);
     println!("   带宽: {mb_per_sec:.2} MB/秒");
