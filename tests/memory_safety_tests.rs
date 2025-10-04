@@ -147,98 +147,52 @@ fn test_sequenced_channel_large_scale_cleanup() {
     println!("✅ 大规模测试通过：{COUNT} 个数据全部正确释放");
 }
 
-// ========== Drop计数器 - 验证对象销毁 ==========
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static DROP_COUNTER: AtomicUsize = AtomicUsize::new(0);
-static CREATE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-/// 带Drop计数器的测试对象
-#[derive(Clone)]
-#[allow(dead_code)]
-struct TrackedData {
-    id: usize,
-    data: Vec<u8>,
-}
-
-impl TrackedData {
-    fn new(id: usize, size: usize) -> Self {
-        CREATE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Self {
-            id,
-            data: vec![0u8; size],
-        }
-    }
-}
-
-impl Drop for TrackedData {
-    fn drop(&mut self) {
-        DROP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
 /// 验证SequencedChannel完全消费后，所有对象被drop
 ///
-/// 检测方法：创建计数器 == drop计数器
-/// 关键修复：强制drop以避免Rust延迟析构
+/// 检测方法：使用Arc引用计数验证对象释放（避免全局状态）
 #[test]
 fn test_complete_object_cleanup() {
-    // 重置计数器
-    DROP_COUNTER.store(0, Ordering::SeqCst);
-    CREATE_COUNTER.store(0, Ordering::SeqCst);
+    println!("📊 对象Drop验证测试（使用Arc引用计数）");
 
-    println!("📊 对象Drop验证测试");
+    let channel: SequencedChannel<Arc<Vec<u8>>> = SequencedChannel::new();
+    let sender = channel.sender();
 
-    let created_before = CREATE_COUNTER.load(Ordering::SeqCst);
-    let dropped_before = DROP_COUNTER.load(Ordering::SeqCst);
+    const COUNT: usize = 1000;
 
-    {
-        let channel: SequencedChannel<TrackedData> = SequencedChannel::new();
-        let sender = channel.sender();
-
-        const COUNT: usize = 1000;
-
-        // 创建并发送1000个对象
-        for i in 0..COUNT {
-            let data = TrackedData::new(i, 1024); // 1KB each
-            sender.send_sequenced(i, data).unwrap();
-        }
-
-        let created_after_send = CREATE_COUNTER.load(Ordering::SeqCst);
-        println!("  创建了 {} 个对象", created_after_send - created_before);
-
-        // 接收所有对象
-        for _i in 0..COUNT {
-            let data = channel.recv_ordered().unwrap();
-            // 显式drop以避免延迟析构
-            drop(data);
-        }
-
-        println!("  接收完成");
-
-        // 显式drop channel和sender
-        drop(sender);
-        drop(channel);
+    // 创建1000个Arc包装的数据，保存引用用于验证
+    let mut data_refs = Vec::new();
+    for i in 0..COUNT {
+        let data = Arc::new(vec![i as u8; 1024]); // 1KB each
+        data_refs.push(Arc::clone(&data));
+        sender.send_sequenced(i, data).unwrap();
     }
 
-    // 强制等待异步drop完成（如果有的话）
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    println!("  创建了 {COUNT} 个对象");
 
-    // 验证所有对象都被drop
-    let created_total = CREATE_COUNTER.load(Ordering::SeqCst);
-    let dropped_total = DROP_COUNTER.load(Ordering::SeqCst);
-    let created_this_test = created_total - created_before;
-    let dropped_this_test = dropped_total - dropped_before;
+    // 接收所有对象
+    for _i in 0..COUNT {
+        let data = channel.recv_ordered().unwrap();
+        // 显式drop
+        drop(data);
+    }
 
-    println!("  本测试创建: {created_this_test}, 销毁: {dropped_this_test}");
+    println!("  接收完成");
 
-    assert_eq!(
-        created_this_test, dropped_this_test,
-        "内存泄露！本测试创建了{created_this_test}个对象，但只销毁了{dropped_this_test}个"
-    );
+    // 显式drop channel和sender
+    drop(sender);
+    drop(channel);
 
-    println!("✅ 对象Drop验证通过：{created_this_test} 个对象全部正确销毁");
+    // 验证所有对象都被释放：每个Arc现在只有data_refs持有1个引用
+    for (i, data_ref) in data_refs.iter().enumerate() {
+        assert_eq!(
+            Arc::strong_count(data_ref),
+            1,
+            "对象{i}: 应该只剩data_refs持有引用，实际引用数={}",
+            Arc::strong_count(data_ref)
+        );
+    }
+
+    println!("✅ 对象Drop验证通过：{COUNT} 个对象全部正确销毁（引用计数=1）");
 }
 
 // ========== 流式处理内存恒定验证 ==========
@@ -297,50 +251,54 @@ fn test_streaming_memory_stability() {
 /// 验证重复创建和销毁SequencedChannel不会泄露
 ///
 /// 场景：创建1000个channel，立即销毁
-/// 验证：通过Drop计数器确保所有channel被销毁
+/// 验证：使用Arc引用计数验证释放（避免全局状态）
 #[test]
 fn test_channel_creation_destruction() {
-    DROP_COUNTER.store(0, Ordering::SeqCst);
-    CREATE_COUNTER.store(0, Ordering::SeqCst);
-
-    println!("📊 Channel重复创建销毁测试");
+    println!("📊 Channel重复创建销毁测试（使用Arc引用计数）");
 
     const ITERATIONS: usize = 1000;
+    const ITEMS_PER_CHANNEL: usize = 10;
 
     for i in 0..ITERATIONS {
-        let channel: SequencedChannel<TrackedData> = SequencedChannel::new();
+        let channel: SequencedChannel<Arc<Vec<u8>>> = SequencedChannel::new();
         let sender = channel.sender();
 
+        // 保存引用用于验证
+        let mut data_refs = Vec::new();
+
         // 发送少量数据
-        for j in 0..10 {
-            let data = TrackedData::new(j, 100); // 100 bytes
+        for j in 0..ITEMS_PER_CHANNEL {
+            let data = Arc::new(vec![j as u8; 100]); // 100 bytes
+            data_refs.push(Arc::clone(&data));
             sender.send_sequenced(j, data).unwrap();
         }
 
         // 接收所有数据
-        for _ in 0..10 {
+        for _ in 0..ITEMS_PER_CHANNEL {
             let _data = channel.recv_ordered().unwrap();
         }
 
         // channel和sender在这里drop
+        drop(sender);
+        drop(channel);
+
+        // 验证所有数据都被释放
+        for (j, data_ref) in data_refs.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(data_ref),
+                1,
+                "迭代{i}, 对象{j}: 引用未完全释放"
+            );
+        }
 
         if i % 100 == 0 && i > 0 {
-            let created = CREATE_COUNTER.load(Ordering::SeqCst);
-            let dropped = DROP_COUNTER.load(Ordering::SeqCst);
-            println!("  第{i}次迭代，创建: {created}, 销毁: {dropped}");
+            println!("  第{i}次迭代完成，所有对象正确释放");
         }
     }
 
-    // 最终验证
-    let created = CREATE_COUNTER.load(Ordering::SeqCst);
-    let dropped = DROP_COUNTER.load(Ordering::SeqCst);
-
-    assert_eq!(
-        created, dropped,
-        "内存泄露！创建了{created}个对象，但只销毁了{dropped}个"
+    println!(
+        "✅ Channel创建销毁测试通过：{ITERATIONS} 次迭代，每次{ITEMS_PER_CHANNEL}个对象全部正确销毁"
     );
-
-    println!("✅ Channel创建销毁测试通过：{ITERATIONS} 次迭代，{created} 个对象全部正确销毁");
 }
 
 // ========== Arc循环引用检测 ==========
