@@ -24,4 +24,10 @@ pub mod defaults {
     /// 用于多线程并行处理的默认线程数，
     /// 4线程在多数场景下提供良好的性能/资源平衡
     pub const PARALLEL_THREADS: usize = 4;
+
+    /// 默认多文件并行并发度
+    ///
+    /// 用于批量处理多个文件时的并行度，
+    /// 4并发度在多数场景下提供良好的性能/资源平衡
+    pub const PARALLEL_FILES_DEGREE: usize = 4;
 }

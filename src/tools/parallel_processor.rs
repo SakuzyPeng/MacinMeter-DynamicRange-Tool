@@ -4,9 +4,8 @@
 
 use super::cli::AppConfig;
 use super::{
-    add_failed_to_batch_output, add_to_batch_output, create_batch_output_footer,
-    create_batch_output_header, generate_batch_output_path, process_single_audio_file,
-    save_individual_result, show_batch_completion_info, utils,
+    add_failed_to_batch_output, add_to_batch_output, create_batch_output_header,
+    finalize_and_write_batch_output, process_single_audio_file, save_individual_result, utils,
 };
 use crate::AudioError;
 use crate::error::ErrorCategory;
@@ -152,32 +151,18 @@ pub fn process_batch_parallel(
         }
     }
 
-    // 6️⃣ 生成批量输出文件
-    if !is_single_file {
-        let error_stats_final = error_stats.lock().unwrap().clone();
-        let processed = processed_count.load(Ordering::Relaxed);
-        let failed = failed_count.load(Ordering::Relaxed);
+    // 6️⃣ 统一处理批量输出收尾工作
+    let error_stats_final = error_stats.lock().unwrap().clone();
+    let processed = processed_count.load(Ordering::Relaxed);
+    let failed = failed_count.load(Ordering::Relaxed);
 
-        batch_output.push_str(&create_batch_output_footer(
-            audio_files,
-            processed,
-            failed,
-            &error_stats_final,
-        ));
-
-        let output_path = generate_batch_output_path(config);
-        std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
-
-        show_batch_completion_info(&output_path, processed, audio_files.len(), failed, config);
-    } else {
-        // 单文件模式：显示简单的完成信息
-        let processed = processed_count.load(Ordering::Relaxed);
-        if processed > 0 {
-            println!("✅ 单文件处理完成");
-        } else {
-            println!("❌ 单文件处理失败");
-        }
-    }
-
-    Ok(())
+    finalize_and_write_batch_output(
+        config,
+        audio_files,
+        batch_output,
+        processed,
+        failed,
+        &error_stats_final,
+        is_single_file,
+    )
 }

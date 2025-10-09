@@ -146,35 +146,16 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         }
     }
 
-    // 🎯 只有多文件模式才生成批量输出文件
-    if !is_single_file {
-        batch_output.push_str(&tools::create_batch_output_footer(
-            audio_files,
-            processed_count,
-            failed_count,
-            &error_stats,
-        ));
-        let output_path = tools::generate_batch_output_path(config);
-        std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
-
-        // 显示批量完成信息
-        tools::show_batch_completion_info(
-            &output_path,
-            processed_count,
-            audio_files.len(),
-            failed_count,
-            config,
-        );
-    } else {
-        // 🎯 单文件模式：显示简单的完成信息
-        if processed_count > 0 {
-            println!("✅ 单文件处理完成");
-        } else {
-            println!("❌ 单文件处理失败");
-        }
-    }
-
-    Ok(())
+    // 🎯 统一处理批量输出收尾工作
+    tools::finalize_and_write_batch_output(
+        config,
+        audio_files,
+        batch_output,
+        processed_count,
+        failed_count,
+        &error_stats,
+        is_single_file,
+    )
 }
 
 /// 单文件处理模式

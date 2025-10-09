@@ -169,7 +169,7 @@ pub fn format_stereo_results(results: &[DrResult]) -> String {
     //     "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
     // ));
     output.push_str(&format!(
-        "DR channel:      {:.2} dB   ---     {:.2} dB   \n",
+        "DR channel:      {:.2} dB   ---    {:.2} dB   \n",
         results[0].dr_value, results[1].dr_value
     ));
 

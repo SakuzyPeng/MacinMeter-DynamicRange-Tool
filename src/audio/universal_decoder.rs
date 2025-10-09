@@ -145,9 +145,13 @@ impl UniversalDecoder {
         // MP3/AAC/OGG每个包依赖前一个包的解码器状态，并行解码会导致样本错误
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
             let ext_lower = ext.to_lowercase();
-            if ext_lower == "mp3" || ext_lower == "aac" || ext_lower == "m4a" || ext_lower == "ogg" {
+            if ext_lower == "mp3" || ext_lower == "aac" || ext_lower == "m4a" || ext_lower == "ogg"
+            {
                 #[cfg(debug_assertions)]
-                eprintln!("⚠️  {}格式检测到，使用串行解码器（有状态编码需要保持解码器上下文）", ext_lower.to_uppercase());
+                eprintln!(
+                    "⚠️  {}格式检测到，使用串行解码器（有状态编码需要保持解码器上下文）",
+                    ext_lower.to_uppercase()
+                );
 
                 return Ok(Box::new(UniversalStreamProcessor::new(path)?));
             }

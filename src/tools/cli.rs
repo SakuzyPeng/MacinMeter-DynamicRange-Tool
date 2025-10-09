@@ -2,6 +2,7 @@
 //!
 //! 负责命令行参数解析、配置管理和程序信息展示。
 
+use super::constants;
 use clap::{Arg, Command};
 use std::path::PathBuf;
 
@@ -132,12 +133,12 @@ pub fn parse_args() -> AppConfig {
     let parallel_batch_size = matches
         .get_one::<usize>("parallel-batch")
         .copied()
-        .unwrap_or(64); // 默认64包批量
+        .unwrap_or(constants::defaults::PARALLEL_BATCH_SIZE);
 
     let parallel_threads = matches
         .get_one::<usize>("parallel-threads")
         .copied()
-        .unwrap_or(4); // 默认4线程
+        .unwrap_or(constants::defaults::PARALLEL_THREADS);
 
     // 🚀 多文件并行配置逻辑
     let parallel_files = if matches.get_flag("no-parallel-files") {
@@ -146,7 +147,7 @@ pub fn parse_args() -> AppConfig {
         let degree = matches
             .get_one::<usize>("parallel-files")
             .copied()
-            .unwrap_or(4); // 默认4并发度
+            .unwrap_or(constants::defaults::PARALLEL_FILES_DEGREE);
 
         // 限制并发度范围：1-16
         Some(degree.clamp(1, 16))

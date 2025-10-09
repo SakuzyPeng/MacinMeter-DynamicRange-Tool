@@ -345,13 +345,16 @@ pub fn add_to_batch_output(
     // 🎯 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
     match formatter::compute_official_precise_dr(results, format) {
         Some((official_dr, precise_dr, _excluded_count)) => {
-            // 🎯 DR值在第一列，方便对齐，保持"dB"后缀与单文件一致
+            // 🎯 使用固定宽度对齐（左对齐17字符），确保列对齐美观
             batch_output.push_str(&format!(
-                "DR{official_dr}\t{precise_dr:.2} dB\t{file_name}\n"
+                "{:<17}{:<17}{}\n",
+                format!("DR{}", official_dr),
+                format!("{:.2} dB", precise_dr),
+                file_name
             ));
         }
         None => {
-            batch_output.push_str(&format!("-\t无有效声道\t{file_name}\n"));
+            batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "无有效声道", file_name));
         }
     }
 }
@@ -359,8 +362,8 @@ pub fn add_to_batch_output(
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    // 🎯 匹配新格式：Official DR\tPrecise DR\t文件名
-    batch_output.push_str(&format!("-\t处理失败\t{file_name}\n"));
+    // 🎯 使用固定宽度对齐（与成功结果格式一致）
+    batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "处理失败", file_name));
 }
 
 /// 为单个文件生成独立的DR结果文件

@@ -100,15 +100,17 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
     batch_output.push_str("=====================================\n\n");
 
     // 添加标准信息到输出
-    batch_output.push_str("🌿 Git分支: foobar2000-plugin (默认批处理模式)\n");
-    batch_output.push_str("📏 基于foobar2000 DR Meter逆向分析\n");
-    batch_output.push_str("✅ 使用批处理DR计算模式\n");
-    batch_output.push_str(&format!("📁 扫描目录: {}\n", config.input_path.display()));
-    batch_output.push_str(&format!("🎵 处理文件数: {}\n\n", audio_files.len()));
+    batch_output.push_str("Git分支: foobar2000-plugin (默认批处理模式)\n");
+    batch_output.push_str("基于foobar2000 DR Meter逆向分析\n");
+    batch_output.push_str("使用批处理DR计算模式\n");
+    batch_output.push_str(&format!("扫描目录: {}\n", config.input_path.display()));
+    batch_output.push_str(&format!("处理文件数: {}\n\n", audio_files.len()));
 
-    // 🎯 添加结果表头（DR值在第一列，方便对齐）
-    batch_output.push_str("Official DR\tPrecise DR\t文件名\n");
-    batch_output.push_str("--------------------------------------------------------\n");
+    // 🎯 添加结果表头（使用固定宽度确保对齐）
+    batch_output.push_str("Official DR      Precise DR       文件名\n");
+    batch_output.push_str(
+        "================================================================================\n",
+    );
 
     batch_output
 }
@@ -205,6 +207,61 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
     })
 }
 
+/// 统一处理批量输出收尾工作
+///
+/// 将批量输出内容追加统计信息、写入文件，并显示完成提示。
+/// 这个函数消除了串行和并行处理器中的重复代码。
+///
+/// # 参数
+///
+/// * `config` - 应用配置
+/// * `audio_files` - 处理的音频文件列表
+/// * `batch_output` - 批量输出内容(取所有权)
+/// * `processed_count` - 成功处理的文件数
+/// * `failed_count` - 处理失败的文件数
+/// * `error_stats` - 错误分类统计
+/// * `is_single_file` - 是否为单文件模式
+pub fn finalize_and_write_batch_output(
+    config: &AppConfig,
+    audio_files: &[PathBuf],
+    mut batch_output: String,
+    processed_count: usize,
+    failed_count: usize,
+    error_stats: &std::collections::HashMap<crate::error::ErrorCategory, Vec<String>>,
+    is_single_file: bool,
+) -> AudioResult<()> {
+    if !is_single_file {
+        // 多文件模式：生成批量输出文件
+        batch_output.push_str(&create_batch_output_footer(
+            audio_files,
+            processed_count,
+            failed_count,
+            error_stats,
+        ));
+
+        let output_path = generate_batch_output_path(config);
+        std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
+
+        show_batch_completion_info(
+            &output_path,
+            processed_count,
+            audio_files.len(),
+            failed_count,
+            config,
+            is_single_file,
+        );
+    } else {
+        // 单文件模式：显示简单的完成信息
+        if processed_count > 0 {
+            println!("✅ 单文件处理完成");
+        } else {
+            println!("❌ 单文件处理失败");
+        }
+    }
+
+    Ok(())
+}
+
 /// 显示批量处理完成信息
 pub fn show_batch_completion_info(
     output_path: &std::path::Path,
@@ -212,6 +269,7 @@ pub fn show_batch_completion_info(
     total_count: usize,
     failed_count: usize,
     config: &AppConfig,
+    is_single_file: bool,
 ) {
     println!();
     println!("📊 批量处理完成!");
@@ -223,10 +281,12 @@ pub fn show_batch_completion_info(
     println!();
     println!("📄 生成的文件:");
     println!("   🗂️  批量汇总: {}", output_path.display());
-    if processed_count > 0 {
-        println!("   📝 单独结果: {processed_count} 个 *_DR_Analysis.txt 文件");
+
+    // 🎯 修正提示逻辑：只在单文件目录且处理成功时显示单独结果文件
+    if is_single_file && processed_count > 0 {
+        println!("   📝 单独结果: 1 个 *_DR_Analysis.txt 文件");
         if config.verbose {
-            println!("   💡 每个音频文件都有对应的单独DR结果文件");
+            println!("   💡 单文件目录自动生成单独DR结果文件");
         }
     }
 }

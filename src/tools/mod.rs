@@ -22,7 +22,7 @@ pub use processor::{
     process_single_audio_file, process_streaming_decoder, save_individual_result,
 };
 pub use scanner::{
-    create_batch_output_footer, create_batch_output_header, generate_batch_output_path,
-    scan_audio_files, show_batch_completion_info, show_scan_results,
+    create_batch_output_footer, create_batch_output_header, finalize_and_write_batch_output,
+    generate_batch_output_path, scan_audio_files, show_batch_completion_info, show_scan_results,
 };
 pub use utils::{audio, path};
