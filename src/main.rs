@@ -6,7 +6,6 @@ use macinmeter_dr_tool::{
     error::{AudioError, ErrorCategory},
     tools::{self, AppConfig},
 };
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process;
 
@@ -58,8 +57,9 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             process_batch_serial(config, &audio_files)
         }
         Some(degree) => {
-            // 并行模式
-            let actual_degree = degree.min(audio_files.len()).min(16);
+            // 并行模式：使用统一的并发度计算工具函数
+            let actual_degree =
+                tools::utils::effective_parallel_degree(degree, Some(audio_files.len()));
 
             if actual_degree == 1 {
                 // 并发度为1，使用串行模式避免开销
@@ -85,10 +85,9 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
     } else {
         String::new()
     };
-    let mut processed_count = 0;
-    let mut failed_count = 0;
-    // 🎯 错误分类统计：记录每种错误类型及对应的失败文件列表
-    let mut error_stats: HashMap<ErrorCategory, Vec<String>> = HashMap::new();
+
+    // 🎯 使用统一的批处理统计管理（串行版本）
+    let mut stats = tools::SerialBatchStats::new();
 
     // 逐个处理音频文件
     for (index, audio_file) in audio_files.iter().enumerate() {
@@ -101,7 +100,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
 
         match tools::process_single_audio_file(audio_file, config) {
             Ok((results, format)) => {
-                processed_count += 1;
+                let count = stats.inc_processed();
 
                 if is_single_file {
                     // 🎯 单文件模式：只生成单独的DR结果文件
@@ -114,17 +113,15 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 if config.verbose {
                     println!("   ✅ 处理成功");
                 }
+
+                // 抑制未使用变量警告
+                let _ = count;
             }
             Err(e) => {
-                failed_count += 1;
-
-                // 🎯 错误分类统计
+                // 🎯 错误分类统计（使用统一的 BatchStats）
                 let category = ErrorCategory::from_audio_error(&e);
                 let filename = tools::utils::extract_filename_lossy(audio_file);
-                error_stats
-                    .entry(category)
-                    .or_default()
-                    .push(filename.clone());
+                let count = stats.inc_failed(category, filename.clone());
 
                 // 🎯 详细错误输出（verbose模式）
                 if config.verbose {
@@ -142,18 +139,22 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 if !is_single_file {
                     tools::add_failed_to_batch_output(&mut batch_output, audio_file);
                 }
+
+                // 抑制未使用变量警告
+                let _ = count;
             }
         }
     }
 
-    // 🎯 统一处理批量输出收尾工作
+    // 🎯 统一处理批量输出收尾工作（使用统计快照）
+    let snapshot = stats.snapshot();
     tools::finalize_and_write_batch_output(
         config,
         audio_files,
         batch_output,
-        processed_count,
-        failed_count,
-        &error_stats,
+        snapshot.processed,
+        snapshot.failed,
+        &snapshot.error_stats,
         is_single_file,
     )
 }

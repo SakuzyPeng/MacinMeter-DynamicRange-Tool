@@ -79,8 +79,53 @@ pub mod path {
     }
 }
 
+/// 并行处理工具函数
+pub mod parallel {
+    use super::super::constants::parallel_limits::{MAX_PARALLEL_DEGREE, MIN_PARALLEL_DEGREE};
+
+    /// 计算有效并发度（统一并发度计算逻辑）
+    ///
+    /// 将用户配置的并发度应用以下限制规则：
+    /// 1. 最小值为 1（至少需要一个工作单元）
+    /// 2. 最大值为 16（避免过度并发）
+    /// 3. 如果提供了工作项数量，不超过实际工作项数量（避免无意义的线程浪费）
+    ///
+    /// # 参数
+    /// - `requested_degree`: 用户请求的并发度
+    /// - `max_items`: 可选的工作项数量限制（如文件数量）
+    ///
+    /// # 返回
+    /// 应用限制规则后的有效并发度
+    ///
+    /// # 示例
+    /// ```
+    /// use macinmeter_dr_tool::tools::utils::parallel::effective_parallel_degree;
+    ///
+    /// // 基本限制（1-16范围）
+    /// assert_eq!(effective_parallel_degree(0, None), 1);     // 最小值限制
+    /// assert_eq!(effective_parallel_degree(8, None), 8);     // 正常值
+    /// assert_eq!(effective_parallel_degree(32, None), 16);   // 最大值限制
+    ///
+    /// // 工作项数量限制
+    /// assert_eq!(effective_parallel_degree(8, Some(3)), 3);  // 不超过文件数
+    /// assert_eq!(effective_parallel_degree(8, Some(10)), 8); // 保持原值
+    /// ```
+    #[inline]
+    pub fn effective_parallel_degree(requested_degree: usize, max_items: Option<usize>) -> usize {
+        // 1️⃣ 应用基本限制（1-16范围）
+        let clamped = requested_degree.clamp(MIN_PARALLEL_DEGREE, MAX_PARALLEL_DEGREE);
+
+        // 2️⃣ 如果提供了工作项数量，不超过实际数量
+        match max_items {
+            Some(count) if count > 0 => clamped.min(count),
+            _ => clamped,
+        }
+    }
+}
+
 // 重新导出为平级函数，保持向后兼容
 pub use audio::{linear_to_db, linear_to_db_string};
+pub use parallel::effective_parallel_degree;
 pub use path::{
     extract_extension_uppercase, extract_file_stem, extract_file_stem_string, extract_filename,
     extract_filename_lossy, get_parent_dir,

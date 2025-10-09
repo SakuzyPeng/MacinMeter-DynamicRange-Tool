@@ -4,16 +4,14 @@
 
 use super::cli::AppConfig;
 use super::{
-    add_failed_to_batch_output, add_to_batch_output, create_batch_output_header,
-    finalize_and_write_batch_output, process_single_audio_file, save_individual_result, utils,
+    ParallelBatchStats, add_failed_to_batch_output, add_to_batch_output,
+    create_batch_output_header, finalize_and_write_batch_output, process_single_audio_file,
+    save_individual_result, utils,
 };
 use crate::AudioError;
 use crate::error::ErrorCategory;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 
 /// 有序结果容器（保证输出顺序）
 struct OrderedResult {
@@ -41,10 +39,8 @@ pub fn process_batch_parallel(
 ) -> Result<(), AudioError> {
     println!("⚡ 启用多文件并行处理：{parallel_degree} 并发度");
 
-    // 1️⃣ 创建线程安全的共享状态
-    let error_stats = Arc::new(Mutex::new(HashMap::<ErrorCategory, Vec<String>>::new()));
-    let processed_count = Arc::new(AtomicUsize::new(0));
-    let failed_count = Arc::new(AtomicUsize::new(0));
+    // 1️⃣ 创建统一的批处理统计管理（并行版本）
+    let stats = ParallelBatchStats::new();
 
     // 2️⃣ 创建自定义rayon线程池（精确控制并发度）
     let pool = rayon::ThreadPoolBuilder::new()
@@ -74,10 +70,10 @@ pub fn process_batch_parallel(
 
                 let result = process_single_audio_file(audio_file, &silent_config);
 
-                // 更新统计（线程安全）
+                // 更新统计（使用统一的 ParallelBatchStats）
                 match &result {
                     Ok(_) => {
-                        let count = processed_count.fetch_add(1, Ordering::Relaxed) + 1;
+                        let count = stats.inc_processed();
                         if config.verbose {
                             println!(
                                 "✅ [{}/{}] {}",
@@ -88,15 +84,9 @@ pub fn process_batch_parallel(
                         }
                     }
                     Err(e) => {
-                        let count = failed_count.fetch_add(1, Ordering::Relaxed) + 1;
-
-                        // 错误分类统计（需要锁）
                         let category = ErrorCategory::from_audio_error(e);
                         let filename = utils::extract_filename_lossy(audio_file);
-
-                        if let Ok(mut stats) = error_stats.lock() {
-                            stats.entry(category).or_default().push(filename.clone());
-                        }
+                        let count = stats.inc_failed(category, filename.clone());
 
                         if config.verbose {
                             println!("❌ [{}/{}] {} - {}", count, audio_files.len(), filename, e);
@@ -151,18 +141,15 @@ pub fn process_batch_parallel(
         }
     }
 
-    // 6️⃣ 统一处理批量输出收尾工作
-    let error_stats_final = error_stats.lock().unwrap().clone();
-    let processed = processed_count.load(Ordering::Relaxed);
-    let failed = failed_count.load(Ordering::Relaxed);
-
+    // 6️⃣ 统一处理批量输出收尾工作（使用统计快照）
+    let snapshot = stats.snapshot();
     finalize_and_write_batch_output(
         config,
         audio_files,
         batch_output,
-        processed,
-        failed,
-        &error_stats_final,
+        snapshot.processed,
+        snapshot.failed,
+        &snapshot.error_stats,
         is_single_file,
     )
 }

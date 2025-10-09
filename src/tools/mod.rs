@@ -2,6 +2,7 @@
 //!
 //! 包含CLI、文件处理、格式化等工具模块，支持main.rs的流程控制。
 
+pub mod batch_state;
 pub mod cli;
 pub mod constants;
 pub mod formatter;
@@ -11,6 +12,7 @@ pub mod scanner;
 pub mod utils;
 
 // 重新导出主要的公共接口
+pub use batch_state::{BatchStatsSnapshot, ParallelBatchStats, SerialBatchStats};
 pub use cli::{AppConfig, parse_args, show_completion_info, show_startup_info};
 pub use formatter::{
     calculate_official_dr, compute_official_precise_dr, create_output_header,

@@ -31,3 +31,19 @@ pub mod defaults {
     /// 4并发度在多数场景下提供良好的性能/资源平衡
     pub const PARALLEL_FILES_DEGREE: usize = 4;
 }
+
+/// 并发度限制常量
+pub mod parallel_limits {
+    /// 最小并发度
+    ///
+    /// 任何并行处理至少需要1个线程/工作单元
+    pub const MIN_PARALLEL_DEGREE: usize = 1;
+
+    /// 最大并发度
+    ///
+    /// 限制最大并发度为16，避免过度并发导致的：
+    /// - 上下文切换开销
+    /// - 内存占用过高
+    /// - 系统资源竞争
+    pub const MAX_PARALLEL_DEGREE: usize = 16;
+}

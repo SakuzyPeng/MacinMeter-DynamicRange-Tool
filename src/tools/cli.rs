@@ -3,6 +3,7 @@
 //! 负责命令行参数解析、配置管理和程序信息展示。
 
 use super::constants;
+use super::utils::effective_parallel_degree;
 use clap::{Arg, Command};
 use std::path::PathBuf;
 
@@ -149,8 +150,8 @@ pub fn parse_args() -> AppConfig {
             .copied()
             .unwrap_or(constants::defaults::PARALLEL_FILES_DEGREE);
 
-        // 限制并发度范围：1-16
-        Some(degree.clamp(1, 16))
+        // 使用统一的并发度计算工具函数（限制范围：1-16）
+        Some(effective_parallel_degree(degree, None))
     };
 
     AppConfig {
