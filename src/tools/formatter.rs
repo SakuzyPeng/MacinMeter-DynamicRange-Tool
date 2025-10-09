@@ -317,38 +317,71 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
     output
 }
 
+/// 🎯 统一的DR聚合计算（核心函数）
+///
+/// 排除LFE声道和静音声道，确保批量模式与单文件模式口径一致
+///
+/// # 返回
+/// - `Some((official_dr, precise_dr, excluded_count))`: 成功计算
+///   - `official_dr`: 官方DR值（四舍五入）
+///   - `precise_dr`: 精确DR值（保留小数）
+///   - `excluded_count`: 被排除的声道数
+/// - `None`: 无有效声道
+///
+/// # 示例
+/// ```ignore
+/// let (official, precise, excluded) = compute_official_precise_dr(results, format)?;
+/// println!("DR{} ({:.2} dB, 排除{}声道)", official, precise, excluded);
+/// ```
+pub fn compute_official_precise_dr(
+    results: &[DrResult],
+    format: &AudioFormat,
+) -> Option<(i32, f64, usize)> {
+    if results.is_empty() {
+        return None;
+    }
+
+    // 筛选有效声道：排除LFE声道和静音声道
+    let lfe_channels = identify_lfe_channels(format.channels);
+    let valid_results: Vec<&DrResult> = results
+        .iter()
+        .enumerate()
+        .filter(|(i, result)| !lfe_channels.contains(i) && result.peak > 0.0 && result.rms > 0.0)
+        .map(|(_, result)| result)
+        .collect();
+
+    if valid_results.is_empty() {
+        return None;
+    }
+
+    // 计算平均DR值
+    let avg_dr: f64 =
+        valid_results.iter().map(|r| r.dr_value).sum::<f64>() / valid_results.len() as f64;
+    let official_dr = avg_dr.round() as i32;
+    let excluded_count = results.len() - valid_results.len();
+
+    Some((official_dr, avg_dr, excluded_count))
+}
+
 /// 计算并格式化Official DR Value
 pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    if !results.is_empty() {
-        // 筛选有效声道：排除LFE声道和静音声道
-        let valid_results: Vec<&DrResult> = results
-            .iter()
-            .enumerate()
-            .filter(|(i, result)| {
-                let lfe_channels = identify_lfe_channels(format.channels);
-                !lfe_channels.contains(i) && result.peak > 0.0 && result.rms > 0.0
-            })
-            .map(|(_, result)| result)
-            .collect();
+    // 🎯 使用统一的DR聚合函数
+    match compute_official_precise_dr(results, format) {
+        Some((official_dr, precise_dr, excluded_count)) => {
+            output.push_str(&format!("Official DR Value: DR{official_dr}\n"));
+            output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n\n"));
 
-        if !valid_results.is_empty() {
-            let avg_dr: f64 =
-                valid_results.iter().map(|r| r.dr_value).sum::<f64>() / valid_results.len() as f64;
-            output.push_str(&format!("Official DR Value: DR{}\n", avg_dr.round() as i32));
-            output.push_str(&format!("Precise DR Value: {avg_dr:.2} dB\n\n"));
-
-            // 显示计算说明
-            let excluded_count = results.len() - valid_results.len();
+            // 显示计算说明（仅当有排除声道时）
             if excluded_count > 0 {
+                let valid_count = results.len() - excluded_count;
                 output.push_str(&format!(
-                    "DR计算基于 {} 个有效声道 (已排除 {} 个LFE/静音声道)\n\n",
-                    valid_results.len(),
-                    excluded_count
+                    "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个LFE/静音声道)\n\n"
                 ));
             }
-        } else {
+        }
+        None => {
             output.push_str("Official DR Value: 无有效声道\n\n");
         }
     }

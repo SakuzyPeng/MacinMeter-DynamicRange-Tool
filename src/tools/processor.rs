@@ -109,8 +109,8 @@ pub fn process_audio_file_streaming(
     // 🚀 创建SIMD优化的声道分离器
     let channel_separator = ChannelSeparator::new();
 
-    // 🎯 可配置的窗口大小：支持未来调试需求
-    const WINDOW_DURATION_SECONDS: f64 = 3.0; // 可配置：未来可从config获取
+    // 🎯 使用集中管理的窗口时长常量（foobar2000标准）
+    use super::constants::dr_analysis::WINDOW_DURATION_SECONDS;
     let window_size_samples =
         (format.sample_rate as f64 * WINDOW_DURATION_SECONDS * format.channels as f64) as usize;
     let mut sample_buffer = Vec::new();
@@ -302,8 +302,8 @@ pub fn process_streaming_decoder(
     // 🚀 创建SIMD优化的声道分离器
     let channel_separator = ChannelSeparator::new();
 
-    // 🎯 可配置的窗口大小：支持未来调试需求
-    const WINDOW_DURATION_SECONDS: f64 = 3.0; // 可配置：未来可从config获取
+    // 🎯 使用集中管理的窗口时长常量（foobar2000标准）
+    use super::constants::dr_analysis::WINDOW_DURATION_SECONDS;
     let window_size_samples =
         (format.sample_rate as f64 * WINDOW_DURATION_SECONDS * format.channels as f64) as usize;
     let mut sample_buffer = Vec::new();
@@ -466,37 +466,22 @@ pub fn output_results(
 pub fn add_to_batch_output(
     batch_output: &mut String,
     results: &[DrResult],
-    _format: &AudioFormat,
+    format: &AudioFormat,
     file_path: &std::path::Path,
 ) {
     let file_name = utils::extract_filename_lossy(file_path);
 
-    // 计算整体DR值（与formatter.rs中的calculate_official_dr逻辑一致）
-    if !results.is_empty() {
-        // 筛选有效声道：只排除静音声道（简化版本）
-        let valid_results: Vec<&DrResult> = results
-            .iter()
-            .filter(|result| {
-                // 只排除静音声道
-                result.peak > 0.0 && result.rms > 0.0
-            })
-            .collect();
-
-        if !valid_results.is_empty() {
-            let avg_dr: f64 =
-                valid_results.iter().map(|r| r.dr_value).sum::<f64>() / valid_results.len() as f64;
-            let official_dr = avg_dr.round() as i32;
-            let precise_dr = avg_dr;
-
-            // 🎯 DR值在第一列，方便对齐
+    // 🎯 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
+    match formatter::compute_official_precise_dr(results, format) {
+        Some((official_dr, precise_dr, _excluded_count)) => {
+            // 🎯 DR值在第一列，方便对齐，保持"dB"后缀与单文件一致
             batch_output.push_str(&format!(
                 "DR{official_dr}\t{precise_dr:.2} dB\t{file_name}\n"
             ));
-        } else {
+        }
+        None => {
             batch_output.push_str(&format!("-\t无有效声道\t{file_name}\n"));
         }
-    } else {
-        batch_output.push_str(&format!("-\t处理失败\t{file_name}\n"));
     }
 }
 
@@ -519,8 +504,8 @@ pub fn save_individual_result(
         verbose: false,
         output_path: None,
         parallel_decoding: false,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
+        parallel_batch_size: super::constants::defaults::PARALLEL_BATCH_SIZE,
+        parallel_threads: super::constants::defaults::PARALLEL_THREADS,
         parallel_files: None, // 单文件处理不需要并行
     };
 
