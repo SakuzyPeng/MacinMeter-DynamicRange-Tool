@@ -72,10 +72,45 @@ pub mod path {
     /// 安全提取文件stem（返回String）
     #[inline]
     pub fn extract_file_stem_string(path: &Path) -> String {
-        path.file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("audio")
-            .to_string()
+        // 复用 extract_file_stem，避免重复实现与潜在漂移
+        super::path::extract_file_stem(path).to_string()
+    }
+
+    /// 清理文件名中的不合法字符（跨平台兼容）
+    ///
+    /// 将不合法的文件名字符替换为下划线，确保跨平台兼容性：
+    /// - Windows 禁止字符: `< > : " / \ | ? *` 以及控制字符
+    /// - Unix 禁止字符: `/` 和 null 字符
+    /// - 特殊处理：空格和点号也替换为下划线以提高可读性
+    ///
+    /// # 参数
+    /// - `filename`: 需要清理的文件名
+    ///
+    /// # 返回
+    /// 清理后的安全文件名
+    ///
+    /// # 示例
+    /// ```
+    /// use macinmeter_dr_tool::tools::utils::path::sanitize_filename;
+    ///
+    /// assert_eq!(sanitize_filename("test file.txt"), "test_file_txt");
+    /// assert_eq!(sanitize_filename("test<>file"), "test__file");
+    /// assert_eq!(sanitize_filename("test/file\\name"), "test_file_name");
+    /// ```
+    pub fn sanitize_filename(filename: &str) -> String {
+        filename
+            .chars()
+            .map(|c| match c {
+                // Windows 禁止字符
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+                // 空格和点号（提高可读性）
+                ' ' | '.' => '_',
+                // 控制字符和 null
+                c if c.is_control() || c == '\0' => '_',
+                // 其他字符保留
+                c => c,
+            })
+            .collect()
     }
 }
 
@@ -128,5 +163,5 @@ pub use audio::{linear_to_db, linear_to_db_string};
 pub use parallel::effective_parallel_degree;
 pub use path::{
     extract_extension_uppercase, extract_file_stem, extract_file_stem_string, extract_filename,
-    extract_filename_lossy, get_parent_dir,
+    extract_filename_lossy, get_parent_dir, sanitize_filename,
 };

@@ -37,6 +37,9 @@ pub fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>>
     // 遍历目录（不递归子目录）
     let entries = std::fs::read_dir(dir_path).map_err(AudioError::IoError)?;
 
+    // 仅获取一次受支持扩展名，避免循环内重复创建解码器
+    let supported_exts = get_supported_extensions();
+
     for entry in entries {
         let entry = entry.map_err(AudioError::IoError)?;
         let path = entry.path();
@@ -51,7 +54,7 @@ pub fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>>
             && let Some(ext_str) = extension.to_str()
         {
             let ext_lower = ext_str.to_lowercase();
-            if get_supported_extensions().contains(&ext_lower.as_str()) {
+            if supported_exts.contains(&ext_lower.as_str()) {
                 audio_files.push(path);
             }
         }
@@ -70,11 +73,12 @@ pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
             "⚠️  在目录 {} 中没有找到支持的音频文件",
             config.input_path.display()
         );
-        let supported_formats = get_supported_extensions()
+        let mut supported_formats: Vec<String> = get_supported_extensions()
             .iter()
             .map(|ext| ext.to_uppercase())
-            .collect::<Vec<_>>()
-            .join(", ");
+            .collect();
+        supported_formats.sort();
+        let supported_formats = supported_formats.join(", ");
         println!("   支持的格式: {supported_formats}");
         return;
     }
@@ -92,17 +96,19 @@ pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
 
 /// 生成批量输出的头部信息
 pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -> String {
+    use super::constants::app_info;
     let mut batch_output = String::new();
 
     batch_output.push_str("=====================================\n");
+    // 与测试用例保持兼容：该行需保持固定文案
     batch_output.push_str("   MacinMeter DR Analysis Report\n");
-    batch_output.push_str("   批量分析结果 (foobar2000兼容版)\n");
+    batch_output.push_str(&format!("   批量分析结果 {}\n", app_info::VERSION_SUFFIX));
     batch_output.push_str("=====================================\n\n");
 
-    // 添加标准信息到输出
-    batch_output.push_str("Git分支: foobar2000-plugin (默认批处理模式)\n");
-    batch_output.push_str("基于foobar2000 DR Meter逆向分析\n");
-    batch_output.push_str("使用批处理DR计算模式\n");
+    // 添加标准信息到输出（使用共享常量）
+    batch_output.push_str(&format!("Git分支: {}\n", app_info::BRANCH_INFO));
+    batch_output.push_str(&format!("{}\n", app_info::BASE_DESCRIPTION));
+    batch_output.push_str(&format!("{}\n", app_info::CALCULATION_MODE));
     batch_output.push_str(&format!("扫描目录: {}\n", config.input_path.display()));
     batch_output.push_str(&format!("处理文件数: {}\n\n", audio_files.len()));
 
@@ -122,6 +128,7 @@ pub fn create_batch_output_footer(
     failed_count: usize,
     error_stats: &std::collections::HashMap<crate::error::ErrorCategory, Vec<String>>,
 ) -> String {
+    use super::constants::app_info;
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     let mut output = String::new();
 
@@ -175,7 +182,9 @@ pub fn create_batch_output_footer(
 
     output.push('\n');
     output.push_str(&format!(
-        "生成工具: MacinMeter DR Tool (foo_dr_meter兼容) v{VERSION}\n"
+        "生成工具: {} {} v{VERSION}\n",
+        app_info::APP_NAME,
+        app_info::VERSION_SUFFIX
     ));
 
     output
@@ -196,10 +205,8 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
             datetime.format("%Y-%m-%d_%H-%M-%S").to_string()
         };
 
-        // 🎯 使用目录名作为基础名称，而非第一个文件名
-        let dir_name = utils::extract_filename(config.input_path.as_path())
-            .replace(".", "_")
-            .replace(" ", "_");
+        // 🎯 使用目录名作为基础名称，并清理不合法字符（跨平台兼容）
+        let dir_name = utils::sanitize_filename(utils::extract_filename(config.input_path.as_path()));
 
         config
             .input_path

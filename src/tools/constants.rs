@@ -30,14 +30,14 @@ pub mod decoder_performance {
     /// 并行解码器批量处理大小
     ///
     /// 用于OrderedParallelDecoder的批量解码配置，
-    /// 64包批量提供最佳的性能/内存平衡
-    pub const PARALLEL_DECODE_BATCH_SIZE: usize = 64;
+    /// 与 defaults::PARALLEL_BATCH_SIZE 保持一致，避免漂移。
+    pub const PARALLEL_DECODE_BATCH_SIZE: usize = super::defaults::PARALLEL_BATCH_SIZE;
 
     /// 并行解码器线程数
     ///
     /// 用于OrderedParallelDecoder的工作线程数，
-    /// 4线程在多数CPU上提供最佳性能
-    pub const PARALLEL_DECODE_THREADS: usize = 4;
+    /// 与 defaults::PARALLEL_THREADS 保持一致，避免漂移。
+    pub const PARALLEL_DECODE_THREADS: usize = super::defaults::PARALLEL_THREADS;
 }
 
 /// 默认配置值
@@ -75,6 +75,12 @@ pub mod parallel_limits {
     /// - 内存占用过高
     /// - 系统资源竞争
     pub const MAX_PARALLEL_DEGREE: usize = 16;
+
+    /// 并行批大小最小值（用于CLI与解析验证）
+    pub const MIN_PARALLEL_BATCH_SIZE: usize = 1;
+
+    /// 并行批大小最大值（用于CLI与解析验证）
+    pub const MAX_PARALLEL_BATCH_SIZE: usize = 256;
 }
 
 /// 缓冲区内存优化常量（阶段D）
@@ -133,4 +139,22 @@ pub mod buffers {
             true
         }
     }
+}
+
+/// 应用程序信息常量（统一文案，避免漂移）
+pub mod app_info {
+    /// Git 分支信息（用于显示和输出）
+    pub const BRANCH_INFO: &str = "foobar2000-plugin (默认批处理模式)";
+
+    /// 基础描述信息
+    pub const BASE_DESCRIPTION: &str = "基于foobar2000 DR Meter逆向分析";
+
+    /// 计算模式描述
+    pub const CALCULATION_MODE: &str = "使用批处理DR计算模式";
+
+    /// 应用程序完整名称
+    pub const APP_NAME: &str = "MacinMeter DR Tool";
+
+    /// 应用程序版本后缀
+    pub const VERSION_SUFFIX: &str = "(foobar2000兼容版)";
 }

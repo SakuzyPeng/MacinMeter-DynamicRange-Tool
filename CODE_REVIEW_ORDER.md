@@ -10,13 +10,13 @@
 —
 
 一、入口与流程控制
-- [ ] src/main.rs
+- [x] src/main.rs
 
 二、Tools 层
-- [ ] src/tools/cli.rs
-- [ ] src/tools/scanner.rs
-- [ ] src/tools/constants.rs
-- [ ] src/tools/utils.rs
+- [x] src/tools/cli.rs
+- [x] src/tools/scanner.rs
+- [x] src/tools/constants.rs
+- [x] src/tools/utils.rs
 - [ ] src/tools/processor.rs
 - [ ] src/tools/parallel_processor.rs
 - [ ] src/tools/formatter.rs
@@ -80,4 +80,3 @@
 
 当前起点：src/main.rs
 下一步：依次审查 Tools → Audio → Processing → Core → 顶层库与错误 → Tests → 文档与脚本。
-
