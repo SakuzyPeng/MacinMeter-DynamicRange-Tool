@@ -64,7 +64,10 @@ impl AudioTestFixtures {
             sample_format: SampleFormat::Int,
         };
         // 创建后立即关闭，不写入任何样本
-        WavWriter::create(&path, spec).expect("无法创建零长度文件");
+        {
+            let writer = WavWriter::create(&path, spec).expect("无法创建零长度文件");
+            drop(writer); // 显式关闭，确保文件被刷新到磁盘
+        }
         println!("  ✓ zero_length.wav (0 samples)");
         path
     }
@@ -78,9 +81,11 @@ impl AudioTestFixtures {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建单样本文件");
-        writer.write_sample(16384i16).expect("无法写入样本"); // 半幅度样本
-        writer.finalize().expect("无法完成写入");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建单样本文件");
+            writer.write_sample(16384i16).expect("无法写入样本"); // 半幅度样本
+            writer.finalize().expect("无法完成写入");
+        }
         println!("  ✓ single_sample.wav (1 sample)");
         path
     }
@@ -94,14 +99,16 @@ impl AudioTestFixtures {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建极短文件");
-        let samples = 441; // 10ms @ 44.1kHz
-        for i in 0..samples {
-            let sample = ((i as f64 / samples as f64) * 16384.0) as i16;
-            writer.write_sample(sample).expect("无法写入样本");
-            writer.write_sample(sample).expect("无法写入样本");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建极短文件");
+            let samples = 441; // 10ms @ 44.1kHz
+            for i in 0..samples {
+                let sample = ((i as f64 / samples as f64) * 16384.0) as i16;
+                writer.write_sample(sample).expect("无法写入样本");
+                writer.write_sample(sample).expect("无法写入样本");
+            }
+            writer.finalize().expect("无法完成写入");
         }
-        writer.finalize().expect("无法完成写入");
         println!("  ✓ tiny_duration.wav (10ms)");
         path
     }
@@ -117,13 +124,15 @@ impl AudioTestFixtures {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建静音文件");
-        let duration_samples = 44100; // 1秒
-        for _ in 0..(duration_samples * 2) {
-            // 立体声
-            writer.write_sample(0i16).expect("无法写入样本");
-        }
-        writer.finalize().expect("无法完成写入");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建静音文件");
+            let duration_samples = 44100; // 1秒
+            for _ in 0..(duration_samples * 2) {
+                // 立体声
+                writer.write_sample(0i16).expect("无法写入样本");
+            }
+            writer.finalize().expect("无法完成写入");
+        } // writer 在这里被 drop，确保文件被完全写入磁盘
         println!("  ✓ silence.wav (1s silence)");
         path
     }
@@ -137,14 +146,16 @@ impl AudioTestFixtures {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建削波文件");
-        let duration_samples = 44100; // 1秒
-        for i in 0..(duration_samples * 2) {
-            // 交替最大/最小值，模拟严重削波
-            let sample = if i % 4 < 2 { i16::MAX } else { i16::MIN };
-            writer.write_sample(sample).expect("无法写入样本");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建削波文件");
+            let duration_samples = 44100; // 1秒
+            for i in 0..(duration_samples * 2) {
+                // 交替最大/最小值，模拟严重削波
+                let sample = if i % 4 < 2 { i16::MAX } else { i16::MIN };
+                writer.write_sample(sample).expect("无法写入样本");
+            }
+            writer.finalize().expect("无法完成写入");
         }
-        writer.finalize().expect("无法完成写入");
         println!("  ✓ full_scale_clipping.wav (full scale square wave)");
         path
     }
@@ -158,27 +169,29 @@ impl AudioTestFixtures {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建边缘情况文件");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建边缘情况文件");
 
-        // 组合各种边缘值
-        let edge_values = vec![
-            0i16,     // 静音
-            1i16,     // 最小非零值
-            -1i16,    // 最小负值
-            i16::MAX, // 最大正值
-            i16::MIN, // 最小负值
-            100i16,   // 小值
-            -100i16,  // 小负值
-        ];
+            // 组合各种边缘值
+            let edge_values = vec![
+                0i16,     // 静音
+                1i16,     // 最小非零值
+                -1i16,    // 最小负值
+                i16::MAX, // 最大正值
+                i16::MIN, // 最小负值
+                100i16,   // 小值
+                -100i16,  // 小负值
+            ];
 
-        for _ in 0..44100 {
-            // 1秒，重复边缘值
-            for &val in &edge_values {
-                writer.write_sample(val).expect("无法写入样本");
-                writer.write_sample(val).expect("无法写入样本");
+            for _ in 0..44100 {
+                // 1秒，重复边缘值
+                for &val in &edge_values {
+                    writer.write_sample(val).expect("无法写入样本");
+                    writer.write_sample(val).expect("无法写入样本");
+                }
             }
+            writer.finalize().expect("无法完成写入");
         }
-        writer.finalize().expect("无法完成写入");
         println!("  ✓ edge_cases.wav (edge value patterns)");
         path
     }
@@ -194,18 +207,20 @@ impl AudioTestFixtures {
             bits_per_sample: 24,
             sample_format: SampleFormat::Int,
         };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建高采样率文件");
+        {
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建高采样率文件");
 
-        // 生成440Hz正弦波（24bit）
-        let duration_samples = 192000; // 1秒
-        for i in 0..duration_samples {
-            let t = i as f64 / 192000.0;
-            let sample = (t * 440.0 * 2.0 * std::f64::consts::PI).sin() * 8388607.0; // 24bit max
-            let sample_i32 = sample as i32;
-            writer.write_sample(sample_i32).expect("无法写入样本");
-            writer.write_sample(sample_i32).expect("无法写入样本");
+            // 生成440Hz正弦波（24bit）
+            let duration_samples = 192000; // 1秒
+            for i in 0..duration_samples {
+                let t = i as f64 / 192000.0;
+                let sample = (t * 440.0 * 2.0 * std::f64::consts::PI).sin() * 8388607.0; // 24bit max
+                let sample_i32 = sample as i32;
+                writer.write_sample(sample_i32).expect("无法写入样本");
+                writer.write_sample(sample_i32).expect("无法写入样本");
+            }
+            writer.finalize().expect("无法完成写入");
         }
-        writer.finalize().expect("无法完成写入");
         println!("  ✓ high_sample_rate.wav (192kHz, 24bit)");
         path
     }
@@ -288,21 +303,23 @@ impl AudioTestFixtures {
         let path = self.get_path("truncated.wav");
 
         // 先创建一个正常的WAV文件
-        let spec = WavSpec {
-            channels: 2,
-            sample_rate: 44100,
-            bits_per_sample: 16,
-            sample_format: SampleFormat::Int,
-        };
-        let mut writer = WavWriter::create(&path, spec).expect("无法创建文件");
+        {
+            let spec = WavSpec {
+                channels: 2,
+                sample_rate: 44100,
+                bits_per_sample: 16,
+                sample_format: SampleFormat::Int,
+            };
+            let mut writer = WavWriter::create(&path, spec).expect("无法创建文件");
 
-        // 写入1000个样本
-        for i in 0..1000 {
-            let sample = (i as f64 / 1000.0 * 16384.0) as i16;
-            writer.write_sample(sample).expect("写入失败");
-            writer.write_sample(sample).expect("写入失败");
-        }
-        writer.finalize().expect("无法完成写入");
+            // 写入1000个样本
+            for i in 0..1000 {
+                let sample = (i as f64 / 1000.0 * 16384.0) as i16;
+                writer.write_sample(sample).expect("写入失败");
+                writer.write_sample(sample).expect("写入失败");
+            }
+            writer.finalize().expect("无法完成写入");
+        } // 确保 writer 被 drop，文件被完全写入
 
         // 截断文件（只保留前200字节，包含头但数据不完整）
         let file = std::fs::OpenOptions::new()
