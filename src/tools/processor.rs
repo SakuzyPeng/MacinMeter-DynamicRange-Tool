@@ -28,7 +28,7 @@ pub fn process_single_audio_file(
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
     if config.verbose {
         println!("🎵 正在加载音频文件: {}", file_path.display());
-        println!("🎯 使用批处理计算模式进行DR分析");
+        println!("🎯 使用流式窗口分析（3秒标准窗口）进行DR计算");
     }
 
     // 处理音频文件
@@ -59,18 +59,8 @@ pub fn process_audio_file_streaming(
 
     let decoder = UniversalDecoder;
 
-    // 先探测格式获取音频参数（用于友好的日志输出）
-    let format = decoder.probe_format(path)?;
-
-    if config.verbose {
-        println!(
-            "📊 音频格式: {}声道, {}Hz, {}位",
-            format.channels, format.sample_rate, format.bits_per_sample
-        );
-        println!("🌊 开始流式解码和分析...");
-    }
-
     // 🚀 创建高性能流式解码器（支持并行解码）
+    // 注：直接创建解码器并从中获取格式信息，避免双重 I/O 操作
     let mut streaming_decoder = if config.parallel_decoding {
         if config.verbose {
             println!(
@@ -90,6 +80,16 @@ pub fn process_audio_file_streaming(
         }
         decoder.create_streaming(path)?
     };
+
+    // 从已创建的解码器获取格式信息（零额外 I/O 开销）
+    if config.verbose {
+        let format = streaming_decoder.format();
+        println!(
+            "📊 音频格式: {}声道, {}Hz, {}位",
+            format.channels, format.sample_rate, format.bits_per_sample
+        );
+        println!("🌊 开始流式解码和分析...");
+    }
 
     // 🎯 委托给核心分析引擎（消除150行重复代码）
     analyze_streaming_decoder(&mut *streaming_decoder, config)
@@ -111,6 +111,20 @@ fn process_window_with_simd_separation(
     left_buffer: &mut Vec<f32>,
     right_buffer: &mut Vec<f32>,
 ) {
+    // 🛡️ 安全检查：确保analyzers数量与声道数一致（防止多声道扩展时误用）
+    debug_assert!(
+        !analyzers.is_empty() && analyzers.len() <= 2,
+        "当前仅支持1-2声道，实际analyzers数量: {}",
+        analyzers.len()
+    );
+    debug_assert_eq!(
+        analyzers.len(),
+        channel_count as usize,
+        "analyzers数量({})必须与channel_count({})一致",
+        analyzers.len(),
+        channel_count
+    );
+
     if channel_count == 1 {
         // 单声道：直接处理完整窗口
         analyzers[0].process_samples(window_samples);
@@ -137,6 +151,27 @@ fn process_window_with_simd_separation(
         analyzers[0].process_samples(left_buffer);
         analyzers[1].process_samples(right_buffer);
     }
+}
+
+/// 🔧 内联辅助函数：执行缓冲区compact操作（统一逻辑，减少重复）
+#[inline(always)]
+fn compact_buffer(
+    sample_buffer: &mut Vec<f32>,
+    buffer_offset: &mut usize,
+    verbose: bool,
+    reason: &str,
+) {
+    if verbose {
+        println!(
+            "🔧 {}: 移除前{}个样本 ({:.1}KB → {:.1}KB)",
+            reason,
+            *buffer_offset,
+            sample_buffer.len() * 4 / 1024,
+            (sample_buffer.len() - *buffer_offset) * 4 / 1024
+        );
+    }
+    sample_buffer.drain(0..*buffer_offset);
+    *buffer_offset = 0;
 }
 
 /// 🎯 核心DR分析引擎（私有函数）：处理任何StreamingDecoder实现
@@ -172,8 +207,9 @@ fn analyze_streaming_decoder(
         BUFFER_CAPACITY_MULTIPLIER, MAX_BUFFER_RATIO, window_alignment_enabled,
     };
     use super::constants::dr_analysis::WINDOW_DURATION_SECONDS;
+    // 使用整数计算避免浮点舍入误差（窗口固定为3秒）
     let window_size_samples =
-        (format.sample_rate as f64 * WINDOW_DURATION_SECONDS * format.channels as f64) as usize;
+        (format.sample_rate as usize) * (WINDOW_DURATION_SECONDS as usize) * (format.channels as usize);
 
     // 🚀 阶段D内存优化：预分配sample_buffer容量（减少扩容抖动）
     // 通过内部策略开关控制（默认启用，debug模式可通过环境变量禁用）
@@ -193,7 +229,12 @@ fn analyze_streaming_decoder(
     // 每个缓冲区容量 = 窗口样本数 / 声道数（即单声道的样本数）
     let channel_buffer_capacity = window_size_samples / format.channels as usize;
     let mut left_buffer = Vec::with_capacity(channel_buffer_capacity);
-    let mut right_buffer = Vec::with_capacity(channel_buffer_capacity);
+    // 单声道时不分配 right_buffer 容量，降低峰值内存
+    let mut right_buffer = if format.channels > 1 {
+        Vec::with_capacity(channel_buffer_capacity)
+    } else {
+        Vec::new()
+    };
 
     let mut total_chunks = 0;
     let mut total_samples_processed = 0u64;
@@ -267,52 +308,46 @@ fn analyze_streaming_decoder(
             if window_align_enabled {
                 let max_buffer_size = (window_size_samples as f64 * MAX_BUFFER_RATIO) as usize;
                 if sample_buffer.len() > max_buffer_size && buffer_offset > window_size_samples {
-                    if config.verbose {
-                        println!(
-                            "🔧 触发硬上限Compact: 缓冲区超过{:.1}×窗口 ({:.1}KB → {:.1}KB)",
-                            MAX_BUFFER_RATIO,
-                            sample_buffer.len() * 4 / 1024,
-                            (sample_buffer.len() - buffer_offset) * 4 / 1024
-                        );
-                    }
-                    sample_buffer.drain(0..buffer_offset);
-                    buffer_offset = 0;
+                    compact_buffer(
+                        &mut sample_buffer,
+                        &mut buffer_offset,
+                        config.verbose,
+                        &format!("触发硬上限Compact: 缓冲区超过{MAX_BUFFER_RATIO:.1}×窗口"),
+                    );
                 }
                 // 🎯 Compact触发：当已处理样本占比超过阈值时，执行一次性内存整理
                 else if buffer_offset > 0
                     && buffer_offset as f64 / sample_buffer.len() as f64 > COMPACT_THRESHOLD_RATIO
                 {
-                    if config.verbose {
-                        println!(
-                            "🔧 执行Compact: 移除前{}个样本 ({:.1}KB → {:.1}KB)",
-                            buffer_offset,
-                            sample_buffer.len() * 4 / 1024,
-                            (sample_buffer.len() - buffer_offset) * 4 / 1024
-                        );
-                    }
-                    sample_buffer.drain(0..buffer_offset);
-                    buffer_offset = 0;
+                    compact_buffer(
+                        &mut sample_buffer,
+                        &mut buffer_offset,
+                        config.verbose,
+                        "执行Compact",
+                    );
                 }
             }
             // 阶段D优化禁用时，仅使用阶段B的compact机制
             else if buffer_offset > 0
                 && buffer_offset as f64 / sample_buffer.len() as f64 > COMPACT_THRESHOLD_RATIO
             {
-                if config.verbose {
-                    println!(
-                        "🔧 执行Compact: 移除前{}个样本 ({:.1}KB → {:.1}KB)",
-                        buffer_offset,
-                        sample_buffer.len() * 4 / 1024,
-                        (sample_buffer.len() - buffer_offset) * 4 / 1024
-                    );
-                }
-                sample_buffer.drain(0..buffer_offset);
-                buffer_offset = 0;
+                compact_buffer(
+                    &mut sample_buffer,
+                    &mut buffer_offset,
+                    config.verbose,
+                    "执行Compact",
+                );
             }
         }
     }
 
     // 🏁 处理最后剩余的不足标准窗口大小的样本（从offset开始）
+    //
+    // 📝 尾块处理策略说明：
+    // 末尾不足3秒的尾块直接参与计算（符合多数实现标准）：
+    // - 尾块样本计入 20% RMS 统计（通过 WindowRmsAnalyzer.process_samples）
+    // - 尾块峰值参与峰值检测（主Peak、次Peak更新）
+    // - 此行为与 foobar2000 DR Meter 一致，确保完整音频内容被分析
     let remaining_samples = sample_buffer.len() - buffer_offset;
     if remaining_samples > 0 {
         if config.verbose {
@@ -364,6 +399,10 @@ fn analyze_streaming_decoder(
             0.0
         };
 
+        // 📝 样本计数说明：
+        // - sample_count 表示"参与分析的总帧数"（每帧包含所有声道样本）
+        // - total_samples_processed 是交错样本总数，除以声道数得到帧数
+        // - 此计数与最终 format.sample_count 一致性由解码器保证
         dr_results.push(DrResult::new_with_peaks(
             channel_idx,
             dr_value,
@@ -484,7 +523,7 @@ pub fn save_individual_result(
     };
 
     if let Err(e) = output_results(results, &temp_config, format, true) {
-        println!("   ⚠️  保存单独结果文件失败: {e}");
+        eprintln!("   ⚠️  保存单独结果文件失败: {e}");
     } else if config.verbose {
         let parent_dir = utils::get_parent_dir(audio_file);
         let file_stem = utils::extract_file_stem(audio_file);
