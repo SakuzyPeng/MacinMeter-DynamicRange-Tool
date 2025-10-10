@@ -158,10 +158,12 @@ impl UniversalDecoder {
         }
 
         // 🚀 创建并行流式处理器（支持FLAC、WAV、AAC等格式）
+        use crate::tools::constants::decoder_performance::*;
+
         let parallel_processor = ParallelUniversalStreamProcessor::new(path)?.with_parallel_config(
             parallel_enabled,
-            batch_size.unwrap_or(64),  // 默认64包批量
-            thread_count.unwrap_or(4), // 默认4线程
+            batch_size.unwrap_or(PARALLEL_DECODE_BATCH_SIZE),
+            thread_count.unwrap_or(PARALLEL_DECODE_THREADS),
         );
 
         Ok(Box::new(parallel_processor))
@@ -290,15 +292,15 @@ impl UniversalDecoder {
 
 /// 🚀 批量包预读器 - I/O性能优化核心
 ///
-/// 通过批量预读减少系统调用次数，将1,045,320次调用减少到~10,453次 (-99%)
-/// 内存开销约1.5MB，换取20-30%的整体性能提升
+/// 通过批量预读减少系统调用次数，可减少约99%的I/O系统调用
+/// 内存开销约1-2MB，换取显著的整体性能提升
 struct BatchPacketReader {
     format_reader: Box<dyn symphonia::core::formats::FormatReader>,
     packet_buffer: std::collections::VecDeque<symphonia::core::formats::Packet>,
 
-    // 🎯 性能调优参数
-    batch_size: usize,         // 每次预读包数 (推荐100)
-    prefetch_threshold: usize, // 触发预读的阈值 (推荐20)
+    // 🎯 性能调优参数（见 constants::decoder_performance）
+    batch_size: usize,         // 每次预读包数
+    prefetch_threshold: usize, // 触发预读的阈值
 
     // 📊 性能统计
     total_reads: usize,   // 总预读次数
@@ -308,11 +310,13 @@ struct BatchPacketReader {
 impl BatchPacketReader {
     /// 创建批量包预读器，使用优化的默认参数
     fn new(format_reader: Box<dyn symphonia::core::formats::FormatReader>) -> Self {
+        use crate::tools::constants::decoder_performance::*;
+
         Self {
             format_reader,
-            packet_buffer: std::collections::VecDeque::with_capacity(100), // 预分配容量
-            batch_size: 100,        // 经优化的批量大小：平衡内存与性能
-            prefetch_threshold: 20, // 提前预读阈值：避免缓冲区空闲
+            packet_buffer: std::collections::VecDeque::with_capacity(BATCH_PACKET_SIZE),
+            batch_size: BATCH_PACKET_SIZE,
+            prefetch_threshold: PREFETCH_THRESHOLD,
             total_reads: 0,
             total_packets: 0,
         }
@@ -856,12 +860,14 @@ impl ParallelUniversalStreamProcessor {
         let codec_params = track.codec_params.clone();
 
         // 🚀 创建有序并行解码器（带SIMD优化）
+        use crate::tools::constants::decoder_performance::*;
+
         let parallel_decoder = if self.parallel_enabled {
             super::parallel_decoder::OrderedParallelDecoder::new(
                 codec_params.clone(),
                 self.state.sample_converter.clone(),
             )
-            .with_config(64, 4) // 优化的默认配置：64包批量，4线程
+            .with_config(PARALLEL_DECODE_BATCH_SIZE, PARALLEL_DECODE_THREADS)
         } else {
             super::parallel_decoder::OrderedParallelDecoder::new(
                 codec_params,
@@ -1148,17 +1154,15 @@ mod tests {
 
     #[test]
     fn test_batch_packet_reader_creation() {
+        use crate::tools::constants::decoder_performance::*;
+
         // 测试BatchPacketReader的创建和基本参数
         // 注意：这个测试需要实际的format_reader，所以我们通过间接方式验证
         // BatchPacketReader的存在性和配置
 
-        // 验证默认配置值
-        const EXPECTED_BATCH_SIZE: usize = 100;
-        const EXPECTED_THRESHOLD: usize = 20;
-
-        // 这些是BatchPacketReader的设计参数
-        assert_eq!(EXPECTED_BATCH_SIZE, 100, "批量大小应为100");
-        assert_eq!(EXPECTED_THRESHOLD, 20, "预读阈值应为20");
+        // 验证默认配置值与常量定义一致
+        assert_eq!(BATCH_PACKET_SIZE, 64, "批量大小应为64");
+        assert_eq!(PREFETCH_THRESHOLD, 20, "预读阈值应为20");
     }
 
     #[test]

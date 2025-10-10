@@ -261,12 +261,14 @@ impl SampleConverter {
     where
         T: Copy + Send + Sync,
     {
-        debug_conversion!(
-            "🎯 智能转换: 格式={:?}, 样本数={}, SIMD支持={}",
-            format,
-            input.len(),
-            self.has_simd_support()
-        );
+        if self.enable_stats {
+            debug_conversion!(
+                "🎯 智能转换: 格式={:?}, 样本数={}, SIMD支持={}",
+                format,
+                input.len(),
+                self.has_simd_support()
+            );
+        }
 
         let start_time = if self.enable_stats {
             Some(std::time::Instant::now())
@@ -381,7 +383,9 @@ macro_rules! impl_sample_conversion_method {
             output.reserve(input.len());
             let start_len = output.len();
 
-            debug_conversion!("🔄 {}→f32转换: {} 个样本", $format_name, input.len());
+            if self.enable_stats {
+                debug_conversion!("🔄 {}→f32转换: {} 个样本", $format_name, input.len());
+            }
 
             if self.has_simd_support() && input.len() >= 8 {
                 // 使用SIMD优化路径
@@ -394,12 +398,14 @@ macro_rules! impl_sample_conversion_method {
 
             stats.output_samples = output.len() - start_len;
 
-            debug_conversion!(
-                "✅ {}→f32完成: SIMD={}, 效率={:.1}%",
-                $format_name,
-                stats.used_simd,
-                stats.simd_efficiency()
-            );
+            if self.enable_stats {
+                debug_conversion!(
+                    "✅ {}→f32完成: SIMD={}, 效率={:.1}%",
+                    $format_name,
+                    stats.used_simd,
+                    stats.simd_efficiency()
+                );
+            }
 
             Ok(stats)
         }
@@ -466,7 +472,9 @@ macro_rules! impl_sse2_wrapper {
             output: &mut Vec<f32>,
             stats: &mut ConversionStats,
         ) -> AudioResult<()> {
-            debug_conversion!("🚀 使用SSE2优化{}→f32转换", $format_name);
+            if self.enable_stats {
+                debug_conversion!("🚀 使用SSE2优化{}→f32转换", $format_name);
+            }
 
             if !self.simd_processor.capabilities().has_basic_simd() {
                 eprintln!(
@@ -503,7 +511,9 @@ macro_rules! impl_neon_wrapper {
             output: &mut Vec<f32>,
             stats: &mut ConversionStats,
         ) -> AudioResult<()> {
-            debug_conversion!("🍎 使用NEON优化{}→f32转换", $format_name);
+            if self.enable_stats {
+                debug_conversion!("🍎 使用NEON优化{}→f32转换", $format_name);
+            }
 
             if !self.simd_processor.capabilities().has_basic_simd() {
                 eprintln!(
@@ -906,7 +916,8 @@ impl SampleConverter {
         // 前置条件：i + 8 <= len确保有8个有效i16样本（16字节）可读取。
         // _mm_loadu_si128从未对齐内存加载，input.as_ptr().add(i)指针在边界内。
         // unpacklo/hi/cvtepi32_ps/mul_ps是纯寄存器操作，无内存访问风险。
-        // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
+        // 直接将结果写入output已预留的空间（使用set_len扩展长度后再写入）。
+        // set_len安全性：output.reserve(len)已保证容量≥最终长度；每次追加固定8个元素且不越界。
         unsafe {
             let scale_vec = _mm_set1_ps(SCALE);
             while i + 8 <= len {
@@ -921,14 +932,11 @@ impl SampleConverter {
                 let f32_lo = _mm_mul_ps(_mm_cvtepi32_ps(i32_lo), scale_vec);
                 let f32_hi = _mm_mul_ps(_mm_cvtepi32_ps(i32_hi), scale_vec);
 
-                // 存储结果
-                let mut temp_lo = [0.0f32; 4];
-                let mut temp_hi = [0.0f32; 4];
-                _mm_storeu_ps(temp_lo.as_mut_ptr(), f32_lo);
-                _mm_storeu_ps(temp_hi.as_mut_ptr(), f32_hi);
-
-                output.extend_from_slice(&temp_lo);
-                output.extend_from_slice(&temp_hi);
+                // 直接写入output尾部
+                let current_len = output.len();
+                output.set_len(current_len + 8);
+                _mm_storeu_ps(output.as_mut_ptr().add(current_len), f32_lo);
+                _mm_storeu_ps(output.as_mut_ptr().add(current_len + 4), f32_hi);
 
                 i += 8;
                 stats.simd_samples += 8;
@@ -1069,7 +1077,8 @@ impl SampleConverter {
         // 前置条件：i + 4 <= len确保有4个有效i32样本（16字节）可读取。
         // _mm_loadu_si128从未对齐内存加载4个i32，指针有效且在边界内。
         // _mm_cvtepi32_ps和_mm_mul_ps是纯SSE2寄存器操作，无内存访问风险。
-        // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
+        // 直接将结果写入output已预留的空间（使用set_len扩展长度后再写入）。
+        // set_len安全性：output.reserve(len)已保证容量≥最终长度；每次追加固定4个元素且不越界。
         unsafe {
             let scale_vec = _mm_set1_ps(SCALE);
             while i + 4 <= len {
@@ -1079,10 +1088,10 @@ impl SampleConverter {
                 // 转换为浮点数并缩放
                 let f32_vec = _mm_mul_ps(_mm_cvtepi32_ps(i32_vec), scale_vec);
 
-                // 存储结果
-                let mut temp = [0.0f32; 4];
-                _mm_storeu_ps(temp.as_mut_ptr(), f32_vec);
-                output.extend_from_slice(&temp);
+                // 直接写入output尾部
+                let current_len = output.len();
+                output.set_len(current_len + 4);
+                _mm_storeu_ps(output.as_mut_ptr().add(current_len), f32_vec);
 
                 i += 4;
                 stats.simd_samples += 4;

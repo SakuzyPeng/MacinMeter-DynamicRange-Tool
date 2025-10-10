@@ -57,6 +57,52 @@ impl ChannelSeparator {
         self.simd_processor.capabilities()
     }
 
+    /// 🚀 智能样本分离（写入预分配缓冲区，优化内存）
+    ///
+    /// 根据声道数量自动选择最优分离策略：
+    /// - 单声道：零开销直通
+    /// - 立体声：SIMD向量化分离
+    ///
+    /// # 参数
+    ///
+    /// * `samples` - 交错的音频样本数据
+    /// * `channel_idx` - 要提取的声道索引
+    /// * `channel_count` - 总声道数量（1或2）
+    /// * `output` - 预分配的输出缓冲区（会被清空并填充）
+    ///
+    /// # 优势
+    ///
+    /// 相比 `extract_channel_samples_optimized`，此方法避免每次调用都分配新 Vec，
+    /// 在循环中复用缓冲区可显著降低内存峰值和分配开销。
+    pub fn extract_channel_into(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+        output: &mut Vec<f32>,
+    ) {
+        debug_performance!(
+            "🚀 智能提取声道{} (into): 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count
+        );
+
+        // 清空输出缓冲区，保留容量
+        output.clear();
+
+        // 🎯 智能优化（单声道和立体声自适应）
+        debug_assert!(channel_count <= 2, "ChannelSeparator只应处理1-2声道文件");
+
+        if channel_count == 1 {
+            // 单声道：直接复制所有样本
+            output.extend_from_slice(samples);
+        } else {
+            // 立体声：使用SIMD优化
+            self.extract_stereo_samples_into(samples, channel_idx, output);
+        }
+    }
+
     /// 🚀 智能样本分离（自适应单声道/立体声）
     ///
     /// 根据声道数量自动选择最优分离策略：
@@ -72,6 +118,11 @@ impl ChannelSeparator {
     /// # 返回值
     ///
     /// 返回指定声道的样本数据
+    ///
+    /// # 实现说明
+    ///
+    /// 此方法是 `extract_channel_into` 的便捷包裹器，内部分配Vec并调用into版本。
+    /// 推荐在循环中使用 `extract_channel_into` 以复用缓冲区，获得更好的内存性能。
     pub fn extract_channel_samples_optimized(
         &self,
         samples: &[f32],
@@ -79,70 +130,56 @@ impl ChannelSeparator {
         channel_count: usize,
     ) -> Vec<f32> {
         debug_performance!(
-            "🚀 智能提取声道{}: 总样本={}, 声道数={}",
+            "🚀 智能提取声道{} (包裹器): 总样本={}, 声道数={}",
             channel_idx,
             samples.len(),
             channel_count
         );
 
-        // 🔍 [TRACE] SIMD分离决策
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "🔍 [STEREO] extract_channel_samples_optimized: 声道{}/{}, 总样本={}",
-            channel_idx,
-            channel_count,
-            samples.len()
-        );
-
-        // 🎯 智能优化（单声道和立体声自适应）
-        debug_assert!(channel_count <= 2, "ChannelSeparator只应处理1-2声道文件");
-
-        if channel_count == 1 {
-            // 单声道：无需样本分离，直接返回所有样本
-            #[cfg(debug_assertions)]
-            eprintln!("🔍 [STEREO] 单声道模式：无需分离，直接返回样本");
-
-            samples.to_vec()
-        } else {
-            // 立体声：使用SIMD优化
-            #[cfg(debug_assertions)]
-            eprintln!("🔍 [STEREO] 使用立体声SIMD优化路径");
-
-            let result = self.extract_stereo_samples_optimized(samples, channel_idx);
-
-            #[cfg(debug_assertions)]
-            eprintln!("🔍 [STEREO] 立体声SIMD优化完成: {} 个样本", result.len());
-
-            result
-        }
+        // 🎯 优化：复用into版本的实现，避免代码重复
+        let mut result = Vec::new();
+        self.extract_channel_into(samples, channel_idx, channel_count, &mut result);
+        result
     }
 
-    /// 🎯 立体声样本分离优化入口
-    fn extract_stereo_samples_optimized(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
-        self.extract_stereo_samples_simd_impl(samples, channel_idx)
+    /// 🎯 立体声样本分离优化入口（写入预分配缓冲区）
+    fn extract_stereo_samples_into(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        output: &mut Vec<f32>,
+    ) {
+        self.extract_stereo_samples_simd_into(samples, channel_idx, output);
     }
 
-    /// 🎯 SSE2优化的立体声样本分离（x86_64专用）
+    /// 🎯 SSE2优化的立体声样本分离（x86_64专用，写入预分配缓冲区）
     #[cfg(target_arch = "x86_64")]
-    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+    fn extract_stereo_samples_simd_into(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        output: &mut Vec<f32>,
+    ) {
         if !self.simd_processor.capabilities().has_basic_simd() {
-            return Self::extract_channel_samples_scalar(samples, channel_idx, 2);
+            Self::extract_channel_samples_scalar_into(samples, channel_idx, 2, output);
+            return;
         }
 
         let samples_per_channel = samples.len() / 2;
-        let mut result = Vec::with_capacity(samples_per_channel);
+        // 确保输出缓冲区有足够容量
+        if output.capacity() < samples_per_channel {
+            output.reserve(samples_per_channel - output.capacity());
+        }
 
         // SAFETY: extract_stereo_samples_sse2_unsafe需要SSE2支持，已通过capabilities检查验证。
-        // samples生命周期有效，result已预分配容量，函数内部会正确处理数组边界。
-        unsafe { self.extract_stereo_samples_sse2_unsafe(samples, channel_idx, &mut result) }
+        // samples生命周期有效，output已预分配容量，函数内部会正确处理数组边界。
+        unsafe { self.extract_stereo_samples_sse2_unsafe(samples, channel_idx, output) }
 
         debug_performance!(
-            "🎯 SSE2立体声分离完成: 提取{}=>{}个样本",
+            "🎯 SSE2立体声分离完成 (into): 提取{}=>{}个样本",
             samples.len(),
-            result.len()
+            output.len()
         );
-
-        result
     }
 
     /// 🔥 SSE2立体声样本分离的核心实现（unsafe）
@@ -212,27 +249,34 @@ impl ChannelSeparator {
         }
     }
 
-    /// 🍎 ARM NEON优化的立体声样本分离（Apple Silicon专用）
+    /// 🍎 ARM NEON优化的立体声样本分离（Apple Silicon专用，写入预分配缓冲区）
     #[cfg(target_arch = "aarch64")]
-    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+    fn extract_stereo_samples_simd_into(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        output: &mut Vec<f32>,
+    ) {
         if !self.simd_processor.capabilities().has_basic_simd() {
-            return Self::extract_channel_samples_scalar(samples, channel_idx, 2);
+            Self::extract_channel_samples_scalar_into(samples, channel_idx, 2, output);
+            return;
         }
 
         let samples_per_channel = samples.len() / 2;
-        let mut result = Vec::with_capacity(samples_per_channel);
+        // 确保输出缓冲区有足够容量
+        if output.capacity() < samples_per_channel {
+            output.reserve(samples_per_channel - output.capacity());
+        }
 
         // SAFETY: extract_stereo_samples_neon_unsafe需要NEON支持，已通过capabilities检查验证。
-        // samples生命周期有效，result已预分配容量，函数内部会正确处理数组边界。
-        unsafe { self.extract_stereo_samples_neon_unsafe(samples, channel_idx, &mut result) }
+        // samples生命周期有效，output已预分配容量，函数内部会正确处理数组边界。
+        unsafe { self.extract_stereo_samples_neon_unsafe(samples, channel_idx, output) }
 
         debug_performance!(
-            "🍎 NEON立体声分离完成: 提取{}=>{}个样本 (Apple Silicon)",
+            "🍎 NEON立体声分离完成 (into): 提取{}=>{}个样本 (Apple Silicon)",
             samples.len(),
-            result.len()
+            output.len()
         );
-
-        result
     }
 
     /// 🍎 ARM NEON立体声样本分离的核心实现（unsafe）
@@ -294,37 +338,77 @@ impl ChannelSeparator {
         }
     }
 
-    /// 🚀 其他架构的立体声分离回退实现
+    /// 🚀 其他架构的立体声分离回退实现（写入预分配缓冲区）
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    fn extract_stereo_samples_simd_impl(&self, samples: &[f32], channel_idx: usize) -> Vec<f32> {
+    fn extract_stereo_samples_simd_into(
+        &self,
+        samples: &[f32],
+        channel_idx: usize,
+        output: &mut Vec<f32>,
+    ) {
         debug_performance!(
-            "🔄 未支持架构回退到标量实现: arch={}",
+            "🔄 未支持架构回退到标量实现 (into): arch={}",
             std::env::consts::ARCH
         );
-        Self::extract_channel_samples_scalar(samples, channel_idx, 2)
+        Self::extract_channel_samples_scalar_into(samples, channel_idx, 2, output);
+    }
+
+    /// 📊 标量声道样本分离（写入预分配缓冲区）
+    ///
+    /// 使用迭代器的高效标量实现，适用于所有平台和声道配置。
+    pub fn extract_channel_samples_scalar_into(
+        samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+        output: &mut Vec<f32>,
+    ) {
+        debug_performance!(
+            "📊 标量提取声道{} (into): 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count
+        );
+
+        // 预估所需容量
+        let estimated_capacity = samples.len().div_ceil(channel_count);
+        if output.capacity() < estimated_capacity {
+            output.reserve(estimated_capacity - output.capacity());
+        }
+
+        // 使用 extend 将分离的样本添加到输出缓冲区
+        output.extend(
+            samples
+                .iter()
+                .skip(channel_idx)
+                .step_by(channel_count)
+                .copied(),
+        );
     }
 
     /// 📊 标量声道样本分离（通用回退实现）
     ///
     /// 使用迭代器的高效标量实现，适用于所有平台和声道配置。
+    ///
+    /// # 实现说明
+    ///
+    /// 此方法是 `extract_channel_samples_scalar_into` 的便捷包裹器。
+    /// 推荐在循环中使用 `*_into` 版本以复用缓冲区。
     pub fn extract_channel_samples_scalar(
         samples: &[f32],
         channel_idx: usize,
         channel_count: usize,
     ) -> Vec<f32> {
         debug_performance!(
-            "📊 标量提取声道{}: 总样本={}, 声道数={}",
+            "📊 标量提取声道{} (包裹器): 总样本={}, 声道数={}",
             channel_idx,
             samples.len(),
             channel_count
         );
 
-        samples
-            .iter()
-            .skip(channel_idx)
-            .step_by(channel_count)
-            .copied()
-            .collect()
+        // 🎯 优化：复用into版本的实现，避免代码重复
+        let mut result = Vec::new();
+        Self::extract_channel_samples_scalar_into(samples, channel_idx, channel_count, &mut result);
+        result
     }
 }
 
