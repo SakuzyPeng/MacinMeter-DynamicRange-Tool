@@ -696,6 +696,9 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
+        // 预分配输出容量，避免Vec重新分配
+        output.reserve(len);
+
         // SSE2处理：一次处理4个i24样本（因为i24→i32需要更多空间）
         // SAFETY: SSE2向量化i24→f32转换。
         // 前置条件：i + 4 <= len确保有4个有效i24样本可访问。
@@ -895,6 +898,9 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
+        // 预分配输出容量，避免Vec重新分配
+        output.reserve(len);
+
         // SIMD处理：一次处理8个i16样本
         // SAFETY: SSE2向量化i16→f32转换。
         // 前置条件：i + 8 <= len确保有8个有效i16样本（16字节）可读取。
@@ -1054,6 +1060,9 @@ impl SampleConverter {
         const SCALE: f32 = 1.0 / 2147483648.0;
         let len = input.len();
         let mut i = 0;
+
+        // 预分配输出容量，避免Vec重新分配
+        output.reserve(len);
 
         // SSE2处理：一次处理4个i32样本
         // SAFETY: SSE2向量化i32→f32转换。
