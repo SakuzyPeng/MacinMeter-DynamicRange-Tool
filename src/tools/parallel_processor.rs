@@ -72,7 +72,7 @@ pub fn process_batch_parallel(
                 // 简短进度提示（节流：每 50 个文件打印一次）
                 if !config.verbose {
                     let count = progress_counter.fetch_add(1, Ordering::Relaxed) + 1;
-                    if count % 50 == 0 {
+                    if count.is_multiple_of(50) {
                         print!(".");
                         use std::io::Write;
                         std::io::stdout().flush().ok();
