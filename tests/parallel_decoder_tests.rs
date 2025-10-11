@@ -233,6 +233,7 @@ fn test_decoded_chunk_empty_samples() {
 // ========== 性能和压力测试 ==========
 
 #[test]
+#[ignore] // 🐌 Debug模式下极慢（1000个数据完全逆序处理），运行超过60秒，仅在Release性能验证时运行
 fn test_sequenced_channel_high_volume() {
     let channel = SequencedChannel::new();
     let sender = channel.sender();

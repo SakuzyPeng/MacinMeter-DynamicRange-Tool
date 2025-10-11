@@ -19,9 +19,9 @@
 - [x] src/tools/utils.rs
 - [x] src/tools/processor.rs
 - [x] src/tools/parallel_processor.rs
-- [ ] src/tools/formatter.rs
-- [ ] src/tools/batch_state.rs
-- [ ] src/tools/mod.rs
+- [x] src/tools/formatter.rs
+- [x] src/tools/batch_state.rs
+- [x] src/tools/mod.rs
 
 三、Audio 解码层
 - [ ] src/audio/universal_decoder.rs

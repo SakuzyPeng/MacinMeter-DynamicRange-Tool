@@ -97,6 +97,7 @@ fn test_simd_efficiency_stats() {
 // ============================================================================
 
 #[test]
+#[ignore] // 🐌 Debug模式下极慢（10M样本 × 10次迭代），仅在Release性能验证时运行
 fn test_throughput() {
     let converter = SampleConverter::new();
 
@@ -135,6 +136,7 @@ fn test_throughput() {
 // ============================================================================
 
 #[test]
+#[ignore] // 🐌 Debug模式下极慢（包含1M样本规模测试），仅在Release性能验证时运行
 fn test_varying_data_sizes() {
     let converter = SampleConverter::new();
 
@@ -213,6 +215,7 @@ fn test_simd_capabilities() {
 // ============================================================================
 
 #[test]
+#[ignore] // 🐌 Debug模式下极慢（500k样本 × 20次迭代），仅在Release性能验证时运行
 fn test_i32_conversion_performance() {
     let converter = SampleConverter::new();
 
@@ -247,6 +250,7 @@ fn test_i32_conversion_performance() {
 // ============================================================================
 
 #[test]
+#[ignore] // 🐌 Debug模式下极慢（100k样本 × 50次迭代 × 2组测试），仅在Release性能验证时运行
 fn test_aligned_vs_unaligned_performance() {
     let converter = SampleConverter::new();
 

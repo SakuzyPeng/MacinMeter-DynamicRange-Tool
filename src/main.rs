@@ -167,7 +167,6 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 // 🎯 错误分类统计（使用统一的 BatchStats）
                 let category = ErrorCategory::from_audio_error(&e);
                 let filename = tools::utils::extract_filename_lossy(audio_file);
-                stats.inc_failed(category, filename.clone());
 
                 // 🎯 详细错误输出（verbose模式）
                 if config.verbose {
@@ -192,6 +191,9 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 if !is_single_file {
                     tools::add_failed_to_batch_output(&mut batch_output, audio_file);
                 }
+
+                // 最后记录统计，避免 clone（直接 move filename）
+                stats.inc_failed(category, filename);
             }
         }
     }

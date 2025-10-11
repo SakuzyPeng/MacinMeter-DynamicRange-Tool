@@ -9,7 +9,11 @@ use std::sync::{Arc, Mutex};
 
 /// 批处理统计快照
 ///
-/// 包含处理成功/失败计数和错误分类统计
+/// 包含处理成功/失败计数和错误分类统计。
+///
+/// # 字段说明
+/// - `error_stats`: 保留完整的失败文件名列表，用于后续输出格式化（如前3后2显示模式）。
+///   不可替换为简单计数，否则会破坏现有输出需求。
 #[derive(Debug, Clone)]
 pub struct BatchStatsSnapshot {
     /// 成功处理的文件数
@@ -45,9 +49,12 @@ impl SerialBatchStats {
 
     /// 增加失败计数并记录错误分类
     #[inline]
-    pub fn inc_failed(&mut self, category: ErrorCategory, filename: String) -> usize {
+    pub fn inc_failed(&mut self, category: ErrorCategory, filename: impl Into<String>) -> usize {
         self.failed += 1;
-        self.error_stats.entry(category).or_default().push(filename);
+        self.error_stats
+            .entry(category)
+            .or_default()
+            .push(filename.into());
         self.failed
     }
 
@@ -82,24 +89,32 @@ impl ParallelBatchStats {
     }
 
     /// 增加成功处理计数（线程安全）
+    ///
+    /// 使用 Relaxed 内存序：仅用于计数累加，无需与其他内存操作同步，避免不必要的屏障开销
     #[inline]
     pub fn inc_processed(&self) -> usize {
         self.processed.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// 增加失败计数并记录错误分类（线程安全）
-    pub fn inc_failed(&self, category: ErrorCategory, filename: String) -> usize {
+    ///
+    /// 使用 Relaxed 内存序用于计数，使用 Mutex poison 降级确保即使在 panic 后仍可继续记录错误
+    pub fn inc_failed(&self, category: ErrorCategory, filename: impl Into<String>) -> usize {
         let count = self.failed.fetch_add(1, Ordering::Relaxed) + 1;
 
-        // 更新错误分类统计（需要锁）
-        if let Ok(mut stats) = self.error_stats.lock() {
-            stats.entry(category).or_default().push(filename);
-        }
+        // 更新错误分类统计，即使 Mutex 被 poison 也继续处理（降级恢复）
+        let mut stats = self
+            .error_stats
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        stats.entry(category).or_default().push(filename.into());
 
         count
     }
 
     /// 获取统计快照（线程安全）
+    ///
+    /// 使用 Relaxed 内存序读取计数，使用 poison 降级保留已有数据
     pub fn snapshot(&self) -> BatchStatsSnapshot {
         BatchStatsSnapshot {
             processed: self.processed.load(Ordering::Relaxed),
@@ -107,8 +122,8 @@ impl ParallelBatchStats {
             error_stats: self
                 .error_stats
                 .lock()
-                .map(|stats| stats.clone())
-                .unwrap_or_default(),
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone(),
         }
     }
 }

@@ -105,10 +105,14 @@ pub fn process_batch_parallel(
                     Err(e) => {
                         let category = ErrorCategory::from_audio_error(e);
                         let filename = utils::extract_filename_lossy(audio_file);
-                        let count = stats.inc_failed(category, filename.clone());
 
                         if config.verbose {
+                            // verbose 模式需要准确的 count，显式传递 &str（会产生一次 clone）
+                            let count = stats.inc_failed(category, filename.as_str());
                             println!("❌ [{}/{}] {} - {}", count, audio_files.len(), filename, e);
+                        } else {
+                            // 非 verbose 模式直接 move filename，零开销
+                            stats.inc_failed(category, filename);
                         }
                     }
                 }

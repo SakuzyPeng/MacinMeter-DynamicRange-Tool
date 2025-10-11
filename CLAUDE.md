@@ -257,11 +257,14 @@ trait StreamingDecoder {
 ## 测试策略
 
 ```bash
-# 单元测试（59个测试，0.02秒完成）
+# 单元测试（161个测试，0.02秒完成）
+cargo test --lib
+
+# 完整测试（包括集成测试，但跳过慢速性能测试）
 cargo test
 
-# 只运行库测试（排除doctest）
-cargo test --lib
+# 运行被忽略的慢速性能测试（仅在Release模式下运行）
+cargo test --release -- --ignored
 
 # 性能验证（必须在重构后运行）
 cargo build --release && ./benchmark_10x.sh
@@ -269,6 +272,28 @@ cargo build --release && ./benchmark_10x.sh
 # 精度验证（SIMD vs 标量）
 cargo test --release simd_precision_test -- --nocapture
 ```
+
+### ⚠️ 慢速测试说明
+
+**已标记为 `#[ignore]` 的慢速测试（6个）**：
+
+这些测试在Debug模式下运行极慢（60秒+），已标记为忽略以避免CI超时：
+
+1. **simd_performance_tests.rs** (4个大数据集性能测试)
+   - `test_throughput` - 10M样本×10次 = 100M总样本
+   - `test_varying_data_sizes` - 包含1M样本规模测试
+   - `test_i32_conversion_performance` - 500k样本×20次
+   - `test_aligned_vs_unaligned_performance` - 100k样本×50×2组
+
+2. **memory_safety_tests.rs** (1个内存验证测试)
+   - `test_complete_object_cleanup` - 1000对象×1KB
+
+3. **parallel_decoder_tests.rs** (1个并发测试)
+   - `test_sequenced_channel_high_volume` - 1000数据逆序处理
+
+**使用建议**：
+- 常规开发：运行 `cargo test`（自动跳过慢速测试）
+- 性能验证：运行 `cargo test --release -- --ignored`（Release模式执行慢速测试）
 
 ---
 
