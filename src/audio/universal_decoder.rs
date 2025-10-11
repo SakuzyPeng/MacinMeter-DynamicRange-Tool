@@ -241,6 +241,11 @@ impl UniversalDecoder {
     }
 
     /// 检测声道数，支持多种格式（包括M4A等特殊格式）
+    ///
+    /// ⚠️ 多声道处理策略：
+    /// - 3+声道文件：此处默认返回2（立体声），但DR计算器（上层）会验证并拒绝处理
+    /// - 这样设计确保格式探测阶段不会失败，由专业的处理层负责声道数验证
+    /// - 仅支持1-2声道是DR计算的技术约束，非格式探测的限制
     fn detect_channel_count(
         &self,
         codec_params: &symphonia::core::codecs::CodecParameters,
@@ -256,12 +261,17 @@ impl UniversalDecoder {
             let channel_count = match channel_layout {
                 symphonia::core::audio::Layout::Mono => 1,
                 symphonia::core::audio::Layout::Stereo => 2,
-                _ => 2, // 其他布局默认为立体声
+                _ => {
+                    // 其他布局（如5.1、7.1）默认为立体声
+                    // 上层处理会检测实际声道数并拒绝 >2 声道的文件
+                    2
+                }
             };
             return Ok(channel_count);
         }
 
         // 如果都失败，使用默认值（通常音频文件是立体声）
+        // 实际声道数会在解码阶段被准确检测
         Ok(2)
     }
 
@@ -372,8 +382,10 @@ struct ProcessorState {
     chunk_stats: ChunkSizeStats,
     sample_converter: SampleConverter,
     track_id: Option<u32>,
-    /// 跳过的损坏包数量（用于容错处理）
+    /// 跳过的损坏包总数（用于容错处理统计）
     skipped_packets: usize,
+    /// 连续解码错误计数（成功时重置，用于检测严重损坏）
+    consecutive_errors: usize,
 }
 
 impl ProcessorState {
@@ -387,6 +399,7 @@ impl ProcessorState {
             sample_converter: SampleConverter::new(),
             track_id: None,
             skipped_packets: 0,
+            consecutive_errors: 0,
         }
     }
 
@@ -610,25 +623,27 @@ impl UniversalStreamProcessor {
     ) -> AudioResult<()> {
         use symphonia::core::audio::Signal;
 
-        // 预分配足够的空间
-        samples.reserve(channel_count * frame_count);
+        let total_samples = channel_count * frame_count;
 
-        // 为每个声道分别进行SIMD转换，然后交错合并
+        // 🎯 一次性分配所有空间，避免多次resize
+        samples.resize(total_samples, 0.0);
+
+        // 🎯 复用单个缓冲区，减少分配次数
+        let mut converted_channel = Vec::with_capacity(frame_count);
+
+        // 为每个声道分别进行SIMD转换，然后交错写入
         for ch in 0..channel_count {
             let channel_data = buf.chan(ch);
-            let mut converted_channel = Vec::new();
+            converted_channel.clear();
 
             // 🚀 使用SIMD转换单个声道的数据
             let _stats = sample_converter
                 .convert_i16_to_f32(channel_data, &mut converted_channel)
                 .map_err(|e| error::calculation_error("S16 SIMD转换失败", e))?;
 
-            // 交错插入到结果中
+            // 🎯 直接写入预分配的位置，无需边界检查
             for (frame_idx, &sample) in converted_channel.iter().enumerate() {
                 let interleaved_idx = frame_idx * channel_count + ch;
-                if samples.len() <= interleaved_idx {
-                    samples.resize(interleaved_idx + 1, 0.0);
-                }
                 samples[interleaved_idx] = sample;
             }
         }
@@ -646,31 +661,27 @@ impl UniversalStreamProcessor {
     ) -> AudioResult<()> {
         use symphonia::core::audio::Signal;
 
-        // 预分配足够的空间
-        samples.reserve(channel_count * frame_count);
+        let total_samples = channel_count * frame_count;
 
-        // 为每个声道分别进行SIMD转换，然后交错合并
+        // 🎯 一次性分配所有空间，避免多次resize
+        samples.resize(total_samples, 0.0);
+
+        // 🎯 复用单个缓冲区，减少分配次数
+        let mut converted_channel = Vec::with_capacity(frame_count);
+
+        // 为每个声道分别进行SIMD转换，然后交错写入
         for ch in 0..channel_count {
             let channel_data = buf.chan(ch);
-            let mut converted_channel = Vec::new();
+            converted_channel.clear();
 
             // 🚀 使用SIMD转换单个声道的数据 (关键优化点！)
-            #[cfg(debug_assertions)]
             let _stats = sample_converter
                 .convert_i24_to_f32(channel_data, &mut converted_channel)
                 .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
 
-            #[cfg(not(debug_assertions))]
-            let _stats = sample_converter
-                .convert_i24_to_f32(channel_data, &mut converted_channel)
-                .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
-
-            // 交错插入到结果中
+            // 🎯 直接写入预分配的位置，无需边界检查
             for (frame_idx, &sample) in converted_channel.iter().enumerate() {
                 let interleaved_idx = frame_idx * channel_count + ch;
-                if samples.len() <= interleaved_idx {
-                    samples.resize(interleaved_idx + 1, 0.0);
-                }
                 samples[interleaved_idx] = sample;
             }
         }
@@ -701,53 +712,64 @@ impl StreamingDecoder for UniversalStreamProcessor {
             .track_id
             .expect("track_id必须已初始化，initialize_symphonia()已设置");
 
-        // 🚀 使用批量预读器获取包：大幅减少I/O系统调用
-        match batch_reader.next_packet()? {
-            Some(packet) => {
-                if packet.track_id() != track_id {
-                    return self.next_chunk(); // 跳过非目标轨道的包
-                }
-
-                // 记录包统计信息
-                self.state.chunk_stats.add_chunk(packet.dur() as usize);
-
-                // 解码音频包
-                match decoder.decode(&packet) {
-                    Ok(decoded) => {
-                        let samples = Self::extract_samples_from_decoded(
-                            &self.state.sample_converter,
-                            &decoded,
-                        )?;
-
-                        // 🎯 更新位置和样本数
-                        self.state
-                            .update_position(&samples, self.state.format.channels);
-
-                        Ok(Some(samples))
+        // 🔄 使用循环替代递归，避免栈溢出风险
+        loop {
+            // 🚀 使用批量预读器获取包：大幅减少I/O系统调用
+            match batch_reader.next_packet()? {
+                Some(packet) => {
+                    if packet.track_id() != track_id {
+                        continue; // 跳过非目标轨道的包，继续读取下一个
                     }
-                    Err(e) => match e {
-                        symphonia::core::errors::Error::DecodeError(_) => {
-                            // 🎯 容错处理：跳过解码错误的包，继续处理
-                            self.state.skipped_packets += 1;
 
-                            // 🎯 安全检查：防止无限递归（连续错误过多）
-                            const MAX_CONSECUTIVE_ERRORS: usize = 100;
-                            if self.state.skipped_packets > MAX_CONSECUTIVE_ERRORS {
-                                return Err(error::decoding_error(
-                                    "连续解码失败过多，文件严重损坏",
-                                    format!("跳过了{}个包", self.state.skipped_packets),
-                                ));
-                            }
+                    // 记录包统计信息
+                    self.state.chunk_stats.add_chunk(packet.dur() as usize);
 
-                            self.next_chunk()
+                    // 解码音频包
+                    match decoder.decode(&packet) {
+                        Ok(decoded) => {
+                            let samples = Self::extract_samples_from_decoded(
+                                &self.state.sample_converter,
+                                &decoded,
+                            )?;
+
+                            // 🎯 成功解码，重置连续错误计数
+                            self.state.consecutive_errors = 0;
+
+                            // 🎯 更新位置和样本数
+                            self.state
+                                .update_position(&samples, self.state.format.channels);
+
+                            return Ok(Some(samples));
                         }
-                        _ => Err(error::decoding_error("音频包解码失败", e)),
-                    },
+                        Err(e) => match e {
+                            symphonia::core::errors::Error::DecodeError(_) => {
+                                // 🎯 容错处理：跳过解码错误的包，继续处理
+                                self.state.skipped_packets += 1;
+                                self.state.consecutive_errors += 1;
+
+                                // 🎯 安全检查：连续错误过多表示文件严重损坏
+                                const MAX_CONSECUTIVE_ERRORS: usize = 100;
+                                if self.state.consecutive_errors > MAX_CONSECUTIVE_ERRORS {
+                                    return Err(error::decoding_error(
+                                        "连续解码失败过多，文件严重损坏",
+                                        format!(
+                                            "连续失败{}次，总共跳过{}个包",
+                                            self.state.consecutive_errors,
+                                            self.state.skipped_packets
+                                        ),
+                                    ));
+                                }
+
+                                continue; // 继续处理下一个包
+                            }
+                            _ => return Err(error::decoding_error("音频包解码失败", e)),
+                        },
+                    }
                 }
-            }
-            None => {
-                // 批量预读器已到达文件末尾
-                Ok(None)
+                None => {
+                    // 批量预读器已到达文件末尾
+                    return Ok(None);
+                }
             }
         }
     }
@@ -777,6 +799,8 @@ pub struct ParallelUniversalStreamProcessor {
 
     // 📊 并行优化配置
     parallel_enabled: bool,   // 是否启用并行解码
+    batch_size: usize,        // 批量解码包数
+    thread_count: usize,      // 并行线程数
     processed_packets: usize, // 已处理包数量
 
     // 🔧 Flushing状态样本缓存
@@ -787,6 +811,8 @@ pub struct ParallelUniversalStreamProcessor {
 impl ParallelUniversalStreamProcessor {
     /// 🚀 创建并行流式处理器
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
+        use crate::tools::constants::decoder_performance::*;
+
         let path = path.as_ref().to_path_buf();
         let decoder = UniversalDecoder::new();
         let format = decoder.probe_format(&path)?;
@@ -796,6 +822,8 @@ impl ParallelUniversalStreamProcessor {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: true, // 默认启用并行解码
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -806,13 +834,12 @@ impl ParallelUniversalStreamProcessor {
     pub fn with_parallel_config(
         mut self,
         enabled: bool,
-        _batch_size: usize,
-        _thread_count: usize,
+        batch_size: usize,
+        thread_count: usize,
     ) -> Self {
         self.parallel_enabled = enabled;
-        if enabled && self.parallel_decoder.is_none() {
-            // 将在initialize_parallel中创建并配置
-        }
+        self.batch_size = batch_size;
+        self.thread_count = thread_count;
         self
     }
 
@@ -860,14 +887,12 @@ impl ParallelUniversalStreamProcessor {
         let codec_params = track.codec_params.clone();
 
         // 🚀 创建有序并行解码器（带SIMD优化）
-        use crate::tools::constants::decoder_performance::*;
-
         let parallel_decoder = if self.parallel_enabled {
             super::parallel_decoder::OrderedParallelDecoder::new(
                 codec_params.clone(),
                 self.state.sample_converter.clone(),
             )
-            .with_config(PARALLEL_DECODE_BATCH_SIZE, PARALLEL_DECODE_THREADS)
+            .with_config(self.batch_size, self.thread_count)
         } else {
             super::parallel_decoder::OrderedParallelDecoder::new(
                 codec_params,
@@ -947,41 +972,19 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
             self.initialize_parallel()?;
         }
 
-        // ✅ 获取当前状态
-        let current_state = self
-            .parallel_decoder
-            .as_ref()
-            .expect("parallel_decoder必须已初始化")
-            .get_state();
+        // 🔄 使用循环替代递归，处理状态切换
+        loop {
+            // ✅ 获取当前状态
+            let current_state = self
+                .parallel_decoder
+                .as_ref()
+                .expect("parallel_decoder必须已初始化")
+                .get_state();
 
-        // ✅ 状态机驱动
-        match current_state {
-            DecodingState::Decoding => {
-                // 🔄 尝试获取已解码样本
-                match self
-                    .parallel_decoder
-                    .as_mut()
-                    .expect("parallel_decoder必须已初始化")
-                    .next_samples()
-                {
-                    Some(samples) if !samples.is_empty() => {
-                        self.state
-                            .update_position(&samples, self.state.format.channels);
-                        self.sync_skipped_packets();
-                        return Ok(Some(samples));
-                    }
-                    _ => {}
-                }
-
-                // 🔄 没有样本，读取更多包
-                const PACKET_BATCH_SIZE: usize = 64;
-                self.process_packets_batch(PACKET_BATCH_SIZE)?;
-
-                // 🔄 等待后台线程解码，最多等待100ms
-                const MAX_WAIT_ATTEMPTS: usize = 100;
-                const WAIT_INTERVAL_MS: u64 = 1;
-
-                for _attempt in 0..MAX_WAIT_ATTEMPTS {
+            // ✅ 状态机驱动
+            match current_state {
+                DecodingState::Decoding => {
+                    // 🔄 尝试获取已解码样本
                     match self
                         .parallel_decoder
                         .as_mut()
@@ -996,67 +999,92 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                         }
                         _ => {}
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
-                }
 
-                // ✅ 等待超时，检查状态是否已切换到Flushing（process_packets_batch遇到EOF）
-                let new_state = self
-                    .parallel_decoder
-                    .as_ref()
-                    .expect("parallel_decoder必须已初始化")
-                    .get_state();
+                    // 🔄 没有样本，读取更多包
+                    let batch_size = self.batch_size;
+                    self.process_packets_batch(batch_size)?;
 
-                if new_state == DecodingState::Flushing {
-                    // 状态已切换，递归调用进入Flushing分支
-                    return self.next_chunk();
-                }
+                    // 🔄 等待后台线程解码，最多等待100ms
+                    const MAX_WAIT_ATTEMPTS: usize = 100;
+                    const WAIT_INTERVAL_MS: u64 = 1;
 
-                // 仍在Decoding，暂无样本
-                Ok(None)
-            }
-
-            DecodingState::Flushing => {
-                // ✅ EOF已到，drain所有剩余样本
-                // 首次进入Flushing状态时，调用drain_all_samples()并缓存结果
-                if self.drained_samples.is_none() {
-                    let remaining = self
-                        .parallel_decoder
-                        .as_mut()
-                        .expect("parallel_decoder必须已初始化")
-                        .drain_all_samples();
-                    self.drained_samples = Some(remaining);
-                    self.drain_index = 0;
-                }
-
-                // 逐批返回缓存的样本
-                if let Some(ref samples_batches) = self.drained_samples {
-                    if self.drain_index < samples_batches.len() {
-                        let samples = samples_batches[self.drain_index].clone();
-                        self.drain_index += 1;
-
-                        if !samples.is_empty() {
-                            self.state
-                                .update_position(&samples, self.state.format.channels);
-                            self.sync_skipped_packets();
-                            return Ok(Some(samples));
-                        }
-                    } else {
-                        // ✅ 所有批次已消费完，切换到Completed状态
-                        self.parallel_decoder
+                    for _attempt in 0..MAX_WAIT_ATTEMPTS {
+                        match self
+                            .parallel_decoder
                             .as_mut()
-                            .unwrap()
-                            .set_state(DecodingState::Completed);
+                            .expect("parallel_decoder必须已初始化")
+                            .next_samples()
+                        {
+                            Some(samples) if !samples.is_empty() => {
+                                self.state
+                                    .update_position(&samples, self.state.format.channels);
+                                self.sync_skipped_packets();
+                                return Ok(Some(samples));
+                            }
+                            _ => {}
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
                     }
+
+                    // ✅ 等待超时，检查状态是否已切换到Flushing（process_packets_batch遇到EOF）
+                    let new_state = self
+                        .parallel_decoder
+                        .as_ref()
+                        .expect("parallel_decoder必须已初始化")
+                        .get_state();
+
+                    if new_state == DecodingState::Flushing {
+                        // 状态已切换，循环继续进入Flushing分支
+                        continue;
+                    }
+
+                    // 仍在Decoding，暂无样本
+                    return Ok(None);
                 }
 
-                // 所有样本已消费完
-                self.sync_skipped_packets();
-                Ok(None)
-            }
+                DecodingState::Flushing => {
+                    // ✅ EOF已到，drain所有剩余样本
+                    // 首次进入Flushing状态时，调用drain_all_samples()并缓存结果
+                    if self.drained_samples.is_none() {
+                        let remaining = self
+                            .parallel_decoder
+                            .as_mut()
+                            .expect("parallel_decoder必须已初始化")
+                            .drain_all_samples();
+                        self.drained_samples = Some(remaining);
+                        self.drain_index = 0;
+                    }
 
-            DecodingState::Completed => {
-                // ✅ 真正的EOF
-                Ok(None)
+                    // 逐批返回缓存的样本
+                    if let Some(ref samples_batches) = self.drained_samples {
+                        if self.drain_index < samples_batches.len() {
+                            let samples = samples_batches[self.drain_index].clone();
+                            self.drain_index += 1;
+
+                            if !samples.is_empty() {
+                                self.state
+                                    .update_position(&samples, self.state.format.channels);
+                                self.sync_skipped_packets();
+                                return Ok(Some(samples));
+                            }
+                        } else {
+                            // ✅ 所有批次已消费完，切换到Completed状态
+                            self.parallel_decoder
+                                .as_mut()
+                                .unwrap()
+                                .set_state(DecodingState::Completed);
+                        }
+                    }
+
+                    // 所有样本已消费完
+                    self.sync_skipped_packets();
+                    return Ok(None);
+                }
+
+                DecodingState::Completed => {
+                    // ✅ 真正的EOF
+                    return Ok(None);
+                }
             }
         }
     }
@@ -1264,6 +1292,8 @@ mod tests {
 
     #[test]
     fn test_parallel_config() {
+        use crate::tools::constants::decoder_performance::*;
+
         let path = PathBuf::from("test.flac");
         let format = AudioFormat::new(44100, 2, 16, 100000);
         let processor = ParallelUniversalStreamProcessor {
@@ -1271,6 +1301,8 @@ mod tests {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: false,
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -1279,6 +1311,8 @@ mod tests {
         // 测试配置方法
         let configured = processor.with_parallel_config(true, 128, 8);
         assert!(configured.parallel_enabled, "应启用并行解码");
+        assert_eq!(configured.batch_size, 128, "batch_size应为128");
+        assert_eq!(configured.thread_count, 8, "thread_count应为8");
 
         // 禁用并行
         let path2 = PathBuf::from("test2.flac");
@@ -1288,6 +1322,8 @@ mod tests {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: true,
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -1295,6 +1331,8 @@ mod tests {
 
         let configured2 = processor2.with_parallel_config(false, 64, 4);
         assert!(!configured2.parallel_enabled, "应禁用并行解码");
+        assert_eq!(configured2.batch_size, 64, "batch_size应为64");
+        assert_eq!(configured2.thread_count, 4, "thread_count应为4");
     }
 
     #[test]
@@ -1380,6 +1418,8 @@ mod tests {
 
     #[test]
     fn test_parallel_processor_sync_skipped_packets() {
+        use crate::tools::constants::decoder_performance::*;
+
         let path = PathBuf::from("test.flac");
         let format = AudioFormat::new(44100, 2, 16, 100000);
         let mut processor = ParallelUniversalStreamProcessor {
@@ -1387,6 +1427,8 @@ mod tests {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: true,
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -1440,6 +1482,8 @@ mod tests {
 
     #[test]
     fn test_parallel_processor_creation() {
+        use crate::tools::constants::decoder_performance::*;
+
         let path = PathBuf::from("test.flac");
         let format = AudioFormat::new(48000, 2, 24, 100000);
 
@@ -1448,6 +1492,8 @@ mod tests {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: true,
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -1456,6 +1502,8 @@ mod tests {
         assert_eq!(processor.state.path, path);
         assert_eq!(processor.state.format.sample_rate, 48000);
         assert!(processor.parallel_enabled);
+        assert_eq!(processor.batch_size, PARALLEL_DECODE_BATCH_SIZE);
+        assert_eq!(processor.thread_count, PARALLEL_DECODE_THREADS);
         assert_eq!(processor.processed_packets, 0);
         assert!(processor.drained_samples.is_none());
         assert_eq!(processor.drain_index, 0);
@@ -1507,6 +1555,8 @@ mod tests {
 
     #[test]
     fn test_parallel_processor_with_config_chaining() {
+        use crate::tools::constants::decoder_performance::*;
+
         let path = PathBuf::from("test.opus");
         let format = AudioFormat::new(48000, 2, 16, 200000);
 
@@ -1516,6 +1566,8 @@ mod tests {
             parallel_decoder: None,
             format_reader: None,
             parallel_enabled: false,
+            batch_size: PARALLEL_DECODE_BATCH_SIZE,
+            thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
             drain_index: 0,
@@ -1523,6 +1575,8 @@ mod tests {
         .with_parallel_config(true, 256, 16);
 
         assert!(processor.parallel_enabled);
+        assert_eq!(processor.batch_size, 256);
+        assert_eq!(processor.thread_count, 16);
         assert!(processor.parallel_decoder.is_none()); // 尚未初始化
     }
 

@@ -306,6 +306,11 @@ impl OrderedParallelDecoder {
     pub fn with_config(mut self, batch_size: usize, thread_pool_size: usize) -> Self {
         self.batch_size = batch_size.clamp(1, 512); // 合理范围限制
         self.thread_pool_size = thread_pool_size.clamp(1, 16);
+
+        // ✅ 根据batch_size重新创建通道，容量为batch_size * 2以缓冲2个批次
+        let channel_capacity = self.batch_size * 2;
+        self.samples_channel = SequencedChannel::with_capacity(channel_capacity);
+
         self
     }
 
@@ -452,11 +457,12 @@ impl OrderedParallelDecoder {
         let batch = std::mem::take(&mut self.current_batch);
         let sender = self.samples_channel.sender();
         let decoder_factory = self.decoder_factory.clone();
+        let thread_count = self.thread_pool_size; // ✅ 捕获配置的线程数
         self.stats.batches_processed += 1;
 
         // 🚀 启动线程池并行解码批次中的所有包
         thread::spawn(move || {
-            Self::decode_batch_parallel(batch, sender, decoder_factory);
+            Self::decode_batch_parallel(batch, sender, decoder_factory, thread_count);
         });
 
         Ok(())
@@ -467,13 +473,16 @@ impl OrderedParallelDecoder {
         batch: Vec<SequencedPacket>,
         sender: OrderedSender<DecodedChunk>,
         decoder_factory: DecoderFactory,
+        thread_count: usize,
     ) {
         use std::sync::mpsc;
         use std::thread;
 
         // 🎯 为批次中的每个包创建解码任务
         let (task_sender, task_receiver) = mpsc::channel::<SequencedPacket>();
-        let (result_sender, result_receiver) = mpsc::channel::<(usize, Vec<f32>)>();
+        // ✅ 使用有界通道，容量设为批次大小，实现端到端背压
+        let batch_size = batch.len();
+        let (result_sender, result_receiver) = mpsc::sync_channel::<(usize, Vec<f32>)>(batch_size);
 
         // 📤 发送所有解码任务
         for packet in batch {
@@ -484,7 +493,7 @@ impl OrderedParallelDecoder {
         drop(task_sender); // 关闭任务发送端
 
         let task_receiver = Arc::new(Mutex::new(task_receiver));
-        let thread_count = DEFAULT_PARALLEL_THREADS.min(4); // 控制线程数
+        // ✅ 使用配置的线程数（已在with_config中限制范围1-16）
 
         // 🚀 启动并行解码线程池
         let mut handles = Vec::new();
@@ -642,9 +651,12 @@ impl OrderedParallelDecoder {
                 let total_samples = channel_count * frame_count;
                 samples.resize(total_samples, 0.0);
 
+                // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
+                let mut converted_channel = Vec::with_capacity(frame_count);
+
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
-                    let mut converted_channel = Vec::new();
+                    converted_channel.clear(); // 复用缓冲区
 
                     sample_converter
                         .convert_i16_to_f32(channel_data, &mut converted_channel)
@@ -663,9 +675,12 @@ impl OrderedParallelDecoder {
                 let total_samples = channel_count * frame_count;
                 samples.resize(total_samples, 0.0);
 
+                // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
+                let mut converted_channel = Vec::with_capacity(frame_count);
+
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
-                    let mut converted_channel = Vec::new();
+                    converted_channel.clear(); // 复用缓冲区
 
                     sample_converter
                         .convert_i24_to_f32(channel_data, &mut converted_channel)

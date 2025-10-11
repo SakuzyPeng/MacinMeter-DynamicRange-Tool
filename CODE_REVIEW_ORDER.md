@@ -24,7 +24,7 @@
 - [x] src/tools/mod.rs
 
 三、Audio 解码层
-- [ ] src/audio/universal_decoder.rs
+- [x] src/audio/universal_decoder.rs
 - [ ] src/audio/streaming.rs
 - [ ] src/audio/parallel_decoder.rs
 - [ ] src/audio/opus_decoder.rs
