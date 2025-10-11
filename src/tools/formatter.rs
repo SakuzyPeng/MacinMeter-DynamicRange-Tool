@@ -3,16 +3,52 @@
 //! 负责DR分析结果的格式化输出，支持foobar2000兼容格式。
 
 use super::cli::AppConfig;
+use super::constants;
 use super::utils;
 use crate::{AudioError, AudioFormat, AudioResult, DrResult};
 
 // 引入symphonia编解码器类型用于精确判断
 use symphonia::core::codecs::{
-    CODEC_TYPE_AAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS, CodecType,
+    CODEC_TYPE_AAC, CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS,
+    CODEC_TYPE_PCM_ALAW, CODEC_TYPE_PCM_F32BE, CODEC_TYPE_PCM_F32LE, CODEC_TYPE_PCM_F64BE,
+    CODEC_TYPE_PCM_F64LE, CODEC_TYPE_PCM_MULAW, CODEC_TYPE_PCM_S8, CODEC_TYPE_PCM_S16BE,
+    CODEC_TYPE_PCM_S16LE, CODEC_TYPE_PCM_S24BE, CODEC_TYPE_PCM_S24LE, CODEC_TYPE_PCM_S32BE,
+    CODEC_TYPE_PCM_S32LE, CODEC_TYPE_PCM_U8, CODEC_TYPE_PCM_U16BE, CODEC_TYPE_PCM_U16LE,
+    CODEC_TYPE_PCM_U24BE, CODEC_TYPE_PCM_U24LE, CODEC_TYPE_PCM_U32BE, CODEC_TYPE_PCM_U32LE,
+    CODEC_TYPE_VORBIS, CodecType,
 };
 
 /// 应用程序版本信息
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 🎯 将 CodecType 映射为人类可读的编解码器名称
+///
+/// 优先使用真实的解码器类型信息，比文件扩展名更准确
+fn codec_type_to_string(codec_type: CodecType) -> &'static str {
+    match codec_type {
+        // 有损压缩格式
+        CODEC_TYPE_AAC => "AAC",
+        CODEC_TYPE_MP3 => "MP3",
+        CODEC_TYPE_VORBIS => "OGG Vorbis",
+        CODEC_TYPE_OPUS => "Opus",
+
+        // 无损压缩格式
+        CODEC_TYPE_FLAC => "FLAC",
+        CODEC_TYPE_ALAC => "ALAC",
+
+        // PCM格式（统一显示为WAV/PCM）
+        CODEC_TYPE_PCM_S8 | CODEC_TYPE_PCM_U8 | CODEC_TYPE_PCM_S16LE | CODEC_TYPE_PCM_S16BE
+        | CODEC_TYPE_PCM_U16LE | CODEC_TYPE_PCM_U16BE | CODEC_TYPE_PCM_S24LE
+        | CODEC_TYPE_PCM_S24BE | CODEC_TYPE_PCM_U24LE | CODEC_TYPE_PCM_U24BE
+        | CODEC_TYPE_PCM_S32LE | CODEC_TYPE_PCM_S32BE | CODEC_TYPE_PCM_U32LE
+        | CODEC_TYPE_PCM_U32BE | CODEC_TYPE_PCM_F32LE | CODEC_TYPE_PCM_F32BE
+        | CODEC_TYPE_PCM_F64LE | CODEC_TYPE_PCM_F64BE | CODEC_TYPE_PCM_ALAW
+        | CODEC_TYPE_PCM_MULAW => "WAV/PCM",
+
+        // 未知格式：返回原始描述字符串
+        _ => "Unknown",
+    }
+}
 
 /// 🎯 根据真实编解码器类型判断是否为有损压缩
 ///
@@ -40,6 +76,13 @@ fn calculate_actual_bitrate(
     format: &AudioFormat,
     codec_fallback: &str,
 ) -> AudioResult<u32> {
+    // 🎯 部分分析时无法准确计算比特率（样本数不完整）
+    if format.is_partial {
+        return Err(AudioError::InvalidInput(
+            "部分分析模式下无法准确计算比特率".to_string(),
+        ));
+    }
+
     // 🎯 优先使用真实的编解码器信息
     let is_lossy_compressed = if let Some(codec_type) = format.codec_type {
         is_lossy_codec_type(codec_type)
@@ -66,7 +109,14 @@ fn calculate_actual_bitrate(
         Ok((bitrate_bps / 1000.0).round() as u32)
     } else {
         // 无损格式(WAV/FLAC/M4A-ALAC)：使用PCM比特率公式
-        Ok(format.sample_rate * format.channels as u32 * format.bits_per_sample as u32 / 1000)
+        // 🎯 使用 u64 防止极端采样率/声道/位深组合下的溢出
+        // 例如：384kHz × 32ch × 32bit = 393,216,000 bps (接近 u32 上限)
+        let bitrate_bps =
+            format.sample_rate as u64 * format.channels as u64 * format.bits_per_sample as u64;
+        let bitrate_kbps = bitrate_bps / 1000;
+
+        // 确保结果在 u32 范围内（实际音频不会超过）
+        Ok(bitrate_kbps.min(u32::MAX as u64) as u32)
     }
 }
 
@@ -106,9 +156,10 @@ fn identify_lfe_channels(channel_count: u16) -> Vec<usize> {
 pub fn create_output_header(config: &AppConfig, format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // MacinMeter标识头部（兼容foobar2000格式）
+    // 🎯 使用统一的头部标识常量（避免跨模块文案漂移）
     output.push_str(&format!(
-        "MacinMeter DR Tool v{VERSION} / Dynamic Range Meter (foobar2000 compatible)\n"
+        "{}\n",
+        constants::app_info::format_output_header(VERSION)
     ));
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     output.push_str(&format!("log date: {now}\n\n"));
@@ -124,9 +175,18 @@ pub fn create_output_header(config: &AppConfig, format: &AudioFormat) -> String 
 
     // 从AudioFormat获取真实的音频信息
     output.push_str(&format!("Number of samples: {}\n", format.sample_count));
-    let minutes = format.duration_seconds() as u32 / 60;
-    let seconds = format.duration_seconds() as u32 % 60;
-    output.push_str(&format!("Duration: {minutes}:{seconds:02} \n"));
+
+    // 🎯 智能时长显示：<1小时用 MM:SS，≥1小时用 HH:MM:SS
+    let total_seconds = format.duration_seconds() as u32;
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+    let duration_display = if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    };
+    output.push_str(&format!("Duration: {duration_display} \n"));
 
     output.push_str(
         "--------------------------------------------------------------------------------\n\n",
@@ -235,6 +295,9 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
 pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
+    // 🎯 提前计算LFE声道映射，避免在循环内重复计算
+    let lfe_channels = identify_lfe_channels(format.channels);
+
     // 暂时隐藏Peak和RMS列的表头
     // output.push_str(
     //     "              声道             Peak dB        RMS dB         DR值        备注\n\n",
@@ -255,7 +318,6 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
         };
 
         // 检查是否为LFE声道或静音声道
-        let lfe_channels = identify_lfe_channels(format.channels);
         let note = if lfe_channels.contains(&i) {
             "LFE (已排除)"
         } else if result.peak == 0.0 && result.rms == 0.0 {
@@ -282,7 +344,6 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
     }
 
     // 添加LFE声道说明
-    let lfe_channels = identify_lfe_channels(format.channels);
     if !lfe_channels.is_empty() {
         output.push('\n');
         let format_name = match format.channels {
@@ -321,11 +382,23 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 ///
 /// 排除LFE声道和静音声道，确保批量模式与单文件模式口径一致
 ///
+/// # 计算口径说明
+///
+/// **Official DR 算法**（foobar2000 兼容实现）：
+/// 1. 筛选有效声道：排除 LFE（低频效果）声道和静音声道
+/// 2. 计算平均 DR：对所有有效声道的 DR 值求算术平均
+/// 3. 四舍五入：将平均 DR 值四舍五入为整数
+///
+/// **与其他定义的区别**：
+/// - 本实现采用 **通道级平均** 方式，与 foobar2000 DR Meter 完全一致
+/// - 不同于某些实现直接对全局 Peak/RMS 计算 DR
+/// - 符合 Pleasurize Music Foundation 的 DR 标准（2009）
+///
 /// # 返回
 /// - `Some((official_dr, precise_dr, excluded_count))`: 成功计算
-///   - `official_dr`: 官方DR值（四舍五入）
-///   - `precise_dr`: 精确DR值（保留小数）
-///   - `excluded_count`: 被排除的声道数
+///   - `official_dr`: 官方DR值（四舍五入整数）
+///   - `precise_dr`: 精确DR值（保留完整小数）
+///   - `excluded_count`: 被排除的声道数（LFE + 静音）
 /// - `None`: 无有效声道
 ///
 /// # 示例
@@ -398,14 +471,21 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     output.push_str(&format!("Bits per sample:   {}\n", format.bits_per_sample));
 
     // 🎯 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
-    let codec = utils::extract_extension_uppercase(&config.input_path);
-    let bitrate_display = match calculate_actual_bitrate(&config.input_path, format, &codec) {
-        Ok(bitrate) => format!("{bitrate} kbps"),
-        Err(_) => "N/A".to_string(), // 计算失败时显示N/A，不影响整体分析
-    };
+    let extension_fallback = utils::extract_extension_uppercase(&config.input_path);
+    let bitrate_display =
+        match calculate_actual_bitrate(&config.input_path, format, &extension_fallback) {
+            Ok(bitrate) => format!("{bitrate} kbps"),
+            Err(_) => "N/A".to_string(), // 计算失败时显示N/A（如部分分析模式）
+        };
     output.push_str(&format!("Bitrate:           {bitrate_display}\n"));
 
-    output.push_str(&format!("Codec:             {codec}\n"));
+    // 🎯 优先使用真实的编解码器类型，回退到文件扩展名
+    let codec_display = if let Some(codec_type) = format.codec_type {
+        codec_type_to_string(codec_type).to_string()
+    } else {
+        extension_fallback
+    };
+    output.push_str(&format!("Codec:             {codec_display}\n"));
 
     output.push_str(
         "================================================================================\n",

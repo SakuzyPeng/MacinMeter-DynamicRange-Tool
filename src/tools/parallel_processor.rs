@@ -11,7 +11,9 @@ use super::{
 use crate::AudioError;
 use crate::error::ErrorCategory;
 use rayon::prelude::*;
+use std::panic;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 有序结果容器（保证输出顺序）
 struct OrderedResult {
@@ -42,10 +44,16 @@ pub fn process_batch_parallel(
     // 1️⃣ 创建统一的批处理统计管理（并行版本）
     let stats = ParallelBatchStats::new();
 
+    // 进度输出节流计数器（每 50 个文件打印一次）
+    let progress_counter = AtomicUsize::new(0);
+
     // 2️⃣ 创建自定义rayon线程池（精确控制并发度）
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(parallel_degree)
         .thread_name(|i| format!("dr-worker-{i}"))
+        .panic_handler(|_| {
+            eprintln!("⚠️  工作线程 panic，但批处理将继续");
+        })
         .build()
         .map_err(|e| AudioError::ResourceError(format!("线程池创建失败: {e}")))?;
 
@@ -61,14 +69,25 @@ pub fn process_batch_parallel(
                     ..config.clone()
                 };
 
-                // 简短进度提示（避免verbose混乱）
+                // 简短进度提示（节流：每 50 个文件打印一次）
                 if !config.verbose {
-                    print!(".");
-                    use std::io::Write;
-                    std::io::stdout().flush().ok();
+                    let count = progress_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                    if count % 50 == 0 {
+                        print!(".");
+                        use std::io::Write;
+                        std::io::stdout().flush().ok();
+                    }
                 }
 
-                let result = process_single_audio_file(audio_file, &silent_config);
+                // 任务级 panic 隔离：将 panic 转换为错误，防止单文件崩全局
+                let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                    process_single_audio_file(audio_file, &silent_config)
+                }))
+                .unwrap_or_else(|_| {
+                    Err(AudioError::ResourceError(
+                        "文件处理过程中发生内部错误（panic）".to_string(),
+                    ))
+                });
 
                 // 更新统计（使用统一的 ParallelBatchStats）
                 match &result {
@@ -114,7 +133,11 @@ pub fn process_batch_parallel(
     // 5️⃣ 按序输出到批量文件（与串行模式输出格式完全一致）
     let is_single_file = audio_files.len() == 1;
     let mut batch_output = if !is_single_file {
-        create_batch_output_header(config, audio_files)
+        // 预估容量：header(~500字节) + 每个文件(~250字节)
+        let estimated_capacity = 500 + audio_files.len() * 250;
+        let mut output = String::with_capacity(estimated_capacity);
+        output.push_str(&create_batch_output_header(config, audio_files));
+        output
     } else {
         String::new()
     };

@@ -26,7 +26,7 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, SyncSender},
     },
     thread,
 };
@@ -73,9 +73,12 @@ struct SequencedPacket {
 /// 🔄 有序通道 - 确保乱序并行结果按顺序输出
 ///
 /// 核心机制：即使并行解码结果乱序到达，也能按原始序列号重新排序输出
+///
+/// **背压机制**：使用有界通道（sync_channel），当缓冲满时发送端会阻塞，
+/// 防止生产快于消费导致的内存无限增长。
 #[derive(Debug)]
 pub struct SequencedChannel<T> {
-    sender: Sender<T>,
+    sender: SyncSender<T>,
     receiver: Receiver<T>,
     next_expected: Arc<AtomicUsize>,
     reorder_buffer: Arc<Mutex<HashMap<usize, T>>>,
@@ -88,9 +91,19 @@ impl<T> Default for SequencedChannel<T> {
 }
 
 impl<T> SequencedChannel<T> {
-    /// 创建有序通道，容量为缓冲区大小
+    /// 创建有序通道，使用默认容量（128）
+    ///
+    /// 容量设计：batch_size(64) × 2 = 128，可以缓冲 2 个批次的数据
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
+        Self::with_capacity(128)
+    }
+
+    /// 创建有序通道，指定容量
+    ///
+    /// # 参数
+    /// - `capacity`: 通道容量，当缓冲满时发送端会阻塞（背压机制）
+    pub fn with_capacity(capacity: usize) -> Self {
+        let (sender, receiver) = mpsc::sync_channel(capacity);
         Self {
             sender,
             receiver,
@@ -120,9 +133,11 @@ impl<T> SequencedChannel<T> {
 }
 
 /// 📤 有序发送端 - 处理乱序数据的重排序逻辑
+///
+/// **背压特性**：使用 SyncSender，当通道满时 send() 会阻塞，形成自然的背压。
 #[derive(Debug, Clone)]
 pub struct OrderedSender<T> {
-    sender: Sender<T>,
+    sender: SyncSender<T>,
     next_expected: Arc<AtomicUsize>,
     reorder_buffer: Arc<Mutex<HashMap<usize, T>>>,
 }
@@ -130,18 +145,21 @@ pub struct OrderedSender<T> {
 impl<T> OrderedSender<T> {
     /// 发送带序列号的数据，自动处理重排序
     pub fn send_sequenced(&self, sequence: usize, data: T) -> Result<(), mpsc::SendError<T>> {
+        // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
         let mut buffer = self
             .reorder_buffer
             .lock()
-            .expect("重排序缓冲区Mutex被poison，可能有解码线程panic");
-        let next_expected = self.next_expected.load(Ordering::SeqCst);
+            .unwrap_or_else(|poison| poison.into_inner());
+        // 原子序优化：Acquire 确保读取到最新值
+        let next_expected = self.next_expected.load(Ordering::Acquire);
 
         if sequence == next_expected {
             // 🎯 正好是期望的序列号，直接发送
             drop(buffer); // 释放锁
             self.sender.send(data)?;
+            // 原子序优化：Release 让写入对其他线程可见
             self.next_expected
-                .store(next_expected + 1, Ordering::SeqCst);
+                .store(next_expected + 1, Ordering::Release);
 
             // 🔄 检查缓冲区中是否有后续连续的序列号可以发送
             self.flush_consecutive_from_buffer();
@@ -156,17 +174,20 @@ impl<T> OrderedSender<T> {
     /// 🔄 从缓冲区中发送连续的序列号数据
     fn flush_consecutive_from_buffer(&self) {
         loop {
-            let next_expected = self.next_expected.load(Ordering::SeqCst);
+            // 原子序优化：Acquire 确保读取到最新值
+            let next_expected = self.next_expected.load(Ordering::Acquire);
+            // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
             let mut buffer = self
                 .reorder_buffer
                 .lock()
-                .expect("重排序缓冲区Mutex被poison，可能有解码线程panic");
+                .unwrap_or_else(|poison| poison.into_inner());
 
             if let Some(data) = buffer.remove(&next_expected) {
                 drop(buffer); // 释放锁后再发送
                 if self.sender.send(data).is_ok() {
+                    // 原子序优化：Release 让写入对其他线程可见
                     self.next_expected
-                        .store(next_expected + 1, Ordering::SeqCst);
+                        .store(next_expected + 1, Ordering::Release);
                 } else {
                     break; // 发送失败，停止
                 }
@@ -482,9 +503,10 @@ impl OrderedParallelDecoder {
 
                 // 🔄 持续处理解码任务
                 while let Ok(sequenced_packet) = {
+                    // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
                     task_receiver
                         .lock()
-                        .expect("任务接收器Mutex被poison，可能有解码线程panic")
+                        .unwrap_or_else(|poison| poison.into_inner())
                         .recv()
                 } {
                     match Self::decode_single_packet_with_simd(

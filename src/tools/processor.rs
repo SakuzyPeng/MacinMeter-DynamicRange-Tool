@@ -208,8 +208,9 @@ fn analyze_streaming_decoder(
     };
     use super::constants::dr_analysis::WINDOW_DURATION_SECONDS;
     // 使用整数计算避免浮点舍入误差（窗口固定为3秒）
-    let window_size_samples =
-        (format.sample_rate as usize) * (WINDOW_DURATION_SECONDS as usize) * (format.channels as usize);
+    let window_size_samples = (format.sample_rate as usize)
+        * (WINDOW_DURATION_SECONDS as usize)
+        * (format.channels as usize);
 
     // 🚀 阶段D内存优化：预分配sample_buffer容量（减少扩容抖动）
     // 通过内部策略开关控制（默认启用，debug模式可通过环境变量禁用）

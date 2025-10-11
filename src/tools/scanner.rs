@@ -206,7 +206,8 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
         };
 
         // 🎯 使用目录名作为基础名称，并清理不合法字符（跨平台兼容）
-        let dir_name = utils::sanitize_filename(utils::extract_filename(config.input_path.as_path()));
+        let dir_name =
+            utils::sanitize_filename(utils::extract_filename(config.input_path.as_path()));
 
         config
             .input_path

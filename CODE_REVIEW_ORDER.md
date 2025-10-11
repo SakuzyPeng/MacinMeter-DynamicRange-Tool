@@ -17,8 +17,8 @@
 - [x] src/tools/scanner.rs
 - [x] src/tools/constants.rs
 - [x] src/tools/utils.rs
-- [ ] src/tools/processor.rs
-- [ ] src/tools/parallel_processor.rs
+- [x] src/tools/processor.rs
+- [x] src/tools/parallel_processor.rs
 - [ ] src/tools/formatter.rs
 - [ ] src/tools/batch_state.rs
 - [ ] src/tools/mod.rs

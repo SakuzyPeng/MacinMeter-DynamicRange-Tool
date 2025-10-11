@@ -157,4 +157,25 @@ pub mod app_info {
 
     /// 应用程序版本后缀
     pub const VERSION_SUFFIX: &str = "(foobar2000兼容版)";
+
+    /// 输出报告的兼容性标识
+    ///
+    /// 用于输出文件头部，表明与 foobar2000 DR Meter 的兼容性
+    pub const OUTPUT_COMPATIBILITY: &str = "Dynamic Range Meter (foobar2000 compatible)";
+
+    /// 生成完整的输出头部标识
+    ///
+    /// 格式：`MacinMeter DR Tool v{VERSION} / Dynamic Range Meter (foobar2000 compatible)`
+    ///
+    /// # 参数
+    /// - `version`: 应用程序版本号（通常来自 `env!("CARGO_PKG_VERSION")`）
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let header = app_info::format_output_header("0.1.0");
+    /// // 输出: "MacinMeter DR Tool v0.1.0 / Dynamic Range Meter (foobar2000 compatible)"
+    /// ```
+    pub fn format_output_header(version: &str) -> String {
+        format!("{APP_NAME} v{version} / {OUTPUT_COMPATIBILITY}")
+    }
 }
