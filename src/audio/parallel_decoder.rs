@@ -20,6 +20,7 @@
 
 use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
+use rayon::ThreadPoolBuilder;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -204,6 +205,8 @@ impl<T> OrderedSender<T> {
 pub struct OrderedParallelDecoder {
     batch_size: usize,
     thread_pool_size: usize,
+    /// 🚀 Rayon线程池 - 复用工作线程（Arc包装，支持廉价clone）
+    thread_pool: Arc<rayon::ThreadPool>,
     /// 当前批次缓冲区
     current_batch: Vec<SequencedPacket>,
     /// 序列号计数器
@@ -288,9 +291,18 @@ impl OrderedParallelDecoder {
         codec_params: symphonia::core::codecs::CodecParameters,
         sample_converter: SampleConverter,
     ) -> Self {
+        // 🚀 创建rayon线程池，默认4线程（Arc包装，支持clone）
+        let thread_pool = Arc::new(
+            ThreadPoolBuilder::new()
+                .num_threads(DEFAULT_PARALLEL_THREADS)
+                .build()
+                .expect("创建rayon线程池失败"),
+        );
+
         Self {
             batch_size: DEFAULT_BATCH_SIZE,
             thread_pool_size: DEFAULT_PARALLEL_THREADS,
+            thread_pool,
             current_batch: Vec::new(),
             sequence_counter: 0,
             samples_channel: SequencedChannel::new(),
@@ -306,6 +318,14 @@ impl OrderedParallelDecoder {
     pub fn with_config(mut self, batch_size: usize, thread_pool_size: usize) -> Self {
         self.batch_size = batch_size.clamp(1, 512); // 合理范围限制
         self.thread_pool_size = thread_pool_size.clamp(1, 16);
+
+        // 🚀 重建rayon线程池，使用新的线程数配置（Arc包装）
+        self.thread_pool = Arc::new(
+            ThreadPoolBuilder::new()
+                .num_threads(self.thread_pool_size)
+                .build()
+                .expect("创建rayon线程池失败"),
+        );
 
         // ✅ 根据batch_size重新创建通道，容量为batch_size * 2以缓冲2个批次
         let channel_capacity = self.batch_size * 2;
@@ -457,112 +477,64 @@ impl OrderedParallelDecoder {
         let batch = std::mem::take(&mut self.current_batch);
         let sender = self.samples_channel.sender();
         let decoder_factory = self.decoder_factory.clone();
-        let thread_count = self.thread_pool_size; // ✅ 捕获配置的线程数
+        let thread_pool = self.thread_pool.clone(); // 🚀 Clone线程池（Arc包装，廉价操作）
         self.stats.batches_processed += 1;
 
-        // 🚀 启动线程池并行解码批次中的所有包
+        // 🚀 启动后台线程执行并行解码（使用rayon线程池）
         thread::spawn(move || {
-            Self::decode_batch_parallel(batch, sender, decoder_factory, thread_count);
+            Self::decode_batch_parallel(batch, sender, decoder_factory, thread_pool);
         });
 
         Ok(())
     }
 
-    /// 🔥 核心方法：并行解码批次包，保证有序输出
+    /// 🔥 核心方法：并行解码批次包，保证有序输出（Rayon优化版本）
     fn decode_batch_parallel(
         batch: Vec<SequencedPacket>,
         sender: OrderedSender<DecodedChunk>,
         decoder_factory: DecoderFactory,
-        thread_count: usize,
+        thread_pool: Arc<rayon::ThreadPool>,
     ) {
-        use std::sync::mpsc;
-        use std::thread;
+        use rayon::prelude::*;
 
-        // 🎯 为批次中的每个包创建解码任务
-        let (task_sender, task_receiver) = mpsc::channel::<SequencedPacket>();
-        // ✅ 使用有界通道，容量设为批次大小，实现端到端背压
-        let batch_size = batch.len();
-        let (result_sender, result_receiver) = mpsc::sync_channel::<(usize, Vec<f32>)>(batch_size);
-
-        // 📤 发送所有解码任务
-        for packet in batch {
-            if task_sender.send(packet).is_err() {
-                break;
-            }
-        }
-        drop(task_sender); // 关闭任务发送端
-
-        let task_receiver = Arc::new(Mutex::new(task_receiver));
-        // ✅ 使用配置的线程数（已在with_config中限制范围1-16）
-
-        // 🚀 启动并行解码线程池
-        let mut handles = Vec::new();
-        for _thread_id in 0..thread_count {
-            let task_receiver = Arc::clone(&task_receiver);
-            let result_sender = result_sender.clone();
-            let decoder_factory = decoder_factory.clone();
-
-            let handle = thread::spawn(move || {
-                // 每个线程创建自己的解码器实例和SIMD转换器
-                let mut decoder = match decoder_factory.create_decoder() {
-                    Ok(d) => d,
-                    Err(_) => return, // 解码器创建失败，线程退出
-                };
-                let sample_converter = decoder_factory.get_sample_converter();
-
-                // 🔄 持续处理解码任务
-                while let Ok(sequenced_packet) = {
-                    // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
-                    task_receiver
-                        .lock()
-                        .unwrap_or_else(|poison| poison.into_inner())
-                        .recv()
-                } {
-                    match Self::decode_single_packet_with_simd(
-                        &mut *decoder,
-                        sequenced_packet.packet,
-                        &sample_converter,
-                    ) {
-                        Ok(samples) => {
-                            // 🎯 发送解码结果，带上原始序列号
-                            if result_sender
-                                .send((sequenced_packet.sequence, samples))
-                                .is_err()
-                            {
-                                break;
+        // 🚀 使用rayon的for_each_init实现"每线程初始化一次decoder+复用"
+        thread_pool.install(|| {
+            batch.into_par_iter().for_each_init(
+                || {
+                    // ✅ 初始化阶段：每个rayon工作线程只执行一次
+                    let decoder = decoder_factory.create_decoder().ok()?;
+                    let sample_converter = decoder_factory.get_sample_converter();
+                    let thread_sender = sender.clone();
+                    Some((decoder, sample_converter, thread_sender))
+                },
+                |state, sequenced_packet| {
+                    // ✅ 处理阶段：复用decoder解码多个包
+                    if let Some((decoder, sample_converter, thread_sender)) = state {
+                        match Self::decode_single_packet_with_simd(
+                            &mut **decoder, // Box<dyn Decoder> 需要两次解引用
+                            sequenced_packet.packet,
+                            sample_converter,
+                        ) {
+                            Ok(samples) => {
+                                // 🎯 直接发送到OrderedSender，无中间通道hop
+                                let _ = thread_sender.send_sequenced(
+                                    sequenced_packet.sequence,
+                                    DecodedChunk::Samples(samples),
+                                );
                             }
-                        }
-                        Err(_) => {
-                            // ⚠️ 解码失败，发送空样本保持序列连续性
-                            if result_sender
-                                .send((sequenced_packet.sequence, vec![]))
-                                .is_err()
-                            {
-                                break;
+                            Err(_) => {
+                                // ⚠️ 解码失败，发送空样本保持序列连续性
+                                let _ = thread_sender.send_sequenced(
+                                    sequenced_packet.sequence,
+                                    DecodedChunk::Samples(vec![]),
+                                );
                             }
                         }
                     }
-                }
-            });
-            handles.push(handle);
-        }
-
-        drop(result_sender); // 关闭结果发送端
-
-        // 🔄 收集所有解码结果并按序列号发送
-        while let Ok((sequence, samples)) = result_receiver.recv() {
-            if sender
-                .send_sequenced(sequence, DecodedChunk::Samples(samples))
-                .is_err()
-            {
-                break;
-            }
-        }
-
-        // 🏁 等待所有解码线程完成
-        for handle in handles {
-            let _ = handle.join();
-        }
+                },
+            );
+        });
+        // install() 确保所有工作已完成才返回
     }
 
     /// 🎵 解码单个数据包为样本数据（原始版本，无SIMD）
