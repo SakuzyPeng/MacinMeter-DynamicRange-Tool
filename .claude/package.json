@@ -1,7 +1,1 @@
-{
-  "type": "module",
-  "name": "claude-code-hooks",
-  "version": "1.0.0",
-  "description": "Claude Code diagnostics parser hooks",
-  "private": true
-}
+

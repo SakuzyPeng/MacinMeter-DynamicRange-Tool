@@ -20,6 +20,7 @@
 
 use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
+use crate::tools::constants::decoder_performance;
 use rayon::ThreadPoolBuilder;
 use std::time::Duration;
 use std::{
@@ -73,7 +74,16 @@ struct SequencedPacket {
 
 /// 🔄 有序通道 - 确保乱序并行结果按顺序输出
 ///
-/// 核心机制：即使并行解码结果乱序到达，也能按原始序列号重新排序输出
+/// ## 核心机制
+///
+/// **重排序发生在发送端**：`OrderedSender` 负责所有重排序逻辑，维护一个
+/// `HashMap` 缓冲区存储乱序到达的数据。接收端 `recv_ordered()` 只是简单的
+/// `recv()` 调用，因为发送端已经保证了顺序。
+///
+/// ## 设计意图
+///
+/// 这种"发送端重排序"设计避免了接收端的复杂性，但代价是多个发送线程需要
+/// 竞争同一个 `Mutex<HashMap>`。适用于中等并发度（4-8线程）的场景。
 ///
 /// **背压机制**：使用有界通道（sync_channel），当缓冲满时发送端会阻塞，
 /// 防止生产快于消费导致的内存无限增长。
@@ -92,11 +102,14 @@ impl<T> Default for SequencedChannel<T> {
 }
 
 impl<T> SequencedChannel<T> {
-    /// 创建有序通道，使用默认容量（128）
+    /// 创建有序通道，使用默认容量
     ///
-    /// 容量设计：batch_size(64) × 2 = 128，可以缓冲 2 个批次的数据
+    /// 容量设计：threads(4) × multiplier(4) = 16
+    /// 核心洞察：乱序样本缓冲峰值取决于并发度（线程数），而非批次大小
     pub fn new() -> Self {
-        Self::with_capacity(128)
+        let default_capacity = decoder_performance::PARALLEL_DECODE_THREADS
+            * decoder_performance::SEQUENCED_CHANNEL_CAPACITY_MULTIPLIER;
+        Self::with_capacity(default_capacity)
     }
 
     /// 创建有序通道，指定容量
@@ -133,7 +146,20 @@ impl<T> SequencedChannel<T> {
     }
 }
 
-/// 📤 有序发送端 - 处理乱序数据的重排序逻辑
+/// 📤 有序发送端 - 在发送端实现重排序逻辑
+///
+/// ## 重排序算法
+///
+/// 当调用 `send_sequenced(seq, data)` 时：
+/// 1. 检查 `seq` 是否等于 `next_expected`（期望的下一个序列号）
+/// 2. **匹配时**：直接发送数据，递增 `next_expected`，然后尝试从缓冲区 flush 连续序列
+/// 3. **不匹配时**：将 `(seq, data)` 存入 `HashMap` 缓冲区，等待后续触发
+///
+/// ## 性能特性
+///
+/// - **锁竞争**：多个发送线程竞争 `Mutex<HashMap>`，在高并发（16+线程）下可能成为瓶颈
+/// - **内存占用**：缓冲区大小取决于乱序程度，最坏情况为 O(并发度)
+/// - **原子操作**：使用 `AtomicUsize` 读取 `next_expected`，减少锁持有时间
 ///
 /// **背压特性**：使用 SyncSender，当通道满时 send() 会阻塞，形成自然的背压。
 #[derive(Debug, Clone)]
@@ -145,6 +171,30 @@ pub struct OrderedSender<T> {
 
 impl<T> OrderedSender<T> {
     /// 发送带序列号的数据，自动处理重排序
+    ///
+    /// ## 算法流程
+    ///
+    /// ```text
+    /// 1. 获取 reorder_buffer 的锁（阻塞其他发送线程）
+    /// 2. 读取 next_expected（原子操作，Acquire 语义）
+    /// 3. 判断 sequence 是否等于 next_expected：
+    ///
+    ///    [匹配路径]
+    ///    a. 释放锁（避免阻塞其他线程）
+    ///    b. 直接发送 data 到 channel
+    ///    c. 原子递增 next_expected（Release 语义）
+    ///    d. 调用 flush_consecutive_from_buffer() 尝试 flush 缓冲区
+    ///
+    ///    [缓冲路径]
+    ///    a. 将 (sequence, data) 插入 reorder_buffer
+    ///    b. 释放锁（隐式，函数结束时）
+    /// ```
+    ///
+    /// ## 并发安全性
+    ///
+    /// - **Mutex 防护**：reorder_buffer 的读写通过 Mutex 序列化
+    /// - **Acquire/Release 语义**：确保原子操作的内存可见性
+    /// - **Poison 恢复**：即使某线程 panic，也能恢复数据继续服务
     pub fn send_sequenced(&self, sequence: usize, data: T) -> Result<(), mpsc::SendError<T>> {
         // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
         let mut buffer = self
@@ -173,6 +223,18 @@ impl<T> OrderedSender<T> {
     }
 
     /// 🔄 从缓冲区中发送连续的序列号数据
+    ///
+    /// ## 算法逻辑
+    ///
+    /// 循环检查 reorder_buffer 中是否存在 `next_expected` 对应的数据：
+    /// - **存在**：取出数据，释放锁，发送到 channel，递增 `next_expected`，继续循环
+    /// - **不存在**：说明遇到"间隙"（后续序列号还未到达），退出循环
+    ///
+    /// ## 关键设计点
+    ///
+    /// - **逐个 flush**：每次只发送一个数据，然后重新获取锁检查下一个序列号
+    /// - **及时释放锁**：在调用 `sender.send()` 前释放锁，避免长时间阻塞其他线程
+    /// - **容错处理**：如果 send() 失败（channel 已关闭），立即退出循环
     fn flush_consecutive_from_buffer(&self) {
         loop {
             // 原子序优化：Acquire 确保读取到最新值
@@ -327,8 +389,10 @@ impl OrderedParallelDecoder {
                 .expect("创建rayon线程池失败"),
         );
 
-        // ✅ 根据batch_size重新创建通道，容量为batch_size * 2以缓冲2个批次
-        let channel_capacity = self.batch_size * 2;
+        // ✅ 根据线程数重新创建通道，容量 = thread_pool_size × multiplier
+        // 核心洞察：乱序样本缓冲峰值取决于并发度（线程数），而非批次大小
+        let channel_capacity =
+            self.thread_pool_size * decoder_performance::SEQUENCED_CHANNEL_CAPACITY_MULTIPLIER;
         self.samples_channel = SequencedChannel::with_capacity(channel_capacity);
 
         self
@@ -502,17 +566,14 @@ impl OrderedParallelDecoder {
             batch.into_par_iter().for_each_init(
                 || {
                     // ✅ 初始化阶段：每个rayon工作线程只执行一次
-                    let decoder = match decoder_factory.create_decoder() {
-                        Ok(d) => d,
-                        Err(_) => return None, // 解码器创建失败，返回None
-                    };
+                    let decoder = decoder_factory.create_decoder().ok()?;
                     let sample_converter = decoder_factory.get_sample_converter();
                     let thread_sender = sender.clone();
                     Some((decoder, sample_converter, thread_sender))
                 },
                 |state, sequenced_packet| {
-                    // ✅ 处理阶段：复用decoder解码多个包（使用as_mut()保持借用语义）
-                    if let Some((decoder, sample_converter, thread_sender)) = state.as_mut() {
+                    // ✅ 处理阶段：复用decoder解码多个包
+                    if let Some((decoder, sample_converter, thread_sender)) = state {
                         match Self::decode_single_packet_with_simd(
                             &mut **decoder, // Box<dyn Decoder> 需要两次解引用
                             sequenced_packet.packet,

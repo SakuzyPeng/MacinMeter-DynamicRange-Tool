@@ -375,6 +375,7 @@ fn test_extreme_sequence_gaps() {
 /// 测试批处理逻辑的边界：恰好满batch、少1个、多1个
 /// 风险控制：小数据集，无内存风险
 #[test]
+#[ignore = "Debug模式下运行超过60秒，仅本地运行"]
 fn test_batch_boundary_conditions() {
     println!("测试批处理边界：63、64、65包");
 

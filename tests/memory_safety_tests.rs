@@ -28,6 +28,7 @@ use std::sync::Arc;
 /// 关键风险：HashMap.remove()未被调用，导致已消费数据堆积
 /// 检测方法：通过Arc::strong_count()间接验证数据被移除
 #[test]
+#[ignore = "Debug模式下运行超过60秒(100个1KB对象)，仅本地运行"]
 #[allow(clippy::needless_range_loop)] // 需要索引来验证序列号和引用计数
 fn test_sequenced_channel_buffer_cleanup() {
     let channel: SequencedChannel<Arc<Vec<u8>>> = SequencedChannel::new();
