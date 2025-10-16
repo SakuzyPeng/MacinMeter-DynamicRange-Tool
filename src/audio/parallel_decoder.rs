@@ -502,14 +502,17 @@ impl OrderedParallelDecoder {
             batch.into_par_iter().for_each_init(
                 || {
                     // ✅ 初始化阶段：每个rayon工作线程只执行一次
-                    let decoder = decoder_factory.create_decoder().ok()?;
+                    let decoder = match decoder_factory.create_decoder() {
+                        Ok(d) => d,
+                        Err(_) => return None, // 解码器创建失败，返回None
+                    };
                     let sample_converter = decoder_factory.get_sample_converter();
                     let thread_sender = sender.clone();
                     Some((decoder, sample_converter, thread_sender))
                 },
                 |state, sequenced_packet| {
-                    // ✅ 处理阶段：复用decoder解码多个包
-                    if let Some((decoder, sample_converter, thread_sender)) = state {
+                    // ✅ 处理阶段：复用decoder解码多个包（使用as_mut()保持借用语义）
+                    if let Some((decoder, sample_converter, thread_sender)) = state.as_mut() {
                         match Self::decode_single_packet_with_simd(
                             &mut **decoder, // Box<dyn Decoder> 需要两次解引用
                             sequenced_packet.packet,
