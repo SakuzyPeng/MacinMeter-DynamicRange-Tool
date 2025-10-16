@@ -69,10 +69,10 @@ docs(parallel): 增强 OrderedSender 重排序机制文档
 
 ### ✅ 优化 #2：next_samples() 错误处理增强
 
-**状态**：🔴 待执行
+**状态**：🟢 已完成（2025-10-16）
 **风险评级**：⭐⭐ 低（仅增加日志，不改变逻辑）
-**预期收益**：提升调试体验，快速定位 channel 断开问题
-**影响范围**：`src/audio/parallel_decoder.rs:414-416`
+**实际收益**：调试体验提升，异常快速定位能力增强
+**影响范围**：`src/audio/parallel_decoder.rs:473-478`（实际行号）
 
 **问题诊断**：
 ```rust
@@ -82,26 +82,39 @@ RecvError::Disconnected => return Ok(None),
 - 若后台线程 panic 导致 channel 断开，调用侧无法感知异常
 - 难以区分"正常结束"和"异常中断"
 
-**改进方案**：
+**已实施改进**：
 ```rust
-RecvError::Disconnected => {
+Err(mpsc::TryRecvError::Disconnected) => {
     #[cfg(debug_assertions)]
     eprintln!("[WARNING] Sample channel disconnected unexpectedly");
 
-    Ok(None)
+    None
 }
 ```
 
-**验证方式**：
-- ✅ 构造 mock 场景，强制 channel 断开，验证日志输出
-- ✅ 正常流程不受影响
+**验证结果**：
+- ✅ `cargo test` 通过（161/161 单元测试通过）
+- ✅ `cargo clippy` 通过（0 个警告）
+- ✅ 预提交钩子完整测试通过
+- ✅ 正常流程不受影响（仅 debug 模式生效）
 
-**提交信息模板**：
+**提交信息**：
 ```
 feat(parallel): 增强 next_samples 错误诊断能力
 
 - 在 debug 模式下打印 channel 断开警告
 - 帮助快速定位后台线程异常退出问题
+
+## 改进说明
+
+当后台线程 panic 导致 channel 断开时，调用侧难以区分
+"正常结束"和"异常中断"。此改进在 debug 模式下添加警告
+日志，提升调试体验。
+
+## 验证结果
+
+✅ cargo test: 161/161 测试通过
+✅ cargo clippy: 0 警告
 ```
 
 ---
