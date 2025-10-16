@@ -470,7 +470,12 @@ impl OrderedParallelDecoder {
                 None
             }
             Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                #[cfg(debug_assertions)]
+                eprintln!("[WARNING] Sample channel disconnected unexpectedly");
+
+                None
+            }
         }
     }
 
