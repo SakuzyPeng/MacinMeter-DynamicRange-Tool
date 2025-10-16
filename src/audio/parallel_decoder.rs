@@ -20,7 +20,7 @@
 
 use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
-use crate::tools::constants::decoder_performance;
+use crate::tools::constants::{decoder_performance, parallel_limits};
 use rayon::ThreadPoolBuilder;
 use std::time::Duration;
 use std::{
@@ -62,10 +62,6 @@ pub enum DecodingState {
     Completed,
 }
 
-/// 🎯 核心配置参数 - 基于性能测试优化
-const DEFAULT_BATCH_SIZE: usize = 64; // 每批并行解码的包数量
-const DEFAULT_PARALLEL_THREADS: usize = 4; // 默认解码线程数
-
 /// 📦 带序列号的数据包装器
 struct SequencedPacket {
     sequence: usize,
@@ -104,7 +100,7 @@ impl<T> Default for SequencedChannel<T> {
 impl<T> SequencedChannel<T> {
     /// 创建有序通道，使用默认容量
     ///
-    /// 容量设计：threads(4) × multiplier(4) = 16
+    /// 容量设计：PARALLEL_DECODE_THREADS × SEQUENCED_CHANNEL_CAPACITY_MULTIPLIER = 16
     /// 核心洞察：乱序样本缓冲峰值取决于并发度（线程数），而非批次大小
     pub fn new() -> Self {
         let default_capacity = decoder_performance::PARALLEL_DECODE_THREADS
@@ -136,6 +132,9 @@ impl<T> SequencedChannel<T> {
     }
 
     /// 按顺序接收数据 - 阻塞直到下一个期望序列号的数据到达
+    ///
+    /// **实现说明**：仅封装 `recv()`，不做重排序。发送端已通过 `OrderedSender`
+    /// 保证顺序，因此接收端只需简单 `recv()` 即可获得有序数据。
     pub fn recv_ordered(&self) -> Result<T, mpsc::RecvError> {
         self.receiver.recv()
     }
@@ -160,6 +159,8 @@ impl<T> SequencedChannel<T> {
 /// - **锁竞争**：多个发送线程竞争 `Mutex<HashMap>`，在高并发（16+线程）下可能成为瓶颈
 /// - **内存占用**：缓冲区大小取决于乱序程度，最坏情况为 O(并发度)
 /// - **原子操作**：使用 `AtomicUsize` 读取 `next_expected`，减少锁持有时间
+/// - **扩展建议**：高并发（>8-16线程）场景建议迁移到接收端重排架构（参见优化#13），
+///   避免发送端锁竞争成为瓶颈
 ///
 /// **背压特性**：使用 SyncSender，当通道满时 send() 会阻塞，形成自然的背压。
 #[derive(Debug, Clone)]
@@ -353,17 +354,17 @@ impl OrderedParallelDecoder {
         codec_params: symphonia::core::codecs::CodecParameters,
         sample_converter: SampleConverter,
     ) -> Self {
-        // 🚀 创建rayon线程池，默认4线程（Arc包装，支持clone）
+        // 🚀 创建rayon线程池，使用统一配置的线程数（Arc包装，支持clone）
         let thread_pool = Arc::new(
             ThreadPoolBuilder::new()
-                .num_threads(DEFAULT_PARALLEL_THREADS)
+                .num_threads(decoder_performance::PARALLEL_DECODE_THREADS)
                 .build()
                 .expect("创建rayon线程池失败"),
         );
 
         Self {
-            batch_size: DEFAULT_BATCH_SIZE,
-            thread_pool_size: DEFAULT_PARALLEL_THREADS,
+            batch_size: decoder_performance::PARALLEL_DECODE_BATCH_SIZE,
+            thread_pool_size: decoder_performance::PARALLEL_DECODE_THREADS,
             thread_pool,
             current_batch: Vec::new(),
             sequence_counter: 0,
@@ -378,8 +379,14 @@ impl OrderedParallelDecoder {
 
     /// 🎯 配置并行参数 - 根据硬件和文件特性调优
     pub fn with_config(mut self, batch_size: usize, thread_pool_size: usize) -> Self {
-        self.batch_size = batch_size.clamp(1, 512); // 合理范围限制
-        self.thread_pool_size = thread_pool_size.clamp(1, 16);
+        self.batch_size = batch_size.clamp(
+            parallel_limits::MIN_PARALLEL_BATCH_SIZE,
+            parallel_limits::MAX_PARALLEL_BATCH_SIZE,
+        );
+        self.thread_pool_size = thread_pool_size.clamp(
+            parallel_limits::MIN_PARALLEL_DEGREE,
+            parallel_limits::MAX_PARALLEL_DEGREE,
+        );
 
         // 🚀 重建rayon线程池，使用新的线程数配置（Arc包装）
         self.thread_pool = Arc::new(
@@ -528,6 +535,9 @@ impl OrderedParallelDecoder {
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
                     // Channel已断开（异常情况）
+                    #[cfg(debug_assertions)]
+                    eprintln!("[WARNING] Sample channel disconnected during drain (异常提前断开)");
+
                     break;
                 }
             }
@@ -1023,10 +1033,10 @@ mod tests {
 
         let sample_converter = SampleConverter::new();
 
-        // 🎯 测试batch_size上限限制（512）
+        // 🎯 测试batch_size上限限制（256）
         let decoder1 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
             .with_config(1000, 4);
-        assert_eq!(decoder1.batch_size, 512); // 应该被限制到512
+        assert_eq!(decoder1.batch_size, 256); // 应该被限制到256
 
         // 🎯 测试batch_size下限限制（1）
         let decoder2 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
