@@ -143,6 +143,14 @@ impl<T> SequencedChannel<T> {
     pub fn try_recv_ordered(&self) -> Result<T, mpsc::TryRecvError> {
         self.receiver.try_recv()
     }
+
+    /// 在指定超时时间内按顺序接收数据
+    ///
+    /// **实现说明**：封装 `recv_timeout()`，发送端已保证顺序。
+    /// 当通道为空时会阻塞等待，直到超时或收到数据。
+    pub fn recv_timeout_ordered(&self, timeout: Duration) -> Result<T, mpsc::RecvTimeoutError> {
+        self.receiver.recv_timeout(timeout)
+    }
 }
 
 /// 📤 有序发送端 - 在发送端实现重排序逻辑
@@ -513,7 +521,10 @@ impl OrderedParallelDecoder {
         let mut all_samples = Vec::new();
 
         loop {
-            match self.samples_channel.try_recv_ordered() {
+            match self
+                .samples_channel
+                .recv_timeout_ordered(Duration::from_millis(5))
+            {
                 Ok(DecodedChunk::Samples(samples)) => {
                     if !samples.is_empty() {
                         all_samples.push(samples);
@@ -524,16 +535,15 @@ impl OrderedParallelDecoder {
                     self.eof_encountered = true;
                     break;
                 }
-                Err(mpsc::TryRecvError::Empty) => {
+                Err(mpsc::RecvTimeoutError::Timeout) => {
                     // ✅ Channel空了，检查EOF是否已被遇到
                     if self.eof_encountered {
                         // EOF已在next_samples()中被遇到，所有数据已接收完毕
                         break;
                     }
-                    // 等待更多数据（后台线程仍在解码）
-                    std::thread::sleep(Duration::from_millis(1));
+                    // 超时但EOF未到，继续等待（后台线程仍在解码）
                 }
-                Err(mpsc::TryRecvError::Disconnected) => {
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
                     // Channel已断开（异常情况）
                     #[cfg(debug_assertions)]
                     eprintln!("[WARNING] Sample channel disconnected during drain (异常提前断开)");
