@@ -35,7 +35,7 @@ use std::{
     },
 };
 use symphonia::core::{
-    audio::{AudioBufferRef, SampleBuffer, Signal},
+    audio::{AudioBufferRef, Signal},
     codecs::{Decoder, DecoderOptions},
     formats::Packet,
 };
@@ -655,46 +655,6 @@ impl OrderedParallelDecoder {
         });
 
         Ok(())
-    }
-
-    /// 🎵 解码单个数据包为样本数据（原始版本，无SIMD）
-    #[allow(dead_code)]
-    fn decode_single_packet(decoder: &mut dyn Decoder, packet: Packet) -> AudioResult<Vec<f32>> {
-        match decoder.decode(&packet) {
-            Ok(audio_buf) => {
-                // 🎯 将解码结果转换为f32样本
-                let spec = audio_buf.spec();
-                let mut sample_buffer =
-                    SampleBuffer::<f32>::new(audio_buf.capacity() as u64, *spec);
-                sample_buffer.copy_interleaved_ref(audio_buf);
-                Ok(sample_buffer.samples().to_vec())
-            }
-            Err(e) => Err(error::decoding_error("并行解码包失败", e)),
-        }
-    }
-
-    /// 🚀 解码单个数据包为样本数据（带SIMD优化）
-    #[allow(dead_code)]
-    fn decode_single_packet_with_simd(
-        decoder: &mut dyn Decoder,
-        packet: Packet,
-        sample_converter: &SampleConverter,
-    ) -> AudioResult<Vec<f32>> {
-        match decoder.decode(&packet) {
-            Ok(audio_buf) => {
-                // 🚀 使用SIMD优化转换样本
-                let mut samples = Vec::new();
-                Self::convert_to_interleaved_with_simd(sample_converter, &audio_buf, &mut samples)?;
-                Ok(samples)
-            }
-            Err(e) => match e {
-                symphonia::core::errors::Error::DecodeError(_) => {
-                    // 🎯 容错处理：返回空样本，让调用者知道跳过了这个包
-                    Ok(vec![])
-                }
-                _ => Err(error::decoding_error("并行解码包失败", e)),
-            },
-        }
     }
 
     /// 🚀 解码单个数据包到可复用缓冲区（带SIMD优化，零分配优化）
