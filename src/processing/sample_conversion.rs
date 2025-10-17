@@ -249,6 +249,72 @@ impl SampleConverter {
         self.enable_stats = enabled;
     }
 
+    /// 🚀 转换单个S16声道并写入interleaved数组
+    ///
+    /// 统一处理S16格式的SIMD转换和interleaved写入逻辑，
+    /// 消除parallel_decoder和universal_decoder中的重复代码。
+    ///
+    /// # 参数
+    /// - `input_channel`: 输入声道的i16样本数组
+    /// - `output_interleaved`: 输出的interleaved f32数组
+    /// - `channel_index`: 当前声道索引(0或1)
+    /// - `channel_count`: 总声道数(1或2)
+    pub fn convert_i16_channel_to_interleaved(
+        &self,
+        input_channel: &[i16],
+        output_interleaved: &mut [f32],
+        channel_index: usize,
+        channel_count: usize,
+    ) -> AudioResult<()> {
+        // 临时向量用于SIMD转换
+        let frame_count = input_channel.len();
+        let mut converted_channel = Vec::with_capacity(frame_count);
+
+        // 执行SIMD优化的i16→f32转换
+        self.convert_i16_to_f32(input_channel, &mut converted_channel)?;
+
+        // 写入interleaved数组
+        for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+            let interleaved_idx = frame_idx * channel_count + channel_index;
+            output_interleaved[interleaved_idx] = sample;
+        }
+
+        Ok(())
+    }
+
+    /// 🚀 转换单个S24声道并写入interleaved数组
+    ///
+    /// 统一处理S24格式的SIMD转换和interleaved写入逻辑，
+    /// 消除parallel_decoder和universal_decoder中的重复代码。
+    ///
+    /// # 参数
+    /// - `input_channel`: 输入声道的i24样本数组
+    /// - `output_interleaved`: 输出的interleaved f32数组
+    /// - `channel_index`: 当前声道索引(0或1)
+    /// - `channel_count`: 总声道数(1或2)
+    pub fn convert_i24_channel_to_interleaved(
+        &self,
+        input_channel: &[symphonia::core::sample::i24],
+        output_interleaved: &mut [f32],
+        channel_index: usize,
+        channel_count: usize,
+    ) -> AudioResult<()> {
+        // 临时向量用于SIMD转换
+        let frame_count = input_channel.len();
+        let mut converted_channel = Vec::with_capacity(frame_count);
+
+        // 执行SIMD优化的i24→f32转换
+        self.convert_i24_to_f32(input_channel, &mut converted_channel)?;
+
+        // 写入interleaved数组
+        for (frame_idx, &sample) in converted_channel.iter().enumerate() {
+            let interleaved_idx = frame_idx * channel_count + channel_index;
+            output_interleaved[interleaved_idx] = sample;
+        }
+
+        Ok(())
+    }
+
     /// 🎯 智能格式转换 - 自动选择最优实现
     ///
     /// 根据输入格式和硬件能力，自动选择SIMD优化或标量实现

@@ -19,7 +19,7 @@
 //! ```
 
 use crate::error::{self, AudioResult};
-use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
+use crate::processing::SampleConverter;
 use crate::tools::constants::{
     decoder_performance::{self, DRAIN_RECV_TIMEOUT_MS},
     parallel_limits,
@@ -699,11 +699,9 @@ impl OrderedParallelDecoder {
         // 样本转换宏（统一使用 resize + chunks_mut 模式）
         macro_rules! convert_samples {
             ($buf:expr, $converter:expr) => {{
-                for ch in 0..channel_count {
-                    for frame_idx in 0..frame_count {
-                        let sample_f32 = $converter($buf.chan(ch)[frame_idx]);
-                        let interleaved_idx = frame_idx * channel_count + ch;
-                        samples[interleaved_idx] = sample_f32;
+                for (frame_idx, chunk) in samples.chunks_mut(channel_count).enumerate() {
+                    for ch in 0..channel_count {
+                        chunk[ch] = $converter($buf.chan(ch)[frame_idx]);
                     }
                 }
             }};
@@ -712,44 +710,32 @@ impl OrderedParallelDecoder {
         // 🚀 针对不同格式使用SIMD优化
         match audio_buf {
             AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
-            // 🚀 S16 SIMD优化
+            // 🚀 S16 SIMD优化 (统一助手函数)
             AudioBufferRef::S16(buf) => {
-                // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
-                let mut converted_channel = Vec::with_capacity(frame_count);
-
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
-                    converted_channel.clear(); // 复用缓冲区
-
                     sample_converter
-                        .convert_i16_to_f32(channel_data, &mut converted_channel)
+                        .convert_i16_channel_to_interleaved(
+                            channel_data,
+                            samples,
+                            ch,
+                            channel_count,
+                        )
                         .map_err(|e| error::calculation_error("S16 SIMD转换失败", e))?;
-
-                    // 交错插入
-                    for (frame_idx, &sample) in converted_channel.iter().enumerate() {
-                        let interleaved_idx = frame_idx * channel_count + ch;
-                        samples[interleaved_idx] = sample;
-                    }
                 }
             }
-            // 🚀 S24 SIMD优化 (主要性能提升点)
+            // 🚀 S24 SIMD优化 (统一助手函数，主要性能提升点)
             AudioBufferRef::S24(buf) => {
-                // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
-                let mut converted_channel = Vec::with_capacity(frame_count);
-
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
-                    converted_channel.clear(); // 复用缓冲区
-
                     sample_converter
-                        .convert_i24_to_f32(channel_data, &mut converted_channel)
+                        .convert_i24_channel_to_interleaved(
+                            channel_data,
+                            samples,
+                            ch,
+                            channel_count,
+                        )
                         .map_err(|e| error::calculation_error("S24 SIMD转换失败", e))?;
-
-                    // 交错插入
-                    for (frame_idx, &sample) in converted_channel.iter().enumerate() {
-                        let interleaved_idx = frame_idx * channel_count + ch;
-                        samples[interleaved_idx] = sample;
-                    }
                 }
             }
             // 其他格式使用标准转换（统一为 resize + 索引写入模式）
