@@ -692,15 +692,18 @@ impl OrderedParallelDecoder {
             AudioBufferRef::S8(buf) => extract_buffer_info!(buf),
         };
 
-        samples.reserve(channel_count * frame_count);
+        // ✅ 统一预分配模式：所有格式都使用 resize
+        let total_samples = channel_count * frame_count;
+        samples.resize(total_samples, 0.0);
 
-        // 样本转换宏
+        // 样本转换宏（统一使用 resize + chunks_mut 模式）
         macro_rules! convert_samples {
             ($buf:expr, $converter:expr) => {{
-                for frame in 0..frame_count {
-                    for ch in 0..channel_count {
-                        let sample_f32 = $converter($buf.chan(ch)[frame]);
-                        samples.push(sample_f32);
+                for ch in 0..channel_count {
+                    for frame_idx in 0..frame_count {
+                        let sample_f32 = $converter($buf.chan(ch)[frame_idx]);
+                        let interleaved_idx = frame_idx * channel_count + ch;
+                        samples[interleaved_idx] = sample_f32;
                     }
                 }
             }};
@@ -711,10 +714,6 @@ impl OrderedParallelDecoder {
             AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
             // 🚀 S16 SIMD优化
             AudioBufferRef::S16(buf) => {
-                // ✅ 先一次性分配空间，避免resize时用0覆盖其他声道
-                let total_samples = channel_count * frame_count;
-                samples.resize(total_samples, 0.0);
-
                 // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
                 let mut converted_channel = Vec::with_capacity(frame_count);
 
@@ -735,10 +734,6 @@ impl OrderedParallelDecoder {
             }
             // 🚀 S24 SIMD优化 (主要性能提升点)
             AudioBufferRef::S24(buf) => {
-                // ✅ 先一次性分配空间，避免resize时用0覆盖其他声道
-                let total_samples = channel_count * frame_count;
-                samples.resize(total_samples, 0.0);
-
                 // 🎯 复用单个缓冲区，减少分配次数（参考 universal_decoder.rs）
                 let mut converted_channel = Vec::with_capacity(frame_count);
 
@@ -757,7 +752,7 @@ impl OrderedParallelDecoder {
                     }
                 }
             }
-            // 其他格式使用标准转换
+            // 其他格式使用标准转换（统一为 resize + 索引写入模式）
             AudioBufferRef::S32(buf) => convert_samples!(buf, |s| (s as f64 / 2147483648.0) as f32),
             AudioBufferRef::F64(buf) => convert_samples!(buf, |s| s as f32),
             AudioBufferRef::U8(buf) => convert_samples!(buf, |s| ((s as f32) - 128.0) / 128.0),
