@@ -427,6 +427,28 @@ impl Default for SampleConverter {
 
 // ==================== 宏：消除重复代码模式 ====================
 
+/// 🔥 公共工具宏：提取Symphonia缓冲区信息（声道数和帧数）
+///
+/// 用于从AudioBuffer中提取基本元数据，消除audio层的重复代码
+#[macro_export]
+macro_rules! extract_buffer_info {
+    ($buf:expr) => {{ ($buf.spec().channels.count(), $buf.frames()) }};
+}
+
+/// 🔥 公共工具宏：标量样本转换（统一 resize + chunks_mut 模式）
+///
+/// 用于标量格式的样本转换，消除audio层的重复代码。
+#[macro_export]
+macro_rules! convert_samples {
+    ($buf:expr, $converter:expr, $samples:expr, $channel_count:expr) => {{
+        for (frame_idx, chunk) in $samples.chunks_mut($channel_count).enumerate() {
+            for ch in 0..$channel_count {
+                chunk[ch] = $converter($buf.chan(ch)[frame_idx]);
+            }
+        }
+    }};
+}
+
 /// 宏1: 生成标准的样本转换函数实现
 ///
 /// 统一实现模式：统计→预留→SIMD选择→日志

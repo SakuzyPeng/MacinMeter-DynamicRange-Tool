@@ -33,7 +33,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc::{self, Receiver, SyncSender},
     },
-    thread,
 };
 use symphonia::core::{
     audio::{AudioBufferRef, SampleBuffer, Signal},
@@ -572,25 +571,18 @@ impl OrderedParallelDecoder {
         let thread_pool = self.thread_pool.clone(); // 🚀 Clone线程池（Arc包装，廉价操作）
         self.stats.batches_processed += 1;
 
-        // 🚀 启动后台线程执行并行解码（使用rayon线程池）
-        thread::spawn(move || {
-            Self::decode_batch_parallel(batch, sender, decoder_factory, thread_pool);
-        });
+        // 🚀 直接在rayon线程池中调度批次处理（避免OS线程创建开销和嵌套）
+        //
+        // 优化#10：使用 spawn_fifo + 移除 install 嵌套
+        // - 消除每批次的 OS 线程创建开销（~100-200μs）
+        // - 移除 install 嵌套，避免不必要的作用域同步开销
+        // - spawn_fifo 保证 FIFO 顺序，改善批次公平性和 P99 延迟
+        // - 在池上下文中直接 into_par_iter，自动使用当前池
+        thread_pool.spawn_fifo(move || {
+            use rayon::prelude::*;
 
-        Ok(())
-    }
-
-    /// 🔥 核心方法：并行解码批次包，保证有序输出（Rayon优化版本）
-    fn decode_batch_parallel(
-        batch: Vec<SequencedPacket>,
-        sender: OrderedSender<DecodedChunk>,
-        decoder_factory: DecoderFactory,
-        thread_pool: Arc<rayon::ThreadPool>,
-    ) {
-        use rayon::prelude::*;
-
-        // 🚀 使用rayon的for_each_init实现"每线程初始化一次decoder+复用缓冲区"
-        thread_pool.install(|| {
+            // 🚀 直接调用 into_par_iter，无需 install 嵌套
+            // 在 rayon 池线程上下文中，par_iter 自动使用当前池
             batch.into_par_iter().for_each_init(
                 || {
                     // ✅ 初始化阶段：每个rayon工作线程只执行一次
@@ -659,8 +651,10 @@ impl OrderedParallelDecoder {
                     }
                 },
             );
+            // spawn_fifo 是异步的，批次处理在后台进行
         });
-        // install() 确保所有工作已完成才返回
+
+        Ok(())
     }
 
     /// 🎵 解码单个数据包为样本数据（原始版本，无SIMD）
@@ -736,10 +730,7 @@ impl OrderedParallelDecoder {
         audio_buf: &AudioBufferRef,
         samples: &mut Vec<f32>,
     ) -> AudioResult<()> {
-        // 提取缓冲区信息
-        macro_rules! extract_buffer_info {
-            ($buf:expr) => {{ ($buf.spec().channels.count(), $buf.frames()) }};
-        }
+        use crate::{convert_samples, extract_buffer_info};
 
         let (channel_count, frame_count) = match audio_buf {
             AudioBufferRef::F32(buf) => extract_buffer_info!(buf),
@@ -758,20 +749,9 @@ impl OrderedParallelDecoder {
         let total_samples = channel_count * frame_count;
         samples.resize(total_samples, 0.0);
 
-        // 样本转换宏（统一使用 resize + chunks_mut 模式）
-        macro_rules! convert_samples {
-            ($buf:expr, $converter:expr) => {{
-                for (frame_idx, chunk) in samples.chunks_mut(channel_count).enumerate() {
-                    for ch in 0..channel_count {
-                        chunk[ch] = $converter($buf.chan(ch)[frame_idx]);
-                    }
-                }
-            }};
-        }
-
         // 🚀 针对不同格式使用SIMD优化
         match audio_buf {
-            AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s),
+            AudioBufferRef::F32(buf) => convert_samples!(buf, |s| s, samples, channel_count),
             // 🚀 S16 SIMD优化 (统一助手函数)
             AudioBufferRef::S16(buf) => {
                 for ch in 0..channel_count {
@@ -801,19 +781,50 @@ impl OrderedParallelDecoder {
                 }
             }
             // 其他格式使用标准转换（统一为 resize + 索引写入模式）
-            AudioBufferRef::S32(buf) => convert_samples!(buf, |s| (s as f64 / 2147483648.0) as f32),
-            AudioBufferRef::F64(buf) => convert_samples!(buf, |s| s as f32),
-            AudioBufferRef::U8(buf) => convert_samples!(buf, |s| ((s as f32) - 128.0) / 128.0),
-            AudioBufferRef::U16(buf) => convert_samples!(buf, |s| ((s as f32) - 32768.0) / 32768.0),
+            AudioBufferRef::S32(buf) => {
+                convert_samples!(
+                    buf,
+                    |s| (s as f64 / 2147483648.0) as f32,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::F64(buf) => convert_samples!(buf, |s| s as f32, samples, channel_count),
+            AudioBufferRef::U8(buf) => {
+                convert_samples!(
+                    buf,
+                    |s| ((s as f32) - 128.0) / 128.0,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::U16(buf) => {
+                convert_samples!(
+                    buf,
+                    |s| ((s as f32) - 32768.0) / 32768.0,
+                    samples,
+                    channel_count
+                )
+            }
             AudioBufferRef::U24(buf) => {
-                convert_samples!(buf, |s: symphonia::core::sample::u24| {
-                    ((s.inner() as f32) - 8388608.0) / 8388608.0
-                })
+                convert_samples!(
+                    buf,
+                    |s: symphonia::core::sample::u24| ((s.inner() as f32) - 8388608.0) / 8388608.0,
+                    samples,
+                    channel_count
+                )
             }
             AudioBufferRef::U32(buf) => {
-                convert_samples!(buf, |s| (((s as f64) - 2147483648.0) / 2147483648.0) as f32)
+                convert_samples!(
+                    buf,
+                    |s| (((s as f64) - 2147483648.0) / 2147483648.0) as f32,
+                    samples,
+                    channel_count
+                )
             }
-            AudioBufferRef::S8(buf) => convert_samples!(buf, |s| (s as f32) / 128.0),
+            AudioBufferRef::S8(buf) => {
+                convert_samples!(buf, |s| (s as f32) / 128.0, samples, channel_count)
+            }
         }
 
         Ok(())
@@ -830,7 +841,7 @@ mod tests {
         let sender = channel.sender();
 
         // 🎯 模拟乱序发送
-        thread::spawn({
+        std::thread::spawn({
             let sender = sender.clone();
             move || {
                 sender.send_sequenced(2, "second").unwrap();
