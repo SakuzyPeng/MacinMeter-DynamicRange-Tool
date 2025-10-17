@@ -20,7 +20,10 @@
 
 use crate::error::{self, AudioResult};
 use crate::processing::{SampleConverter, sample_conversion::SampleConversion};
-use crate::tools::constants::{decoder_performance, parallel_limits};
+use crate::tools::constants::{
+    decoder_performance::{self, DRAIN_RECV_TIMEOUT_MS},
+    parallel_limits,
+};
 use rayon::ThreadPoolBuilder;
 use std::time::Duration;
 use std::{
@@ -509,10 +512,10 @@ impl OrderedParallelDecoder {
         self.stats.failed_packets
     }
 
-    /// ✅ 确定性drain所有剩余样本 - 零超时猜测，100%可靠
+    /// ✅ 确定性drain所有剩余样本 - 短超时阻塞等待，100%可靠
     ///
     /// 通过eof_encountered标志实现确定性结束，彻底解决MP3并行解码样本丢失问题。
-    /// 该方法会阻塞等待，直到eof_encountered=true且channel为空。
+    /// 使用短超时(5ms)的recv_timeout避免CPU空轮询，直到eof_encountered=true且channel为空。
     ///
     /// # 返回值
     ///
@@ -523,7 +526,7 @@ impl OrderedParallelDecoder {
         loop {
             match self
                 .samples_channel
-                .recv_timeout_ordered(Duration::from_millis(5))
+                .recv_timeout_ordered(Duration::from_millis(DRAIN_RECV_TIMEOUT_MS))
             {
                 Ok(DecodedChunk::Samples(samples)) => {
                     if !samples.is_empty() {
