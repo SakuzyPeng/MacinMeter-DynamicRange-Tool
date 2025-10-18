@@ -481,73 +481,84 @@ perf(parallel): 复用线程本地缓冲区降低分配开销（优化#8）
 
 ---
 
-### ⚠️ 优化 #9：样本转换零拷贝化（S16/S24）
+### ✅ 优化 #9：样本转换零拷贝化（S16/S24）
 
-**状态**：🟡 部分完成（2025-10-17）
+**状态**：🟢 已完成（2025-10-18）
 **风险评级**：⭐⭐⭐ 中（需要修改 SIMD 接口）
-**实际收益**：-2.7%（存在性能瓶颈，需进一步优化）
-**影响范围**：`src/processing/sample_conversion.rs:252-1428`
+**实际收益**：-2.1%（218.13 MB/s vs 基线 222.95 MB/s）
+**影响范围**：`src/processing/sample_conversion.rs:252-1662`
 
 **问题诊断**：
 - 原状态：每声道 SIMD 转换 → `converted_channel` → 逐样本交错写入 `samples`
 - 两段遍历 + 中间缓冲分配
 
-**已实施改进（第一阶段）**：
+**已实施改进**：
+
+**第一阶段 - 零拷贝接口（2025-10-17）**：
 1. 新增零拷贝 interleaved 转换接口：
-   - `convert_i16_channel_to_interleaved()` - 公开 API（252-277行）
-   - `convert_i24_channel_to_interleaved()` - 公开 API（279-304行）
-   - `convert_i16_to_f32_interleaved_simd()` - SIMD 派发（1276-1323行）
-   - `convert_i24_to_f32_interleaved_simd()` - SIMD 派发（1345-1392行）
+   - `convert_i16_channel_to_interleaved()` - 公开 API，添加 `#[inline(always)]`
+   - `convert_i24_channel_to_interleaved()` - 公开 API，添加 `#[inline(always)]`
+   - `convert_i16_to_f32_interleaved_simd()` - SIMD 派发，添加 `#[inline(always)]`
+   - `convert_i24_to_f32_interleaved_simd()` - SIMD 派发，添加 `#[inline(always)]`
 
 2. 实现 SSE2 和 NEON interleaved 转换：
-   - i16 SSE2：`convert_i16_to_f32_interleaved_sse2()`（1428-1484行）
-   - i16 NEON：`convert_i16_to_f32_interleaved_neon()`（1486-1542行）
-   - i24 SSE2：`convert_i24_to_f32_interleaved_sse2()`（1544-1598行）
-   - i24 NEON：`convert_i24_to_f32_interleaved_neon()`（1600-1662行）
+   - i16 SSE2：`convert_i16_to_f32_interleaved_sse2()`
+   - i16 NEON：`convert_i16_to_f32_interleaved_neon()`
+   - i24 SSE2：`convert_i24_to_f32_interleaved_sse2()`
+   - i24 NEON：`convert_i24_to_f32_interleaved_neon()`
 
 3. 关键修复：
    - ✅ i24 SIMD 阈值：从 `>=8` 修正为 `>=4`（匹配实际处理宽度）
-   - ✅ i16 SSE2 符号扩展：使用 `_mm_cmplt_epi16` 生成符号掩码（第1004-1007行）
-   - ✅ 热路径内联：4个关键函数添加 `#[inline(always)]`
+   - ✅ i16 SSE2 符号扩展：使用 `_mm_cmplt_epi16` 生成符号掩码
+   - ✅ 热路径内联：所有关键函数添加 `#[inline(always)]`
+
+**第二阶段 - 指针优化（2025-10-18）**：
+4. 使用 unsafe 指针写入消除边界检查：
+   ```rust
+   // 在 SIMD 循环前添加断言验证
+   debug_assert_eq!(output.len(), input.len() * channel_count);
+
+   // 使用原始指针消除边界检查
+   let base = output.as_mut_ptr();
+   unsafe {
+       *base.add((i + j) * channel_count + channel_offset) = converted;
+   }
+   ```
+
+5. 优化索引计算：
+   - 提前计算基础偏移，减少循环内重复计算
+   - 编译器可以更好地优化连续的指针运算
 
 **性能测试结果（10次平均）**：
-- 初次实现：216.68 MB/s（-2.8% vs 基线 222.95 MB/s）❌
-- 修复后：216.94 MB/s（-2.7% vs 基线）⚠️
+- 第一阶段（零拷贝接口）：216.68 MB/s（-2.8% vs 基线 222.95 MB/s）❌
+- 符号扩展修复后：216.94 MB/s（-2.7% vs 基线）⚠️
+- 第二阶段（指针优化）：**218.13 MB/s**（-2.1% vs 基线）✅
 
-**根因分析（用户诊断）**：
-1. **边界检查开销**：`output[(i + j) * channel_count + channel_offset]` 每次写入保留 bounds check
-2. **重复计算**：循环内重复做乘法和偏移计算
-3. **stride 写入模式**：编译器无法优化为连续写入
+**性能分析**：
+1. **第一阶段瓶颈**（已解决）：
+   - 边界检查开销：`output[(i + j) * channel_count + channel_offset]` 每次写入保留 bounds check
+   - 重复计算：循环内重复做乘法和偏移计算
+   - stride 写入模式：编译器无法优化为连续写入
 
-**待实施优化（第二阶段）**：
-```rust
-// 在 SIMD 循环前添加断言
-debug_assert_eq!(output.len(), input.len() * channel_count);
+2. **第二阶段优化效果**：
+   - 消除边界检查：+0.6%（通过 unsafe 指针写入）
+   - 减少索引计算：略有提升（编译器优化指针运算）
+   - 总体改善：从 -2.7% 提升到 -2.1%（+0.6%）
 
-// 使用指针写入消除边界检查
-let base = output.as_mut_ptr().add(channel_offset);
-let stride = channel_count;
+3. **剩余性能差距分析**：
+   - 仍存在 -2.1% 退化，说明零拷贝 interleaved 写入的 stride 访问模式相比原来的"转换→复制"两段式仍有劣势
+   - 可能原因：cache locality（原方式连续读写，新方式 stride 写入）
+   - 权衡：消除了中间缓冲区分配，内存占用更稳定
 
-// SAFETY: 已通过 debug_assert 验证尺寸，指针偏移在有效范围内
-unsafe {
-    for j in 0..4 {
-        *base.add((i + j) * stride) = temp[j];
-    }
-}
-```
-
-**预期收益（第二阶段）**：
-- 消除边界检查：+0.5-1%
-- 减少索引计算：+0.5-1%
-- 总计：+1-2%，有望恢复到基线性能
-
-**验证结果（第一阶段）**：
+**验证结果**：
 - ✅ `cargo test` 通过（161/161 测试）
 - ✅ `cargo clippy` 通过（0 警告）
 - ✅ 正确性验证：i16 符号扩展修复，样本值正确
-- ⚠️ 性能验证：仍有 2.7% 退化，需要第二阶段优化
+- ✅ 性能验证：指针优化后达到 218.13 MB/s
 
-**提交信息（第一阶段）**：
+**提交信息**：
+
+**第一阶段提交（commit 8d93761）**：
 ```
 perf(processing): 零拷贝 interleaved SIMD 转换（优化#9 第一阶段）
 
@@ -568,6 +579,29 @@ perf(processing): 零拷贝 interleaved SIMD 转换（优化#9 第一阶段）
 
 测试验证：161/161 通过，0 警告
 影响范围：src/processing/sample_conversion.rs:252-1662
+```
+
+**第二阶段提交（待提交）**：
+```
+perf(processing): 指针优化消除边界检查（优化#9 第二阶段）
+
+核心改进：
+- 使用 unsafe 指针写入消除 SIMD 循环内的边界检查
+- 添加 debug_assert 确保安全性前提条件
+- 优化索引计算，减少循环内重复乘法
+
+性能提升：
+- 第一阶段：216.94 MB/s（-2.7% vs 基线 222.95 MB/s）
+- 第二阶段：218.13 MB/s（-2.1% vs 基线）
+- 改善：+0.6%（从 -2.7% 提升到 -2.1%）
+
+剩余差距分析：
+- stride 访问模式 vs 原来的连续访问仍有劣势
+- 权衡：消除中间缓冲区分配，内存占用更稳定
+- 可接受的性能损失，换取更低的内存抖动
+
+测试验证：161/161 通过，0 警告
+影响范围：src/processing/sample_conversion.rs SIMD 实现函数
 ```
 
 ---
@@ -855,17 +889,19 @@ gantt
 | #5 写入统一 | 2025-10-17 | ~0% | N/A | +10% (一致性) | aecbb92 |
 | #6 代码复用 | 2025-10-17 | N/A | N/A | +30% | 待提交 |
 | #8 缓冲区复用 | 2025-10-17 | +4.1% | +43.6% (预期) | 内存稳定性 | b2ae6e6 |
+| #9 零拷贝转换 | 2025-10-18 | -2.1% | 降低抖动 | 消除重复分配 | 8d93761 (阶段1) |
 | #10 spawn_fifo | 2025-10-17 | +0.4% | N/A | 代码简化 | e6b10de |
 
 **累计成果**（已完成项）：
-- 性能提升总计：**≈+9.5%**（基线 213.27 MB/s → 当前 222.95 MB/s）
-- 内存占用：63.28 MB（稳定，标准差 2.35 MB）
+- 性能提升总计：**≈+2.3%**（基线 213.27 MB/s → 当前 218.13 MB/s）
+- 内存占用：60.91 MB（稳定，标准差 0.86 MB）
 - 代码质量提升：+45%（文档+15%，调试体验+10%，可维护性+10%，一致性+10%）
 - 测试覆盖：保持 100%（161/161 测试通过）
 
 **关键里程碑**：
 - ✅ 优化 #8（缓冲区复用）：主要性能提升（+4.1%），内存稳定性改善
 - ✅ 优化 #10（spawn_fifo）：消除 OS 线程创建开销，理论改善 P99 延迟
+- ⚠️ 优化 #9（零拷贝转换）：性能轻微退化（-2.1%），但消除中间缓冲，内存更稳定
 
 ---
 
@@ -876,6 +912,9 @@ gantt
 | 2025-10-16 | 初始文档创建，按风险分级规划 14 项优化 | Claude (rust-audio-expert) |
 | 2025-10-17 | 完成优化#4；提取 DRAIN_RECV_TIMEOUT_MS 常量并更新注释 | Sakuzy |
 | 2025-10-17 | 完成优化#5；统一所有格式为 resize + 索引写入模式 | Claude (rust-audio-expert) |
+| 2025-10-17 | 完成优化#9 第一阶段；零拷贝 interleaved SIMD 转换 | Claude (rust-audio-expert) |
+| 2025-10-18 | 完成优化#9 第二阶段；指针优化消除边界检查 | Sakuzy |
+| 2025-10-18 | 更新优化#9状态为已完成，记录性能数据和分析 | Claude (rust-audio-expert) |
 
 ---
 

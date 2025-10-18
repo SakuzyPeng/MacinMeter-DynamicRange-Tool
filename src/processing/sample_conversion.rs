@@ -303,6 +303,133 @@ impl SampleConverter {
         )
     }
 
+    /// 🚀 统一的样本缓冲区转换函数（优化#11）
+    ///
+    /// 将Symphonia的AudioBufferRef转换为交错f32格式，消除audio层的重复代码。
+    ///
+    /// # 参数
+    /// - `audio_buf`: Symphonia的音频缓冲区引用
+    /// - `samples`: 输出的interleaved f32数组
+    ///
+    /// # 契约与保证
+    /// - **输出尺寸**: 函数内部会自动调用 `resize(channel_count * frame_count, 0.0)`
+    ///   调整 `samples` 到正确大小，调用者无需预先分配或清空
+    /// - **内存安全**: 对于 S16/S24 格式，使用 SIMD 的 interleaved 转换直接写入
+    ///   已 resize 的缓冲区，不会越界访问
+    /// - **格式覆盖**: 支持所有 Symphonia 的 AudioBufferRef 格式（F32, S16, S24, S32,
+    ///   F64, U8, U16, U24, U32, S8）
+    ///
+    /// # 特性
+    /// - S16/S24: 使用SIMD优化的零拷贝interleaved转换
+    /// - 其他格式: 使用统一的resize + chunks_mut模式
+    /// - 自动处理所有Symphonia支持的格式
+    pub fn convert_buffer_to_interleaved(
+        &self,
+        audio_buf: &symphonia::core::audio::AudioBufferRef,
+        samples: &mut Vec<f32>,
+    ) -> AudioResult<()> {
+        use symphonia::core::audio::{AudioBufferRef, Signal};
+
+        let (channel_count, frame_count) = match audio_buf {
+            AudioBufferRef::F32(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::S16(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::S24(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::S32(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::F64(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::U8(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::U16(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::U24(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::U32(buf) => crate::extract_buffer_info!(buf),
+            AudioBufferRef::S8(buf) => crate::extract_buffer_info!(buf),
+        };
+
+        // ✅ 统一预分配模式：所有格式都使用 resize
+        let total_samples = channel_count * frame_count;
+        samples.resize(total_samples, 0.0);
+
+        // 🚀 针对不同格式使用SIMD优化
+        match audio_buf {
+            AudioBufferRef::F32(buf) => {
+                crate::convert_samples!(buf, |s| s, samples, channel_count)
+            }
+            // 🚀 S16 SIMD优化 (统一助手函数)
+            AudioBufferRef::S16(buf) => {
+                for ch in 0..channel_count {
+                    let channel_data = buf.chan(ch);
+                    self.convert_i16_channel_to_interleaved(
+                        channel_data,
+                        samples,
+                        ch,
+                        channel_count,
+                    )?;
+                }
+            }
+            // 🚀 S24 SIMD优化 (统一助手函数，主要性能提升点)
+            AudioBufferRef::S24(buf) => {
+                for ch in 0..channel_count {
+                    let channel_data = buf.chan(ch);
+                    self.convert_i24_channel_to_interleaved(
+                        channel_data,
+                        samples,
+                        ch,
+                        channel_count,
+                    )?;
+                }
+            }
+            // 其他格式使用标准转换（统一为 resize + chunks_mut 模式）
+            AudioBufferRef::S32(buf) => {
+                crate::convert_samples!(
+                    buf,
+                    |s| (s as f64 / 2147483648.0) as f32,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::F64(buf) => {
+                crate::convert_samples!(buf, |s| s as f32, samples, channel_count)
+            }
+            AudioBufferRef::U8(buf) => {
+                crate::convert_samples!(
+                    buf,
+                    |s| ((s as f32) - 128.0) / 128.0,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::U16(buf) => {
+                crate::convert_samples!(
+                    buf,
+                    |s| ((s as f32) - 32768.0) / 32768.0,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::U24(buf) => {
+                crate::convert_samples!(
+                    buf,
+                    |s: symphonia::core::sample::u24| {
+                        ((s.inner() as f32) - 8388608.0) / 8388608.0
+                    },
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::U32(buf) => {
+                crate::convert_samples!(
+                    buf,
+                    |s| (((s as f64) - 2147483648.0) / 2147483648.0) as f32,
+                    samples,
+                    channel_count
+                )
+            }
+            AudioBufferRef::S8(buf) => {
+                crate::convert_samples!(buf, |s| (s as f32) / 128.0, samples, channel_count)
+            }
+        }
+
+        Ok(())
+    }
+
     /// 🎯 智能格式转换 - 自动选择最优实现
     ///
     /// 根据输入格式和硬件能力，自动选择SIMD优化或标量实现
