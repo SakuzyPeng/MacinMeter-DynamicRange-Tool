@@ -17,8 +17,8 @@
 //! - 使用channel的Disconnected错误模拟失败
 //! - 只测试错误路径的逻辑，不测试恢复后的性能
 
+use crossbeam_channel::{SendError, TryRecvError};
 use macinmeter_dr_tool::audio::parallel_decoder::SequencedChannel;
-use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -53,10 +53,10 @@ fn test_channel_disconnection_detection() {
 
     // 使用try_recv避免死锁，应该返回Disconnected或Empty
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Disconnected) => {
+        Err(TryRecvError::Disconnected) => {
             println!("  ✓ 正确检测到channel断开");
         }
-        Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Empty) => {
             println!("  ✓ channel为空（发送端已关闭）");
         }
         Ok(v) => panic!("不应该收到数据: {v}"),
@@ -77,7 +77,7 @@ fn test_try_recv_error_handling() {
 
     // 测试1: 空通道返回Empty
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Empty) => {
             println!("  ✓ 空通道正确返回Empty");
         }
         other => panic!("应该返回Empty，实际: {other:?}"),
@@ -99,7 +99,7 @@ fn test_try_recv_error_handling() {
     drop(sender);
 
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Disconnected) | Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Disconnected) | Err(TryRecvError::Empty) => {
             println!("  ✓ 发送端关闭后正确返回错误");
         }
         other => panic!("应该返回Disconnected或Empty，实际: {other:?}"),
@@ -135,7 +135,7 @@ fn test_missing_sequence_with_disconnection() {
 
     // 序列1缺失，2-4在缓冲区等待
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Empty) => {
             println!("  ✓ 序列2-4正确等待序列1");
         }
         Ok(v) => panic!("不应该收到数据，实际: {v}"),
@@ -152,7 +152,7 @@ fn test_missing_sequence_with_disconnection() {
     thread::sleep(Duration::from_millis(10)); // 给点时间让channel检测断开
 
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Disconnected) | Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Disconnected) | Err(TryRecvError::Empty) => {
             println!("  ✓ 缺失序列导致后续数据无法接收（符合预期）");
         }
         Ok(v) => panic!("不应该收到数据: {v}"),
@@ -185,7 +185,7 @@ fn test_send_to_closed_receiver() {
     let mut errors1 = 0;
     for i in 0..100 {
         match sender1.send_sequenced(i, i as u32) {
-            Err(mpsc::SendError(_)) => {
+            Err(SendError(_)) => {
                 errors1 += 1;
                 break;
             }
@@ -198,7 +198,7 @@ fn test_send_to_closed_receiver() {
     let mut errors2 = 0;
     for i in 100..200 {
         match sender2.send_sequenced(i, i as u32) {
-            Err(mpsc::SendError(_)) => {
+            Err(SendError(_)) => {
                 errors2 += 1;
                 break;
             }
@@ -239,10 +239,10 @@ fn test_immediate_disconnection() {
 
     // 使用try_recv避免死锁，应该返回Disconnected或Empty
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Disconnected) => {
+        Err(TryRecvError::Disconnected) => {
             println!("  ✓ 无数据时正确返回Disconnected");
         }
-        Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Empty) => {
             println!("  ✓ channel为空（发送端已关闭）");
         }
         Ok(v) => panic!("不应该收到数据: {v}"),
@@ -286,7 +286,7 @@ fn test_partial_consumption_with_close() {
 
     // 尝试继续发送，应该失败
     match sender.send_sequenced(TOTAL, 99999) {
-        Err(mpsc::SendError(_)) => {
+        Err(SendError(_)) => {
             println!("  ✓ 继续发送正确返回错误");
         }
         Ok(_) => panic!("应该返回SendError"),

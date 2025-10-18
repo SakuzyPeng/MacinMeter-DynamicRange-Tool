@@ -3,8 +3,8 @@
 //! 测试并行解码的顺序保证、状态管理和错误处理
 //! 优先测试不需要真实音频的核心逻辑
 
+use crossbeam_channel::TryRecvError;
 use macinmeter_dr_tool::audio::parallel_decoder::{DecodedChunk, DecodingState, SequencedChannel};
-use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -82,7 +82,7 @@ fn test_sequenced_channel_creation() {
 
     // 尝试非阻塞接收，应该返回错误（空通道）
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {}
+        Err(TryRecvError::Empty) => {}
         _ => panic!("空通道应该返回Empty错误"),
     }
 }
@@ -92,7 +92,7 @@ fn test_sequenced_channel_default() {
     let channel: SequencedChannel<String> = SequencedChannel::default();
 
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {}
+        Err(TryRecvError::Empty) => {}
         _ => panic!("默认通道应该为空"),
     }
 }
@@ -175,7 +175,7 @@ fn test_sequenced_channel_large_sequence_gap() {
 
     // 序列号100仍在缓冲区等待，无法立即收到
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {}
+        Err(TryRecvError::Empty) => {}
         Ok(_) => panic!("序列号100应该还在缓冲区等待中间序列号"),
         Err(e) => panic!("意外错误: {e:?}"),
     }
@@ -201,7 +201,7 @@ fn test_sequenced_channel_empty_recv() {
     let channel: SequencedChannel<i32> = SequencedChannel::new();
 
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {}
+        Err(TryRecvError::Empty) => {}
         _ => panic!("空通道应该返回Empty"),
     }
 }
@@ -214,8 +214,8 @@ fn test_sequenced_channel_disconnected() {
     drop(sender); // 丢弃发送端
 
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Disconnected) => {}
-        Err(mpsc::TryRecvError::Empty) => {} // 如果还没检测到断开也可接受
+        Err(TryRecvError::Disconnected) => {}
+        Err(TryRecvError::Empty) => {} // 如果还没检测到断开也可接受
         _ => panic!("发送端关闭后应该返回Disconnected或Empty"),
     }
 }
@@ -340,7 +340,7 @@ fn test_extreme_sequence_gaps() {
 
     // 序列号5000和10000仍在缓冲区等待
     match channel.try_recv_ordered() {
-        Err(mpsc::TryRecvError::Empty) => {
+        Err(TryRecvError::Empty) => {
             println!("✓ 序列号5000和10000正确缓冲等待");
         }
         Ok(v) => panic!("不应收到数据，实际收到: {v:?}"),

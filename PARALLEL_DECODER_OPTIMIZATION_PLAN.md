@@ -317,40 +317,30 @@ refactor(processing): 抽取 S16/S24 样本转换到共享助手
 
 ## 🎯 阶段三：中风险优化（中期执行）
 
-### ⚠️ 优化 #7：使用 crossbeam-channel 替代 std::sync::mpsc
+### ✅ 优化 #7：使用 crossbeam-channel 替代 std::sync::mpsc
 
-**状态**：🔴 待执行
+**状态**：🟢 已完成（2025-10-18）
 **风险评级**：⭐⭐⭐ 中（依赖变更 + API 迁移）
-**预期收益**：多生产者性能+15-25%
-**影响范围**：整个 `parallel_decoder.rs` 的 channel 使用
+**实际收益**：吞吐与尾延迟更平稳（A/B 小幅正向或持平），代码更简洁
+**影响范围**：`src/audio/parallel_decoder.rs` 的通道实现（SequencedChannel/OrderedSender）
 
-**问题诊断**：
-- `std::sync::mpsc` 在高并发下性能不佳
-- `crossbeam-channel` 提供更好的 API（如 `select!`）
+**已实施改进**：
+- 用 `crossbeam_channel::bounded(cap)` 替换 `std::sync::mpsc::sync_channel(cap)`，保持有界背压
+- 统一错误类型映射：`TryRecvError/RecvTimeoutError/RecvError/SendError`
+- 保持 V1 架构（发送端重排）与 API 不变，便于回退与对比
 
-**改进方案**：
-```rust
-// Cargo.toml
-[dependencies]
-crossbeam-channel = "0.5"
+**验证结果**：
+- ✅ `cargo test` 通过
+- ✅ A/B 基准：吞吐与 P95 更稳定（在 2–4 线程下为小幅正向或持平）
+- ✅ 内存峰值不变（沿用有界背压与非贪婪读取策略）
 
-// 代码迁移
-use crossbeam_channel::{bounded, Sender, Receiver};
-let (tx, rx) = bounded(buffer_size);
+**提交信息**：
 ```
+perf(parallel): 优化#7 - 迁移到 crossbeam-channel（bounded）
 
-**验证方式**：
-- ✅ 性能基准测试对比
-- ✅ 所有测试通过
-- ✅ 跨平台编译验证
-
-**提交信息模板**：
-```
-perf(parallel): 迁移到 crossbeam-channel 提升并发性能
-
-- 替换 std::sync::mpsc 为 crossbeam-channel
-- 多生产者场景性能提升 15-25%
-- 提供更丰富的 channel API
+- 替换 std::sync::mpsc 为 crossbeam_channel::bounded(cap)
+- 统一错误类型映射并保持现有 API
+- 多生产者场景更平稳，便于后续接收端重排（#13）
 ```
 
 ---
@@ -918,6 +908,7 @@ gantt
 | #8 缓冲区复用 | 2025-10-17 | +4.1% | +43.6% (预期) | 内存稳定性 | b2ae6e6 |
 | #9 零拷贝转换 | 2025-10-18 | -2.1% | 降低抖动 | 消除重复分配 | 8d93761 (阶段1) |
 | #10 spawn_fifo | 2025-10-17 | +0.4% | N/A | 代码简化 | e6b10de |
+| #7 crossbeam 通道 | 2025-10-18 | ≈0–3%（A/B） | 稳定 | 通道更平稳 | 待提交 |
 
 **累计成果**（已完成项）：
 - 性能提升总计：**≈+2.3%**（基线 213.27 MB/s → 当前 218.13 MB/s）

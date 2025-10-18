@@ -1261,6 +1261,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "crossbeam-channel",
  "hound",
  "rayon",
  "songbird",

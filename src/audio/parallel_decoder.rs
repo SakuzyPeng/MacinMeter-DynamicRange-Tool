@@ -24,6 +24,9 @@ use crate::tools::constants::{
     decoder_performance::{self, DRAIN_RECV_TIMEOUT_MS, THREAD_LOCAL_SAMPLE_BUFFER_CAPACITY},
     parallel_limits,
 };
+use crossbeam_channel::{
+    self, Receiver, RecvError, RecvTimeoutError, SendError, Sender, TryRecvError,
+};
 use rayon::ThreadPoolBuilder;
 use std::time::Duration;
 use std::{
@@ -31,7 +34,6 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
-        mpsc::{self, Receiver, SyncSender},
     },
 };
 use symphonia::core::{
@@ -83,11 +85,11 @@ struct SequencedPacket {
 /// 这种"发送端重排序"设计避免了接收端的复杂性，但代价是多个发送线程需要
 /// 竞争同一个 `Mutex<HashMap>`。适用于中等并发度（4-8线程）的场景。
 ///
-/// **背压机制**：使用有界通道（sync_channel），当缓冲满时发送端会阻塞，
+/// **背压机制**：使用 crossbeam bounded channel（有界通道），当缓冲满时发送端会阻塞，
 /// 防止生产快于消费导致的内存无限增长。
 #[derive(Debug)]
 pub struct SequencedChannel<T> {
-    sender: SyncSender<T>,
+    sender: Sender<T>,
     receiver: Receiver<T>,
     next_expected: Arc<AtomicUsize>,
     reorder_buffer: Arc<Mutex<HashMap<usize, T>>>,
@@ -115,7 +117,7 @@ impl<T> SequencedChannel<T> {
     /// # 参数
     /// - `capacity`: 通道容量，当缓冲满时发送端会阻塞（背压机制）
     pub fn with_capacity(capacity: usize) -> Self {
-        let (sender, receiver) = mpsc::sync_channel(capacity);
+        let (sender, receiver) = crossbeam_channel::bounded(capacity);
         Self {
             sender,
             receiver,
@@ -137,12 +139,12 @@ impl<T> SequencedChannel<T> {
     ///
     /// **实现说明**：仅封装 `recv()`，不做重排序。发送端已通过 `OrderedSender`
     /// 保证顺序，因此接收端只需简单 `recv()` 即可获得有序数据。
-    pub fn recv_ordered(&self) -> Result<T, mpsc::RecvError> {
+    pub fn recv_ordered(&self) -> Result<T, RecvError> {
         self.receiver.recv()
     }
 
     /// 尝试按顺序接收数据 - 非阻塞版本
-    pub fn try_recv_ordered(&self) -> Result<T, mpsc::TryRecvError> {
+    pub fn try_recv_ordered(&self) -> Result<T, TryRecvError> {
         self.receiver.try_recv()
     }
 
@@ -150,7 +152,7 @@ impl<T> SequencedChannel<T> {
     ///
     /// **实现说明**：封装 `recv_timeout()`，发送端已保证顺序。
     /// 当通道为空时会阻塞等待，直到超时或收到数据。
-    pub fn recv_timeout_ordered(&self, timeout: Duration) -> Result<T, mpsc::RecvTimeoutError> {
+    pub fn recv_timeout_ordered(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.receiver.recv_timeout(timeout)
     }
 }
@@ -172,10 +174,10 @@ impl<T> SequencedChannel<T> {
 /// - **扩展建议**：高并发（>8-16线程）场景建议迁移到接收端重排架构（参见优化#13），
 ///   避免发送端锁竞争成为瓶颈
 ///
-/// **背压特性**：使用 SyncSender，当通道满时 send() 会阻塞，形成自然的背压。
+/// **背压特性**：使用 crossbeam bounded Sender，当通道满时 send() 会阻塞，形成自然的背压。
 #[derive(Debug, Clone)]
 pub struct OrderedSender<T> {
-    sender: SyncSender<T>,
+    sender: Sender<T>,
     next_expected: Arc<AtomicUsize>,
     reorder_buffer: Arc<Mutex<HashMap<usize, T>>>,
 }
@@ -206,7 +208,7 @@ impl<T> OrderedSender<T> {
     /// - **Mutex 防护**：reorder_buffer 的读写通过 Mutex 序列化
     /// - **Acquire/Release 语义**：确保原子操作的内存可见性
     /// - **Poison 恢复**：即使某线程 panic，也能恢复数据继续服务
-    pub fn send_sequenced(&self, sequence: usize, data: T) -> Result<(), mpsc::SendError<T>> {
+    pub fn send_sequenced(&self, sequence: usize, data: T) -> Result<(), SendError<T>> {
         // Mutex poison 降级：即使有线程 panic，也恢复数据继续服务
         let mut buffer = self
             .reorder_buffer
@@ -486,8 +488,8 @@ impl OrderedParallelDecoder {
                 // 不改变状态！让drain_all_samples()负责切换到Completed
                 None
             }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
                 #[cfg(debug_assertions)]
                 eprintln!("[WARNING] Sample channel disconnected unexpectedly");
 
@@ -537,7 +539,7 @@ impl OrderedParallelDecoder {
                     self.eof_encountered = true;
                     break;
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
+                Err(RecvTimeoutError::Timeout) => {
                     // ✅ Channel空了，检查EOF是否已被遇到
                     if self.eof_encountered {
                         // EOF已在next_samples()中被遇到，所有数据已接收完毕
@@ -545,7 +547,7 @@ impl OrderedParallelDecoder {
                     }
                     // 超时但EOF未到，继续等待（后台线程仍在解码）
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(RecvTimeoutError::Disconnected) => {
                     // Channel已断开（异常情况）
                     #[cfg(debug_assertions)]
                     eprintln!("[WARNING] Sample channel disconnected during drain (异常提前断开)");
