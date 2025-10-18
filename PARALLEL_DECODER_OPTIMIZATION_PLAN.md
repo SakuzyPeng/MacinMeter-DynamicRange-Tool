@@ -483,41 +483,91 @@ perf(parallel): 复用线程本地缓冲区降低分配开销（优化#8）
 
 ### ⚠️ 优化 #9：样本转换零拷贝化（S16/S24）
 
-**状态**：🔴 待执行
+**状态**：🟡 部分完成（2025-10-17）
 **风险评级**：⭐⭐⭐ 中（需要修改 SIMD 接口）
-**预期收益**：S16/S24 路径性能+20-30%
-**影响范围**：`src/audio/parallel_decoder.rs:626-673` 与 `src/processing/sample_conversion.rs`
+**实际收益**：-2.7%（存在性能瓶颈，需进一步优化）
+**影响范围**：`src/processing/sample_conversion.rs:252-1428`
 
 **问题诊断**：
-- 现在：每声道 SIMD 转换 → `converted_channel` → 逐样本交错写入 `samples`
+- 原状态：每声道 SIMD 转换 → `converted_channel` → 逐样本交错写入 `samples`
 - 两段遍历 + 中间缓冲分配
 
-**改进方案**：
+**已实施改进（第一阶段）**：
+1. 新增零拷贝 interleaved 转换接口：
+   - `convert_i16_channel_to_interleaved()` - 公开 API（252-277行）
+   - `convert_i24_channel_to_interleaved()` - 公开 API（279-304行）
+   - `convert_i16_to_f32_interleaved_simd()` - SIMD 派发（1276-1323行）
+   - `convert_i24_to_f32_interleaved_simd()` - SIMD 派发（1345-1392行）
+
+2. 实现 SSE2 和 NEON interleaved 转换：
+   - i16 SSE2：`convert_i16_to_f32_interleaved_sse2()`（1428-1484行）
+   - i16 NEON：`convert_i16_to_f32_interleaved_neon()`（1486-1542行）
+   - i24 SSE2：`convert_i24_to_f32_interleaved_sse2()`（1544-1598行）
+   - i24 NEON：`convert_i24_to_f32_interleaved_neon()`（1600-1662行）
+
+3. 关键修复：
+   - ✅ i24 SIMD 阈值：从 `>=8` 修正为 `>=4`（匹配实际处理宽度）
+   - ✅ i16 SSE2 符号扩展：使用 `_mm_cmplt_epi16` 生成符号掩码（第1004-1007行）
+   - ✅ 热路径内联：4个关键函数添加 `#[inline(always)]`
+
+**性能测试结果（10次平均）**：
+- 初次实现：216.68 MB/s（-2.8% vs 基线 222.95 MB/s）❌
+- 修复后：216.94 MB/s（-2.7% vs 基线）⚠️
+
+**根因分析（用户诊断）**：
+1. **边界检查开销**：`output[(i + j) * channel_count + channel_offset]` 每次写入保留 bounds check
+2. **重复计算**：循环内重复做乘法和偏移计算
+3. **stride 写入模式**：编译器无法优化为连续写入
+
+**待实施优化（第二阶段）**：
 ```rust
-// 在 SampleConverter 中添加
-pub fn convert_i16_to_f32_interleaved(
-    &self,
-    input: &[i16],
-    output: &mut [f32],
-    channel_count: usize,
-    channel_offset: usize,
-) {
-    // 直接按 stride 写入目标缓冲
+// 在 SIMD 循环前添加断言
+debug_assert_eq!(output.len(), input.len() * channel_count);
+
+// 使用指针写入消除边界检查
+let base = output.as_mut_ptr().add(channel_offset);
+let stride = channel_count;
+
+// SAFETY: 已通过 debug_assert 验证尺寸，指针偏移在有效范围内
+unsafe {
+    for j in 0..4 {
+        *base.add((i + j) * stride) = temp[j];
+    }
 }
 ```
 
-**验证方式**：
-- ✅ SIMD 精度测试
-- ✅ 性能基准测试
-- ✅ 边界对齐测试
+**预期收益（第二阶段）**：
+- 消除边界检查：+0.5-1%
+- 减少索引计算：+0.5-1%
+- 总计：+1-2%，有望恢复到基线性能
 
-**提交信息模板**：
+**验证结果（第一阶段）**：
+- ✅ `cargo test` 通过（161/161 测试）
+- ✅ `cargo clippy` 通过（0 警告）
+- ✅ 正确性验证：i16 符号扩展修复，样本值正确
+- ⚠️ 性能验证：仍有 2.7% 退化，需要第二阶段优化
+
+**提交信息（第一阶段）**：
 ```
-perf(processing): SIMD 样本转换支持零拷贝 interleaved 写入
+perf(processing): 零拷贝 interleaved SIMD 转换（优化#9 第一阶段）
 
-- 添加 convert_*_interleaved 接口，直接写入目标布局
-- 消除 converted_channel 中间缓冲
-- S16/S24 路径性能提升 20-30%
+核心改进：
+- 新增 convert_i{16,24}_channel_to_interleaved 零拷贝接口
+- 实现 SSE2/NEON 直接写入 interleaved 布局
+- 消除中间 converted_channel 缓冲区分配
+
+关键修复：
+- i24 SIMD 阈值：>=8 → >=4（匹配实际处理宽度）
+- i16 SSE2 符号扩展：使用 _mm_cmplt_epi16 正确处理负数
+- 热路径内联：4个函数添加 #[inline(always)]
+
+性能结果：
+- 当前：216.94 MB/s（-2.7% vs 基线 222.95 MB/s）
+- 瓶颈：stride 写入的边界检查和重复计算
+- 待优化：使用指针写入消除边界检查（预期 +1-2%）
+
+测试验证：161/161 通过，0 警告
+影响范围：src/processing/sample_conversion.rs:252-1662
 ```
 
 ---

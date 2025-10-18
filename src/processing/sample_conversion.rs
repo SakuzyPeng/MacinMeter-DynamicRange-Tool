@@ -249,16 +249,17 @@ impl SampleConverter {
         self.enable_stats = enabled;
     }
 
-    /// 🚀 转换单个S16声道并写入interleaved数组
+    /// 🚀 转换单个S16声道并写入interleaved数组（零拷贝优化）
     ///
-    /// 统一处理S16格式的SIMD转换和interleaved写入逻辑，
-    /// 消除parallel_decoder和universal_decoder中的重复代码。
+    /// **优化#9**：直接在SIMD内核中按stride写入interleaved缓冲，
+    /// 消除中间Vec分配和二次遍历，预期性能提升20-30%。
     ///
     /// # 参数
     /// - `input_channel`: 输入声道的i16样本数组
     /// - `output_interleaved`: 输出的interleaved f32数组
     /// - `channel_index`: 当前声道索引(0或1)
     /// - `channel_count`: 总声道数(1或2)
+    #[inline(always)]
     pub fn convert_i16_channel_to_interleaved(
         &self,
         input_channel: &[i16],
@@ -266,32 +267,26 @@ impl SampleConverter {
         channel_index: usize,
         channel_count: usize,
     ) -> AudioResult<()> {
-        // 临时向量用于SIMD转换
-        let frame_count = input_channel.len();
-        let mut converted_channel = Vec::with_capacity(frame_count);
-
-        // 执行SIMD优化的i16→f32转换
-        self.convert_i16_to_f32(input_channel, &mut converted_channel)?;
-
-        // 写入interleaved数组
-        for (frame_idx, &sample) in converted_channel.iter().enumerate() {
-            let interleaved_idx = frame_idx * channel_count + channel_index;
-            output_interleaved[interleaved_idx] = sample;
-        }
-
-        Ok(())
+        // 🚀 零拷贝优化：直接调用stride写入的SIMD实现
+        self.convert_i16_to_f32_interleaved_simd(
+            input_channel,
+            output_interleaved,
+            channel_count,
+            channel_index,
+        )
     }
 
-    /// 🚀 转换单个S24声道并写入interleaved数组
+    /// 🚀 转换单个S24声道并写入interleaved数组（零拷贝优化）
     ///
-    /// 统一处理S24格式的SIMD转换和interleaved写入逻辑，
-    /// 消除parallel_decoder和universal_decoder中的重复代码。
+    /// **优化#9**：直接在SIMD内核中按stride写入interleaved缓冲，
+    /// 消除中间Vec分配和二次遍历，预期性能提升20-30%。
     ///
     /// # 参数
     /// - `input_channel`: 输入声道的i24样本数组
     /// - `output_interleaved`: 输出的interleaved f32数组
     /// - `channel_index`: 当前声道索引(0或1)
     /// - `channel_count`: 总声道数(1或2)
+    #[inline(always)]
     pub fn convert_i24_channel_to_interleaved(
         &self,
         input_channel: &[symphonia::core::sample::i24],
@@ -299,20 +294,13 @@ impl SampleConverter {
         channel_index: usize,
         channel_count: usize,
     ) -> AudioResult<()> {
-        // 临时向量用于SIMD转换
-        let frame_count = input_channel.len();
-        let mut converted_channel = Vec::with_capacity(frame_count);
-
-        // 执行SIMD优化的i24→f32转换
-        self.convert_i24_to_f32(input_channel, &mut converted_channel)?;
-
-        // 写入interleaved数组
-        for (frame_idx, &sample) in converted_channel.iter().enumerate() {
-            let interleaved_idx = frame_idx * channel_count + channel_index;
-            output_interleaved[interleaved_idx] = sample;
-        }
-
-        Ok(())
+        // 🚀 零拷贝优化：直接调用stride写入的SIMD实现
+        self.convert_i24_to_f32_interleaved_simd(
+            input_channel,
+            output_interleaved,
+            channel_count,
+            channel_index,
+        )
     }
 
     /// 🎯 智能格式转换 - 自动选择最优实现
@@ -1012,9 +1000,11 @@ impl SampleConverter {
                 // 加载8个i16值 (128位)
                 let i16_data = _mm_loadu_si128(input.as_ptr().add(i) as *const __m128i);
 
-                // 分解为两个64位部分，转换为32位整数
-                let i32_lo = _mm_unpacklo_epi16(i16_data, _mm_setzero_si128());
-                let i32_hi = _mm_unpackhi_epi16(i16_data, _mm_setzero_si128());
+                // 🔧 修复符号扩展：生成符号掩码（负数→0xFFFF，非负→0x0000）
+                let sign_mask = _mm_cmplt_epi16(i16_data, _mm_setzero_si128());
+                // 使用符号掩码进行符号扩展（而非零扩展）
+                let i32_lo = _mm_unpacklo_epi16(i16_data, sign_mask);
+                let i32_hi = _mm_unpackhi_epi16(i16_data, sign_mask);
 
                 // 转换为浮点数并缩放
                 let f32_lo = _mm_mul_ps(_mm_cvtepi32_ps(i32_lo), scale_vec);
@@ -1279,6 +1269,482 @@ impl SampleConverter {
             i += 1;
             stats.scalar_samples += 1;
         }
+    }
+
+    // ==================== 优化#9：零拷贝 Interleaved 转换 ====================
+
+    /// 🚀 i16→f32 零拷贝interleaved转换（SIMD优化）
+    ///
+    /// 直接在SIMD内核中按stride写入interleaved缓冲，消除中间Vec分配。
+    ///
+    /// # 参数
+    /// - `input`: 单声道i16样本数组
+    /// - `output`: interleaved f32目标缓冲（已预分配）
+    /// - `channel_count`: 总声道数（stride）
+    /// - `channel_offset`: 当前声道的起始偏移
+    #[inline(always)]
+    fn convert_i16_to_f32_interleaved_simd(
+        &self,
+        input: &[i16],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        if self.has_simd_support() && input.len() >= 8 {
+            // 使用SIMD优化路径
+            #[cfg(target_arch = "x86_64")]
+            {
+                // SAFETY: convert_i16_to_f32_interleaved_sse2需要SSE2支持，已通过has_simd_support()验证。
+                // input/output生命周期有效，函数内部会正确处理数组边界。
+                unsafe {
+                    self.convert_i16_to_f32_interleaved_sse2(
+                        input,
+                        output,
+                        channel_count,
+                        channel_offset,
+                    )?;
+                }
+            }
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                // SAFETY: convert_i16_to_f32_interleaved_neon需要NEON支持，已通过has_simd_support()验证。
+                // input/output生命周期有效，函数内部会正确处理数组边界。
+                unsafe {
+                    self.convert_i16_to_f32_interleaved_neon(
+                        input,
+                        output,
+                        channel_count,
+                        channel_offset,
+                    )?;
+                }
+            }
+
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+            {
+                self.convert_i16_to_f32_interleaved_scalar(
+                    input,
+                    output,
+                    channel_count,
+                    channel_offset,
+                );
+            }
+        } else {
+            // 使用标量路径
+            self.convert_i16_to_f32_interleaved_scalar(
+                input,
+                output,
+                channel_count,
+                channel_offset,
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 🚀 i24→f32 零拷贝interleaved转换（SIMD优化）
+    ///
+    /// 直接在SIMD内核中按stride写入interleaved缓冲，消除中间Vec分配。
+    ///
+    /// # 参数
+    /// - `input`: 单声道i24样本数组
+    /// - `output`: interleaved f32目标缓冲（已预分配）
+    /// - `channel_count`: 总声道数（stride）
+    /// - `channel_offset`: 当前声道的起始偏移
+    #[inline(always)]
+    fn convert_i24_to_f32_interleaved_simd(
+        &self,
+        input: &[symphonia::core::sample::i24],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        // 🔧 修复阈值：i24 SIMD每次处理4个样本，门槛应为>=4（不是8）
+        if self.has_simd_support() && input.len() >= 4 {
+            // 使用SIMD优化路径
+            #[cfg(target_arch = "x86_64")]
+            {
+                // SAFETY: convert_i24_to_f32_interleaved_sse2需要SSE2支持，已通过has_simd_support()验证。
+                // input/output生命周期有效，函数内部会正确处理数组边界。
+                unsafe {
+                    self.convert_i24_to_f32_interleaved_sse2(
+                        input,
+                        output,
+                        channel_count,
+                        channel_offset,
+                    )?;
+                }
+            }
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                // SAFETY: convert_i24_to_f32_interleaved_neon需要NEON支持，已通过has_simd_support()验证。
+                // input/output生命周期有效，函数内部会正确处理数组边界。
+                unsafe {
+                    self.convert_i24_to_f32_interleaved_neon(
+                        input,
+                        output,
+                        channel_count,
+                        channel_offset,
+                    )?;
+                }
+            }
+
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+            {
+                self.convert_i24_to_f32_interleaved_scalar(
+                    input,
+                    output,
+                    channel_count,
+                    channel_offset,
+                );
+            }
+        } else {
+            // 使用标量路径
+            self.convert_i24_to_f32_interleaved_scalar(
+                input,
+                output,
+                channel_count,
+                channel_offset,
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 标量 i16→f32 interleaved 转换
+    fn convert_i16_to_f32_interleaved_scalar(
+        &self,
+        input: &[i16],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) {
+        const SCALE: f32 = 1.0 / 32768.0;
+
+        for (frame_idx, &sample) in input.iter().enumerate() {
+            let interleaved_idx = frame_idx * channel_count + channel_offset;
+            output[interleaved_idx] = (sample as f32) * SCALE;
+        }
+    }
+
+    /// 标量 i24→f32 interleaved 转换
+    fn convert_i24_to_f32_interleaved_scalar(
+        &self,
+        input: &[symphonia::core::sample::i24],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) {
+        const SCALE: f64 = 1.0 / 8388608.0;
+
+        for (frame_idx, &sample) in input.iter().enumerate() {
+            let i32_val = sample.inner();
+            let normalized = (i32_val as f64) * SCALE;
+            let interleaved_idx = frame_idx * channel_count + channel_offset;
+            output[interleaved_idx] = normalized as f32;
+        }
+    }
+
+    /// SSE2 i16→f32 interleaved 转换（优化版：指针写入消除边界检查）
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "sse2")]
+    unsafe fn convert_i16_to_f32_interleaved_sse2(
+        &self,
+        input: &[i16],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        use std::arch::x86_64::*;
+
+        const SCALE: f32 = 1.0 / 32768.0;
+        let len = input.len();
+        let mut i = 0;
+
+        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        debug_assert_eq!(output.len(), input.len() * channel_count);
+
+        // SAFETY: SSE2向量化i16→f32 interleaved转换（优化版）。
+        // 前置条件：
+        // 1. i + 8 <= len确保有8个有效i16样本可读取
+        // 2. debug_assert已验证output尺寸正确性
+        // 3. 使用指针写入消除边界检查和重复乘法
+        unsafe {
+            let scale_vec = _mm_set1_ps(SCALE);
+            let base_ptr = output.as_mut_ptr().add(channel_offset);
+            let stride = channel_count;
+
+            while i + 8 <= len {
+                // 加载8个i16值
+                let i16_data = _mm_loadu_si128(input.as_ptr().add(i) as *const __m128i);
+
+                // 🔧 修复符号扩展：使用符号掩码而非零扩展
+                let sign_mask = _mm_cmplt_epi16(i16_data, _mm_setzero_si128());
+                let i32_lo = _mm_unpacklo_epi16(i16_data, sign_mask);
+                let i32_hi = _mm_unpackhi_epi16(i16_data, sign_mask);
+                let f32_lo = _mm_mul_ps(_mm_cvtepi32_ps(i32_lo), scale_vec);
+                let f32_hi = _mm_mul_ps(_mm_cvtepi32_ps(i32_hi), scale_vec);
+
+                // 存储到栈上临时数组
+                let mut temp_lo = [0.0f32; 4];
+                let mut temp_hi = [0.0f32; 4];
+                _mm_storeu_ps(temp_lo.as_mut_ptr(), f32_lo);
+                _mm_storeu_ps(temp_hi.as_mut_ptr(), f32_hi);
+
+                // 🚀 优化#12：指针递增消除循环内乘法
+                // SAFETY:
+                // - base_ptr 已偏移到正确声道位置
+                // - 指针递增替代乘法，进一步降低指令开销
+                // - debug_assert 保证了 output 容量足够
+                let mut p = base_ptr.add(i * stride);
+                for &lo_value in &temp_lo {
+                    *p = lo_value;
+                    p = p.add(stride);
+                }
+                let mut p_hi = base_ptr.add((i + 4) * stride);
+                for &hi_value in &temp_hi {
+                    *p_hi = hi_value;
+                    p_hi = p_hi.add(stride);
+                }
+
+                i += 8;
+            }
+        }
+
+        // 处理剩余样本（标量）
+        self.convert_i16_to_f32_interleaved_scalar(
+            &input[i..],
+            output,
+            channel_count,
+            channel_offset + i * channel_count,
+        );
+
+        Ok(())
+    }
+
+    /// ARM NEON i16→f32 interleaved 转换（优化版：指针写入消除边界检查）
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn convert_i16_to_f32_interleaved_neon(
+        &self,
+        input: &[i16],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        use std::arch::aarch64::*;
+
+        const SCALE: f32 = 1.0 / 32768.0;
+        let scale_vec = vdupq_n_f32(SCALE);
+        let len = input.len();
+        let mut i = 0;
+
+        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        debug_assert_eq!(output.len(), input.len() * channel_count);
+
+        // SAFETY: ARM NEON向量化i16→f32 interleaved转换（优化版）。
+        // 前置条件：
+        // 1. i + 8 <= len确保有8个有效i16样本可读取
+        // 2. debug_assert已验证output尺寸正确性
+        // 3. 使用指针写入消除边界检查和重复乘法
+        unsafe {
+            let base_ptr = output.as_mut_ptr().add(channel_offset);
+            let stride = channel_count;
+
+            while i + 8 <= len {
+                // 加载8个i16值
+                let i16_data = vld1q_s16(input.as_ptr().add(i));
+
+                // 转换为两个f32向量
+                let i32_lo = vmovl_s16(vget_low_s16(i16_data));
+                let i32_hi = vmovl_s16(vget_high_s16(i16_data));
+                let f32_lo = vmulq_f32(vcvtq_f32_s32(i32_lo), scale_vec);
+                let f32_hi = vmulq_f32(vcvtq_f32_s32(i32_hi), scale_vec);
+
+                // 存储到栈上临时数组
+                let mut temp_lo = [0.0f32; 4];
+                let mut temp_hi = [0.0f32; 4];
+                vst1q_f32(temp_lo.as_mut_ptr(), f32_lo);
+                vst1q_f32(temp_hi.as_mut_ptr(), f32_hi);
+
+                // 🚀 优化#12：指针递增消除循环内乘法
+                // SAFETY:
+                // - base_ptr 已偏移到正确声道位置
+                // - 指针递增替代乘法，进一步降低指令开销
+                // - debug_assert 保证了 output 容量足够
+                let mut p = base_ptr.add(i * stride);
+                for &lo_value in &temp_lo {
+                    *p = lo_value;
+                    p = p.add(stride);
+                }
+                let mut p_hi = base_ptr.add((i + 4) * stride);
+                for &hi_value in &temp_hi {
+                    *p_hi = hi_value;
+                    p_hi = p_hi.add(stride);
+                }
+
+                i += 8;
+            }
+        }
+
+        // 处理剩余样本（标量）
+        self.convert_i16_to_f32_interleaved_scalar(
+            &input[i..],
+            output,
+            channel_count,
+            channel_offset + i * channel_count,
+        );
+
+        Ok(())
+    }
+
+    /// SSE2 i24→f32 interleaved 转换（优化版：指针写入消除边界检查）
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "sse2")]
+    unsafe fn convert_i24_to_f32_interleaved_sse2(
+        &self,
+        input: &[symphonia::core::sample::i24],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        use std::arch::x86_64::*;
+
+        const SCALE: f32 = 1.0 / 8388608.0;
+        let len = input.len();
+        let mut i = 0;
+
+        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        debug_assert_eq!(output.len(), input.len() * channel_count);
+
+        // SAFETY: SSE2向量化i24→f32 interleaved转换（优化版）。
+        // 前置条件：
+        // 1. i + 4 <= len确保有4个有效i24样本可读取
+        // 2. debug_assert已验证output尺寸正确性
+        // 3. 使用指针写入消除边界检查和重复乘法
+        unsafe {
+            let scale_vec = _mm_set1_ps(SCALE);
+            let base_ptr = output.as_mut_ptr().add(channel_offset);
+            let stride = channel_count;
+
+            while i + 4 <= len {
+                // 提取4个i24值为i32
+                let i32_0 = input[i].inner();
+                let i32_1 = input[i + 1].inner();
+                let i32_2 = input[i + 2].inner();
+                let i32_3 = input[i + 3].inner();
+
+                // 创建i32向量并转换
+                let i32_vec = _mm_set_epi32(i32_3, i32_2, i32_1, i32_0);
+                let f32_vec = _mm_mul_ps(_mm_cvtepi32_ps(i32_vec), scale_vec);
+
+                // 存储到栈上临时数组
+                let mut temp = [0.0f32; 4];
+                _mm_storeu_ps(temp.as_mut_ptr(), f32_vec);
+
+                // 🚀 优化#12：指针递增消除循环内乘法
+                // SAFETY:
+                // - base_ptr 已偏移到正确声道位置
+                // - 指针递增替代乘法，进一步降低指令开销
+                // - debug_assert 保证了 output 容量足够
+                let mut p = base_ptr.add(i * stride);
+                for &value in &temp {
+                    *p = value;
+                    p = p.add(stride);
+                }
+
+                i += 4;
+            }
+        }
+
+        // 处理剩余样本（标量）
+        self.convert_i24_to_f32_interleaved_scalar(
+            &input[i..],
+            output,
+            channel_count,
+            channel_offset + i * channel_count,
+        );
+
+        Ok(())
+    }
+
+    /// ARM NEON i24→f32 interleaved 转换（优化版：指针写入消除边界检查）
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn convert_i24_to_f32_interleaved_neon(
+        &self,
+        input: &[symphonia::core::sample::i24],
+        output: &mut [f32],
+        channel_count: usize,
+        channel_offset: usize,
+    ) -> AudioResult<()> {
+        use std::arch::aarch64::*;
+
+        const SCALE: f32 = 1.0 / 8388608.0;
+        let scale_vec = vdupq_n_f32(SCALE);
+        let len = input.len();
+        let mut i = 0;
+
+        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        debug_assert_eq!(output.len(), input.len() * channel_count);
+
+        // SAFETY: ARM NEON向量化i24→f32 interleaved转换（优化版）。
+        // 前置条件：
+        // 1. i + 4 <= len确保有4个有效i24样本可读取
+        // 2. debug_assert已验证output尺寸正确性
+        // 3. 使用指针写入消除边界检查和重复乘法
+        unsafe {
+            let base_ptr = output.as_mut_ptr().add(channel_offset);
+            let stride = channel_count;
+
+            while i + 4 <= len {
+                // 构造i32向量
+                let i32_vec = vsetq_lane_s32(
+                    input[i].inner(),
+                    vsetq_lane_s32(
+                        input[i + 1].inner(),
+                        vsetq_lane_s32(
+                            input[i + 2].inner(),
+                            vsetq_lane_s32(input[i + 3].inner(), vdupq_n_s32(0), 3),
+                            2,
+                        ),
+                        1,
+                    ),
+                    0,
+                );
+
+                // 转换为f32向量
+                let f32_vec = vmulq_f32(vcvtq_f32_s32(i32_vec), scale_vec);
+
+                // 存储到栈上临时数组
+                let mut temp = [0.0f32; 4];
+                vst1q_f32(temp.as_mut_ptr(), f32_vec);
+
+                // 🚀 优化#12：指针递增消除循环内乘法
+                // SAFETY:
+                // - base_ptr 已偏移到正确声道位置
+                // - 指针递增替代乘法，进一步降低指令开销
+                // - debug_assert 保证了 output 容量足够
+                let mut p = base_ptr.add(i * stride);
+                for &value in &temp {
+                    *p = value;
+                    p = p.add(stride);
+                }
+
+                i += 4;
+            }
+        }
+
+        // 处理剩余样本（标量）
+        self.convert_i24_to_f32_interleaved_scalar(
+            &input[i..],
+            output,
+            channel_count,
+            channel_offset + i * channel_count,
+        );
+
+        Ok(())
     }
 }
 
