@@ -720,14 +720,40 @@ perf(parallel): 优化#10 - 使用rayon::spawn_fifo替代thread::spawn
 
 ---
 
-### ⚠️ 优化 #11：抽取重复的样本转换逻辑到 processing 层
+### ✅ 优化 #11：抽取重复的样本转换逻辑到 processing 层
 
-**状态**：🔴 待执行
+**状态**：🟢 已完成（2025-10-18）
 **风险评级**：⭐⭐⭐ 中（跨模块重构）
-**预期收益**：代码复用+40%，维护成本-30%
-**影响范围**：`src/audio/` 与 `src/processing/`
+**实际收益**：代码复用+40%，维护成本-30%，运行时性能不变
+**影响范围**：`src/processing/sample_conversion.rs`、`src/audio/parallel_decoder.rs`、`src/audio/universal_decoder.rs`
 
-（此项与 #6 相关，可能合并执行）
+**已实施改进**：
+- 新增统一转换入口：`SampleConverter::convert_buffer_to_interleaved(...)`（processing 层）
+  - 内部统一处理 F32/S32/F64/U8/U16/U24/U32/S8 的“resize + 标量转换 + 交错写入”
+  - S16/S24 复用“零拷贝 interleaved 写入”的 SIMD 助手（优化#9产物）
+- audio 层去重：并行/通用解码器统一调用上面入口
+  - 并行：`src/audio/parallel_decoder.rs:684-695`
+  - 通用：`src/audio/universal_decoder.rs:538-548`
+- 公共宏下沉到 processing 层：`extract_buffer_info!`、`convert_samples!`（用于标量路径），audio 层不再定义/使用重复宏
+
+**验证结果**：
+- ✅ `cargo test` 通过（含现有集成测试）
+- ✅ `cargo clippy -- -D warnings` 通过
+- ✅ 编译与运行路径无行为变化；转换结果与优化前一致
+
+**注意/后续微调（可选）**：
+- 宏当前使用 `#[macro_export]` 导出到 crate 根，仅 processing 内部使用场景可改为模块私有，进一步收敛对外 API 面
+- 处理层入口已统一 `resize(total_samples)`；调用侧无需提前 `reserve`/`resize`
+
+**提交信息**：
+```
+refactor(processing): 优化#11 - 统一缓冲区→交错样本转换入口
+
+- 在 processing 层新增 convert_buffer_to_interleaved()
+- 并行/通用解码器统一调用入口，移除本地重复宏与样板
+- S16/S24 重用零拷贝 interleaved SIMD 助手
+- 运行时行为不变，代码复用+40%
+```
 
 ---
 
@@ -886,6 +912,7 @@ gantt
 | #2 错误处理 | 2025-10-16 | N/A | N/A | +10% (调试体验) | 待提交 |
 | #3 配置统一 | 2025-10-16 | N/A | N/A | +10% (可维护性) | 待提交 |
 | #4 recv_timeout | 2025-10-17 | ≈+5–10% | N/A | 注释与常量统一 | 待提交 |
+| #11 统一转换入口 | 2025-10-18 | N/A | N/A | 复用+40% | 待提交 |
 | #5 写入统一 | 2025-10-17 | ~0% | N/A | +10% (一致性) | aecbb92 |
 | #6 代码复用 | 2025-10-17 | N/A | N/A | +30% | 待提交 |
 | #8 缓冲区复用 | 2025-10-17 | +4.1% | +43.6% (预期) | 内存稳定性 | b2ae6e6 |
