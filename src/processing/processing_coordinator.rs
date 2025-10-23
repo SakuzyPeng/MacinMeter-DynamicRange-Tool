@@ -180,12 +180,16 @@ impl ProcessingCoordinator {
                 // 🎛️ 委托算法层进行DR计算（保持算法中立）
                 let result = channel_processor(&channel_samples, channel_idx);
 
-                if let Ok(ref dr_result) = result {
-                    debug_coordinator!(
-                        "🎛️ 声道{} DR计算完成: DR={:.2}",
-                        channel_idx,
-                        dr_result.dr_value
-                    );
+                // 仅在调试构建下访问结果用于日志，避免 release 下未使用变量的 Clippy 警告
+                #[cfg(debug_assertions)]
+                {
+                    if let Ok(ref dr_result) = result {
+                        debug_coordinator!(
+                            "🎛️ 声道{} DR计算完成: DR={:.2}",
+                            channel_idx,
+                            dr_result.dr_value
+                        );
+                    }
                 }
 
                 result

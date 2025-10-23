@@ -237,20 +237,17 @@ impl PerformanceEvaluator {
             1.0
         };
 
-        // 最终加速比计算（标量路径不应因数据集大小"加速"）
-        let final_speedup = if base_speedup == 1.0 {
-            // 标量实现：无论数据集大小，加速比恒为1.0
-            1.0
-        } else {
-            // SIMD实现：应用数据集大小系数，保证 >= 1.0
-            (base_speedup * size_factor).max(1.0)
-        };
-
+        // 调试构建：需要持有变量以打印日志
+        #[cfg(debug_assertions)]
         debug_performance!(
             "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x (能力={})",
             base_speedup,
             size_factor,
-            final_speedup,
+            if base_speedup == 1.0 {
+                1.0
+            } else {
+                (base_speedup * size_factor).max(1.0)
+            },
             if self.capabilities.avx2 {
                 "AVX2"
             } else if self.capabilities.avx {
@@ -264,7 +261,12 @@ impl PerformanceEvaluator {
             }
         );
 
-        final_speedup
+        // 发布构建：直接返回表达式，避免 clippy::let-and-return
+        if base_speedup == 1.0 {
+            1.0
+        } else {
+            (base_speedup * size_factor).max(1.0)
+        }
     }
 
     /// 计算性能统计信息
