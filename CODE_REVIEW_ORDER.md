@@ -37,9 +37,9 @@
 - [x] src/processing/sample_conversion.rs
 - [x] src/processing/channel_separator.rs
 - [x] src/processing/dr_channel_state.rs
-- [ ] src/processing/processing_coordinator.rs
-- [ ] src/processing/performance_metrics.rs
-- [ ] src/processing/mod.rs
+- [x] src/processing/processing_coordinator.rs
+- [x] src/processing/performance_metrics.rs
+- [x] src/processing/mod.rs
 
 五、Core 算法层
 - [ ] src/core/dr_calculator.rs
