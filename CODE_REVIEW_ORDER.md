@@ -26,7 +26,7 @@
 三、Audio 解码层
 - [x] src/audio/universal_decoder.rs
 - [x] src/audio/streaming.rs
-- [ ] src/audio/parallel_decoder.rs
+- [x] src/audio/parallel_decoder.rs
 - [ ] src/audio/opus_decoder.rs
 - [ ] src/audio/format.rs
 - [ ] src/audio/stats.rs

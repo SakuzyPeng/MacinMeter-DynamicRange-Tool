@@ -7,9 +7,10 @@ use super::format::AudioFormat;
 use super::stats::ChunkSizeStats;
 use super::streaming::StreamingDecoder;
 use crate::error::{self, AudioResult};
+use crate::processing::sample_conversion::SampleConverter;
 use songbird::input::Input;
 use std::path::Path;
-use symphonia_core::{audio::Signal, codecs::CODEC_TYPE_OPUS, errors::Error as SymphError};
+use symphonia_core::{codecs::CODEC_TYPE_OPUS, errors::Error as SymphError};
 
 /// 🎵 Songbird Opus解码器
 ///
@@ -38,9 +39,34 @@ pub struct SongbirdOpusDecoder {
 
     /// 解码完成标志
     is_finished: bool,
+
+    /// 🚀 样本转换器（启用SIMD优化）
+    sample_converter: SampleConverter,
 }
 
 impl SongbirdOpusDecoder {
+    /// 🚀 打开并解析Opus输入源（公共辅助函数，消除重复）
+    ///
+    /// 统一的 songbird Input 创建和解析逻辑，避免重复创建 tokio runtime。
+    #[allow(clippy::unnecessary_to_owned)]
+    fn open_playable_input(path: &Path) -> AudioResult<Input> {
+        let input = Input::from(songbird::input::File::new(path.to_path_buf()));
+
+        // 创建tokio运行时进行异步解析
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| error::decoding_error("创建tokio运行时失败", e))?;
+
+        rt.block_on(async {
+            input
+                .make_playable_async(
+                    &songbird::input::codecs::CODEC_REGISTRY,
+                    &songbird::input::codecs::PROBE,
+                )
+                .await
+        })
+        .map_err(|e| error::decoding_error("解析opus文件失败", e))
+    }
+
     /// 创建新的Opus解码器
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         let path = path.as_ref().to_path_buf();
@@ -58,31 +84,16 @@ impl SongbirdOpusDecoder {
             chunk_stats: ChunkSizeStats::new(),
             file_path: path,
             is_finished: false,
+            sample_converter: SampleConverter::new(),
         })
     }
 
     /// 探测Opus文件格式信息
     ///
     /// 🎯 使用songbird真实解析opus文件元数据
-    #[allow(clippy::unnecessary_to_owned)]
     fn probe_opus_format(path: &Path) -> AudioResult<AudioFormat> {
-        // 创建songbird输入并解析
-        let input = Input::from(songbird::input::File::new(path.to_path_buf()));
-
-        // 使用tokio运行时进行异步解析
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| error::decoding_error("创建tokio运行时失败", e))?;
-
-        let parsed_input = rt
-            .block_on(async {
-                input
-                    .make_playable_async(
-                        &songbird::input::codecs::CODEC_REGISTRY,
-                        &songbird::input::codecs::PROBE,
-                    )
-                    .await
-            })
-            .map_err(|e| error::decoding_error("解析opus文件失败", e))?;
+        // 🚀 使用公共函数创建并解析输入
+        let parsed_input = Self::open_playable_input(path)?;
 
         // 获取真实的格式信息
         if let Some(parsed) = parsed_input.parsed() {
@@ -103,7 +114,12 @@ impl SongbirdOpusDecoder {
 
             let sample_rate = codec_params.sample_rate.unwrap_or(48000); // Opus默认48kHz
             let channels = codec_params.channels.map(|ch| ch.count()).unwrap_or(2) as u16; // 默认立体声
-            let bits_per_sample = 16; // Opus解码输出通常是16bit
+
+            // 📝 位深语义说明：
+            // - bits_per_sample = 16 表示 Opus 源格式的典型位深（元数据用途）
+            // - 实际解码输出为 f32 格式（通过 SampleConverter 转换）
+            // - 此字段用于格式信息展示，不影响实际样本处理
+            let bits_per_sample = 16;
 
             // 🎯 智能样本数计算：优先使用精确元数据
             let total_samples = if let Some(n_frames) = codec_params.n_frames {
@@ -177,23 +193,8 @@ impl SongbirdOpusDecoder {
             return Ok(());
         }
 
-        // 创建并解析songbird输入源
-        let input = Input::from(songbird::input::File::new(self.file_path.clone()));
-
-        // 使用tokio运行时进行异步解析
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| error::decoding_error("创建tokio运行时失败", e))?;
-
-        let parsed_input = rt
-            .block_on(async {
-                input
-                    .make_playable_async(
-                        &songbird::input::codecs::CODEC_REGISTRY,
-                        &songbird::input::codecs::PROBE,
-                    )
-                    .await
-            })
-            .map_err(|e| error::decoding_error("解析opus文件失败", e))?;
+        // 🚀 使用公共函数创建并解析输入
+        let parsed_input = Self::open_playable_input(&self.file_path)?;
 
         // 验证输入已正确解析
         match &parsed_input {
@@ -232,8 +233,14 @@ impl SongbirdOpusDecoder {
             _ => return Err(error::decoding_error("输入不是Live状态", "")),
         };
 
-        let mut output_samples = Vec::new();
         let target_samples = 4096; // 目标样本数 (per channel)
+
+        // 🚀 性能优化：预分配容量避免realloc
+        let capacity = target_samples * self.format.channels as usize;
+        let mut output_samples = Vec::with_capacity(capacity);
+
+        // 🚀 零成本优化：复用临时向量，避免每次解码包都分配
+        let mut temp_samples = Vec::with_capacity(2048); // 典型包大小缓冲
 
         // 解码循环：读取包并解码直到获得足够样本
         while output_samples.len() / (self.format.channels as usize) < target_samples {
@@ -258,9 +265,11 @@ impl SongbirdOpusDecoder {
             // 解码包
             match parsed.decoder.decode(&packet) {
                 Ok(audio_buf) => {
-                    // 将AudioBuffer转换为f32样本
-                    let samples = Self::convert_audio_buffer_to_f32(&audio_buf)?;
-                    output_samples.extend_from_slice(&samples);
+                    // 🚀 使用统一转换器（启用SIMD优化，复用processing层）
+                    temp_samples.clear(); // 复用缓冲，避免重复分配
+                    self.sample_converter
+                        .convert_buffer_to_interleaved(&audio_buf, &mut temp_samples)?;
+                    output_samples.extend_from_slice(&temp_samples);
                 }
                 Err(SymphError::DecodeError(_)) => {
                     // 跳过解码错误的包，继续处理
@@ -279,102 +288,37 @@ impl SongbirdOpusDecoder {
         let frames_decoded = output_samples.len() as u64 / (self.format.channels as u64);
         self.current_position += frames_decoded;
 
-        // 记录chunk统计
+        // 📊 记录chunk统计（维度：interleaved样本总数）
+        // - add_chunk 接收交错格式的样本总数（frames × channels）
+        // - 用于分析解码块大小分布和性能特征
+        // - 如需帧数统计，应传入 frames_decoded
         self.chunk_stats.add_chunk(output_samples.len());
 
         Ok(Some(output_samples))
-    }
-
-    /// 将symphonia解码结果转换为f32样本
-    fn convert_audio_buffer_to_f32(
-        decoded: &symphonia_core::audio::AudioBufferRef<'_>,
-    ) -> AudioResult<Vec<f32>> {
-        use symphonia_core::audio::AudioBufferRef;
-
-        match decoded {
-            AudioBufferRef::F32(buf) => {
-                let spec = *buf.spec();
-                let duration = buf.frames();
-                let channels = spec.channels.count();
-
-                // 准备输出缓冲区 (interleaved format)
-                let mut output = Vec::with_capacity(duration * channels);
-
-                // 提取所有声道的数据并交错排列
-                for frame_idx in 0..duration {
-                    for ch_idx in 0..channels {
-                        let sample = buf.chan(ch_idx)[frame_idx];
-                        output.push(sample);
-                    }
-                }
-
-                Ok(output)
-            }
-            AudioBufferRef::S32(buf) => {
-                let spec = *buf.spec();
-                let duration = buf.frames();
-                let channels = spec.channels.count();
-
-                let mut output = Vec::with_capacity(duration * channels);
-
-                for frame_idx in 0..duration {
-                    for ch_idx in 0..channels {
-                        let sample = buf.chan(ch_idx)[frame_idx];
-                        // 手动转换i32到f32（范围[-2^31, 2^31-1] -> [-1.0, 1.0]）
-                        let normalized = sample as f64 / (i32::MAX as f64);
-                        output.push(normalized as f32);
-                    }
-                }
-
-                Ok(output)
-            }
-            AudioBufferRef::S16(buf) => {
-                let spec = *buf.spec();
-                let duration = buf.frames();
-                let channels = spec.channels.count();
-
-                let mut output = Vec::with_capacity(duration * channels);
-
-                for frame_idx in 0..duration {
-                    for ch_idx in 0..channels {
-                        let sample = buf.chan(ch_idx)[frame_idx];
-                        // 手动转换i16到f32（范围[-32768, 32767] -> [-1.0, 1.0]）
-                        let normalized = sample as f32 / (i16::MAX as f32);
-                        output.push(normalized);
-                    }
-                }
-
-                Ok(output)
-            }
-            _ => Err(error::decoding_error("不支持的音频格式", "")),
-        }
     }
 }
 
 impl StreamingDecoder for SongbirdOpusDecoder {
     fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
-        // 如果缓冲区中还有数据，优先返回缓冲区数据
-        if self.buffer_offset < self.sample_buffer.len() {
-            // 返回缓冲区中的一个chunk（例如1024个样本）
-            let chunk_size = 1024.min(self.sample_buffer.len() - self.buffer_offset);
-            let chunk =
-                self.sample_buffer[self.buffer_offset..self.buffer_offset + chunk_size].to_vec();
-            self.buffer_offset += chunk_size;
-
-            // 注意：current_position已经在read_next_chunk()中正确更新，这里不需要再次增加
-
-            return Ok(Some(chunk));
-        }
-
-        // 缓冲区用完了，读取下一块数据
-        self.buffer_offset = 0;
-        match self.read_next_chunk()? {
-            Some(new_data) => {
-                self.sample_buffer = new_data;
-                // 递归调用自己来返回第一个chunk
-                self.next_chunk()
+        loop {
+            // 如果缓冲区中还有数据，优先返回缓冲区数据
+            if self.buffer_offset < self.sample_buffer.len() {
+                let chunk_size = 1024.min(self.sample_buffer.len() - self.buffer_offset);
+                let chunk = self.sample_buffer[self.buffer_offset..self.buffer_offset + chunk_size]
+                    .to_vec();
+                self.buffer_offset += chunk_size;
+                return Ok(Some(chunk));
             }
-            None => Ok(None), // 没有更多数据
+
+            // 缓冲区用完了，读取下一块数据
+            self.buffer_offset = 0;
+            match self.read_next_chunk()? {
+                Some(new_data) => {
+                    self.sample_buffer = new_data;
+                    // 🔄 迭代模式：继续循环从新数据中返回第一个chunk
+                }
+                None => return Ok(None),
+            }
         }
     }
 
