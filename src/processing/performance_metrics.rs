@@ -79,7 +79,7 @@ impl PerformanceStats {
     ///
     /// # 返回值
     ///
-    /// 返回MB/s吞吐量
+    /// 返回MB/s吞吐量（按 1 MiB = 1024×1024 字节计算，非SI单位的1000×1000）
     ///
     /// # 示例
     ///
@@ -109,7 +109,7 @@ impl PerformanceStats {
     ///
     /// # 返回值
     ///
-    /// 返回MB/s吞吐量（基于f32样本）
+    /// 返回MB/s吞吐量（基于f32样本，按 1 MiB = 1024×1024 字节计算）
     pub fn throughput_mb_per_second_f32(&self) -> f64 {
         self.throughput_mb_per_second(32)
     }
@@ -178,6 +178,10 @@ impl PerformanceEvaluator {
     /// **重要**: 直接依据SIMD能力位判断，而非recommended_parallelism()，
     /// 以支持未来AVX2实现且独立建模ARM NEON。
     ///
+    /// **实现状态**: AVX/AVX2估算是面向未来的预估值。当前实现仅支持SSE2/NEON
+    /// (4宽并行)，但估算已按AVX因子计算以反映硬件潜力。实际运行时会降级到
+    /// SSE2/NEON路径。
+    ///
     /// # 参数
     ///
     /// * `sample_count` - 处理的样本数量（每声道）
@@ -233,11 +237,17 @@ impl PerformanceEvaluator {
             1.0
         };
 
-        // 最终加速比保证 >= 1.0（至少不会比标量慢）
-        let final_speedup = (base_speedup * size_factor).max(1.0);
+        // 最终加速比计算（标量路径不应因数据集大小"加速"）
+        let final_speedup = if base_speedup == 1.0 {
+            // 标量实现：无论数据集大小，加速比恒为1.0
+            1.0
+        } else {
+            // SIMD实现：应用数据集大小系数，保证 >= 1.0
+            (base_speedup * size_factor).max(1.0)
+        };
 
         debug_performance!(
-            "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x (能力={:?})",
+            "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x (能力={})",
             base_speedup,
             size_factor,
             final_speedup,
