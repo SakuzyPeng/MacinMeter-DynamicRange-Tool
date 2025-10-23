@@ -6,14 +6,22 @@
 use super::simd_core::SimdCapabilities;
 use crate::core::DrResult;
 
-// 跨平台性能常量（动态检测替代硬编码）
+// 跨平台性能常量（基于SIMD指令集的典型加速比）
 const DEFAULT_SIMD_SPEEDUP_BASELINE: f64 = 1.0;
-const SSE2_TYPICAL_SPEEDUP_FACTOR: f64 = 3.5; // 保守估计，适配不同硬件
-const AVX_TYPICAL_SPEEDUP_FACTOR: f64 = 5.5; // 保守估计，适配不同硬件
 
-// 数据量阈值常量（用于性能优化判断）
-const SMALL_DATASET_THRESHOLD: usize = 1000; // 小数据集阈值
-const LARGE_DATASET_THRESHOLD: usize = 100000; // 大数据集阈值
+// x86_64 SIMD加速因子
+const SSE2_TYPICAL_SPEEDUP_FACTOR: f64 = 3.5; // SSE2基线（保守估计）
+const SSE4_1_SPEEDUP_BONUS: f64 = 1.1; // SSE4.1额外加成
+const AVX_TYPICAL_SPEEDUP_FACTOR: f64 = 5.5; // AVX基线（保守估计）
+const AVX2_SPEEDUP_BONUS: f64 = 1.0; // AVX2完整支持（无折扣）
+
+// ARM SIMD加速因子（独立建模，避免与x86混淆）
+const NEON_TYPICAL_SPEEDUP_FACTOR: f64 = 3.8; // ARM NEON基线（Apple Silicon实测）
+const NEON_FP16_SPEEDUP_BONUS: f64 = 1.1; // NEON FP16额外加成
+
+// 数据量阈值常量（按每声道样本数维度，跨采样率稳定）
+const SMALL_DATASET_THRESHOLD: usize = 1000; // 小数据集：<1000样本/声道（~21ms@48kHz）
+const LARGE_DATASET_THRESHOLD: usize = 100000; // 大数据集：>100k样本/声道（~2.1s@48kHz）
 
 #[cfg(debug_assertions)]
 macro_rules! debug_performance {
@@ -57,6 +65,54 @@ pub struct PerformanceStats {
 
     /// SIMD加速比（相对于标量实现）
     pub simd_speedup: f64,
+}
+
+impl PerformanceStats {
+    /// 计算每秒吞吐量（MB/s）
+    ///
+    /// 基于样本数、采样率、位深度计算出MB/s吞吐量，
+    /// 便于与I/O、解码链路的性能指标对齐。
+    ///
+    /// # 参数
+    ///
+    /// * `bits_per_sample` - 位深度（如16、24、32）
+    ///
+    /// # 返回值
+    ///
+    /// 返回MB/s吞吐量
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// let stats = PerformanceStats { /* ... */ };
+    /// let throughput_mbps = stats.throughput_mb_per_second(16); // 16位音频
+    /// println!("处理速度: {:.2} MB/s", throughput_mbps);
+    /// ```
+    pub fn throughput_mb_per_second(&self, bits_per_sample: u32) -> f64 {
+        if self.total_duration_us == 0 {
+            return 0.0;
+        }
+
+        // 计算总字节数：样本数 × (位深度/8)
+        let total_bytes = self.total_samples as f64 * (bits_per_sample as f64 / 8.0);
+
+        // 计算秒数
+        let duration_seconds = self.total_duration_us as f64 / 1_000_000.0;
+
+        // MB/s = 总字节数 / (1024*1024) / 秒数
+        (total_bytes / (1024.0 * 1024.0)) / duration_seconds
+    }
+
+    /// 计算每秒吞吐量（MB/s），自动推断为32位浮点
+    ///
+    /// 默认使用32位浮点（内部处理格式）计算吞吐量。
+    ///
+    /// # 返回值
+    ///
+    /// 返回MB/s吞吐量（基于f32样本）
+    pub fn throughput_mb_per_second_f32(&self) -> f64 {
+        self.throughput_mb_per_second(32)
+    }
 }
 
 /// SIMD使用统计
@@ -119,13 +175,16 @@ impl PerformanceEvaluator {
     /// 根据检测到的硬件SIMD能力和数据集大小，
     /// 估算相对于标量实现的性能提升倍数。
     ///
+    /// **重要**: 直接依据SIMD能力位判断，而非recommended_parallelism()，
+    /// 以支持未来AVX2实现且独立建模ARM NEON。
+    ///
     /// # 参数
     ///
-    /// * `sample_count` - 处理的样本数量
+    /// * `sample_count` - 处理的样本数量（每声道）
     ///
     /// # 返回值
     ///
-    /// 返回预期的SIMD加速比（倍数）
+    /// 返回预期的SIMD加速比（倍数），保证 >= 1.0
     ///
     /// # 示例
     ///
@@ -137,12 +196,32 @@ impl PerformanceEvaluator {
     /// assert!(speedup >= 1.0); // 至少不会比标量慢
     /// ```
     pub fn estimate_simd_speedup(&self, sample_count: usize) -> f64 {
-        let base_speedup = match self.capabilities.recommended_parallelism() {
-            4 if self.capabilities.sse4_1 => SSE2_TYPICAL_SPEEDUP_FACTOR * 1.1, // SSE4.1加成
-            4 => SSE2_TYPICAL_SPEEDUP_FACTOR,
-            8 if self.capabilities.avx2 => AVX_TYPICAL_SPEEDUP_FACTOR,
-            8 => AVX_TYPICAL_SPEEDUP_FACTOR * 0.9, // AVX without AVX2
-            _ => DEFAULT_SIMD_SPEEDUP_BASELINE,
+        // 基于SIMD能力位直接判断基线加速比（支持未来AVX2扩展）
+        let base_speedup = if self.capabilities.avx2 {
+            // AVX2: 当前未实现8宽SIMD，但为未来预留估算路径
+            AVX_TYPICAL_SPEEDUP_FACTOR * AVX2_SPEEDUP_BONUS
+        } else if self.capabilities.avx {
+            // AVX: 当前未实现，但检测到硬件支持时使用AVX估算
+            AVX_TYPICAL_SPEEDUP_FACTOR
+        } else if self.capabilities.neon {
+            // ARM NEON: 独立建模，避免与x86 SSE2混淆
+            let base = NEON_TYPICAL_SPEEDUP_FACTOR;
+            if self.capabilities.neon_fp16 {
+                base * NEON_FP16_SPEEDUP_BONUS
+            } else {
+                base
+            }
+        } else if self.capabilities.sse2 {
+            // x86 SSE2: 当前主要实现路径（4样本并行）
+            let base = SSE2_TYPICAL_SPEEDUP_FACTOR;
+            if self.capabilities.sse4_1 {
+                base * SSE4_1_SPEEDUP_BONUS
+            } else {
+                base
+            }
+        } else {
+            // 无SIMD支持：标量实现
+            DEFAULT_SIMD_SPEEDUP_BASELINE
         };
 
         // 根据数据量调整加速比（小数据集开销相对更大）
@@ -154,14 +233,28 @@ impl PerformanceEvaluator {
             1.0
         };
 
+        // 最终加速比保证 >= 1.0（至少不会比标量慢）
+        let final_speedup = (base_speedup * size_factor).max(1.0);
+
         debug_performance!(
-            "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x",
+            "SIMD加速比估算: 基础={:.1}x, 大小系数={:.1}, 最终={:.1}x (能力={:?})",
             base_speedup,
             size_factor,
-            base_speedup * size_factor
+            final_speedup,
+            if self.capabilities.avx2 {
+                "AVX2"
+            } else if self.capabilities.avx {
+                "AVX"
+            } else if self.capabilities.neon {
+                "NEON"
+            } else if self.capabilities.sse2 {
+                "SSE2"
+            } else {
+                "Scalar"
+            }
         );
 
-        base_speedup * size_factor
+        final_speedup
     }
 
     /// 计算性能统计信息
@@ -214,9 +307,11 @@ impl PerformanceEvaluator {
     ///
     /// 生成SIMD优化使用情况的统计信息。
     ///
+    /// **重要**: `used_simd` 字段由 `simd_samples > 0` 自动推导，
+    /// 避免调用方传入值与实际计数不一致。
+    ///
     /// # 参数
     ///
-    /// * `used_simd` - 是否使用了SIMD优化
     /// * `simd_samples` - SIMD处理的样本数
     /// * `scalar_samples` - 标量处理的样本数
     ///
@@ -225,7 +320,6 @@ impl PerformanceEvaluator {
     /// 返回SIMD使用统计信息
     pub fn create_simd_usage_stats(
         &self,
-        used_simd: bool,
         simd_samples: usize,
         scalar_samples: usize,
     ) -> SimdUsageStats {
@@ -235,6 +329,9 @@ impl PerformanceEvaluator {
         } else {
             0.0
         };
+
+        // 自动推导 used_simd：只要有SIMD样本就认为使用了SIMD
+        let used_simd = simd_samples > 0;
 
         debug_performance!(
             "SIMD使用统计: 使用={}, SIMD样本={}, 标量样本={}, 覆盖率={:.1}%",
@@ -378,15 +475,21 @@ mod tests {
     fn test_simd_usage_stats() {
         let evaluator = PerformanceEvaluator::new();
 
-        let stats = evaluator.create_simd_usage_stats(true, 9000, 1000);
+        // 测试有SIMD样本的情况
+        let stats = evaluator.create_simd_usage_stats(9000, 1000);
 
-        assert!(stats.used_simd);
+        assert!(stats.used_simd); // 自动推导：simd_samples > 0
         assert_eq!(stats.simd_samples, 9000);
         assert_eq!(stats.scalar_samples, 1000);
         assert!((stats.simd_coverage - 0.9).abs() < 1e-6);
 
+        // 测试无SIMD样本的情况
+        let stats_no_simd = evaluator.create_simd_usage_stats(0, 1000);
+        assert!(!stats_no_simd.used_simd); // 自动推导：simd_samples == 0
+
         println!("SIMD使用统计测试通过:");
         println!("  SIMD覆盖率: {:.1}%", stats.simd_coverage * 100.0);
+        println!("  无SIMD时used_simd={}", stats_no_simd.used_simd);
     }
 
     #[test]

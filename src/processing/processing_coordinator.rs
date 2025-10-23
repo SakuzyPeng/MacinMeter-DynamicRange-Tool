@@ -129,8 +129,9 @@ impl ProcessingCoordinator {
         // 注意：当前假设所有样本都走SIMD路径（Processing层默认行为）。
         // 实际的SIMD覆盖情况在ChannelSeparator和SampleConverter层有更准确的统计。
         // 如果上游存在标量回退路径（如某些边界条件），应从实际转换器传入真实计数。
+        //
+        // used_simd 现在由 create_simd_usage_stats 内部自动推导（simd_samples > 0）
         let simd_usage = self.performance_evaluator.create_simd_usage_stats(
-            true,          // 始终启用SIMD优化
             samples.len(), // 假设：所有样本都通过SIMD路径
             0,             // 假设：无标量回退
         );
