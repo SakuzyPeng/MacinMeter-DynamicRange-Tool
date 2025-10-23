@@ -99,19 +99,10 @@ impl ProcessingCoordinator {
         let samples_per_channel = samples.len() / channel_count;
 
         debug_coordinator!(
-            "🎛️ Processing协调器启动: channels={}, samples_per_channel={}, 委托模式=始终启用",
+            "🎛️ Processing协调器启动: channels={}, samples_per_channel={}, total_samples={}, 委托模式=始终启用",
             channel_count,
-            samples_per_channel
-        );
-
-        // 🔍 [TRACE] ProcessingCoordinator启动
-        #[cfg(debug_assertions)]
-        eprintln!("🔍 [COORDINATOR] ProcessingCoordinator::process_channels 启动");
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "🔍 [COORDINATOR] 输入参数: samples={}, channels={}",
-            samples.len(),
-            channel_count
+            samples_per_channel,
+            samples.len()
         );
 
         // 🎛️ 智能并行协调（多声道并行，单声道顺序）
@@ -134,10 +125,14 @@ impl ProcessingCoordinator {
         );
 
         // 🎛️ 委托SIMD使用统计服务
+        //
+        // 注意：当前假设所有样本都走SIMD路径（Processing层默认行为）。
+        // 实际的SIMD覆盖情况在ChannelSeparator和SampleConverter层有更准确的统计。
+        // 如果上游存在标量回退路径（如某些边界条件），应从实际转换器传入真实计数。
         let simd_usage = self.performance_evaluator.create_simd_usage_stats(
             true,          // 始终启用SIMD优化
-            samples.len(), // 所有样本都通过SIMD路径
-            0,             // 无标量回退
+            samples.len(), // 假设：所有样本都通过SIMD路径
+            0,             // 假设：无标量回退
         );
 
         debug_coordinator!(
@@ -169,19 +164,10 @@ impl ProcessingCoordinator {
             .into_par_iter()
             .map(|channel_idx| {
                 // 🎛️ 委托声道分离服务
-                #[cfg(debug_assertions)]
-                eprintln!("🔍 [COORDINATOR] 并行处理声道{channel_idx} - 委托ChannelSeparator");
-
                 let channel_samples = self.channel_separator.extract_channel_samples_optimized(
                     samples,
                     channel_idx,
                     channel_count,
-                );
-
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "🔍 [COORDINATOR] 声道{channel_idx} 分离完成: {} 个样本",
-                    channel_samples.len()
                 );
 
                 debug_coordinator!(
@@ -191,15 +177,12 @@ impl ProcessingCoordinator {
                 );
 
                 // 🎛️ 委托算法层进行DR计算（保持算法中立）
-                #[cfg(debug_assertions)]
-                eprintln!("🔍 [COORDINATOR] 声道{channel_idx} 开始回调DR算法");
-
                 let result = channel_processor(&channel_samples, channel_idx);
 
-                #[cfg(debug_assertions)]
                 if let Ok(ref dr_result) = result {
-                    eprintln!(
-                        "🔍 [COORDINATOR] 声道{channel_idx} DR计算完成: DR={:.2}",
+                    debug_coordinator!(
+                        "🎛️ 声道{} DR计算完成: DR={:.2}",
+                        channel_idx,
                         dr_result.dr_value
                     );
                 }
