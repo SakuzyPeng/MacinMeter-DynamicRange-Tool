@@ -27,7 +27,7 @@
 - [x] src/audio/universal_decoder.rs
 - [x] src/audio/streaming.rs
 - [x] src/audio/parallel_decoder.rs
-- [ ] src/audio/opus_decoder.rs
+- [x] src/audio/opus_decoder.rs
 - [ ] src/audio/format.rs
 - [ ] src/audio/stats.rs
 - [ ] src/audio/mod.rs

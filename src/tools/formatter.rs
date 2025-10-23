@@ -77,7 +77,7 @@ fn calculate_actual_bitrate(
     codec_fallback: &str,
 ) -> AudioResult<u32> {
     // 🎯 部分分析时无法准确计算比特率（样本数不完整）
-    if format.is_partial {
+    if format.is_partial() {
         return Err(AudioError::InvalidInput(
             "部分分析模式下无法准确计算比特率".to_string(),
         ));
@@ -499,10 +499,10 @@ pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFo
     let mut output = String::new();
 
     // 🎯 部分分析警告（如果跳过了损坏的音频包）
-    if format.is_partial {
+    if format.is_partial() {
         output.push_str(&format!(
             "⚠️  部分分析警告：跳过了 {} 个损坏的音频包\n",
-            format.skipped_packets
+            format.skipped_packets()
         ));
         output.push_str("    分析结果可能不完整，建议检查源文件质量。\n\n");
     }

@@ -326,7 +326,7 @@ fn test_truncated_wav() {
                     dr.dr_value
                 );
                 // 如果启用了损坏包跳过，可能会成功但标记为部分分析
-                if format.is_partial {
+                if format.is_partial() {
                     println!("  ✓ 正确标记为部分分析");
                 }
             }

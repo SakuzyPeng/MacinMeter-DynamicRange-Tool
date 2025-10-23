@@ -17,8 +17,8 @@ fn test_audio_format_new() {
     assert_eq!(format.bits_per_sample, 16);
     assert_eq!(format.sample_count, 1000000);
     assert_eq!(format.codec_type, None);
-    assert!(!format.is_partial);
-    assert_eq!(format.skipped_packets, 0);
+    assert!(!format.is_partial());
+    assert_eq!(format.skipped_packets(), 0);
 
     println!("✓ AudioFormat::new() 创建成功");
 }
@@ -32,8 +32,8 @@ fn test_audio_format_with_codec() {
     assert_eq!(format.bits_per_sample, 24);
     assert_eq!(format.sample_count, 2000000);
     assert_eq!(format.codec_type, Some(CODEC_TYPE_FLAC));
-    assert!(!format.is_partial);
-    assert_eq!(format.skipped_packets, 0);
+    assert!(!format.is_partial());
+    assert_eq!(format.skipped_packets(), 0);
 
     println!("✓ AudioFormat::with_codec() 创建成功，codec_type已设置");
 }
@@ -100,7 +100,8 @@ fn test_validate_zero_channels() {
 
 #[test]
 fn test_validate_invalid_bit_depth() {
-    let invalid_depths = [8, 12, 20, 48, 64];
+    // 更新：现在支持8/16/24/32/64，所以测试不支持的位深
+    let invalid_depths = [12, 20, 48, 128];
 
     for &bits in &invalid_depths {
         let format = AudioFormat::new(44100, 2, bits, 1000000);
@@ -143,13 +144,13 @@ fn test_validate_valid_formats() {
 fn test_mark_as_partial_no_skipped() {
     let mut format = AudioFormat::new(44100, 2, 16, 1000000);
 
-    assert!(!format.is_partial);
-    assert_eq!(format.skipped_packets, 0);
+    assert!(!format.is_partial());
+    assert_eq!(format.skipped_packets(), 0);
 
     format.mark_as_partial(0);
 
-    assert!(format.is_partial);
-    assert_eq!(format.skipped_packets, 0);
+    assert!(format.is_partial());
+    assert_eq!(format.skipped_packets(), 0);
 
     println!("✓ 标记为部分分析（0个跳过包）");
 }
@@ -160,8 +161,8 @@ fn test_mark_as_partial_with_skipped() {
 
     format.mark_as_partial(42);
 
-    assert!(format.is_partial);
-    assert_eq!(format.skipped_packets, 42);
+    assert!(format.is_partial());
+    assert_eq!(format.skipped_packets(), 42);
 
     println!("✓ 标记为部分分析（42个跳过包）");
 }
@@ -171,12 +172,12 @@ fn test_mark_as_partial_multiple_times() {
     let mut format = AudioFormat::new(44100, 2, 16, 1000000);
 
     format.mark_as_partial(10);
-    assert_eq!(format.skipped_packets, 10);
+    assert_eq!(format.skipped_packets(), 10);
 
     // 再次标记会覆盖
     format.mark_as_partial(20);
-    assert_eq!(format.skipped_packets, 20);
-    assert!(format.is_partial);
+    assert_eq!(format.skipped_packets(), 20);
+    assert!(format.is_partial());
 
     println!("✓ 多次标记部分分析（最后一次覆盖）");
 }
@@ -188,7 +189,7 @@ fn test_estimated_file_size_16bit_stereo() {
     let format = AudioFormat::new(44100, 2, 16, 44100); // 1秒，立体声，16bit
 
     let expected = 44100 * 2 * 2; // samples * channels * bytes_per_sample
-    let actual = format.estimated_file_size();
+    let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
     println!("✓ 16bit立体声文件大小估算: {actual} bytes");
@@ -199,7 +200,7 @@ fn test_estimated_file_size_24bit_mono() {
     let format = AudioFormat::new(48000, 1, 24, 48000); // 1秒，单声道，24bit
 
     let expected = 48000 * 3; // samples * (24/8 bytes_per_sample)
-    let actual = format.estimated_file_size();
+    let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
     println!("✓ 24bit单声道文件大小估算: {actual} bytes");
@@ -210,7 +211,7 @@ fn test_estimated_file_size_32bit_stereo() {
     let format = AudioFormat::new(96000, 2, 32, 96000); // 1秒，立体声，32bit
 
     let expected = 96000 * 2 * 4; // samples * channels * (32/8)
-    let actual = format.estimated_file_size();
+    let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
     println!("✓ 32bit立体声文件大小估算: {actual} bytes");
@@ -220,15 +221,15 @@ fn test_estimated_file_size_32bit_stereo() {
 fn test_estimated_file_size_edge_cases() {
     // 零样本
     let format_zero = AudioFormat::new(44100, 2, 16, 0);
-    assert_eq!(format_zero.estimated_file_size(), 0);
+    assert_eq!(format_zero.estimated_pcm_size_bytes(), 0);
 
     // 单个样本
     let format_one = AudioFormat::new(44100, 2, 16, 1);
-    assert_eq!(format_one.estimated_file_size(), 4); // 1 * 2 * 2
+    assert_eq!(format_one.estimated_pcm_size_bytes(), 4); // 1 * 2 * 2
 
     // 极大样本数
     let format_large = AudioFormat::new(44100, 2, 16, u64::MAX / 1000);
-    let size = format_large.estimated_file_size();
+    let size = format_large.estimated_pcm_size_bytes();
     assert!(size > 0);
 
     println!("✓ 文件大小估算边界情况通过");
@@ -326,10 +327,10 @@ fn test_update_sample_count_affects_duration() {
 fn test_update_sample_count_affects_file_size() {
     let mut format = AudioFormat::new(44100, 2, 16, 44100);
 
-    let size_before = format.estimated_file_size();
+    let size_before = format.estimated_pcm_size_bytes();
 
     format.update_sample_count(88200); // 样本数翻倍
-    let size_after = format.estimated_file_size();
+    let size_after = format.estimated_pcm_size_bytes();
 
     assert_eq!(size_after, size_before * 2);
 
@@ -383,7 +384,7 @@ fn test_typical_flac_format() {
 
     assert!(format.validate().is_ok());
     assert!((format.duration_seconds() - 241.678).abs() < 0.1); // 约4分钟
-    assert_eq!(format.estimated_file_size(), 10662000 * 2 * 3);
+    assert_eq!(format.estimated_pcm_size_bytes(), 10662000 * 2 * 3);
 
     println!("✓ 典型FLAC格式场景测试通过");
 }
@@ -393,7 +394,7 @@ fn test_partial_analysis_workflow() {
     let mut format = AudioFormat::new(44100, 2, 16, 1000000);
 
     // 初始状态
-    assert!(!format.is_partial);
+    assert!(!format.is_partial());
 
     // 验证通过
     assert!(format.validate().is_ok());
@@ -403,8 +404,8 @@ fn test_partial_analysis_workflow() {
 
     // 部分分析后仍然有效
     assert!(format.validate().is_ok());
-    assert!(format.is_partial);
-    assert_eq!(format.skipped_packets, 15);
+    assert!(format.is_partial());
+    assert_eq!(format.skipped_packets(), 15);
 
     println!("✓ 部分分析工作流测试通过");
 }
