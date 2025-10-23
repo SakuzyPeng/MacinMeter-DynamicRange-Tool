@@ -16,6 +16,8 @@
 use crate::processing::ChannelData;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+use std::sync::Once;
 
 /// SIMD处理器能力检测结果（支持x86_64和ARM aarch64）
 #[derive(Debug, Clone, PartialEq)]
@@ -105,21 +107,25 @@ impl SimdCapabilities {
     }
 
     /// 是否支持基础SIMD加速（SSE2或NEON）
+    #[inline]
     pub fn has_basic_simd(&self) -> bool {
         self.sse2 || self.neon
     }
 
     /// 是否支持高级SIMD优化（SSE4.1+或NEON FP16+）
+    #[inline]
     pub fn has_advanced_simd(&self) -> bool {
         self.sse4_1 || self.neon_fp16
     }
 
     /// 获取建议的并行度（一次处理的样本数）
+    ///
+    /// 注意：当前仅实现了SSE2/NEON路径(4宽度)，AVX2支持待未来扩展
     pub fn recommended_parallelism(&self) -> usize {
-        if self.avx2 {
-            8 // AVX2: 8x f32 并行
-        } else if self.sse2 || self.neon {
-            4 // SSE2/NEON: 4x f32 并行
+        // 注意：即使检测到AVX2支持，当前实现仅支持SSE2/NEON (4样本并行)
+        // AVX2实现(8样本并行)将在未来版本中添加
+        if self.sse2 || self.neon {
+            4 // SSE2/NEON: 4x f32 并行 (当前唯一实现的SIMD路径)
         } else {
             1 // 标量处理
         }
@@ -136,50 +142,31 @@ pub struct SimdChannelData {
 
     /// SIMD能力缓存
     capabilities: SimdCapabilities,
-
-    /// 样本缓冲区（用于批量处理）
-    sample_buffer: Vec<f32>,
-
-    /// 缓冲区容量（对齐到SIMD边界）
-    buffer_capacity: usize,
 }
 
 impl SimdChannelData {
     /// 创建新的SIMD优化声道数据处理器
-    ///
-    /// # 参数
-    ///
-    /// * `buffer_size` - 样本缓冲区大小，会自动对齐到SIMD边界
     ///
     /// # 示例
     ///
     /// ```ignore
     /// use macinmeter_dr_tool::processing::SimdChannelData;
     ///
-    /// let processor = SimdChannelData::new(1024);
+    /// let processor = SimdChannelData::new();
     /// println!("SIMD支持: {}", processor.has_simd_support());
     /// ```
-    pub fn new(buffer_size: usize) -> Self {
-        let capabilities = SimdCapabilities::detect();
-        let parallelism = capabilities.recommended_parallelism();
-
-        // 将缓冲区大小对齐到SIMD边界
-        let aligned_size = buffer_size.div_ceil(parallelism) * parallelism;
-
-        Self {
-            inner: ChannelData::new(),
-            capabilities,
-            sample_buffer: Vec::with_capacity(aligned_size),
-            buffer_capacity: aligned_size,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// 检查是否支持SIMD加速
+    #[inline]
     pub fn has_simd_support(&self) -> bool {
         self.capabilities.has_basic_simd()
     }
 
     /// 获取SIMD能力信息
+    #[inline]
     pub fn capabilities(&self) -> &SimdCapabilities {
         &self.capabilities
     }
@@ -202,7 +189,7 @@ impl SimdChannelData {
     /// ```ignore
     /// use macinmeter_dr_tool::processing::SimdChannelData;
     ///
-    /// let mut processor = SimdChannelData::new(1024);
+    /// let mut processor = SimdChannelData::new();
     /// let samples = vec![0.1, 0.2, 0.3, 0.4, 0.5];
     /// let processed = processor.process_samples_simd(&samples);
     /// assert_eq!(processed, 5);
@@ -219,7 +206,13 @@ impl SimdChannelData {
                 // 该函数内部会正确处理数组边界，确保SIMD和标量处理不会越界。
                 unsafe { self.process_samples_sse2(samples) }
             }
-            #[cfg(not(target_arch = "x86_64"))]
+            #[cfg(target_arch = "aarch64")]
+            {
+                // SAFETY: process_samples_neon需要NEON支持，已通过capabilities.has_basic_simd()验证。
+                // 该函数内部会正确处理数组边界，确保SIMD和标量处理不会越界。
+                unsafe { self.process_samples_neon(samples) }
+            }
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
             {
                 self.process_samples_scalar(samples)
             }
@@ -241,6 +234,9 @@ impl SimdChannelData {
         let len = samples.len();
         let mut i = 0;
 
+        // 🚀 SSE2向量化累加器：2个f64值 (128位寄存器)
+        let mut sum_pd = _mm_setzero_pd();
+
         // SIMD加速RMS计算：4样本并行处理
         while i + 4 <= len {
             // SAFETY: 使用_mm_loadu_ps从未对齐内存加载4个f32值。
@@ -249,25 +245,116 @@ impl SimdChannelData {
             // _mm_loadu_ps允许未对齐访问，不要求16字节对齐，因此总是安全的。
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
-            // 🎯 修复关键精度问题：直接以f64精度处理，避免f32中转精度损失
-            // 为匹配foobar2000的累加精度，将4个样本逐个转换为f64处理
-            // SAFETY: 使用_mm_storeu_ps将SSE向量存储到栈上数组。
-            // sample_results是有效的4元素f32数组，已正确初始化。
-            // _mm_storeu_ps允许未对齐访问，安全地将samples_vec的4个值写入数组。
-            // 后续的f64转换和累加是纯标量操作，无unsafe风险。
+            // 🎯 真正向量化：直接用SSE2指令做f32→f64转换和平方累加
+            // SAFETY: SSE2向量化f32→f64转换和平方累加
+            // _mm_cvtps_pd将__m128的低2个f32转为2个f64 (__m128d)
+            // _mm_movehl_ps将高2个f32移到低位，再用_mm_cvtps_pd转换
+            // 所有操作都是纯SIMD寄存器运算，无内存访问风险
             unsafe {
-                // 提取4个f32样本到数组
-                let mut sample_results = [0.0f32; 4];
-                _mm_storeu_ps(sample_results.as_mut_ptr(), samples_vec);
+                // 低2个f32 → 2个f64
+                let lo_pd = _mm_cvtps_pd(samples_vec);
+                // 高2个f32 → 2个f64 (先用movehl_ps将高半部分移到低位)
+                let hi_ps = _mm_movehl_ps(samples_vec, samples_vec);
+                let hi_pd = _mm_cvtps_pd(hi_ps);
 
-                // 直接以f64精度计算平方并累加，避免f32平方后的精度损失
-                for sample in sample_results {
-                    let sample_f64 = sample as f64;
-                    self.inner.rms_accumulator += sample_f64 * sample_f64;
-                }
+                // 向量化平方并累加：sum_pd += lo_pd²
+                sum_pd = _mm_add_pd(sum_pd, _mm_mul_pd(lo_pd, lo_pd));
+                // 向量化平方并累加：sum_pd += hi_pd²
+                sum_pd = _mm_add_pd(sum_pd, _mm_mul_pd(hi_pd, hi_pd));
             }
 
             i += 4;
+        }
+
+        // 🔧 水平提取：将2个f64累加到标量
+        // SAFETY: _mm_storeu_pd将__m128d存储到未对齐的f64数组
+        // sum_array是有效的2元素f64数组，已正确初始化
+        unsafe {
+            let mut sum_array = [0.0f64; 2];
+            _mm_storeu_pd(sum_array.as_mut_ptr(), sum_pd);
+            self.inner.rms_accumulator += sum_array[0] + sum_array[1];
+        }
+
+        // 🎯 处理剩余样本（标量方式，确保完整性）
+        while i < len {
+            let sample = samples[i] as f64;
+            self.inner.rms_accumulator += sample * sample;
+            i += 1;
+        }
+
+        // Peak检测使用标量方式确保跨架构一致性
+        for &sample in samples {
+            let abs_sample = sample.abs() as f64;
+
+            if abs_sample > self.inner.peak_primary {
+                // 新样本成为主Peak，原主Peak降为次Peak
+                self.inner.peak_secondary = self.inner.peak_primary;
+                self.inner.peak_primary = abs_sample;
+            } else if abs_sample > self.inner.peak_secondary {
+                // 新样本成为次Peak
+                self.inner.peak_secondary = abs_sample;
+            }
+        }
+
+        len
+    }
+
+    /// ARM NEON优化的样本处理（unsafe）
+    ///
+    /// 使用128位NEON向量并行处理4个f32样本：
+    /// - 向量化RMS累积（平方和）
+    /// - 标量处理Peak检测确保精度一致性
+    /// - 完整处理所有样本（包括剩余样本）
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unused_unsafe)] // 🎯 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
+    unsafe fn process_samples_neon(&mut self, samples: &[f32]) -> usize {
+        use std::arch::aarch64::*;
+
+        let len = samples.len();
+        let mut i = 0;
+
+        // 🚀 NEON向量化累加器：2个f64值 (128位寄存器)
+        let mut sum_pd = vdupq_n_f64(0.0);
+
+        // SIMD加速RMS计算：4样本并行处理
+        while i + 4 <= len {
+            // SAFETY: 使用vld1q_f32从未对齐内存加载4个f32值。
+            // 前置条件：i + 4 <= len，确保有4个有效样本可读取。
+            // samples.as_ptr().add(i)计算的指针保证在数组边界内：i最大为len-4。
+            // vld1q_f32允许未对齐访问，因此总是安全的。
+            let samples_vec = unsafe { vld1q_f32(samples.as_ptr().add(i)) };
+
+            // 🎯 真正向量化：直接用NEON指令做f32→f64转换和平方累加
+            // SAFETY: NEON向量化f32→f64转换和平方累加
+            // vcvt_f64_f32将float32x2_t的2个f32转为2个f64 (float64x2_t)
+            // vget_low_f32和vget_high_f32拆分4个f32为低2个和高2个
+            // 所有操作都是纯NEON寄存器运算，无内存访问风险
+            unsafe {
+                // 拆分4个f32为低2个和高2个
+                let lo_f32 = vget_low_f32(samples_vec); // 低2个f32
+                let hi_f32 = vget_high_f32(samples_vec); // 高2个f32
+
+                // 转换为f64
+                let lo_pd = vcvt_f64_f32(lo_f32); // 低2个f32 → 2个f64
+                let hi_pd = vcvt_f64_f32(hi_f32); // 高2个f32 → 2个f64
+
+                // 向量化平方并累加：sum_pd += lo_pd²
+                sum_pd = vaddq_f64(sum_pd, vmulq_f64(lo_pd, lo_pd));
+                // 向量化平方并累加：sum_pd += hi_pd²
+                sum_pd = vaddq_f64(sum_pd, vmulq_f64(hi_pd, hi_pd));
+            }
+
+            i += 4;
+        }
+
+        // 🔧 水平提取：将2个f64累加到标量
+        // SAFETY: vst1q_f64将float64x2_t存储到未对齐的f64数组
+        // sum_array是有效的2元素f64数组，已正确初始化
+        unsafe {
+            let mut sum_array = [0.0f64; 2];
+            vst1q_f64(sum_array.as_mut_ptr(), sum_pd);
+            self.inner.rms_accumulator += sum_array[0] + sum_array[1];
         }
 
         // 🎯 处理剩余样本（标量方式，确保完整性）
@@ -303,21 +390,25 @@ impl SimdChannelData {
     }
 
     /// 获取内部ChannelData的引用
+    #[inline]
     pub fn inner(&self) -> &ChannelData {
         &self.inner
     }
 
     /// 获取内部ChannelData的可变引用
+    #[inline]
     pub fn inner_mut(&mut self) -> &mut ChannelData {
         &mut self.inner
     }
 
     /// 计算RMS值（代理到内部实现）
+    #[inline]
     pub fn calculate_rms(&self, sample_count: usize) -> f64 {
         self.inner.calculate_rms(sample_count)
     }
 
     /// 获取有效Peak值（代理到内部实现）
+    #[inline]
     pub fn get_effective_peak(&self) -> f64 {
         self.inner.get_effective_peak()
     }
@@ -325,12 +416,15 @@ impl SimdChannelData {
     /// 重置处理器状态
     pub fn reset(&mut self) {
         self.inner.reset();
-        self.sample_buffer.clear();
     }
+}
 
-    /// 获取缓冲区容量（字节对齐到SIMD边界）
-    pub fn buffer_capacity(&self) -> usize {
-        self.buffer_capacity
+impl Default for SimdChannelData {
+    fn default() -> Self {
+        Self {
+            inner: ChannelData::new(),
+            capabilities: SimdCapabilities::detect(),
+        }
     }
 }
 
@@ -349,13 +443,14 @@ impl SimdProcessor {
     }
 
     /// 获取SIMD能力
+    #[inline]
     pub fn capabilities(&self) -> &SimdCapabilities {
         &self.capabilities
     }
 
     /// 创建SIMD优化的声道数据处理器
-    pub fn create_channel_processor(&self, buffer_size: usize) -> SimdChannelData {
-        SimdChannelData::new(buffer_size)
+    pub fn create_channel_processor(&self) -> SimdChannelData {
+        SimdChannelData::new()
     }
 
     /// 检查是否推荐使用SIMD优化
@@ -405,9 +500,12 @@ impl SimdProcessor {
                 // values的生命周期和边界检查由调用者保证，函数内部会正确处理数组边界。
                 unsafe { self.calculate_square_sum_sse2(values) }
             } else {
-                eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] SSE2不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
-                );
+                #[cfg(debug_assertions)]
+                {
+                    eprintln!(
+                        "⚠️ [PERFORMANCE_WARNING] SSE2不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
+                    );
+                }
                 values.iter().map(|&x| x * x).sum()
             }
         }
@@ -419,9 +517,12 @@ impl SimdProcessor {
                 // values的生命周期和边界检查由调用者保证，函数内部会正确处理数组边界。
                 unsafe { self.calculate_square_sum_neon(values) }
             } else {
-                eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] NEON不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
-                );
+                #[cfg(debug_assertions)]
+                {
+                    eprintln!(
+                        "⚠️ [PERFORMANCE_WARNING] NEON不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
+                    );
+                }
                 values.iter().map(|&x| x * x).sum()
             }
         }
@@ -429,23 +530,14 @@ impl SimdProcessor {
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
             // 其他架构：使用标量实现
-            static mut WARNED: bool = false;
-            // SAFETY: 访问静态可变变量WARNED以实现"只警告一次"逻辑。
-            // 虽然这是数据竞争的潜在来源，但：
-            // 1. WARNED是布尔值，最坏情况是多次打印警告，不会造成内存安全问题
-            // 2. 此代码仅在不支持SIMD的罕见架构上运行，实际并发风险极低
-            // 3. 警告信息是幂等的，多次执行不影响程序正确性
-            // 未来改进：可使用std::sync::Once替代，但当前实现可接受
-            unsafe {
-                if !WARNED {
-                    eprintln!(
-                        "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，RMS平方和计算使用标量实现",
-                        std::env::consts::ARCH
-                    );
-                    eprintln!("💡 [PERFORMANCE_TIP] 当前性能可能较x86_64/ARM64慢~3倍");
-                    WARNED = true;
-                }
-            }
+            static WARN_ONCE: Once = Once::new();
+            WARN_ONCE.call_once(|| {
+                eprintln!(
+                    "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，RMS平方和计算使用标量实现",
+                    std::env::consts::ARCH
+                );
+                eprintln!("💡 [PERFORMANCE_TIP] 当前性能可能较x86_64/ARM64慢~3倍");
+            });
             values.iter().map(|&x| x * x).sum()
         }
     }
@@ -482,12 +574,13 @@ impl SimdProcessor {
 
         // 提取并累加向量中的两个值
         let mut total_sum = 0.0;
-        // SAFETY: 将SSE2向量__m128d transmute为[f64; 2]数组。
-        // __m128d内存布局为2个连续的f64值（共128位），与[f64; 2]完全兼容。
-        // 这是SSE2编程的标准做法，用于提取向量元素到标量。
-        // 两种类型大小相同（16字节），对齐要求兼容，无未定义行为。
-        let sum_array: [f64; 2] = unsafe { std::mem::transmute(sum_vec) };
-        total_sum += sum_array[0] + sum_array[1];
+        // SAFETY: 使用_mm_storeu_pd将__m128d存储到未对齐的f64数组
+        // 相比transmute更安全且语义清晰，是提取SSE2向量元素的标准做法
+        unsafe {
+            let mut sum_array = [0.0f64; 2];
+            _mm_storeu_pd(sum_array.as_mut_ptr(), sum_vec);
+            total_sum += sum_array[0] + sum_array[1];
+        }
 
         // 处理剩余的奇数个元素（标量）
         while i < len {
@@ -571,11 +664,10 @@ mod tests {
 
     #[test]
     fn test_simd_channel_data_creation() {
-        let processor = SimdChannelData::new(1024);
+        let processor = SimdChannelData::new();
 
         assert_eq!(processor.inner().rms_accumulator, 0.0);
         assert_eq!(processor.inner().peak_primary, 0.0);
-        assert!(processor.buffer_capacity >= 1024);
 
         // 应该能正确报告SIMD支持状态
         let has_simd = processor.has_simd_support();
@@ -588,7 +680,7 @@ mod tests {
         let test_samples = vec![0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
 
         // SIMD处理
-        let mut simd_processor = SimdChannelData::new(16);
+        let mut simd_processor = SimdChannelData::new();
         simd_processor.process_samples_simd(&test_samples);
 
         // 标量处理
@@ -619,8 +711,7 @@ mod tests {
         let factory = SimdProcessor::new();
 
         // 测试处理器创建
-        let processor = factory.create_channel_processor(512);
-        assert!(processor.buffer_capacity >= 512);
+        let _processor = factory.create_channel_processor();
 
         // 测试SIMD推荐逻辑
         assert!(!factory.should_use_simd(50)); // 太少样本，无论是否支持SIMD都不推荐
@@ -639,7 +730,7 @@ mod tests {
 
     #[test]
     fn test_simd_edge_cases() {
-        let mut processor = SimdChannelData::new(64);
+        let mut processor = SimdChannelData::new();
 
         // 空数组
         assert_eq!(processor.process_samples_simd(&[]), 0);
@@ -670,7 +761,7 @@ mod tests {
             .collect();
 
         // SIMD处理
-        let mut simd_processor = SimdChannelData::new(16);
+        let mut simd_processor = SimdChannelData::new();
         simd_processor.process_samples_simd(&test_samples);
 
         // 标量处理
@@ -748,7 +839,7 @@ mod tests {
         println!("  右声道样本数：{}", right_samples.len());
 
         // 测试左声道
-        let mut simd_left = SimdChannelData::new(1024);
+        let mut simd_left = SimdChannelData::new();
         let mut scalar_left = ChannelData::new();
 
         simd_left.process_samples_simd(&left_samples);
@@ -785,7 +876,7 @@ mod tests {
         for &len in &test_lengths {
             let test_samples: Vec<f32> = (0..len).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
 
-            let mut simd_proc = SimdChannelData::new(64);
+            let mut simd_proc = SimdChannelData::new();
             let mut scalar_data = ChannelData::new();
 
             simd_proc.process_samples_simd(&test_samples);
@@ -912,7 +1003,8 @@ mod tests {
 
         // 验证逻辑
         if caps.avx2 {
-            assert_eq!(parallelism, 8);
+            // 注意：即使检测到AVX2，当前实现仅支持SSE2/NEON（4-wide），未实现AVX2（8-wide）
+            assert_eq!(parallelism, 4);
         } else if caps.has_basic_simd() {
             assert_eq!(parallelism, 4);
         } else {
@@ -980,7 +1072,7 @@ mod tests {
         ];
 
         for (name, samples) in patterns {
-            let mut simd_proc = SimdChannelData::new(64);
+            let mut simd_proc = SimdChannelData::new();
             let mut scalar_data = ChannelData::new();
 
             simd_proc.process_samples_simd(&samples);
@@ -1020,7 +1112,7 @@ mod tests {
 
     #[test]
     fn test_calculate_rms_method() {
-        let mut processor = SimdChannelData::new(64);
+        let mut processor = SimdChannelData::new();
 
         // 处理一些样本
         let samples = vec![0.1, 0.2, 0.3, 0.4, 0.5];
@@ -1045,7 +1137,7 @@ mod tests {
 
     #[test]
     fn test_inner_access() {
-        let mut processor = SimdChannelData::new(32);
+        let mut processor = SimdChannelData::new();
 
         // 初始状态
         let inner = processor.inner();

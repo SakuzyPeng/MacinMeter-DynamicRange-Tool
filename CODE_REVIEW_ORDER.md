@@ -30,7 +30,7 @@
 - [x] src/audio/opus_decoder.rs
 - [x] src/audio/format.rs
 - [x] src/audio/stats.rs
-- [ ] src/audio/mod.rs
+- [x] src/audio/mod.rs
 
 四、Processing 层
 - [ ] src/processing/simd_core.rs
