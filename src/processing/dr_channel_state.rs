@@ -109,6 +109,7 @@ impl ChannelData {
     /// assert!((data.peak_primary - 0.8).abs() < 1e-5);
     /// assert!((data.peak_secondary - 0.5).abs() < 1e-5);
     /// ```
+    #[inline]
     pub fn process_sample(&mut self, sample: f32) {
         let sample_f64 = sample as f64;
 
@@ -156,6 +157,7 @@ impl ChannelData {
     /// let rms = data.calculate_rms(2);
     /// assert!((rms - 0.5).abs() < 1e-10);
     /// ```
+    #[inline]
     pub fn calculate_rms(&self, sample_count: usize) -> f64 {
         if sample_count == 0 {
             return 0.0;
@@ -194,6 +196,7 @@ impl ChannelData {
     /// // foobar2000策略：优先使用次Peak
     /// assert!((data.get_effective_peak() - 0.8).abs() < 1e-5);
     /// ```
+    #[inline]
     pub fn get_effective_peak(&self) -> f64 {
         // foobar2000策略：优先使用次Peak，回退到主Peak
         if self.peak_secondary > 0.0 {
@@ -219,6 +222,7 @@ impl ChannelData {
     /// assert_eq!(data.rms_accumulator, 0.0);
     /// assert_eq!(data.peak_primary, 0.0);
     /// ```
+    #[inline]
     pub fn reset(&mut self) {
         self.rms_accumulator = 0.0;
         self.peak_primary = 0.0;

@@ -218,10 +218,10 @@ impl ChannelSeparator {
                     // 组合成 [L0, L1, L2, L3] - 修复：使用正确的shuffle掩码
                     let final_left = _mm_shuffle_ps(left1, left2, 0b01_00_01_00);
 
-                    // 存储结果
-                    let mut temp = [0.0f32; 4];
-                    _mm_storeu_ps(temp.as_mut_ptr(), final_left);
-                    result.extend_from_slice(&temp);
+                    // 直接写入Vec尾部（无临时数组）
+                    let current = result.len();
+                    result.set_len(current + 4);
+                    _mm_storeu_ps(result.as_mut_ptr().add(current), final_left);
                 } else {
                     // 提取右声道: [R0, R1, R2, R3]
                     // 使用shuffle提取奇数位置的样本
@@ -230,10 +230,10 @@ impl ChannelSeparator {
                     // 组合成 [R0, R1, R2, R3] - 修复：使用正确的shuffle掩码
                     let final_right = _mm_shuffle_ps(right1, right2, 0b01_00_01_00);
 
-                    // 存储结果
-                    let mut temp = [0.0f32; 4];
-                    _mm_storeu_ps(temp.as_mut_ptr(), final_right);
-                    result.extend_from_slice(&temp);
+                    // 直接写入Vec尾部（无临时数组）
+                    let current = result.len();
+                    result.set_len(current + 4);
+                    _mm_storeu_ps(result.as_mut_ptr().add(current), final_right);
                 }
             }
 
@@ -249,7 +249,7 @@ impl ChannelSeparator {
         }
     }
 
-    /// 🍎 ARM NEON优化的立体声样本分离（Apple Silicon专用，写入预分配缓冲区）
+    /// 🍎 ARM NEON优化的立体声样本分离（ARM NEON (aarch64)，写入预分配缓冲区）
     #[cfg(target_arch = "aarch64")]
     fn extract_stereo_samples_simd_into(
         &self,
@@ -273,7 +273,7 @@ impl ChannelSeparator {
         unsafe { self.extract_stereo_samples_neon_unsafe(samples, channel_idx, output) }
 
         debug_performance!(
-            "🍎 NEON立体声分离完成 (into): 提取{}=>{}个样本 (Apple Silicon)",
+            "🍎 NEON立体声分离完成 (into): 提取{}=>{}个样本 (ARM NEON aarch64)",
             samples.len(),
             output.len()
         );
@@ -298,32 +298,29 @@ impl ChannelSeparator {
             // SAFETY: ARM NEON向量化立体声声道分离。
             // 前置条件：i + 8 <= len确保有8个有效f32样本（32字节）可读取。
             // vld1q_f32从内存加载4个f32到NEON向量，两次加载共8个样本。
-            // vgetq_lane_f32是纯NEON寄存器操作，从向量中提取指定lane的标量值。
-            // result已预分配容量，extend_from_slice安全。
-            // 通过lane索引（0,2提取左声道，1,3提取右声道）实现deinterleave。
+            // vuzpq_f32是NEON的unzip指令，高效地将交错数据分离为偶/奇元素。
+            // vst1q_f32直接写入Vec尾部，避免临时数组开销。
+            // result已预分配容量，set_len+直接存储完全安全。
             unsafe {
                 // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
-                let samples1 = vld1q_f32(samples.as_ptr().add(i));
-                let samples2 = vld1q_f32(samples.as_ptr().add(i + 4));
+                let samples1 = vld1q_f32(samples.as_ptr().add(i)); // [L0,R0,L1,R1]
+                let samples2 = vld1q_f32(samples.as_ptr().add(i + 4)); // [L2,R2,L3,R3]
 
-                if channel_idx == 0 {
-                    // 提取左声道: [L0, L1, L2, L3]
-                    // 使用NEON的deinterleave指令（更简单的方法）
-                    let left1 = vgetq_lane_f32(samples1, 0);
-                    let left2 = vgetq_lane_f32(samples1, 2);
-                    let left3 = vgetq_lane_f32(samples2, 0);
-                    let left4 = vgetq_lane_f32(samples2, 2);
+                // 使用NEON的unzip指令解交错
+                // deinterleaved.0 = [L0, L1, L2, L3] (偶数位置=左声道)
+                // deinterleaved.1 = [R0, R1, R2, R3] (奇数位置=右声道)
+                let deinterleaved = vuzpq_f32(samples1, samples2);
 
-                    result.extend_from_slice(&[left1, left2, left3, left4]);
+                // 根据channel_idx选择对应声道并直接写入Vec尾部
+                let channel_data = if channel_idx == 0 {
+                    deinterleaved.0 // 左声道
                 } else {
-                    // 提取右声道: [R0, R1, R2, R3]
-                    let right1 = vgetq_lane_f32(samples1, 1);
-                    let right2 = vgetq_lane_f32(samples1, 3);
-                    let right3 = vgetq_lane_f32(samples2, 1);
-                    let right4 = vgetq_lane_f32(samples2, 3);
+                    deinterleaved.1 // 右声道
+                };
 
-                    result.extend_from_slice(&[right1, right2, right3, right4]);
-                }
+                let current = result.len();
+                result.set_len(current + 4);
+                vst1q_f32(result.as_mut_ptr().add(current), channel_data);
             }
 
             i += 8;

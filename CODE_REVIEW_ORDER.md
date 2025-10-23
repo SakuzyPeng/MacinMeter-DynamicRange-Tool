@@ -33,10 +33,10 @@
 - [x] src/audio/mod.rs
 
 四、Processing 层
-- [ ] src/processing/simd_core.rs
-- [ ] src/processing/sample_conversion.rs
-- [ ] src/processing/channel_separator.rs
-- [ ] src/processing/dr_channel_state.rs
+- [x] src/processing/simd_core.rs
+- [x] src/processing/sample_conversion.rs
+- [x] src/processing/channel_separator.rs
+- [x] src/processing/dr_channel_state.rs
 - [ ] src/processing/processing_coordinator.rs
 - [ ] src/processing/performance_metrics.rs
 - [ ] src/processing/mod.rs
