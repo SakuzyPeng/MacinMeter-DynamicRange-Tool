@@ -11,6 +11,15 @@ pub mod dr_analysis {
     pub const WINDOW_DURATION_SECONDS: f64 = 3.0;
 }
 
+/// 音频格式约束常量
+pub mod format_constraints {
+    /// 支持的最大声道数（架构约束）
+    ///
+    /// 当前仅支持单声道(1)和立体声(2)，3+声道友好拒绝。
+    /// 这是基于 foobar2000 DR Meter 规范的设计约束。
+    pub const MAX_CHANNELS: u16 = 2;
+}
+
 /// 解码器性能优化常量
 pub mod decoder_performance {
     /// BatchPacketReader批量预读包数

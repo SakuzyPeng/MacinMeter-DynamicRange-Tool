@@ -3,13 +3,8 @@
 //! 定义音频格式相关的数据结构和格式支持信息
 
 use crate::error::{self, AudioResult};
+use crate::tools::constants::format_constraints::MAX_CHANNELS;
 use symphonia::core::codecs::CodecType;
-
-/// 支持的最大声道数（架构约束）
-///
-/// 当前仅支持单声道(1)和立体声(2)，3+声道友好拒绝。
-/// 这是基于 foobar2000 DR Meter 规范的设计约束。
-pub const MAX_CHANNELS: u16 = 2;
 
 /// 音频格式信息
 #[derive(Debug, Clone, PartialEq)]
