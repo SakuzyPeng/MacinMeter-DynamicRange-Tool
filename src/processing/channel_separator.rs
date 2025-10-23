@@ -202,8 +202,8 @@ impl ChannelSeparator {
             // 前置条件：i + 8 <= len确保有8个有效f32样本（32字节）可读取。
             // _mm_loadu_ps从未对齐内存加载4个f32，两次加载共8个样本。
             // _mm_shuffle_ps是纯SSE2寄存器操作，通过位掩码重排向量元素。
-            // _mm_storeu_ps写入栈上临时数组，允许未对齐访问，完全安全。
-            // result已预分配容量，extend_from_slice安全。
+            // _mm_storeu_ps直接写入Vec尾部，避免临时数组开销。
+            // result已预分配容量，set_len+直接存储完全安全。
             unsafe {
                 // 加载8个样本: [L0, R0, L1, R1, L2, R2, L3, R3]
                 let samples1 = _mm_loadu_ps(samples.as_ptr().add(i));
