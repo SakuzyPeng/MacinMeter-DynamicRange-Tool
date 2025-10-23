@@ -294,6 +294,68 @@ panic = "abort"
 - 使用自动化工具进行格式检查
 - 编写测试来验证核心功能
 
+### 🔧 作为库使用 (API 使用指南)
+
+如果你想在自己的 Rust 项目中集成 DR 分析功能，推荐使用统一的解码器 API：
+
+#### **推荐：UniversalDecoder + UniversalStreamingDecoder**
+
+```rust
+use macinmeter_dr_tool::audio::{UniversalDecoder, UniversalStreamingDecoder};
+use macinmeter_dr_tool::core::DrCalculator;
+
+// 1. 创建解码器工厂和流式解码器（推荐 - 统一接口，支持所有格式）
+let universal_decoder = UniversalDecoder::new();
+let mut decoder: Box<dyn UniversalStreamingDecoder> =
+    universal_decoder.create_streaming("audio.flac")?;
+
+// 2. 获取音频格式信息
+let format = decoder.format();
+println!("采样率: {}Hz, 声道数: {}", format.sample_rate, format.channels);
+
+// 3. 创建 DR 计算器
+let mut calculator = DrCalculator::new(
+    format.sample_rate,
+    format.channels.into()
+)?;
+
+// 4. 流式处理音频数据
+while let Some(samples) = decoder.next_chunk()? {
+    calculator.process_samples(&samples)?;
+}
+
+// 5. 获取 DR 结果
+let result = calculator.finalize()?;
+println!("官方DR值: DR{}", result.official_dr);
+println!("精确DR值: {:.2} dB", result.precise_dr);
+```
+
+#### **类型说明**
+
+- **`UniversalDecoder`**: 解码器工厂，提供 `create_streaming()` 方法
+- **`UniversalStreamingDecoder`**: 统一的流式解码器接口（trait 别名）
+- **`AudioFormat`**: 音频格式信息结构体
+- **`DrCalculator`**: DR 计算引擎
+
+#### **并行解码 (可选 - 提升大文件性能)**
+
+```rust
+// 启用并行解码（适用于大文件，FLAC/AAC/OGG等无状态格式）
+let universal_decoder = UniversalDecoder::new();
+let mut decoder = universal_decoder.create_streaming_parallel(
+    "large_audio.flac",
+    true,  // 启用并行
+    None   // 使用默认并行配置
+)?;
+```
+
+**注意**：
+- MP3 格式由于状态依赖会自动降级到串行解码
+- Opus 格式使用专用的高性能解码器
+- 推荐使用 `UniversalDecoder` 以获得最佳兼容性
+
+详细的 API 文档请查看代码注释和 `src/audio/mod.rs`。
+
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
