@@ -71,12 +71,16 @@ impl SongbirdOpusDecoder {
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         let path = path.as_ref().to_path_buf();
 
-        // 使用songbird初步探测格式
-        let format = Self::probe_opus_format(&path)?;
+        // 🚀 深度优化：一次性完成解析和探测（避免重复 Runtime + 解析）
+        // 1. 打开并解析输入（唯一一次 Tokio Runtime 创建）
+        let parsed_input = Self::open_playable_input(&path)?;
+
+        // 2. 从已解析的 Input 中提取格式信息（零开销）
+        let format = Self::probe_opus_format(&parsed_input, &path)?;
 
         Ok(Self {
             format: format.clone(),
-            input: None,
+            input: Some(parsed_input), // 3. 直接缓存已解析的 Input
             current_position: 0,
             total_samples: format.sample_count,
             sample_buffer: Vec::new(),
@@ -90,12 +94,13 @@ impl SongbirdOpusDecoder {
 
     /// 探测Opus文件格式信息
     ///
-    /// 🎯 使用songbird真实解析opus文件元数据
-    fn probe_opus_format(path: &Path) -> AudioResult<AudioFormat> {
-        // 🚀 使用公共函数创建并解析输入
-        let parsed_input = Self::open_playable_input(path)?;
-
-        // 获取真实的格式信息
+    /// 🎯 从已解析的 Input 中提取格式元数据（避免重复解析）
+    ///
+    /// # 参数
+    /// - `parsed_input`: 已解析的 songbird Input
+    /// - `path`: 文件路径（仅用于估算样本数时的回退）
+    fn probe_opus_format(parsed_input: &Input, path: &Path) -> AudioResult<AudioFormat> {
+        // 🚀 直接从已解析的 Input 中提取格式（零开销）
         if let Some(parsed) = parsed_input.parsed() {
             let track = parsed
                 .format
