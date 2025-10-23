@@ -16,8 +16,8 @@ pub mod error;
 pub mod processing;
 pub mod tools;
 
-// 重新导出核心类型 - 统一解码器
-pub use audio::universal_decoder::AudioFormat;
+// 重新导出核心类型
+pub use audio::AudioFormat; // 音频格式信息（从 audio 模块直接导出）
 pub use core::dr_calculator::DrResult;
 pub use error::{AudioError, AudioResult};
 pub use processing::ProcessingCoordinator;

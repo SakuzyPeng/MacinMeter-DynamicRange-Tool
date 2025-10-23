@@ -28,8 +28,8 @@
 - [x] src/audio/streaming.rs
 - [x] src/audio/parallel_decoder.rs
 - [x] src/audio/opus_decoder.rs
-- [ ] src/audio/format.rs
-- [ ] src/audio/stats.rs
+- [x] src/audio/format.rs
+- [x] src/audio/stats.rs
 - [ ] src/audio/mod.rs
 
 四、Processing 层

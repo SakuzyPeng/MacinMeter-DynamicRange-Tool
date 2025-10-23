@@ -13,7 +13,8 @@ pub struct ChunkSizeStats {
     pub max_size: usize,
     pub mean_size: f64,
     sizes_sum: usize,
-    // 🔍 新增：包大小分布统计
+    // 🔍 包大小分布统计（仅在 debug 模式收集，避免 Release 开销）
+    #[cfg(debug_assertions)]
     size_distribution: std::collections::HashMap<usize, usize>,
 }
 
@@ -31,22 +32,29 @@ impl ChunkSizeStats {
             max_size: 0,
             mean_size: 0.0,
             sizes_sum: 0,
+            #[cfg(debug_assertions)]
             size_distribution: std::collections::HashMap::new(),
         }
     }
 
+    /// 添加一个音频块的统计信息
+    ///
+    /// # 参数
+    /// * `size` - 音频块大小（单位：每声道样本数，非交错样本总数）
+    ///
+    /// # 安全性
+    /// 使用饱和加法防止 sizes_sum 溢出
     pub fn add_chunk(&mut self, size: usize) {
         self.total_chunks += 1;
-        self.sizes_sum += size;
+        self.sizes_sum = self.sizes_sum.saturating_add(size);
         self.min_size = self.min_size.min(size);
         self.max_size = self.max_size.max(size);
 
-        // 🔍 统计包大小分布
-        *self.size_distribution.entry(size).or_insert(0) += 1;
-
-        // 🔍 调试模式：简化包处理进度输出
+        // 🔍 调试模式：收集包大小分布并输出进度
         #[cfg(debug_assertions)]
         {
+            *self.size_distribution.entry(size).or_insert(0) += 1;
+
             if self.total_chunks <= 5 || (self.total_chunks % 500 == 0) {
                 eprintln!(
                     "🎵 处理包#{}: {}样本/声道 (总计{}包)",
@@ -97,15 +105,15 @@ impl ChunkSizeStats {
                 eprintln!("   平均大小: {:.1} 样本/声道", self.mean_size);
                 eprintln!("   总样本: {} 样本/声道", self.sizes_sum);
 
-                // 计算包大小变化系数
+                // 计算包大小变化系数（启发式判断）
                 if self.max_size > 0 && self.min_size > 0 {
                     let variation_ratio = self.max_size as f64 / self.min_size as f64;
                     eprintln!("   变化系数: {variation_ratio:.2}x");
 
                     if variation_ratio > 2.0 {
-                        eprintln!("   📈 识别为可变包大小格式 (FLAC/OGG等)");
+                        eprintln!("   📈 可能是可变包大小格式 (如 FLAC/OGG)");
                     } else {
-                        eprintln!("   📊 识别为固定包大小格式 (MP3/AAC等)");
+                        eprintln!("   📊 可能是固定包大小格式 (如 MP3/AAC)");
                     }
                 }
                 eprintln!();
