@@ -11,6 +11,7 @@
 //! - **🚀 SIMD优化**: 平方和计算使用SSE2并行加速
 
 use crate::processing::simd_core::SimdProcessor;
+use crate::tools::constants::dr_analysis::PEAK_EQUALITY_EPSILON;
 
 /// WindowRmsAnalyzer - 基于master分支的正确20%采样算法
 ///
@@ -98,7 +99,7 @@ impl WindowRmsAnalyzer {
                 self.current_second_peak = self.current_peak; // 旧最大值变成次大值
                 self.current_peak = abs_sample;
                 self.current_peak_count = 1;
-            } else if (abs_sample - self.current_peak).abs() < 1e-15 {
+            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
                 // 新样本等于最大值（使用浮点数容差比较）
                 self.current_peak_count += 1;
             } else if abs_sample > self.current_second_peak {
@@ -146,7 +147,8 @@ impl WindowRmsAnalyzer {
 
                 // 🚀 **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
                 let last_abs = self.last_sample.abs();
-                let adjusted_peak = if (last_abs - self.current_peak).abs() < 1e-15 {
+                let adjusted_peak = if (last_abs - self.current_peak).abs() < PEAK_EQUALITY_EPSILON
+                {
                     // 最后样本是最大值
                     if self.current_peak_count > 1 {
                         // 还有其他最大值，Peak不变
