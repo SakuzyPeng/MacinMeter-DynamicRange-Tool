@@ -368,7 +368,9 @@ impl DrCalculator {
             .select_peak(window_primary_peak, window_secondary_peak);
 
         // 计算DR值（官方标准公式）
-        let dr_value = if rms_20_percent > 0.0 && peak_for_dr > 0.0 {
+        // 为了跨平台稳定性，对接近0的RMS/Peak做阈值归零处理，避免极小浮点噪声导致非零DR。
+        const DR_ZERO_EPS: f64 = 1e-12;
+        let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
             let ratio = rms_20_percent / peak_for_dr;
             -20.0 * ratio.log10()
         } else {
