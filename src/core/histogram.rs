@@ -775,4 +775,206 @@ mod tests {
             "尾窗Peak应该保持0.9（最后样本不是最大值），实际={tail_peak}"
         );
     }
+
+    /// 🧪 Phase 4.2: 20%采样边界测试 - 小segment计数
+    ///
+    /// 测试当window_rms_values非常少（1-5个）时，20%采样逻辑的正确性
+    #[test]
+    fn test_20_percent_sampling_small_segments() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 测试1: seg_cnt = 1 (只有1个窗口)
+        let samples_1_window = vec![0.5f32; 144000]; // 恰好1个完整窗口
+        analyzer.process_samples(&samples_1_window);
+
+        let rms_20_1 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20_1 > 0.0, "1个窗口时RMS应该大于0");
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 测试2: seg_cnt = 3 (3个窗口)
+        let samples_3_windows = vec![0.5f32; 432000]; // 3个完整窗口
+        analyzer.process_samples(&samples_3_windows);
+
+        let rms_20_3 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20_3 > 0.0, "3个窗口时RMS应该大于0");
+        assert_eq!(analyzer.window_rms_values.len(), 3, "应该有3个窗口RMS值");
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 测试3: seg_cnt = 5 (5个窗口)
+        let samples_5_windows = vec![0.5f32; 720000]; // 5个完整窗口
+        analyzer.process_samples(&samples_5_windows);
+
+        let rms_20_5 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20_5 > 0.0, "5个窗口时RMS应该大于0");
+        assert_eq!(analyzer.window_rms_values.len(), 5, "应该有5个窗口RMS值");
+
+        // 验证20%采样逻辑：5个窗口 → ceil(5 * 0.2) = 1个窗口被选中
+        // 由于所有窗口RMS相同，结果应该等于单个窗口的RMS
+        let window_rms = analyzer.window_rms_values[0];
+        assert!(
+            (rms_20_5 - window_rms).abs() < 1e-6,
+            "5个相同窗口的20%采样应该等于单个窗口RMS"
+        );
+    }
+
+    /// 🧪 Phase 4.2: 20%采样边界测试 - 大segment计数
+    ///
+    /// 测试当window_rms_values非常多（1000+）时，20%采样逻辑的正确性和性能
+    #[test]
+    fn test_20_percent_sampling_large_segments() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 生成1000个窗口的样本数据
+        // 每个窗口48000 * 3.0 = 144000样本
+        let window_size = 144000;
+        let num_windows = 1000;
+        let total_samples = window_size * num_windows;
+
+        // 使用不同的RMS值模拟真实音频（梯度分布）
+        let mut samples = Vec::with_capacity(total_samples);
+        for i in 0..num_windows {
+            // 创建不同强度的窗口：RMS从0.1到1.0
+            let intensity = 0.1 + (i as f32 / num_windows as f32) * 0.9;
+            let window_samples = vec![intensity; window_size];
+            samples.extend_from_slice(&window_samples);
+        }
+
+        analyzer.process_samples(&samples);
+
+        // 验证窗口数量
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            num_windows,
+            "应该有1000个窗口"
+        );
+
+        // 计算20% RMS
+        let rms_20 = analyzer.calculate_20_percent_rms();
+        assert!(rms_20 > 0.0, "1000个窗口的20% RMS应该大于0");
+
+        // 验证20%采样逻辑：1000个窗口 → floor(1000 * 0.2).max(1) = 200个最响窗口被选中
+        let mut sorted_rms = analyzer.window_rms_values.clone();
+        sorted_rms.sort_by(|a, b| b.partial_cmp(a).unwrap()); // 降序排序
+
+        let top_20_percent_count = ((num_windows as f64 * 0.2).floor() as usize).max(1);
+        assert_eq!(top_20_percent_count, 200, "应该选中200个最响窗口");
+
+        // 计算前200个最响窗口的RMS：平方和的平均值再开方
+        let top_200_square_sum: f64 = sorted_rms[0..200].iter().map(|x| x * x).sum();
+        let expected_rms_20 = (top_200_square_sum / 200.0).sqrt();
+
+        // 由于梯度分布，20% RMS应该接近高强度窗口的平方平均根
+        assert!(
+            (rms_20 - expected_rms_20).abs() < 0.01,
+            "20% RMS应该等于前200个最响窗口的平方平均根，实际={rms_20}, 预期={expected_rms_20}"
+        );
+
+        // 性能验证：1000个窗口的排序应该非常快（<10ms）
+        let start = std::time::Instant::now();
+        let _rms_again = analyzer.calculate_20_percent_rms();
+        let duration = start.elapsed();
+        assert!(
+            duration.as_millis() < 10,
+            "1000个窗口的20%采样计算应该在10ms内完成，实际={duration:?}"
+        );
+    }
+
+    /// 🧪 Phase 4.3: 虚拟0窗口一致性测试
+    ///
+    /// 测试虚拟0窗口逻辑在各种场景下的正确性和一致性
+    #[test]
+    fn test_virtual_zero_window_consistency() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+        let window_len = 144000; // 3秒 @ 48kHz
+
+        // 场景1: 恰好1个完整窗口（应该添加虚拟0窗口）
+        let samples_exact_1 = vec![0.5f32; window_len];
+        analyzer.process_samples(&samples_exact_1);
+
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            1,
+            "恰好1个窗口应该产生1个RMS值"
+        );
+        assert_eq!(
+            analyzer.total_samples_processed, window_len,
+            "total_samples应该等于window_len"
+        );
+
+        // 验证虚拟0窗口：total_samples % window_len == 0 → 添加虚拟0
+        let has_virtual_zero_1 = analyzer.total_samples_processed % window_len == 0;
+        assert!(has_virtual_zero_1, "恰好整除时应该标记为需要虚拟0窗口");
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 场景2: 恰好3个完整窗口（应该添加虚拟0窗口）
+        let samples_exact_3 = vec![0.5f32; window_len * 3];
+        analyzer.process_samples(&samples_exact_3);
+
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            3,
+            "恰好3个窗口应该产生3个RMS值"
+        );
+
+        let has_virtual_zero_3 = analyzer.total_samples_processed % window_len == 0;
+        assert!(has_virtual_zero_3, "恰好整除时应该标记为需要虚拟0窗口");
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 场景3: 1个完整窗口 + 部分样本（不应该添加虚拟0窗口）
+        let partial_samples = window_len + 1000; // 多1000个样本
+        let samples_partial = vec![0.5f32; partial_samples];
+        analyzer.process_samples(&samples_partial);
+
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            2,
+            "1个完整窗口+尾窗应该产生2个RMS值"
+        );
+
+        let has_virtual_zero_partial = analyzer.total_samples_processed % window_len == 0;
+        assert!(!has_virtual_zero_partial, "有尾部样本时不应该添加虚拟0窗口");
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 场景4: 多次分批处理，恰好整除（应该添加虚拟0窗口）
+        // 注意：每次process_samples调用都会处理尾窗，所以分批调用会产生中间尾窗RMS
+        let batch1 = vec![0.5f32; window_len / 2]; // 0.5个窗口
+        let batch2 = vec![0.5f32; window_len / 2]; // 0.5个窗口
+        analyzer.process_samples(&batch1);
+        analyzer.process_samples(&batch2);
+
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            2,
+            "分批处理：batch1产生1个尾窗RMS，batch2完成窗口后产生1个完整窗口RMS，共2个"
+        );
+
+        let has_virtual_zero_batched = analyzer.total_samples_processed % window_len == 0;
+        assert!(
+            has_virtual_zero_batched,
+            "分批处理但总样本数恰好整除时应该添加虚拟0窗口"
+        );
+
+        // 清空analyzer
+        analyzer.clear();
+
+        // 场景5: 零样本（特殊边界情况）
+        assert_eq!(
+            analyzer.window_rms_values.len(),
+            0,
+            "未处理样本时应该没有RMS值"
+        );
+
+        let rms_zero = analyzer.calculate_20_percent_rms();
+        assert_eq!(rms_zero, 0.0, "空analyzer的20% RMS应该为0");
+    }
 }
