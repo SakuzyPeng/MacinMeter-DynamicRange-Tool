@@ -4,3 +4,13 @@ rustflags = [
     "-C", "link-arg=-Wl,-dead_strip",
 ]
 
+[target.'cfg(target_os = "windows")']
+rustflags = [
+    "-C", "target-cpu=native",  # 启用SIMD优化，配合opt-level=3发挥最佳性能
+]
+
+[target.'cfg(target_os = "linux")']
+rustflags = [
+    "-C", "target-cpu=native",  # 启用SIMD优化，配合opt-level=3发挥最佳性能
+]
+

@@ -5,30 +5,65 @@ show_usage() {
     echo "用法: $0 [选项]"
     echo ""
     echo "选项:"
+    echo "  --exe PATH        指定可执行文件路径（默认：target/release/MacinMeter-DynamicRange-Tool-foo_dr）"
     echo "  --serial          使用串行解码（默认：并行）"
     echo "  --help, -h        显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                # 并行模式基准测试（默认）"
-    echo "  $0 --serial       # 串行模式基准测试"
+    echo "  $0                                    # 并行模式基准测试（默认可执行文件）"
+    echo "  $0 --serial                           # 串行模式基准测试"
+    echo "  $0 --exe ./old-version/binary         # 测试指定的旧版本"
+    echo "  $0 --exe baseline.exe --serial        # 组合选项"
 }
 
-# 解析命令行参数
-MODE_FLAG=""
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    show_usage
-    exit 0
-elif [ "$1" = "--serial" ]; then
-    MODE_FLAG="--serial"
-    echo "🚀 开始10次串行解码性能测试..."
-else
-    echo "🚀 开始10次并行解码性能测试（默认）..."
-fi
-
-echo "========================================================"
-
+# 默认值
 BENCHMARK_SCRIPT="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/audio/large audio/未命名文件夹/benchmark.sh"
 RELEASE_EXECUTABLE="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr"
+MODE_FLAG=""
+
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        --serial)
+            MODE_FLAG="--serial"
+            shift
+            ;;
+        --exe)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo "❌ 错误：--exe 需要指定可执行文件路径"
+                show_usage
+                exit 1
+            fi
+            RELEASE_EXECUTABLE="$2"
+            shift 2
+            ;;
+        *)
+            echo "❌ 未知选项: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+# 检查可执行文件是否存在
+if [ ! -f "$RELEASE_EXECUTABLE" ]; then
+    echo "❌ 错误：可执行文件不存在: $RELEASE_EXECUTABLE"
+    exit 1
+fi
+
+# 显示测试信息
+echo "========================================================"
+if [ -n "$MODE_FLAG" ]; then
+    echo "🚀 开始10次串行解码性能测试"
+else
+    echo "🚀 开始10次并行解码性能测试（默认）"
+fi
+echo "📦 可执行文件: $(basename "$RELEASE_EXECUTABLE")"
+echo "📁 完整路径: $RELEASE_EXECUTABLE"
 TOTAL_TIME=0
 TOTAL_MEMORY=0
 TOTAL_SPEED=0
