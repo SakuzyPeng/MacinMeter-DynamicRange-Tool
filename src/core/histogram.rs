@@ -914,8 +914,8 @@ mod tests {
             "total_samples应该等于window_len"
         );
 
-        // 验证虚拟0窗口：total_samples % window_len == 0 → 添加虚拟0
-        let has_virtual_zero_1 = analyzer.total_samples_processed % window_len == 0;
+        // 验证虚拟0窗口：整除 → 添加虚拟0
+        let has_virtual_zero_1 = analyzer.total_samples_processed.is_multiple_of(window_len);
         assert!(has_virtual_zero_1, "恰好整除时应该标记为需要虚拟0窗口");
 
         // 清空analyzer
@@ -931,7 +931,7 @@ mod tests {
             "恰好3个窗口应该产生3个RMS值"
         );
 
-        let has_virtual_zero_3 = analyzer.total_samples_processed % window_len == 0;
+        let has_virtual_zero_3 = analyzer.total_samples_processed.is_multiple_of(window_len);
         assert!(has_virtual_zero_3, "恰好整除时应该标记为需要虚拟0窗口");
 
         // 清空analyzer
@@ -948,7 +948,7 @@ mod tests {
             "1个完整窗口+尾窗应该产生2个RMS值"
         );
 
-        let has_virtual_zero_partial = analyzer.total_samples_processed % window_len == 0;
+        let has_virtual_zero_partial = analyzer.total_samples_processed.is_multiple_of(window_len);
         assert!(!has_virtual_zero_partial, "有尾部样本时不应该添加虚拟0窗口");
 
         // 清空analyzer
@@ -967,7 +967,7 @@ mod tests {
             "分批处理：batch1产生1个尾窗RMS，batch2完成窗口后产生1个完整窗口RMS，共2个"
         );
 
-        let has_virtual_zero_batched = analyzer.total_samples_processed % window_len == 0;
+        let has_virtual_zero_batched = analyzer.total_samples_processed.is_multiple_of(window_len);
         assert!(
             has_virtual_zero_batched,
             "分批处理但总样本数恰好整除时应该添加虚拟0窗口"
