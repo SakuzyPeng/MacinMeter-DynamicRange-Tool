@@ -130,10 +130,15 @@ fn test_silence_handling() {
             if let Some(dr) = dr_results.first() {
                 println!("✓ 静音文件处理成功: DR={:.2}", dr.dr_value);
                 // 静音的DR应该是0（因为Peak和RMS都接近0）或特殊值
+                // 注：不同平台的SIMD实现可能产生微小浮点数差异，使用容差1e-6
+                const SILENCE_DR_TOLERANCE: f64 = 1e-6;
                 assert!(
-                    dr.dr_value == 0.0 || dr.dr_value.is_nan() || dr.dr_value.is_infinite(),
-                    "静音DR应该是0或特殊值，实际值: {}",
-                    dr.dr_value
+                    dr.dr_value.abs() < SILENCE_DR_TOLERANCE
+                        || dr.dr_value.is_nan()
+                        || dr.dr_value.is_infinite(),
+                    "静音DR应该接近0或特殊值，实际值: {}, 容差: {}",
+                    dr.dr_value,
+                    SILENCE_DR_TOLERANCE
                 );
             }
         }
