@@ -50,6 +50,14 @@ songbird = { version = "0.4", default-features = false, features = ["driver", "r
 symphonia-core = "0.5.4"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 
+# 可选CPU火焰图分析（仅在设置环境变量 DR_FLAME=1 时启用，默认无开销）
+pprof = { version = "0.13", features = ["flamegraph"], optional = true }
+
+[features]
+default = []
+# 启用后将链接 pprof 依赖，但仍需通过环境变量 DR_FLAME=1 才会实际记录
+flame-prof = ["pprof"]
+
 # 📝 安全警告说明：
 # songbird的Discord依赖存在已知安全问题，但不影响我们的使用场景：
 # - ring/rustls: TLS问题，我们无网络通信
@@ -59,13 +67,20 @@ tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 # 风险评估：本地文件解码场景下，这些问题的攻击面为零
 
 [profile.release]
-opt-level = "z"        # 🎯 大小优化（并行模式下性能损失仅0.12%）
+opt-level = 3          # 🚀 性能优化（针对处理/解码路径更合适）
 lto = "fat"            # 更激进的链接时优化
 codegen-units = 1      # 单个代码生成单元（更好的优化）
 panic = "abort"        # panic时直接abort（减少代码体积）
 strip = true           # 移除调试符号和其他元数据
 overflow-checks = false # 禁用整数溢出检查（release模式下通常安全）
-# 📊 实测数据 (10次平均):
-#   文件大小: 1.5 MB (vs 2.0 MB with opt-level=3)
-#   并行速度: 212.93 MB/s (vs 213.19 MB/s, -0.12%)
-#   结论: 完美的大小/性能平衡点
+
+# 专用 Profiling 配置：用于生成带符号的火焰图（不影响正式 release）
+[profile.profiling]
+inherits = "release"
+opt-level = 3
+lto = false            # 关闭 LTO，避免函数被过度内联/合并导致符号丢失
+debug = 1              # 生成最小调试信息，足够符号解析
+strip = false          # 不剥离符号，保证 flamegraph 具备函数名
+codegen-units = 1
+panic = "abort"
+overflow-checks = false

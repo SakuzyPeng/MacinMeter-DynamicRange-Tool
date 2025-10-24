@@ -36,8 +36,10 @@ pub struct WindowRmsAnalyzer {
     total_samples_processed: usize,
     /// 最后一个样本值（用于尾窗处理）
     last_sample: f64,
-    /// 当前窗口样本缓存（用于尾窗Peak重新计算）
-    current_window_samples: Vec<f64>,
+    /// 🚀 **流式双峰跟踪**: 当前窗口的最大值出现次数（用于尾窗Peak调整）
+    current_peak_count: usize,
+    /// 🚀 **流式双峰跟踪**: 当前窗口的次大Peak值（用于尾窗Peak调整）
+    current_second_peak: f64,
     /// 🚀 **SIMD优化**: SIMD处理器用于平方和计算加速
     simd_processor: SimdProcessor,
 }
@@ -72,7 +74,8 @@ impl WindowRmsAnalyzer {
             window_rms_values: Vec::new(),
             total_samples_processed: 0,
             last_sample: 0.0,
-            current_window_samples: Vec::new(),
+            current_peak_count: 0,
+            current_second_peak: 0.0,
             simd_processor: SimdProcessor::new(),
         }
     }
@@ -89,12 +92,22 @@ impl WindowRmsAnalyzer {
             // 🔧 **dr14兼容性**: 保存当前样本作为潜在的"最后样本"
             self.last_sample = sample_f64;
 
-            // 🔧 **方案A**: 维护当前窗口样本缓存，用于尾窗Peak重新计算
-            self.current_window_samples.push(sample_f64);
+            // 🚀 **流式双峰跟踪**: 更新Peak和次Peak
+            if abs_sample > self.current_peak {
+                // 新样本是新最大值
+                self.current_second_peak = self.current_peak; // 旧最大值变成次大值
+                self.current_peak = abs_sample;
+                self.current_peak_count = 1;
+            } else if (abs_sample - self.current_peak).abs() < 1e-15 {
+                // 新样本等于最大值（使用浮点数容差比较）
+                self.current_peak_count += 1;
+            } else if abs_sample > self.current_second_peak {
+                // 新样本大于次大值但小于最大值
+                self.current_second_peak = abs_sample;
+            }
 
-            // 更新当前窗口的平方和和Peak值
+            // 更新当前窗口的平方和
             self.current_sum_sq += sample_f64 * sample_f64;
-            self.current_peak = self.current_peak.max(abs_sample);
             self.current_count += 1;
 
             // 窗口满了，计算窗口RMS和Peak并添加到直方图
@@ -112,8 +125,9 @@ impl WindowRmsAnalyzer {
                 // 重置窗口
                 self.current_sum_sq = 0.0;
                 self.current_peak = 0.0;
+                self.current_peak_count = 0;
+                self.current_second_peak = 0.0;
                 self.current_count = 0;
-                self.current_window_samples.clear(); // 清理样本缓存
             }
         }
 
@@ -130,14 +144,20 @@ impl WindowRmsAnalyzer {
                 self.histogram.add_window_rms(window_rms);
                 self.window_rms_values.push(window_rms);
 
-                // 🎯 **方案A**: 精确重新计算Peak值，排除最后一个样本
-                let adjusted_peak = if self.current_window_samples.len() > 1 {
-                    self.current_window_samples[..self.current_window_samples.len() - 1]
-                        .iter()
-                        .map(|&s| s.abs())
-                        .fold(0.0, f64::max)
+                // 🚀 **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
+                let last_abs = self.last_sample.abs();
+                let adjusted_peak = if (last_abs - self.current_peak).abs() < 1e-15 {
+                    // 最后样本是最大值
+                    if self.current_peak_count > 1 {
+                        // 还有其他最大值，Peak不变
+                        self.current_peak
+                    } else {
+                        // 最后样本是唯一最大值，使用次大值
+                        self.current_second_peak
+                    }
                 } else {
-                    0.0
+                    // 最后样本不是最大值，Peak不变
+                    self.current_peak
                 };
                 self.window_peaks.push(adjusted_peak);
             } else {
@@ -147,8 +167,9 @@ impl WindowRmsAnalyzer {
             // 重置状态
             self.current_sum_sq = 0.0;
             self.current_peak = 0.0;
+            self.current_peak_count = 0;
+            self.current_second_peak = 0.0;
             self.current_count = 0;
-            self.current_window_samples.clear(); // 清理样本缓存
         }
     }
 
@@ -290,7 +311,8 @@ impl WindowRmsAnalyzer {
         self.window_rms_values.clear();
         self.total_samples_processed = 0;
         self.last_sample = 0.0;
-        self.current_window_samples.clear();
+        self.current_peak_count = 0;
+        self.current_second_peak = 0.0;
     }
 }
 
@@ -667,5 +689,89 @@ mod tests {
 
         // 第二大Peak应该是0.5
         assert!((analyzer.get_second_largest_peak() - 0.5).abs() < 1e-6);
+    }
+
+    /// 🚀 **Phase 1回归测试**: 尾窗最后样本是唯一最大值
+    ///
+    /// 验证流式双峰跟踪在尾窗排除唯一最大值时使用次大值的正确性
+    #[test]
+    fn test_tail_window_peak_adjustment_unique_max() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 完整窗口 + 尾窗（最后样本是唯一最大值）
+        let full_window = vec![0.5f32; 144000];
+        analyzer.process_samples(&full_window);
+
+        // 尾窗：除最后一个样本外都是0.3，最后一个是0.8（唯一最大值）
+        let mut tail = vec![0.3f32; 1000];
+        tail.push(0.8f32); // 最后样本是最大值
+        analyzer.process_samples(&tail);
+
+        // 应该有2个窗口（1个完整+1个尾窗）
+        assert_eq!(analyzer.window_peaks.len(), 2);
+
+        // 尾窗Peak应该是0.3（排除最后的0.8后，次大值是0.3）
+        let tail_peak = analyzer.window_peaks[1];
+        assert!(
+            (tail_peak - 0.3).abs() < 1e-6,
+            "尾窗Peak应该是0.3（次大值），实际={tail_peak}"
+        );
+    }
+
+    /// 🚀 **Phase 1回归测试**: 尾窗最后样本是最大值但出现多次
+    ///
+    /// 验证流式双峰跟踪在尾窗排除重复最大值时保持最大值的正确性
+    #[test]
+    fn test_tail_window_peak_adjustment_duplicate_max() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 完整窗口
+        let full_window = vec![0.5f32; 144000];
+        analyzer.process_samples(&full_window);
+
+        // 尾窗：有多个0.7的样本（包括最后一个）
+        let mut tail = vec![0.3f32; 500];
+        tail.extend_from_slice(&[0.7f32; 500]); // 添加多个最大值
+        tail.push(0.7f32); // 最后样本也是最大值
+        analyzer.process_samples(&tail);
+
+        // 应该有2个窗口
+        assert_eq!(analyzer.window_peaks.len(), 2);
+
+        // 尾窗Peak应该仍是0.7（因为还有其他0.7的样本）
+        let tail_peak = analyzer.window_peaks[1];
+        assert!(
+            (tail_peak - 0.7).abs() < 1e-6,
+            "尾窗Peak应该保持0.7（还有其他最大值），实际={tail_peak}"
+        );
+    }
+
+    /// 🚀 **Phase 1回归测试**: 尾窗最后样本不是最大值
+    ///
+    /// 验证流式双峰跟踪在尾窗排除非最大值样本时保持Peak不变的正确性
+    #[test]
+    fn test_tail_window_peak_adjustment_non_max() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 完整窗口
+        let full_window = vec![0.5f32; 144000];
+        analyzer.process_samples(&full_window);
+
+        // 尾窗：最大值在中间，最后样本较小
+        let mut tail = vec![0.3f32; 500];
+        tail.push(0.9f32); // 最大值在中间
+        tail.extend_from_slice(&[0.3f32; 500]); // 后面都是较小值
+        tail.push(0.4f32); // 最后样本不是最大值
+        analyzer.process_samples(&tail);
+
+        // 应该有2个窗口
+        assert_eq!(analyzer.window_peaks.len(), 2);
+
+        // 尾窗Peak应该是0.9（排除最后的0.4不影响，因为0.4不是最大值）
+        let tail_peak = analyzer.window_peaks[1];
+        assert!(
+            (tail_peak - 0.9).abs() < 1e-6,
+            "尾窗Peak应该保持0.9（最后样本不是最大值），实际={tail_peak}"
+        );
     }
 }

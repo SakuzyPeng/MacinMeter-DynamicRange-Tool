@@ -182,6 +182,22 @@ fn analyze_streaming_decoder(
     streaming_decoder: &mut dyn crate::audio::StreamingDecoder,
     config: &AppConfig,
 ) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+    #[cfg(feature = "flame-prof")]
+    let _guard_processing = {
+        let enabled = std::env::var("DR_FLAME").map(|v| v == "1").unwrap_or(false);
+        let scope = std::env::var("DR_FLAME_SCOPE").unwrap_or_else(|_| "app".to_string());
+        if enabled && scope == "processing" {
+            match pprof::ProfilerGuard::new(250) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    eprintln!("⚠️  启用 processing 范围火焰图采样失败: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    };
     let format = streaming_decoder.format();
 
     // 🎯 声道数检查：支持单声道和立体声，拒绝多声道
@@ -421,6 +437,22 @@ fn analyze_streaming_decoder(
 
     // 🎯 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
     let final_format = streaming_decoder.format();
+
+    // 在函数返回前停止 processing 范围的采样并生成火焰图，避免包含尾段 drop/dealloc
+    #[cfg(feature = "flame-prof")]
+    if let Some(guard) = _guard_processing
+        && let Ok(report) = guard.report().build()
+    {
+        use std::fs::File;
+        let mut options = pprof::flamegraph::Options::default();
+        let out_path = std::env::var("DR_FLAME_FILE")
+            .unwrap_or_else(|_| "flamegraph-processing.svg".to_string());
+        if let Ok(file) = File::create(&out_path)
+            && report.flamegraph_with_options(file, &mut options).is_ok()
+        {
+            eprintln!("✅ FlameGraph(processing) 生成成功: {out_path}");
+        }
+    }
 
     Ok((dr_results, final_format))
 }

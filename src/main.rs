@@ -245,8 +245,48 @@ fn run() -> Result<(), AudioError> {
 }
 
 fn main() {
+    // 可选：CPU火焰图分析（需开启 feature: flame-prof 且设置 DR_FLAME=1）
+    #[cfg(feature = "flame-prof")]
+    let _guard = {
+        let enabled = std::env::var("DR_FLAME").map(|v| v == "1").unwrap_or(false);
+        // 作用域：app（默认）/ processing / decode
+        let scope = std::env::var("DR_FLAME_SCOPE").unwrap_or_else(|_| "app".to_string());
+        if enabled && scope == "app" {
+            // 采样频率：每秒 250 次（更细分辨率）
+            match pprof::ProfilerGuard::new(250) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    eprintln!("⚠️  启用火焰图采样失败: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    };
+
     // 执行主逻辑，统一处理错误
-    if let Err(error) = run() {
+    let result = run();
+
+    // 在退出前生成火焰图（仅在启用时）
+    #[cfg(feature = "flame-prof")]
+    if let Some(guard) = _guard
+        && let Ok(report) = guard.report().build()
+    {
+        use std::fs::File;
+        let mut options = pprof::flamegraph::Options::default();
+        // 输出路径可通过环境变量自定义
+        let out_path =
+            std::env::var("DR_FLAME_FILE").unwrap_or_else(|_| "flamegraph.svg".to_string());
+        if let Ok(file) = File::create(&out_path)
+            && report.flamegraph_with_options(file, &mut options).is_ok()
+        {
+            eprintln!("✅ FlameGraph 生成成功: {out_path}");
+        }
+        // 如需生成 pprof 二进制，可在启用 protobuf 特性后再输出
+    }
+
+    if let Err(error) = result {
         handle_error(error);
     }
 }

@@ -113,3 +113,26 @@ P2（微调，收益有限）
   - 线程总数（`ps -M`/Instruments Threads）与栈总量（`vmmap`）
 - 录入环境：CPU/OS/磁盘类型（SSD/HDD），以便后续横向对比。
 
+---
+
+## 单文件场景：macOS ~60+ MB vs Windows ~20 MB 是否合理？
+
+结论：合理。即使只处理 1 个文件，在相同代码路径下，macOS 的 Footprint 往往高于 Windows，典型比值在 2–4×。主要原因：
+
+- 页面与分配器差异：
+  - Apple Silicon 默认 16KB 页；Windows 常见 4KB。大量小/中等分配在 16KB 页上更易产生内部碎片，Footprint 被放大。
+  - macOS malloc（含 nano zone、per‑thread cache）对峰值统计更“保守”，Footprint 往往偏大；Windows Working Set 口径更“节省”。
+- 每线程资源与解码器占用：
+  - 即便单文件，默认仍启用“文件内并行解码”（比如 4 线程）。每个线程各持有独立 decoder 及其内部工作区（FLAC/ALAC 残差、预测、环缓等），累计可达数十 MB。
+  - 线程栈/guard page/TLS 等基础开销在 macOS 上更突出（虽非全部计入 Footprint，但常有较大驻留页）。
+- 处理层缓冲开销（数 MB 级）：
+  - `sample_buffer`（窗口对齐预留，≈ 3 × 3秒窗口 × f32）
+  - 声道分离缓冲（左右各 ≈ 窗口/2 × f32）
+  - `WindowRmsAnalyzer` 的 `current_window_samples`（每声道 ≈ 窗口 × f64，用于尾窗峰值重算）
+
+经验值：
+- 单文件、48kHz 立体声的典型处理路径：处理层缓冲 ≈ 6–8 MB；并行解码的多 decoder + 线程基础占用在 macOS 上可达 20–40+ MB，总体 50–80 MB 合理；Windows 因页/分配器/度量口径更省，常见仅 15–30 MB。
+
+如何进一步降低单文件占用（不改结果）：
+- 单文件时禁用“文件内并行解码”（`--parallel-threads 1`），保留流水线，但减少 decoder/线程的总占用。
+- 或按“并发预算”自动下调：当 `parallel-files==1` 时，把 `parallel-threads` 设为 1–2；吞吐大多不降（解码瓶颈仍在单核），占用显著下降。
