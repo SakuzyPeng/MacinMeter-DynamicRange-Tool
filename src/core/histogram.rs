@@ -89,6 +89,13 @@ impl WindowRmsAnalyzer {
 
     /// 处理单声道样本，按3秒窗口计算RMS并填入直方图
     pub fn process_samples(&mut self, samples: &[f32]) {
+        // 🚀 **长曲目优化**: 首次调用时预估窗口数，减少realloc
+        if self.total_samples_processed == 0 && !samples.is_empty() {
+            let estimated_windows = samples.len() / self.window_len + 1;
+            self.window_rms_values.reserve(estimated_windows);
+            self.window_peaks.reserve(estimated_windows);
+        }
+
         // 记录总样本数
         self.total_samples_processed += samples.len();
 
