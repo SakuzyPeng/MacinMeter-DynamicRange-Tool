@@ -35,6 +35,7 @@ clap = { version = "4.5", features = ["derive"] }
 # 性能优化（可选）
 rayon = "1.10"
 crossbeam-channel = "0.5"  # 高性能MPMC通道，替代std::sync::mpsc
+thread-priority = "1.2"  # 线程优先级控制，Intel混合架构P-core优先
 
 # 时间处理 - 恢复chrono（虽然增加35KiB，但保证时间准确性）
 chrono = { version = "0.4", features = ["serde"] }

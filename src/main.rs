@@ -245,6 +245,10 @@ fn run() -> Result<(), AudioError> {
 }
 
 fn main() {
+    // 🚀 性能优化：提升线程优先级以提高Intel混合架构P-core命中率
+    // 静默失败：优化失败不影响程序功能，仅可能影响性能
+    let _ = macinmeter_dr_tool::tools::utils::optimize_for_performance();
+
     // 可选：CPU火焰图分析（需开启 feature: flame-prof 且设置 DR_FLAME=1）
     #[cfg(feature = "flame-prof")]
     let _guard = {

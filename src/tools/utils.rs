@@ -158,6 +158,120 @@ pub mod parallel {
     }
 }
 
+/// 性能优化工具函数
+pub mod performance {
+    use thread_priority::ThreadPriority;
+
+    /// 设置当前线程为高优先级（Intel混合架构P-core优先）
+    ///
+    /// 在Intel 12代及以后的混合架构CPU上，高优先级线程更可能被调度到P-core（性能核心）
+    /// 而非E-core（效能核心），从而提升计算密集型任务的性能。
+    ///
+    /// # 策略
+    /// - Windows: 使用THREAD_PRIORITY_HIGHEST (优先级2)，避免过度抢占
+    /// - Unix/macOS: 使用相对高优先级值
+    ///
+    /// # 返回
+    /// - `Ok(())`: 成功设置优先级
+    /// - `Err(msg)`: 设置失败（非致命，静默失败）
+    ///
+    /// # 注意
+    /// - 失败不会影响程序运行，只是可能无法获得P-core优先权
+    /// - macOS/Linux可能需要sudo权限才能设置高于normal的优先级
+    /// - Windows通常可以成功设置THREAD_PRIORITY_HIGHEST
+    pub fn set_high_priority() -> Result<(), String> {
+        thread_priority::set_current_thread_priority(ThreadPriority::Max)
+            .map_err(|e| format!("设置线程优先级失败: {e}"))
+    }
+
+    /// 为Rayon线程池配置高优先级spawn handler
+    ///
+    /// 创建一个自定义的线程spawn handler，使所有Rayon工作线程
+    /// 自动设置为高优先级，从而在混合架构CPU上优先运行在P-core。
+    ///
+    /// # 使用示例
+    /// ```rust,no_run
+    /// use macinmeter_dr_tool::tools::utils::performance;
+    ///
+    /// // 在Rayon初始化前调用
+    /// if let Err(e) = performance::setup_rayon_high_priority() {
+    ///     eprintln!("⚠️ 无法设置Rayon高优先级: {}", e);
+    /// }
+    /// ```
+    ///
+    /// # 返回
+    /// - `Ok(())`: 成功配置Rayon线程池
+    /// - `Err(msg)`: 配置失败（通常是因为Rayon已初始化）
+    ///
+    /// # 注意
+    /// - 必须在首次使用Rayon之前调用（否则会失败）
+    /// - 建议在main()函数开头调用
+    pub fn setup_rayon_high_priority() -> Result<(), String> {
+        rayon::ThreadPoolBuilder::new()
+            .spawn_handler(|thread| {
+                let mut builder = std::thread::Builder::new();
+                if let Some(name) = thread.name() {
+                    builder = builder.name(name.to_owned());
+                }
+                if let Some(stack_size) = thread.stack_size() {
+                    builder = builder.stack_size(stack_size);
+                }
+
+                builder.spawn(move || {
+                    // 尝试设置高优先级，失败静默（不影响功能）
+                    let _ = set_high_priority();
+                    thread.run()
+                })?;
+
+                Ok(())
+            })
+            .build_global()
+            .map_err(|e| format!("Rayon线程池初始化失败: {e}"))
+    }
+
+    /// 智能性能优化初始化（推荐使用）
+    ///
+    /// 根据平台特性自动应用最佳性能优化策略：
+    /// 1. 为主线程设置高优先级
+    /// 2. 配置Rayon线程池为高优先级
+    ///
+    /// # 返回
+    /// - `Ok(())`: 至少一项优化成功
+    /// - `Err(msg)`: 所有优化均失败（极少发生）
+    ///
+    /// # 使用建议
+    /// 在main()函数开头调用：
+    /// ```rust,no_run
+    /// use macinmeter_dr_tool::tools::utils::performance;
+    ///
+    /// if let Err(e) = performance::optimize_for_performance() {
+    ///     eprintln!("⚠️ 性能优化失败: {}", e);
+    ///     // 继续运行，性能可能受影响但功能正常
+    /// }
+    /// // ... 其余程序逻辑
+    /// ```
+    pub fn optimize_for_performance() -> Result<(), String> {
+        let mut errors = Vec::new();
+
+        // 1. 优化主线程优先级
+        if let Err(e) = set_high_priority() {
+            errors.push(format!("主线程: {e}"));
+        }
+
+        // 2. 优化Rayon线程池
+        if let Err(e) = setup_rayon_high_priority() {
+            errors.push(format!("Rayon: {e}"));
+        }
+
+        // 如果所有优化都失败才报错
+        if errors.len() >= 2 {
+            Err(format!("所有性能优化均失败: {}", errors.join(", ")))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 // 重新导出为平级函数，保持向后兼容
 pub use audio::{linear_to_db, linear_to_db_string};
 pub use parallel::effective_parallel_degree;
@@ -165,3 +279,4 @@ pub use path::{
     extract_extension_uppercase, extract_file_stem, extract_file_stem_string, extract_filename,
     extract_filename_lossy, get_parent_dir, sanitize_filename,
 };
+pub use performance::{optimize_for_performance, set_high_priority, setup_rayon_high_priority};
