@@ -191,8 +191,9 @@ impl WindowRmsAnalyzer {
             self.window_rms_values.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 🚀 **Phase 2优化**: 构建RMS数组（轻量化：直接clone+条件push）
-        let mut rms_array = self.window_rms_values.clone();
+        // 步骤2: 🚀 **Phase 3优化**: 构建RMS数组（容量预留+extend避免realloc）
+        let mut rms_array = Vec::with_capacity(self.window_rms_values.len() + 1);
+        rms_array.extend_from_slice(&self.window_rms_values);
         if has_virtual_zero {
             rms_array.push(0.0);
         }
@@ -241,12 +242,12 @@ impl WindowRmsAnalyzer {
             self.window_peaks.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 创建peaks数组
-        let mut peaks_array = vec![0.0; seg_cnt];
-        for (i, &peak) in self.window_peaks.iter().enumerate() {
-            peaks_array[i] = peak;
+        // 步骤2: 🚀 **Phase 3优化**: 创建peaks数组（容量预留+extend避免预填零）
+        let mut peaks_array = Vec::with_capacity(self.window_peaks.len() + 1);
+        peaks_array.extend_from_slice(&self.window_peaks);
+        if has_virtual_zero {
+            peaks_array.push(0.0);
         }
-        // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
         // 步骤3: 升序排序
         // 使用total_cmp安全处理NaN：NaN会被排序到最后
@@ -279,12 +280,12 @@ impl WindowRmsAnalyzer {
             self.window_peaks.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 创建peaks数组
-        let mut peaks_array = vec![0.0; seg_cnt];
-        for (i, &peak) in self.window_peaks.iter().enumerate() {
-            peaks_array[i] = peak;
+        // 步骤2: 🚀 **Phase 3优化**: 创建peaks数组（容量预留+extend避免预填零）
+        let mut peaks_array = Vec::with_capacity(self.window_peaks.len() + 1);
+        peaks_array.extend_from_slice(&self.window_peaks);
+        if has_virtual_zero {
+            peaks_array.push(0.0);
         }
-        // 如果has_virtual_zero为true，最后一个位置保持为0.0
 
         // 步骤3: 升序排序
         // 使用total_cmp安全处理NaN：NaN会被排序到最后
