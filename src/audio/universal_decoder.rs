@@ -659,8 +659,8 @@ pub struct ParallelUniversalStreamProcessor {
     processed_packets: usize, // 已处理包数量
 
     // 🔧 Flushing状态样本缓存
-    drained_samples: Option<Vec<Vec<f32>>>, // 缓存drain_all_samples()的结果
-    drain_index: usize,                     // 当前返回的批次索引
+    drained_samples: Option<std::collections::VecDeque<Vec<f32>>>, // 缓存drain_all_samples()的结果
+                                                                   // 🚀 Phase 3.2优化：使用VecDeque允许pop_front() move数据，避免clone开销
 }
 
 impl ParallelUniversalStreamProcessor {
@@ -681,7 +681,6 @@ impl ParallelUniversalStreamProcessor {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         })
     }
 
@@ -899,23 +898,19 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
 
                 DecodingState::Flushing => {
                     // ✅ EOF已到，drain所有剩余样本
-                    // 首次进入Flushing状态时，调用drain_all_samples()并缓存结果
+                    // 🚀 Phase 3.2优化：首次进入Flushing状态时，调用drain_all_samples()并转换为VecDeque
                     if self.drained_samples.is_none() {
                         let remaining = self
                             .parallel_decoder
                             .as_mut()
                             .expect("parallel_decoder必须已初始化")
                             .drain_all_samples();
-                        self.drained_samples = Some(remaining);
-                        self.drain_index = 0;
+                        self.drained_samples = Some(std::collections::VecDeque::from(remaining));
                     }
 
-                    // 逐批返回缓存的样本
-                    if let Some(ref samples_batches) = self.drained_samples {
-                        if self.drain_index < samples_batches.len() {
-                            let samples = samples_batches[self.drain_index].clone();
-                            self.drain_index += 1;
-
+                    // 🚀 Phase 3.2优化：逐批move样本（不clone），消除dealloc开销
+                    if let Some(ref mut samples_batches) = self.drained_samples {
+                        if let Some(samples) = samples_batches.pop_front() {
                             if !samples.is_empty() {
                                 self.state
                                     .update_position(&samples, self.state.format.channels);
@@ -950,7 +945,6 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
         self.state.reset();
         self.processed_packets = 0;
         self.drained_samples = None;
-        self.drain_index = 0;
         Ok(())
     }
 
@@ -1160,7 +1154,6 @@ mod tests {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         };
 
         // 测试配置方法
@@ -1181,7 +1174,6 @@ mod tests {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         };
 
         let configured2 = processor2.with_parallel_config(false, 64, 4);
@@ -1286,7 +1278,6 @@ mod tests {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         };
 
         // 初始状态
@@ -1351,7 +1342,6 @@ mod tests {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         };
 
         assert_eq!(processor.state.path, path);
@@ -1361,7 +1351,6 @@ mod tests {
         assert_eq!(processor.thread_count, PARALLEL_DECODE_THREADS);
         assert_eq!(processor.processed_packets, 0);
         assert!(processor.drained_samples.is_none());
-        assert_eq!(processor.drain_index, 0);
     }
 
     #[test]
@@ -1425,7 +1414,6 @@ mod tests {
             thread_count: PARALLEL_DECODE_THREADS,
             processed_packets: 0,
             drained_samples: None,
-            drain_index: 0,
         }
         .with_parallel_config(true, 256, 16);
 
