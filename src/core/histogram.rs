@@ -191,13 +191,11 @@ impl WindowRmsAnalyzer {
             self.window_rms_values.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 构建RMS数组
-        let mut rms_array = vec![0.0; seg_cnt];
-        // 复制实际RMS值
-        for (i, &rms) in self.window_rms_values.iter().enumerate() {
-            rms_array[i] = rms;
+        // 步骤2: 🚀 **Phase 2优化**: 构建RMS数组（轻量化：直接clone+条件push）
+        let mut rms_array = self.window_rms_values.clone();
+        if has_virtual_zero {
+            rms_array.push(0.0);
         }
-        // 如果has_virtual_zero为true，最后一个位置保持0.0
 
         // 🚀 **性能优化**: 部分选择算法 O(n log n) → O(n)
         // 步骤3: 计算20%采样窗口数
