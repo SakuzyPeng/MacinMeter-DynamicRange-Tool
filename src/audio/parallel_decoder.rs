@@ -370,6 +370,7 @@ impl OrderedParallelDecoder {
         let thread_pool = Arc::new(
             ThreadPoolBuilder::new()
                 .num_threads(decoder_performance::PARALLEL_DECODE_THREADS)
+                .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
                 .build()
                 .expect("创建rayon线程池失败"),
         );
@@ -404,6 +405,7 @@ impl OrderedParallelDecoder {
         self.thread_pool = Arc::new(
             ThreadPoolBuilder::new()
                 .num_threads(self.thread_pool_size)
+                .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
                 .build()
                 .expect("创建rayon线程池失败"),
         );

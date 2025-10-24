@@ -50,6 +50,7 @@ pub fn process_batch_parallel(
     // 2️⃣ 创建自定义rayon线程池（精确控制并发度）
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(parallel_degree)
+        .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
         .thread_name(|i| format!("dr-worker-{i}"))
         .panic_handler(|_| {
             eprintln!("⚠️  工作线程 panic，但批处理将继续");
