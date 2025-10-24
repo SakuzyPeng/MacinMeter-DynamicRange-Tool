@@ -63,6 +63,12 @@ impl WindowRmsAnalyzer {
     }
 
     /// 创建3秒窗口RMS分析器
+    ///
+    /// # 参数
+    /// * `sample_rate` - 音频采样率，用于计算3秒窗口长度
+    /// * `_sum_doubling` - 预留参数，当前foobar2000兼容模式固定启用Sum Doubling。
+    ///   该参数暂未使用，未来如需可配置再接入RMS计算逻辑。
+    ///   固定行为参见`process_samples()`中的`sum_sq * 2.0`计算。
     pub fn new(sample_rate: u32, _sum_doubling: bool) -> Self {
         let window_len = Self::calculate_standard_window_size(sample_rate);
         Self {
@@ -114,6 +120,8 @@ impl WindowRmsAnalyzer {
             // 窗口满了，计算窗口RMS和Peak并添加到直方图
             if self.current_count >= self.window_len {
                 // ✅ 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
+                // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
+                // 📌 这是foobar2000的固定行为，不受new()参数控制
                 let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
                 self.histogram.add_window_rms(window_rms);
 
@@ -141,6 +149,7 @@ impl WindowRmsAnalyzer {
                 let adjusted_count = self.current_count - 1;
 
                 // RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
+                // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
                 let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
                 self.histogram.add_window_rms(window_rms);
                 self.window_rms_values.push(window_rms);
