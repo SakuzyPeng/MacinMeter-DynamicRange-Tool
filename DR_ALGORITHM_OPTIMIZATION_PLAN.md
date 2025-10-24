@@ -233,7 +233,7 @@ Phase 1 → Phase 4(部分) → Phase 2 → Phase 3 → Phase 4(剩余) → Phas
 | Phase 3 | ✅ 完成 | 2025-10-24 | 2025-10-24 | Claude | 容量预留 (commit ba5a25d) |
 | Phase 3.1 | ✅ 完成 | 2025-10-24 | 2025-10-24 | Claude | 常量提取 (commit 06e814d) |
 | Phase 3.2 | ✅ 完成 | 2025-10-24 | 2025-10-24 | Claude | Flushing move优化 (commit 31b99d5) |
-| Phase 4 | ⏸️ 待开始 | - | - | - | 测试增强 |
+| Phase 4 | ✅ 完成 | 2025-10-24 | 2025-10-24 | Claude | 测试增强 (commit 1403ecf) |
 | Phase 5 | ⏸️ 待开始 | - | - | - | 文档清理 |
 
 ---
@@ -363,6 +363,44 @@ let samples = samples_batches.pop_front(); // move语义
 - ⚠️ 标准差增加（可能是统计噪声，需更多轮次验证）
 
 **注释**: 此优化主要改善尾段行为（减少dealloc压力），不以提升平均速度为目标。标准差增加可能源于系统背景任务干扰，需要更长时间的稳定性测试验证。
+
+---
+
+### Phase 4: 测试套件增强 ✅
+
+**提交**: `1403ecf` (2025-10-24)
+
+**新增测试**:
+```rust
+// Phase 4.2: 20%采样边界测试
+test_20_percent_sampling_small_segments()   // seg_cnt=1,3,5边界验证
+test_20_percent_sampling_large_segments()   // 1000窗口性能测试
+
+// Phase 4.3: 虚拟0窗口一致性测试
+test_virtual_zero_window_consistency()      // 5个场景全覆盖
+```
+
+**测试覆盖增强**:
+- ✅ 20%采样边界场景（小segment: 1-5窗口，大segment: 1000窗口）
+- ✅ RMS平方和公式验证（sqrt(sum(x²)/n)）
+- ✅ 性能要求验证（1000窗口排序<10ms）
+- ✅ 虚拟0窗口5个场景（恰好整除、尾窗、分批处理、空analyzer）
+- ✅ 分批调用行为验证（每次process_samples产生尾窗RMS）
+
+**验证结果**:
+- ✅ 167/167单元测试通过（从164增至167，新增3个测试）
+- ✅ Clippy零警告
+- ✅ DR值保持精确：16.22 dB
+- ✅ x86 CI环境测试通过（Docker模拟）
+
+**重要发现**:
+分批调用`process_samples()`会产生中间尾窗RMS（预期行为），测试已更新以反映实际API语义。这是流式设计的固有特性：每次调用独立处理尾部样本。
+
+**质量提升**:
+- 测试总数增加1.8%（164 → 167）
+- 边界场景覆盖度提升（从基础功能→极端case）
+- 性能要求明确化（量化指标<10ms）
+- API语义文档化（分批行为正式记录）
 
 ---
 
