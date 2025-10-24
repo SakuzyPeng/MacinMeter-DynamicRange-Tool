@@ -237,6 +237,58 @@ impl WindowRmsAnalyzer {
         (rms_sum / n_blk as f64).sqrt()
     }
 
+    /// 🚀 **O(n)优化**: 单遍扫描找出最大值和次大值
+    ///
+    /// 用O(n)单遍扫描代替O(n log n)排序，语义与排序后取最后两个元素一致：
+    /// - 对于重复值，自然保留（例如多个最大值时，次大值就是该最大值）
+    /// - 无NaN数据（peak值总是非负的），直接用普通比较更快
+    /// - 支持虚拟0窗语义：若has_virtual_zero=true，考虑虚拟0值的排序影响
+    ///
+    /// # 返回值
+    ///
+    /// 返回 (最大值, 次大值)
+    #[inline(always)]
+    fn find_top_two(values: &[f64], has_virtual_zero: bool) -> (f64, f64) {
+        if values.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        if values.len() == 1 {
+            let v = values[0];
+            // 单元素：最大和次大相同，除非有虚拟0
+            if has_virtual_zero && 0.0 > v {
+                return (0.0, v);
+            }
+            return (v, v);
+        }
+
+        // 多元素：用第一个元素初始化
+        let mut max = values[0];
+        let mut second = 0.0; // 次大初始为0，会在循环中更新
+
+        for &val in values.iter().skip(1) {
+            if val > max {
+                second = max;
+                max = val;
+            } else if val > second {
+                second = val;
+            }
+        }
+
+        // 处理虚拟0窗的影响（若存在）
+        if has_virtual_zero {
+            let virtual_zero = 0.0;
+            if virtual_zero > max {
+                second = max;
+                max = virtual_zero;
+            } else if virtual_zero > second {
+                second = virtual_zero;
+            }
+        }
+
+        (max, second)
+    }
+
     /// 获取最大窗口Peak值（主峰）
     ///
     /// 实现窗口级最大Peak选择算法：
@@ -252,27 +304,12 @@ impl WindowRmsAnalyzer {
             return 0.0;
         }
 
-        // 🎯 **关键修复**: 判断是否需要虚拟0窗
         let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
-        let seg_cnt = if has_virtual_zero {
-            self.window_peaks.len() + 1 // 恰好整除：添加0窗
-        } else {
-            self.window_peaks.len() // 有尾窗：不添加0窗
-        };
 
-        // 步骤2: 🚀 **Phase 3优化**: 创建peaks数组（容量预留+extend避免预填零）
-        let mut peaks_array = Vec::with_capacity(self.window_peaks.len() + 1);
-        peaks_array.extend_from_slice(&self.window_peaks);
-        if has_virtual_zero {
-            peaks_array.push(0.0);
-        }
-
-        // 步骤3: 升序排序
-        // 使用total_cmp安全处理NaN：NaN会被排序到最后
-        peaks_array.sort_by(|a, b| a.total_cmp(b));
-
-        // 步骤4: 选择peaks[seg_cnt-1]位置的值（最大值）
-        peaks_array[seg_cnt - 1]
+        // 🚀 **微优化**: 直接扫描window_peaks，无临时Vec分配
+        // find_top_two 内部处理虚拟0窗语义
+        let (max, _second) = Self::find_top_two(&self.window_peaks, has_virtual_zero);
+        max
     }
 
     /// 获取第二大窗口Peak值
@@ -290,32 +327,12 @@ impl WindowRmsAnalyzer {
             return 0.0;
         }
 
-        // 🎯 **关键修复**: 判断是否需要虚拟0窗
         let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
-        let seg_cnt = if has_virtual_zero {
-            self.window_peaks.len() + 1 // 恰好整除：添加0窗
-        } else {
-            self.window_peaks.len() // 有尾窗：不添加0窗
-        };
 
-        // 步骤2: 🚀 **Phase 3优化**: 创建peaks数组（容量预留+extend避免预填零）
-        let mut peaks_array = Vec::with_capacity(self.window_peaks.len() + 1);
-        peaks_array.extend_from_slice(&self.window_peaks);
-        if has_virtual_zero {
-            peaks_array.push(0.0);
-        }
-
-        // 步骤3: 升序排序
-        // 使用total_cmp安全处理NaN：NaN会被排序到最后
-        peaks_array.sort_by(|a, b| a.total_cmp(b));
-
-        // 步骤4: 选择peaks[seg_cnt-2]位置的值
-        if seg_cnt >= 2 {
-            peaks_array[seg_cnt - 2]
-        } else {
-            // 只有1个Peak时，使用该Peak
-            peaks_array[0]
-        }
+        // 🚀 **微优化**: 直接扫描window_peaks，无临时Vec分配
+        // find_top_two 内部处理虚拟0窗语义
+        let (_max, second) = Self::find_top_two(&self.window_peaks, has_virtual_zero);
+        second
     }
 
     /// 清空分析器状态
@@ -992,5 +1009,81 @@ mod tests {
 
         let rms_zero = analyzer.calculate_20_percent_rms();
         assert_eq!(rms_zero, 0.0, "空analyzer的20% RMS应该为0");
+    }
+
+    /// 🚀 **O(n)优化验证**: 验证 find_top_two 与排序方法的等价性
+    ///
+    /// 确保 O(n) 单遍扫描算法与 O(n log n) 排序方法返回相同的结果
+    #[test]
+    fn test_find_top_two_equivalence() {
+        // 测试用例1: 基础情况
+        let values1 = vec![0.3, 0.9, 0.5, 0.1, 0.8];
+        let (max1, second1) = WindowRmsAnalyzer::find_top_two(&values1, false);
+        assert!((max1 - 0.9).abs() < 1e-10, "最大值应该是0.9");
+        assert!((second1 - 0.8).abs() < 1e-10, "次大值应该是0.8");
+
+        // 测试用例2: 重复值
+        let values2 = vec![0.5, 0.8, 0.8, 0.3];
+        let (max2, second2) = WindowRmsAnalyzer::find_top_two(&values2, false);
+        assert!((max2 - 0.8).abs() < 1e-10, "最大值应该是0.8");
+        assert!((second2 - 0.8).abs() < 1e-10, "次大值也应该是0.8（重复值）");
+
+        // 测试用例3: 单一值
+        let values3 = vec![0.5];
+        let (max3, second3) = WindowRmsAnalyzer::find_top_two(&values3, false);
+        assert!((max3 - 0.5).abs() < 1e-10);
+        assert!((second3 - 0.5).abs() < 1e-10);
+
+        // 测试用例4: 包含0的值（测试普通比较对0.0的处理）
+        let values4 = vec![0.5, 0.9, 0.3, 0.0];
+        let (max4, second4) = WindowRmsAnalyzer::find_top_two(&values4, false);
+        assert!((max4 - 0.9).abs() < 1e-10);
+        assert!((second4 - 0.5).abs() < 1e-10);
+
+        // 测试用例5: 所有相同值
+        let values5 = vec![0.7, 0.7, 0.7];
+        let (max5, second5) = WindowRmsAnalyzer::find_top_two(&values5, false);
+        assert!((max5 - 0.7).abs() < 1e-10);
+        assert!((second5 - 0.7).abs() < 1e-10);
+
+        // 测试用例6: 虚拟窗语义验证
+        // 当 has_virtual_zero=true 时，虚拟0被考虑进排序
+        let values_vz = vec![0.5, 0.9, 0.3];
+        let (max_vz, second_vz) = WindowRmsAnalyzer::find_top_two(&values_vz, true);
+        assert!((max_vz - 0.9).abs() < 1e-10, "有虚拟0时最大值仍为0.9");
+        assert!((second_vz - 0.5).abs() < 1e-10, "有虚拟0时次大值为0.5");
+
+        // 测试用例7: 对比排序方法验证结果一致性
+        let test_values = vec![
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            vec![5.0, 4.0, 3.0, 2.0, 1.0],
+            vec![3.0, 1.0, 4.0, 1.0, 5.0],
+            vec![0.0, 0.5, 0.9, 0.1],
+            vec![1.0],
+            vec![1.0, 1.0],
+        ];
+
+        for values in test_values {
+            let (max_our, second_our) = WindowRmsAnalyzer::find_top_two(&values, false);
+
+            // 排序方法（参考实现）
+            let mut sorted = values.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let max_ref = sorted[sorted.len() - 1];
+            let second_ref = if sorted.len() >= 2 {
+                sorted[sorted.len() - 2]
+            } else {
+                sorted[0]
+            };
+
+            assert!(
+                (max_our - max_ref).abs() < 1e-10,
+                "最大值不匹配: our={max_our}, ref={max_ref}, values={values:?}"
+            );
+            assert!(
+                (second_our - second_ref).abs() < 1e-10,
+                "次大值不匹配: our={second_our}, ref={second_ref}, values={values:?}"
+            );
+        }
     }
 }

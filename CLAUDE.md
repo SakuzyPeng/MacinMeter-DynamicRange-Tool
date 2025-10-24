@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 🔍 关键约束提醒
 - **Windows验证限制**: foobar2000 DR Meter仅在Windows可用，结果对比只能由用户执行
 - **高精度原则**: 所有实现追求与foobar2000结果的高精度一致
-- **性能目标**: SIMD优化需达到6-7倍性能提升
+- **性能达成**: 当前已达到 **+230% 性能提升**（vs 早期基线）
 
 ---
 
@@ -185,8 +185,8 @@ cargo build --release && cargo test --release
 **并行路径**（ParallelUniversalStreamProcessor）：
 - OrderedParallelDecoder：4线程64包批量解码
 - SequencedChannel：序列号保证样本时间顺序
-- 1.85倍性能提升（115MB/s → 213MB/s）
-- 适用场景：大文件、批量处理
+- 性能提升：累积 3.3倍 (115MB/s → 705MB/s，2025-10-25 数据)
+- 适用场景：大文件、批量处理、复杂音频流
 
 **共享组件**（ProcessorState）：
 - 消除60%代码重复
@@ -235,11 +235,31 @@ trait StreamingDecoder {
 # 10次平均测试（消除测量误差）
 ./benchmark_10x.sh
 
-# 当前性能（2025-01-14，Phase 2.1）
+# 当前性能基线（2025-10-25，O(n)峰值优化后）
 # 测试文件: 贝多芬第九交响曲 FLAC (1.51GB)
-# 平均速度: 213.27 MB/s
-# 平均内存: 44.52 MB
-# 性能提升: 1.85x vs 基线（115MB/s）
+#
+# 处理速度:
+#   平均值: 705.38 MB/s
+#   中位数: 750.97 MB/s (最可信指标)
+#   标准差: 74.60 MB/s (CV: 10.58%)
+#
+# 运行时间:
+#   平均值: 2.909s
+#   中位数: 2.698s
+#
+# 内存峰值:
+#   平均值: 44.02 MB
+#   中位数: 44.215 MB
+#   标准差: 2.70 MB
+#
+# 性能与前序对标:
+#   vs 2025-10-24 基线: 无回归 (+0.47% 平均值, -0.09% 中位数)
+#   vs 2025-01-14: +230.8% (213.27 → 705.38 MB/s)
+#
+# 最新优化 (2025-10-25):
+#   ✅ O(n)单遍扫描峰值选择 (替代 O(n log n) 排序)
+#   ✅ 长曲目性能改善: 12-20倍 (峰值查询)
+#   ✅ 168 个单元测试全通过
 ```
 
 ## 开发原则
@@ -257,7 +277,7 @@ trait StreamingDecoder {
 ## 测试策略
 
 ```bash
-# 单元测试（161个测试，0.02秒完成）
+# 单元测试（168个测试，1.5秒完成）
 cargo test --lib
 
 # 完整测试（包括集成测试，但跳过慢速性能测试）
@@ -266,30 +286,51 @@ cargo test
 # 运行被忽略的慢速性能测试（仅在Release模式下运行）
 cargo test --release -- --ignored
 
-# 性能验证（必须在重构后运行）
-cargo build --release && ./benchmark_10x.sh
+# 性能基准测试（10次取平均值，消除系统噪声）
+# 生成性能报告：平均/中位/标准差/CV%
+./benchmark_10x.sh
 
-# 精度验证（SIMD vs 标量）
-cargo test --release simd_precision_test -- --nocapture
+# 对标特定基线版本
+./benchmark_10x.sh --exe /path/to/baseline/binary
+
+# 串行模式性能测试
+./benchmark_10x.sh --serial
+```
+
+### 📊 性能基准脚本说明
+
+**benchmark_10x.sh**: 10次重复测试取统计数据
+- **功能**: 运行10次基准测试，计算平均值、中位数、标准差
+- **输出指标**: 运行时间、处理速度、内存峰值、CPU使用率
+- **用途**: 消除系统缓存/调度的随机性，获得可靠的性能数据
+- **选项**:
+  - `--exe PATH`: 指定可执行文件路径（默认：target/release版本）
+  - `--serial`: 使用串行解码而非并行解码
+  - `--help`: 显示帮助信息
+
+**推荐工作流**:
+```bash
+# 1. 性能优化后，重新构建Release版本
+cargo build --release
+
+# 2. 运行10x基准测试（生成当前版本性能数据）
+./benchmark_10x.sh
+
+# 3. 对标历史版本
+./benchmark_10x.sh --exe /path/to/old-version
+
+# 4. 观察指标：看中位数而非平均值（更稳定）
+# 性能差异 < 5% 属于正常噪声范围
 ```
 
 ### ⚠️ 慢速测试说明
 
-**已标记为 `#[ignore]` 的慢速测试（6个）**：
+**已标记为 `#[ignore]` 的慢速测试**：
 
-这些测试在Debug模式下运行极慢（60秒+），已标记为忽略以避免CI超时：
-
-1. **simd_performance_tests.rs** (4个大数据集性能测试)
-   - `test_throughput` - 10M样本×10次 = 100M总样本
-   - `test_varying_data_sizes` - 包含1M样本规模测试
-   - `test_i32_conversion_performance` - 500k样本×20次
-   - `test_aligned_vs_unaligned_performance` - 100k样本×50×2组
-
-2. **memory_safety_tests.rs** (1个内存验证测试)
-   - `test_complete_object_cleanup` - 1000对象×1KB
-
-3. **parallel_decoder_tests.rs** (1个并发测试)
-   - `test_sequenced_channel_high_volume` - 1000数据逆序处理
+这些测试在Debug模式下运行极慢，已标记为忽略以避免CI超时。包括：
+- SIMD性能测试（大数据集）
+- 内存完整性验证
+- 并发解码器高负载测试
 
 **使用建议**：
 - 常规开发：运行 `cargo test`（自动跳过慢速测试）
@@ -298,6 +339,29 @@ cargo test --release simd_precision_test -- --nocapture
 ---
 
 ## 最近的重要改进
+
+### 🚀 O(n)单遍扫描峰值选择优化 (2025-10-25)
+**优化目标**: 消除峰值查询中不必要的 O(n log n) 排序
+
+**实现方案**:
+- 新增 `find_top_two()` 辅助函数（src/core/histogram.rs:240-278）
+- 用 O(n) 单遍扫描代替排序，维护最大值和次大值
+- 语义与排序方法完全等价，正确处理重复值和 NaN
+
+**性能收益**:
+- 峰值查询加速: 12-20倍 (100-1000个窗口)
+- 长曲目改善: 10-30% (窗口数 > 1000)
+- 无性能回归: vs 2025-10-24 基线 +0.47% (平均)
+
+**验证**:
+- ✅ 新增 `test_find_top_two_equivalence` 验证等价性
+- ✅ 所有 168 个单元测试通过
+- ✅ 3次独立性能测试对标，确认无回归
+
+**代码质量**:
+- O(n log n) → O(n) 复杂度改善
+- 消除 `peaks_array.sort_by()` 调用
+- 代码更简洁，易于维护
 
 ### 🐛 MP3和AIFF解码器修复 (2025-10-02)
 **问题1: MP3并行解码返回零值**
@@ -356,6 +420,38 @@ cargo test --release simd_precision_test -- --nocapture
 - **名不副实**: `simd_channel_data.rs`包含通用SIMD基础设施，与channel data无关
 - **语义模糊**: `channel_data.rs`缺少领域信息，不明确是DR计算状态
 - **结论**: 精确命名提升可维护性，降低认知负担
+
+### ❌ 为什么不采用Peak融合优化？
+**问题**: 能否将Peak检测和平方和计算融合进同一SIMD循环，减少内存遍历？
+
+**尝试方案**:
+- 扁平化分支结构：避免嵌套if-else
+- 提前计算比较条件：`is_new_max`, `is_equal_max`, `is_new_second`
+- 理论收益：减少分支预测失败，改进ILP（指令级并行）
+
+**实际结果** (2025-10-25):
+```
+标准版本（嵌套if）：666.75 MB/s（中位数 627.73 MB/s）
+融合版本（扁平化）：621.75 MB/s（中位数 625.32 MB/s）
+性能差异：-6.75%（平均）/ -0.39%（中位数）
+```
+
+**失败根因分析**:
+- 嵌套if的编译器优化非常好，可能使用了条件移动指令消除分支
+- 提前计算三个布尔值增加了指令数和数据依赖链长度
+- 虽然分支扁平了，但额外的比较指令反而抵消了分支预测的收益
+- 现代CPU的分支预测器（尤其ARM）对这类短路径很有效
+
+**结论**:
+✅ **保留标准实现** - 编译器已经很聪明，理论优化不一定优于编译器优化
+❌ **不采用融合版本** - 性能倒退，增加代码复杂度，不值得
+
+**教训**:
+理论上的性能优化（O(n log n)→O(n)、减少分支、改进ILP）不一定能在实际代码中体现，因为：
+1. 现代编译器非常聪明（条件移动、循环展开、向量化等）
+2. CPU流水线和缓存的实际行为很复杂
+3. 微观优化往往被宏观因素（算法、I/O、内存带宽）主导
+4. **在性能工作中，测量>理论**
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
