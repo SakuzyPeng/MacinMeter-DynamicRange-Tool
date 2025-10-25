@@ -56,48 +56,72 @@ if echo "$TEST_OUTPUT" | grep -q "test result: FAILED"; then
     exit 1
 fi
 
-# 按类型汇总统计（库测试、集成测试、doc测试）
-# 只显示有忽略或失败的行，以及最后的总体统计
+# 按类型汇总统计（库单元测试、集成测试、文档测试）
 echo "📊 测试结果统计："
 
+UNIT_PASSED=0
+UNIT_IGNORED=0
+UNIT_FAILED=0
+INTEGRATION_PASSED=0
+INTEGRATION_IGNORED=0
+INTEGRATION_FAILED=0
+DOC_PASSED=0
+DOC_IGNORED=0
+DOC_FAILED=0
 TOTAL_PASSED=0
 TOTAL_IGNORED=0
 TOTAL_FAILED=0
 CURRENT_TEST_TYPE=""
 
-# 提取带有测试套件信息的行，关联 running 和 test result
-{
-    echo "$TEST_OUTPUT" | grep -E "^Running|^     Running|^test result:" | {
-        while read -r line; do
-            if echo "$line" | grep -q "Running"; then
-                # 提取当前测试套件名称 (如 "tests/boundary_tests.rs", "src/lib.rs")
-                CURRENT_TEST_TYPE=$(echo "$line" | grep -oE '\(.*\)' | tr -d '()' | sed 's|.*/||')
-            elif echo "$line" | grep -q "^test result:"; then
-                # 解析统计信息
-                PASSED=$(echo "$line" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
-                FAILED=$(echo "$line" | grep -oE "[0-9]+ failed" | head -1 | grep -oE "[0-9]+")
-                IGNORED=$(echo "$line" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
+echo "$TEST_OUTPUT" | grep -E "^Running|^     Running|^test result:" | while read -r line; do
+    if echo "$line" | grep -q "unittests"; then
+        CURRENT_TEST_TYPE="unit"
+    elif echo "$line" | grep -q "tests/.*\.rs"; then
+        CURRENT_TEST_TYPE="integration"
+    elif echo "$line" | grep -q "Doc-tests"; then
+        CURRENT_TEST_TYPE="doc"
+    elif echo "$line" | grep -q "^test result:"; then
+        # 解析统计信息
+        PASSED=$(echo "$line" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
+        FAILED=$(echo "$line" | grep -oE "[0-9]+ failed" | head -1 | grep -oE "[0-9]+")
+        IGNORED=$(echo "$line" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
 
-                TOTAL_PASSED=$((TOTAL_PASSED + ${PASSED:-0}))
-                TOTAL_IGNORED=$((TOTAL_IGNORED + ${IGNORED:-0}))
-                TOTAL_FAILED=$((TOTAL_FAILED + ${FAILED:-0}))
+        case "$CURRENT_TEST_TYPE" in
+            "unit")
+                UNIT_PASSED=$((UNIT_PASSED + ${PASSED:-0}))
+                UNIT_IGNORED=$((UNIT_IGNORED + ${IGNORED:-0}))
+                UNIT_FAILED=$((UNIT_FAILED + ${FAILED:-0}))
+                ;;
+            "integration")
+                INTEGRATION_PASSED=$((INTEGRATION_PASSED + ${PASSED:-0}))
+                INTEGRATION_IGNORED=$((INTEGRATION_IGNORED + ${IGNORED:-0}))
+                INTEGRATION_FAILED=$((INTEGRATION_FAILED + ${FAILED:-0}))
 
-                # 只显示有忽略或失败的行
-                if [ "${IGNORED:-0}" != "0" ] || [ "${FAILED:-0}" != "0" ]; then
-                    # 如果没有套件名，用编号表示
-                    SUITE_NAME="${CURRENT_TEST_TYPE:-tests}"
-                    STATS="${SUITE_NAME}: ✅ ${PASSED:-0}通过 "
-                    [ "${IGNORED:-0}" != "0" ] && STATS="${STATS}⚠️  ${IGNORED}忽略 "
-                    [ "${FAILED:-0}" != "0" ] && STATS="${STATS}❌ ${FAILED}失败 "
-                    echo "  • $STATS"
+                # 显示集成测试中的失败
+                if [ "${FAILED:-0}" != "0" ]; then
+                    echo "  ❌ $line"
                 fi
-            fi
-        done
+                ;;
+            "doc")
+                DOC_PASSED=$((DOC_PASSED + ${PASSED:-0}))
+                DOC_IGNORED=$((DOC_IGNORED + ${IGNORED:-0}))
+                DOC_FAILED=$((DOC_FAILED + ${FAILED:-0}))
+                ;;
+        esac
+    fi
+done
 
-        # 显示总体统计
-        echo "  • 总计: ✅ ${TOTAL_PASSED} | ⚠️  ${TOTAL_IGNORED}"
-    }
-}
+# 计算总体统计
+TOTAL_PASSED=$((UNIT_PASSED + INTEGRATION_PASSED + DOC_PASSED))
+TOTAL_IGNORED=$((UNIT_IGNORED + INTEGRATION_IGNORED + DOC_IGNORED))
+TOTAL_FAILED=$((UNIT_FAILED + INTEGRATION_FAILED + DOC_FAILED))
+
+# 显示分类统计
+echo "  单元测试:  ✅ ${UNIT_PASSED} | ⚠️  ${UNIT_IGNORED}"
+echo "  集成测试:  ✅ ${INTEGRATION_PASSED} | ⚠️  ${INTEGRATION_IGNORED}"
+[ "$DOC_PASSED" != "0" ] || [ "$DOC_IGNORED" != "0" ] && echo "  文档测试:  ✅ ${DOC_PASSED} | ⚠️  ${DOC_IGNORED}"
+echo "  ─────────────────────────"
+echo "  总  计:    ✅ ${TOTAL_PASSED} | ⚠️  ${TOTAL_IGNORED}"
 
 echo "✅ 单元测试通过"
 
