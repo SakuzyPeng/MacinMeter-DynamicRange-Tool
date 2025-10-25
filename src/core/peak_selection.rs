@@ -69,6 +69,12 @@ pub trait PeakSelector {
     fn strategy_name(&self) -> &'static str;
 
     /// 检查给定峰值是否被削波
+    ///
+    /// ℹ️ **注意**：此方法与 `utils::is_peak_clipped()` 逻辑完全相同。
+    /// - Trait 版本：供 `PeakSelectionStrategy` 内部使用
+    /// - Utils 版本：供外部工具函数使用（如 `suggest_strategy()`）
+    ///
+    /// 两个实现保持同步，都使用 `dr_analysis::CLIPPING_THRESHOLD`。
     #[inline]
     fn is_clipped(&self, peak: f64) -> bool {
         peak >= dr_analysis::CLIPPING_THRESHOLD
