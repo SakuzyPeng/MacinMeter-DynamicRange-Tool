@@ -61,8 +61,7 @@ echo "📊 测试结果统计："
 
 # 提取各类型的测试统计
 UNIT_LINE=$(echo "$TEST_OUTPUT" | grep "^test result:" | head -1)
-INTEGRATION_LINES=$(echo "$TEST_OUTPUT" | grep -E "^Running.*tests/|^     Running.*tests/" -A 1000 | grep "^test result:" | head -20)
-DOC_LINES=$(echo "$TEST_OUTPUT" | grep "Doc-tests" -A 1000 | grep "^test result:")
+DOC_LINE=$(echo "$TEST_OUTPUT" | grep "Doc-tests" -A 1000 | grep "^test result:" | head -1)
 
 # 解析单元测试统计
 if [ -n "$UNIT_LINE" ]; then
@@ -74,22 +73,21 @@ else
     UNIT_I=0
 fi
 
-# 解析集成测试统计
-INT_P=0
-INT_I=0
-echo "$INTEGRATION_LINES" | while read -r line; do
-    [ -z "$line" ] && continue
-    P=$(echo "$line" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
-    I=$(echo "$line" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
-    INT_P=$((INT_P + ${P:-0}))
-    INT_I=$((INT_I + ${I:-0}))
-done | tail -1
+# 解析文档测试统计
+if [ -n "$DOC_LINE" ]; then
+    DOC_P=$(echo "$DOC_LINE" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
+    DOC_I=$(echo "$DOC_LINE" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
+    echo "  文档测试:  ✅ ${DOC_P:-0} | ⚠️  ${DOC_I:-0}"
+else
+    DOC_P=0
+    DOC_I=0
+fi
 
-# 简单方式：直接计算所有test result的总和
+# 计算总数和集成测试数
 TOTAL_P=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
 TOTAL_I=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ ignored" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
 
-echo "  集成测试:  ✅ $(($TOTAL_P - ${UNIT_P:-0})) | ⚠️  $(($TOTAL_I - ${UNIT_I:-0}))"
+echo "  集成测试:  ✅ $(($TOTAL_P - ${UNIT_P:-0} - ${DOC_P:-0})) | ⚠️  $(($TOTAL_I - ${UNIT_I:-0} - ${DOC_I:-0}))"
 echo "  ─────────────────────────"
 echo "  总  计:    ✅ ${TOTAL_P:-0} | ⚠️  ${TOTAL_I:-0}"
 
