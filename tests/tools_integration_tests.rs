@@ -263,7 +263,8 @@ fn test_batch_output_path_generation() {
 /// 验证用户指定输出路径优先
 #[test]
 fn test_batch_output_path_user_specified() {
-    let user_path = PathBuf::from("/tmp/my_custom_output.txt");
+    let mut user_path = std::env::temp_dir();
+    user_path.push("my_custom_output.txt");
 
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
