@@ -210,18 +210,8 @@ fn analyze_streaming_decoder(
         )));
     }
 
-    // 🎯 样本数检查：要求最少样本数以支持可靠的DR分析
-    // - 零长度文件：没有任何音频数据
-    // - 单样本文件：样本太少，无法进行有意义的RMS计算和峰值分析
-    const MINIMUM_SAMPLES_FOR_ANALYSIS: u64 = 2;
-    if format.sample_count < MINIMUM_SAMPLES_FOR_ANALYSIS {
-        return Err(AudioError::InvalidInput(format!(
-            "音频文件样本数过少，无法进行可靠的DR分析。\n\
-            要求最少：{} 个样本，实际：{} 个样本。\n\
-            💡 音频文件需要足够的样本用于RMS计算和峰值检测。",
-            MINIMUM_SAMPLES_FOR_ANALYSIS, format.sample_count
-        )));
-    }
+    // 样本数最小值在流式解码结束后基于“实际解码帧数”再校验，
+    // 以兼容未知总长度（如部分 Opus 流）场景，避免误判。
 
     // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
     let mut analyzers: Vec<WindowRmsAnalyzer> = (0..format.channels)
@@ -407,6 +397,23 @@ fn analyze_streaming_decoder(
         println!("🔧 计算最终DR值...");
     }
 
+    // 🎯 最小样本数校验（基于实际解码帧数）
+    // - 兼容未知总长度的流式格式（如部分Opus），避免基于header的误判
+    // - 对于零长度/单样本输入，在此处统一返回错误
+    const MINIMUM_SAMPLES_FOR_ANALYSIS: u64 = 2;
+    let actual_frames = if format.channels > 0 {
+        total_samples_processed / format.channels as u64
+    } else {
+        0
+    };
+    if actual_frames < MINIMUM_SAMPLES_FOR_ANALYSIS {
+        return Err(AudioError::InvalidInput(format!(
+            "音频文件样本数过少，无法进行可靠的DR分析。\n\
+            要求最少：{MINIMUM_SAMPLES_FOR_ANALYSIS} 个样本，实际：{actual_frames} 个样本。\n\
+            💡 音频文件需要足够的样本用于RMS计算和峰值检测。"
+        )));
+    }
+
     // 🎯 从每个WindowRmsAnalyzer获取最终DR结果
     let mut dr_results = Vec::new();
 
@@ -454,7 +461,7 @@ fn analyze_streaming_decoder(
     // 🎯 检测截断：比较预期样本数与实际解码样本数
     // 如果实际处理的样本少于预期，标记为部分分析（is_partial）
     let expected_samples = final_format.sample_count;
-    let actual_samples = total_samples_processed as u64 / final_format.channels as u64;
+    let actual_samples = total_samples_processed / final_format.channels as u64;
 
     // 调试输出：了解样本数差异
     if config.verbose {
@@ -471,10 +478,8 @@ fn analyze_streaming_decoder(
             );
         }
         final_format.mark_as_partial(skipped_approx);
-    } else if actual_samples > expected_samples {
-        if config.verbose {
-            eprintln!("[WARNING] 实际解码样本({actual_samples}) 多于预期({expected_samples})");
-        }
+    } else if actual_samples > expected_samples && config.verbose {
+        eprintln!("[WARNING] 实际解码样本({actual_samples}) 多于预期({expected_samples})");
     }
 
     // 在函数返回前停止 processing 范围的采样并生成火焰图，避免包含尾段 drop/dealloc

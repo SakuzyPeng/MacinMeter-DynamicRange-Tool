@@ -43,7 +43,7 @@
   - aiff_diagnostic.rs — pending
   - audio_format_tests.rs — pending
   - audio_test_fixtures.rs — pending（基准/治具，关注 I/O 体量）
-  - boundary_tests.rs — investigating（此前有“silence”波动史）
+  - boundary_tests.rs — resolved（严格断言已落地；truncated诊断用例已 ignore）
   - chunk_stats_tests.rs — pending
   - error_handling_tests.rs — pending
   - error_path_tests.rs — pending

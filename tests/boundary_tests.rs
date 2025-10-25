@@ -45,8 +45,7 @@ fn test_zero_length_audio() {
             result,
             Err(AudioError::FormatError(_)) | Err(AudioError::InvalidInput(_))
         ),
-        "零长度文件应该返回 FormatError 或 InvalidInput，但得到: {:?}",
-        result
+        "零长度文件应该返回 FormatError 或 InvalidInput，但得到: {result:?}"
     );
 
     match result {
@@ -77,8 +76,7 @@ fn test_single_sample_audio() {
             result,
             Err(AudioError::InvalidInput(_)) | Err(AudioError::CalculationError(_))
         ),
-        "单样本文件应该返回 InvalidInput 或 CalculationError，但得到: {:?}",
-        result
+        "单样本文件应该返回 InvalidInput 或 CalculationError，但得到: {result:?}"
     );
 
     match result {
