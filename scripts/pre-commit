@@ -59,69 +59,39 @@ fi
 # 按类型汇总统计（库单元测试、集成测试、文档测试）
 echo "📊 测试结果统计："
 
-UNIT_PASSED=0
-UNIT_IGNORED=0
-UNIT_FAILED=0
-INTEGRATION_PASSED=0
-INTEGRATION_IGNORED=0
-INTEGRATION_FAILED=0
-DOC_PASSED=0
-DOC_IGNORED=0
-DOC_FAILED=0
-TOTAL_PASSED=0
-TOTAL_IGNORED=0
-TOTAL_FAILED=0
-CURRENT_TEST_TYPE=""
+# 提取各类型的测试统计
+UNIT_LINE=$(echo "$TEST_OUTPUT" | grep "^test result:" | head -1)
+INTEGRATION_LINES=$(echo "$TEST_OUTPUT" | grep -E "^Running.*tests/|^     Running.*tests/" -A 1000 | grep "^test result:" | head -20)
+DOC_LINES=$(echo "$TEST_OUTPUT" | grep "Doc-tests" -A 1000 | grep "^test result:")
 
-echo "$TEST_OUTPUT" | grep -E "^Running|^     Running|^test result:" | while read -r line; do
-    if echo "$line" | grep -q "unittests"; then
-        CURRENT_TEST_TYPE="unit"
-    elif echo "$line" | grep -q "tests/.*\.rs"; then
-        CURRENT_TEST_TYPE="integration"
-    elif echo "$line" | grep -q "Doc-tests"; then
-        CURRENT_TEST_TYPE="doc"
-    elif echo "$line" | grep -q "^test result:"; then
-        # 解析统计信息
-        PASSED=$(echo "$line" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
-        FAILED=$(echo "$line" | grep -oE "[0-9]+ failed" | head -1 | grep -oE "[0-9]+")
-        IGNORED=$(echo "$line" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
+# 解析单元测试统计
+if [ -n "$UNIT_LINE" ]; then
+    UNIT_P=$(echo "$UNIT_LINE" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
+    UNIT_I=$(echo "$UNIT_LINE" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
+    echo "  单元测试:  ✅ ${UNIT_P:-0} | ⚠️  ${UNIT_I:-0}"
+else
+    UNIT_P=0
+    UNIT_I=0
+fi
 
-        case "$CURRENT_TEST_TYPE" in
-            "unit")
-                UNIT_PASSED=$((UNIT_PASSED + ${PASSED:-0}))
-                UNIT_IGNORED=$((UNIT_IGNORED + ${IGNORED:-0}))
-                UNIT_FAILED=$((UNIT_FAILED + ${FAILED:-0}))
-                ;;
-            "integration")
-                INTEGRATION_PASSED=$((INTEGRATION_PASSED + ${PASSED:-0}))
-                INTEGRATION_IGNORED=$((INTEGRATION_IGNORED + ${IGNORED:-0}))
-                INTEGRATION_FAILED=$((INTEGRATION_FAILED + ${FAILED:-0}))
+# 解析集成测试统计
+INT_P=0
+INT_I=0
+echo "$INTEGRATION_LINES" | while read -r line; do
+    [ -z "$line" ] && continue
+    P=$(echo "$line" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
+    I=$(echo "$line" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
+    INT_P=$((INT_P + ${P:-0}))
+    INT_I=$((INT_I + ${I:-0}))
+done | tail -1
 
-                # 显示集成测试中的失败
-                if [ "${FAILED:-0}" != "0" ]; then
-                    echo "  ❌ $line"
-                fi
-                ;;
-            "doc")
-                DOC_PASSED=$((DOC_PASSED + ${PASSED:-0}))
-                DOC_IGNORED=$((DOC_IGNORED + ${IGNORED:-0}))
-                DOC_FAILED=$((DOC_FAILED + ${FAILED:-0}))
-                ;;
-        esac
-    fi
-done
+# 简单方式：直接计算所有test result的总和
+TOTAL_P=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
+TOTAL_I=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ ignored" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
 
-# 计算总体统计
-TOTAL_PASSED=$((UNIT_PASSED + INTEGRATION_PASSED + DOC_PASSED))
-TOTAL_IGNORED=$((UNIT_IGNORED + INTEGRATION_IGNORED + DOC_IGNORED))
-TOTAL_FAILED=$((UNIT_FAILED + INTEGRATION_FAILED + DOC_FAILED))
-
-# 显示分类统计
-echo "  单元测试:  ✅ ${UNIT_PASSED} | ⚠️  ${UNIT_IGNORED}"
-echo "  集成测试:  ✅ ${INTEGRATION_PASSED} | ⚠️  ${INTEGRATION_IGNORED}"
-[ "$DOC_PASSED" != "0" ] || [ "$DOC_IGNORED" != "0" ] && echo "  文档测试:  ✅ ${DOC_PASSED} | ⚠️  ${DOC_IGNORED}"
+echo "  集成测试:  ✅ $(($TOTAL_P - ${UNIT_P:-0})) | ⚠️  $(($TOTAL_I - ${UNIT_I:-0}))"
 echo "  ─────────────────────────"
-echo "  总  计:    ✅ ${TOTAL_PASSED} | ⚠️  ${TOTAL_IGNORED}"
+echo "  总  计:    ✅ ${TOTAL_P:-0} | ⚠️  ${TOTAL_I:-0}"
 
 echo "✅ 单元测试通过"
 
