@@ -210,6 +210,19 @@ fn analyze_streaming_decoder(
         )));
     }
 
+    // 🎯 样本数检查：要求最少样本数以支持可靠的DR分析
+    // - 零长度文件：没有任何音频数据
+    // - 单样本文件：样本太少，无法进行有意义的RMS计算和峰值分析
+    const MINIMUM_SAMPLES_FOR_ANALYSIS: u64 = 2;
+    if format.sample_count < MINIMUM_SAMPLES_FOR_ANALYSIS {
+        return Err(AudioError::InvalidInput(format!(
+            "音频文件样本数过少，无法进行可靠的DR分析。\n\
+            要求最少：{} 个样本，实际：{} 个样本。\n\
+            💡 音频文件需要足够的样本用于RMS计算和峰值检测。",
+            MINIMUM_SAMPLES_FOR_ANALYSIS, format.sample_count
+        )));
+    }
+
     // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
     let mut analyzers: Vec<WindowRmsAnalyzer> = (0..format.channels)
         .map(|_| WindowRmsAnalyzer::new(format.sample_rate, config.sum_doubling_enabled()))
@@ -436,7 +449,33 @@ fn analyze_streaming_decoder(
     }
 
     // 🎯 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
-    let final_format = streaming_decoder.format();
+    let mut final_format = streaming_decoder.format();
+
+    // 🎯 检测截断：比较预期样本数与实际解码样本数
+    // 如果实际处理的样本少于预期，标记为部分分析（is_partial）
+    let expected_samples = final_format.sample_count;
+    let actual_samples = total_samples_processed as u64 / final_format.channels as u64;
+
+    // 调试输出：了解样本数差异
+    if config.verbose {
+        eprintln!(
+            "[DEBUG] 样本数统计: 预期={expected_samples}, 实际={actual_samples}, 总交错样本={total_samples_processed}"
+        );
+    }
+
+    if actual_samples < expected_samples {
+        let skipped_approx = (expected_samples - actual_samples) as usize;
+        if config.verbose {
+            println!(
+                "⚠️  检测到文件截断: 预期 {expected_samples} 个样本，实际解码 {actual_samples} 个样本（缺少约 {skipped_approx} 个）"
+            );
+        }
+        final_format.mark_as_partial(skipped_approx);
+    } else if actual_samples > expected_samples {
+        if config.verbose {
+            eprintln!("[WARNING] 实际解码样本({actual_samples}) 多于预期({expected_samples})");
+        }
+    }
 
     // 在函数返回前停止 processing 范围的采样并生成火焰图，避免包含尾段 drop/dealloc
     #[cfg(feature = "flame-prof")]

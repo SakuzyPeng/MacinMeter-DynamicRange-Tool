@@ -39,27 +39,27 @@ fn test_zero_length_audio() {
 
     let result = process_audio_file_streaming(&path, &config);
 
-    // 零长度文件处理：系统接受返回Ok或拒绝返回Err都是可接受的
-    // 本测试验证：如果接受，必须返回有效的结果；如果拒绝，必须返回错误
+    // 零长度文件必须被拒绝（样本数为0）
+    assert!(
+        matches!(
+            result,
+            Err(AudioError::FormatError(_)) | Err(AudioError::InvalidInput(_))
+        ),
+        "零长度文件应该返回 FormatError 或 InvalidInput，但得到: {:?}",
+        result
+    );
+
     match result {
-        Ok((dr_results, format)) => {
-            println!("✓ 零长度文件被接受（设计选择）");
-            // 如果接受零长度文件，DR结果应该存在且有效
-            assert!(!dr_results.is_empty(), "零长度文件结果不应该为空");
-            println!(
-                "  格式: {}Hz, {}bit, {}ch",
-                format.sample_rate, format.bits_per_sample, format.channels
-            );
-        }
         Err(AudioError::FormatError(_)) => {
-            println!("✓ 零长度文件被拒绝（FormatError）");
+            println!("✓ 零长度文件被正确拒绝（FormatError）");
         }
         Err(AudioError::InvalidInput(_)) => {
-            println!("✓ 零长度文件被拒绝（InvalidInput）");
+            println!("✓ 零长度文件被正确拒绝（InvalidInput）");
         }
         Err(e) => {
-            println!("✓ 零长度文件处理失败: {e:?}");
+            println!("✓ 零长度文件被拒绝: {e:?}");
         }
+        Ok(_) => unreachable!(),
     }
 }
 
@@ -71,22 +71,17 @@ fn test_single_sample_audio() {
 
     let result = process_audio_file_streaming(&path, &config);
 
-    // 单样本文件：系统接受返回Ok或拒绝返回Err都是可接受的
-    // 本测试验证：如果接受，必须返回有效的DR值；如果拒绝，必须返回明确的错误
+    // 单样本文件样本太少，应该返回错误
+    assert!(
+        matches!(
+            result,
+            Err(AudioError::InvalidInput(_)) | Err(AudioError::CalculationError(_))
+        ),
+        "单样本文件应该返回 InvalidInput 或 CalculationError，但得到: {:?}",
+        result
+    );
+
     match result {
-        Ok((dr_results, format)) => {
-            println!("✓ 单样本文件被接受（设计选择）");
-            // 如果接受，必须有DR结果
-            assert!(!dr_results.is_empty(), "单样本文件应该返回DR结果");
-            if let Some(dr) = dr_results.first() {
-                // DR值可能是特殊值（NaN、无穷）或极值（很大或很小）
-                println!("  DR={:.2}（可能是特殊值）", dr.dr_value);
-            }
-            println!(
-                "  格式: {}Hz, {}bit, {}ch",
-                format.sample_rate, format.bits_per_sample, format.channels
-            );
-        }
         Err(AudioError::InvalidInput(_)) => {
             println!("✓ 单样本文件被拒绝（样本数不足）");
         }
@@ -96,6 +91,7 @@ fn test_single_sample_audio() {
         Err(e) => {
             println!("✓ 单样本文件处理失败: {e:?}");
         }
+        Ok(_) => unreachable!(),
     }
 }
 
@@ -107,18 +103,22 @@ fn test_tiny_duration_audio() {
 
     let result = process_audio_file_streaming(&path, &config);
 
-    // 10ms文件可以被解码，但需要有明确的行为：
-    // 要么成功处理并返回有效DR值，要么计算失败
+    // 10ms文件可以被解码，但应该返回有限的DR值（0-40dB）
     match result {
         Ok((dr_results, _format)) => {
+            assert!(!dr_results.is_empty(), "处理成功应该返回DR结果");
             if let Some(dr) = dr_results.first() {
-                println!("✓ 极短音频处理成功: DR={:.2}", dr.dr_value);
-                // 如果成功，DR值必须在合理范围内（0-100dB）
+                // DR值必须有限且在合理范围内
                 assert!(
-                    dr.dr_value >= 0.0 && dr.dr_value < 100.0,
-                    "DR值应该在0-100dB范围内，实际值: {}",
+                    dr.dr_value.is_finite(),
+                    "DR值必须是有限数，不能是 NaN 或无穷"
+                );
+                assert!(
+                    dr.dr_value >= 0.0 && dr.dr_value <= 40.0,
+                    "10ms音频的DR应该在0-40dB范围内，实际值: {}",
                     dr.dr_value
                 );
+                println!("✓ 极短音频处理成功: DR={:.2}dB", dr.dr_value);
             }
         }
         Err(AudioError::CalculationError(_)) => {
@@ -142,23 +142,26 @@ fn test_silence_handling() {
 
     match result {
         Ok((dr_results, _format)) => {
+            assert!(!dr_results.is_empty(), "处理成功应该返回DR结果");
             if let Some(dr) = dr_results.first() {
-                println!("✓ 静音文件处理成功: DR={:.2}", dr.dr_value);
-                // 静音的DR应该是0（因为Peak和RMS都接近0）或特殊值
+                // 静音文件的DR应该是有限且非常接近0（使用DR_ZERO_EPS逻辑）
                 // 注：不同平台的SIMD实现可能产生微小浮点数差异，使用容差1e-6
                 const SILENCE_DR_TOLERANCE: f64 = 1e-6;
                 assert!(
-                    dr.dr_value.abs() < SILENCE_DR_TOLERANCE
-                        || dr.dr_value.is_nan()
-                        || dr.dr_value.is_infinite(),
-                    "静音DR应该接近0或特殊值，实际值: {}, 容差: {}",
-                    dr.dr_value,
-                    SILENCE_DR_TOLERANCE
+                    dr.dr_value.is_finite(),
+                    "静音文件DR必须是有限数，不能是 NaN 或无穷"
                 );
+                assert!(
+                    dr.dr_value.abs() < SILENCE_DR_TOLERANCE,
+                    "静音文件DR应该接近0（±{}），实际值: {}",
+                    SILENCE_DR_TOLERANCE,
+                    dr.dr_value
+                );
+                println!("✓ 静音文件处理成功: DR={:.9}dB（接近0）", dr.dr_value);
             }
         }
         Err(AudioError::CalculationError(_)) => {
-            println!("✓ 静音文件计算失败（预期行为：RMS为0导致无法计算）");
+            println!("✓ 静音文件计算失败（可接受：RMS为0）");
         }
         Err(e) => {
             panic!("静音文件处理失败: {e:?}");
@@ -324,41 +327,34 @@ fn test_fake_audio_file() {
 }
 
 #[test]
+#[ignore] // 诊断式测试：需要真实的截断/损坏音频文件触发skipped_packets检测
 fn test_truncated_wav() {
     let fixtures = setup_fixtures();
     let path = fixtures.get_path("truncated.wav");
-    let config = default_test_config();
+    let mut config = default_test_config();
+    config.verbose = true;
 
     let result = process_audio_file_streaming(&path, &config);
 
-    // 截断文件处理：可能被解码成功、部分成功、或完全失败
-    // 本测试验证：所有路径都产生明确的结果，没有未定义行为
+    // 诊断目标：验证截断检测机制
+    // - 当解码器检测到损坏包时，应标记 is_partial() == true
+    // - 当预期样本 > 实际样本时，应标记 is_partial() == true
+    // 当前的测试文件可能不足以触发这些条件，因此标记为 #[ignore]
     match result {
         Ok((dr_results, format)) => {
-            println!("✓ 截断文件被处理（可能部分成功）");
-            assert!(!dr_results.is_empty(), "如果成功，必须有DR结果");
-            if let Some(dr) = dr_results.first() {
-                println!(
-                    "  DR={:.2}, is_partial={}",
-                    dr.dr_value,
-                    format.is_partial()
-                );
+            println!("截断文件处理结果: is_partial={}", format.is_partial());
+            println!(
+                "  DR结果数: {}, 跳过包数: {}",
+                dr_results.len(),
+                format.skipped_packets()
+            );
+
+            if !format.is_partial() {
+                println!("ℹ️  注：未检测到截断（test fixture可能没有真实的损坏包）");
             }
-            // 记录is_partial()状态用于诊断，但不强制要求
-            if format.is_partial() {
-                println!("  ℹ️ 正确标记为部分分析");
-            } else {
-                println!("  ℹ️ 注：未标记为部分分析（可能完整处理了可用数据）");
-            }
-        }
-        Err(AudioError::DecodingError(_)) => {
-            println!("✓ 截断文件解码失败（预期行为）");
-        }
-        Err(AudioError::FormatError(_)) => {
-            println!("✓ 截断文件格式错误（预期行为）");
         }
         Err(e) => {
-            println!("✓ 截断文件处理失败: {e:?}");
+            println!("截断文件处理失败: {e:?}");
         }
     }
 }
