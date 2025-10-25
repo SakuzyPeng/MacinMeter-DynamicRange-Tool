@@ -42,9 +42,9 @@
 - [x] src/processing/mod.rs
 
 五、Core 算法层
-- [ ] src/core/dr_calculator.rs
-- [ ] src/core/histogram.rs
-- [ ] src/core/peak_selection.rs
+- [x] src/core/dr_calculator.rs
+- [x] src/core/histogram.rs
+- [x] src/core/peak_selection.rs
 - [ ] src/core/mod.rs
 
 六、顶层库与错误

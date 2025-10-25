@@ -1,12 +1,22 @@
 //! 统一错误处理框架
 //!
-//! 实现8层防御性异常处理机制的核心错误类型定义。
+//! 实现7层防御性异常处理机制的核心错误类型定义：
+//! 1. InvalidInput - 输入验证错误
+//! 2. IoError - 文件I/O错误
+//! 3. FormatError - 音频格式错误
+//! 4. DecodingError - 音频解码错误
+//! 5. CalculationError - 计算异常
+//! 6. OutOfMemory - 内存不足（主要用于容量守卫，Rust OOM默认abort）
+//! 7. ResourceError - 资源访问错误
 
 use std::fmt;
 use std::io;
 
 /// 音频处理相关的统一错误类型
+///
+/// 标记为 `#[non_exhaustive]` 以便在库演进时新增变体而不破坏外部 match。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum AudioError {
     /// 输入验证错误 - 第1层防护
     InvalidInput(String),

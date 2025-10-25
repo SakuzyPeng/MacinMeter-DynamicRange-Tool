@@ -8,7 +8,7 @@
 //! - 基于数学公式和算法逻辑的重新实现
 //! - 致谢原作者Janne Hyvärinen的foobar2000 DR Meter插件
 //!
-//! 实现24字节ChannelData结构、Sum Doubling补偿机制和双Peak回退系统。
+//! 实现24字节ChannelData结构（位于processing::dr_channel_state）、Sum Doubling补偿机制和双Peak回退系统。
 
 pub mod audio;
 pub mod core;
