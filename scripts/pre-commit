@@ -19,7 +19,11 @@ echo "✅ 代码格式检查通过"
 # 📎 2. Clippy静态分析
 echo ""
 echo "📎 2. 运行Clippy静态分析..."
-if ! cargo clippy --all-targets --all-features -- -D warnings; then
+CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -D warnings 2>&1)
+CLIPPY_EXIT=$?
+if [ $CLIPPY_EXIT -ne 0 ]; then
+    # 只显示错误和警告，不显示成功的编译信息
+    echo "$CLIPPY_OUTPUT" | grep -E "^error|^warning:" || echo "$CLIPPY_OUTPUT"
     echo "❌ Clippy检查失败！请修复上述警告"
     exit 1
 fi
@@ -28,7 +32,11 @@ echo "✅ Clippy静态分析通过"
 # 🔨 3. 编译检查
 echo ""
 echo "🔨 3. 检查代码编译..."
-if ! cargo check --all-targets --all-features; then
+CHECK_OUTPUT=$(cargo check --all-targets --all-features 2>&1)
+CHECK_EXIT=$?
+if [ $CHECK_EXIT -ne 0 ]; then
+    # 只显示错误，不显示编译进度信息
+    echo "$CHECK_OUTPUT" | grep -E "^error" || echo "$CHECK_OUTPUT"
     echo "❌ 编译检查失败！请修复编译错误"
     exit 1
 fi
@@ -37,10 +45,28 @@ echo "✅ 编译检查通过"
 # 🧪 4. 单元测试
 echo ""
 echo "🧪 4. 运行单元测试..."
-if ! cargo test; then
+# 运行测试并过滤输出：只显示失败、忽略的测试和最后的统计信息
+TEST_OUTPUT=$(cargo test 2>&1)
+TEST_EXIT=$?
+
+# 提取测试统计信息
+TEST_SUMMARY=$(echo "$TEST_OUTPUT" | grep -E "^test result:|^running" | tail -20)
+
+# 检查是否有失败
+if echo "$TEST_OUTPUT" | grep -q "test result: FAILED"; then
+    echo "$TEST_OUTPUT" | grep -E "^test .* FAILED|^test result:" || true
     echo "❌ 单元测试失败！请修复测试问题"
     exit 1
 fi
+
+# 检查是否有忽略的测试（可选，仅在调试时显示）
+IGNORED_COUNT=$(echo "$TEST_OUTPUT" | grep -o " ignored" | wc -l)
+if [ "$IGNORED_COUNT" -gt 0 ]; then
+    echo "⚠️  ${IGNORED_COUNT} 个测试被忽略（标记为 #[ignore]）"
+fi
+
+# 显示最后的统计信息
+echo "$TEST_OUTPUT" | grep "^test result:" | tail -1
 echo "✅ 单元测试通过"
 
 # 🛡️ 5. 安全审计 (可选，如果安装了cargo-audit)
