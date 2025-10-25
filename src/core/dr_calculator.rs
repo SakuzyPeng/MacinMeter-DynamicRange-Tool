@@ -8,6 +8,8 @@ use crate::core::histogram::WindowRmsAnalyzer;
 use crate::core::peak_selection::{PeakSelectionStrategy, PeakSelector};
 use crate::error::{AudioError, AudioResult};
 use crate::processing::ProcessingCoordinator;
+#[allow(unused_imports)]
+use crate::tools::constants::dr_analysis;
 
 // 🔧 配置常量：集中管理默认值，提高可维护性
 /// 标准音频采样率（CD质量）
@@ -499,5 +501,46 @@ mod tests {
         for (r1, r2) in results1.iter().zip(results2.iter()) {
             assert!((r1.dr_value - r2.dr_value).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn test_silent_input_dr_zero() {
+        // 验证静音输入（全0）的DR归零策略
+        //
+        // 当RMS <= DR_ZERO_EPS(1e-12) 时，应该直接返回DR=0.0，而不进行
+        // log计算。这是对无声信号的标准处理。
+        let calc = DrCalculator::new_with_config(1, 48000).unwrap();
+
+        // 创建足够长的静音样本（需要至少一个3秒窗口）
+        let window_samples = 48000 * 3; // 3秒 @ 48kHz
+        let silent_samples = vec![0.0f32; window_samples];
+
+        let results = calc.calculate_dr_from_samples(&silent_samples, 1).unwrap();
+
+        // 应该有一个结果（单声道）
+        assert_eq!(results.len(), 1);
+
+        let dr_result = &results[0];
+
+        // 静音输入的DR应该是0.0
+        assert_eq!(
+            dr_result.dr_value, 0.0,
+            "静音输入应该产生DR=0.0，实际值={}",
+            dr_result.dr_value
+        );
+
+        // RMS应该非常小（接近0），使用与实现相同的容差阈值
+        assert!(
+            dr_result.rms < dr_analysis::DR_ZERO_EPS * 100.0, // 允许稍微宽松的容差
+            "静音输入的RMS应该接近0，实际值={}",
+            dr_result.rms
+        );
+
+        // Peak也应该是0（或非常小）
+        assert_eq!(
+            dr_result.peak, 0.0,
+            "静音输入的Peak应该是0，实际值={}",
+            dr_result.peak
+        );
     }
 }

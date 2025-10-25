@@ -268,4 +268,76 @@ mod tests {
             PeakSelectionStrategy::PreferSecondary
         );
     }
+
+    /// 削波阈值临界边界测试
+    ///
+    /// 验证在削波阈值（≈0.99999）附近的决策稳定性
+    #[test]
+    fn test_clipping_threshold_boundary() {
+        let strategy = PeakSelectionStrategy::ClippingAware;
+
+        // 案例1: 刚好低于削波阈值（不削波）
+        assert!(!strategy.is_clipped(0.99998));
+        assert_eq!(strategy.select_peak(0.99998, 0.7), 0.99998); // 使用主峰
+
+        // 案例2: 精确削波阈值（削波）
+        assert!(strategy.is_clipped(0.99999));
+        assert_eq!(strategy.select_peak(0.99999, 0.7), 0.7); // 切换到次峰
+
+        // 案例3: 全幅度削波（削波）
+        assert!(strategy.is_clipped(1.0));
+        assert_eq!(strategy.select_peak(1.0, 0.7), 0.7); // 切换到次峰
+
+        // 案例4: 削波但次峰无效（回退到主峰）
+        assert!(strategy.is_clipped(1.0));
+        assert_eq!(strategy.select_peak(1.0, 0.0), 1.0);
+    }
+
+    /// 峰值比率临界边界测试
+    ///
+    /// 验证在 0.8 分界点（secondary/primary > 0.8）附近的策略稳定性
+    /// 这影响 suggest_strategy 的决策（是否选择 AlwaysPrimary vs PreferSecondary）
+    ///
+    /// 注意：suggest_strategy 会优先检查削波，所以必须使用不被削波的主峰值
+    #[test]
+    fn test_peak_ratio_boundary() {
+        // suggest_strategy 的逻辑：
+        // 1. if 削波 → ClippingAware
+        // 2. else if peak_ratio > 0.8 → PreferSecondary
+        // 3. else → AlwaysPrimary
+
+        // 案例1: 比率刚好低于 0.8（不满足 > 0.8）→ AlwaysPrimary
+        let strategy_low = utils::suggest_strategy(0.9, 0.71); // 0.71/0.9 ≈ 0.789
+        assert_eq!(
+            strategy_low,
+            PeakSelectionStrategy::AlwaysPrimary,
+            "比率 ~0.789（不 > 0.8）应该返回 AlwaysPrimary"
+        );
+
+        // 案例2: 比率刚好高于 0.8（满足 > 0.8）→ PreferSecondary
+        // 0.721/0.9 = 0.80111... > 0.8
+        let strategy_high = utils::suggest_strategy(0.9, 0.721);
+        assert_eq!(
+            strategy_high,
+            PeakSelectionStrategy::PreferSecondary,
+            "比率 ~0.801（> 0.8）应该返回 PreferSecondary"
+        );
+
+        // 案例3: 明显高于 0.8（满足 > 0.8）→ PreferSecondary
+        let strategy_clear = utils::suggest_strategy(0.9, 0.8); // 0.8/0.9 ≈ 0.889
+        assert_eq!(
+            strategy_clear,
+            PeakSelectionStrategy::PreferSecondary,
+            "比率 ~0.889（> 0.8）应该返回 PreferSecondary"
+        );
+
+        // 案例4: 削波优先（primary ≥ CLIPPING_THRESHOLD）
+        // 削波检查优先于比率检查
+        let strategy_clipped = utils::suggest_strategy(0.99999, 0.7);
+        assert_eq!(
+            strategy_clipped,
+            PeakSelectionStrategy::ClippingAware,
+            "削波情况下应该优先返回 ClippingAware（不论比率）"
+        );
+    }
 }

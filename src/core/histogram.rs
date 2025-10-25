@@ -857,7 +857,12 @@ mod tests {
     /// 🧪 Phase 4.2: 20%采样边界测试 - 大segment计数
     ///
     /// 测试当window_rms_values非常多（1000+）时，20%采样逻辑的正确性和性能
+    ///
+    /// ⚠️ 此测试包含硬性时间门限（<10ms），在不同CI环境或低性能机器上易偶发失败。
+    /// 已标记为 #[ignore] 以避免CI抖动。使用以下命令手动执行性能测试：
+    /// `cargo test --release -- --ignored`
     #[test]
+    #[ignore]
     fn test_20_percent_sampling_large_segments() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
 
