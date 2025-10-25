@@ -174,31 +174,43 @@ impl ChannelData {
         }
     }
 
-    /// 获取有效峰值
+    /// 获取有效峰值（返回备选峰值，不做最终选择）
     ///
-    /// 根据foobar2000的Peak选择策略返回合适的峰值：
-    /// - 优先使用次Peak（抗削波干扰）
-    /// - 次Peak无效时回退到主Peak
+    /// ⚠️ **重要**：此方法仅返回"次峰（如果可用）或主峰"的组合，
+    /// **不应直接用于 DR 计算**。DR 计算应通过 `PeakSelectionStrategy::select_peak()` 进行。
     ///
-    /// # 返回值
+    /// # 实现说明
     ///
-    /// 返回选择的有效峰值
+    /// 本方法硬编码了 PreferSecondary 逻辑：
+    /// - 返回次Peak（如果 > 0.0）
+    /// - 否则返回主Peak
     ///
-    /// # 示例
+    /// 这仅是为了保留与历史代码的兼容性。**新代码不应依赖此逻辑**。
+    ///
+    /// # 正确用法
     ///
     /// ```ignore
-    /// use macinmeter_dr_tool::processing::ChannelData;
+    /// use macinmeter_dr_tool::{processing::ChannelData, core::peak_selection::PeakSelectionStrategy};
     ///
     /// let mut data = ChannelData::new();
     /// data.process_sample(1.0);   // 主Peak
     /// data.process_sample(0.8);   // 次Peak
     ///
-    /// // foobar2000策略：优先使用次Peak
-    /// assert!((data.get_effective_peak() - 0.8).abs() < 1e-5);
+    /// // ✅ 正确：通过策略选择
+    /// let strategy = PeakSelectionStrategy::default();
+    /// let peak = strategy.select_peak(data.peak_primary, data.peak_secondary);
+    /// assert!((peak - 0.8).abs() < 1e-5);
+    ///
+    /// // ❌ 不推荐：直接调用 get_effective_peak()
+    /// // let peak = data.get_effective_peak();  // 避免使用
     /// ```
+    ///
+    /// # 返回值
+    ///
+    /// 返回 max(secondary_peak, primary_peak)（当 secondary > 0 时）或主 Peak
     #[inline]
     pub fn get_effective_peak(&self) -> f64 {
-        // foobar2000策略：优先使用次Peak，回退到主Peak
+        // 硬编码的 PreferSecondary 逻辑（仅用于兼容，不应在新代码中依赖）
         if self.peak_secondary > 0.0 {
             self.peak_secondary
         } else {

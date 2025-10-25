@@ -407,7 +407,12 @@ impl SimdChannelData {
         self.inner.calculate_rms(sample_count)
     }
 
-    /// 获取有效Peak值（代理到内部实现）
+    /// 获取有效Peak值（返回备选峰值，不做最终选择）
+    ///
+    /// ⚠️ **重要**：此方法仅代理到 `ChannelData::get_effective_peak()`。
+    /// 参见那里的文档说明为何不应在 DR 计算中直接使用此值。
+    ///
+    /// 正确做法：通过 `PeakSelectionStrategy::select_peak()` 进行峰值选择。
     #[inline]
     pub fn get_effective_peak(&self) -> f64 {
         self.inner.get_effective_peak()

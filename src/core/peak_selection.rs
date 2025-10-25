@@ -2,9 +2,32 @@
 //!
 //! 提供多种峰值选择算法，支持主峰/次峰智能选择、削波检测等高级功能。
 //! 独立的算法模块，可在DR计算和其他音频分析中复用。
+//!
+//! ## 职责边界
+//!
+//! 本模块仅负责：**给定 primary_peak 和 secondary_peak，选择哪个用于 DR 计算**。
+//!
+//! ### 本模块的职责：
+//! - ✅ 定义不同的峰值选择策略（PreferSecondary, ClippingAware, 等）
+//! - ✅ 实现策略的选择逻辑和削波检测
+//! - ✅ 提供可观测的策略名称和工具函数
+//!
+//! ### 本模块不负责的事项：
+//! - ❌ 峰值数据的存储和更新（由 `dr_channel_state::ChannelData` 负责）
+//! - ❌ 峰值是否有效的判断（由调用方决定，通常通过检查 > 0.0）
+//! - ❌ 峰值计算的算法细节（由 `WindowRmsAnalyzer` 负责）
+//!
+//! ### 调用方的职责：
+//! - 调用方应通过 `PeakSelectionStrategy::select_peak()` 获取最终使用的峰值
+//! - 不应直接使用 `ChannelData::get_effective_peak()`（该方法仅返回备选峰值）
+//!
+//! ## foobar2000 对齐
+//!
+//! - **默认策略**：`PreferSecondary`（优先使用次峰，符合标准）
+//! - **削波检测**：与 foobar2000 削波回退机制一致
+//! - **常量来源**：所有常量集中在 `tools::constants::dr_analysis` 中管理
 
-/// 削波检测阈值（接近满幅度）
-pub const CLIPPING_THRESHOLD: f64 = 0.99999;
+use crate::tools::constants::dr_analysis;
 
 /// 峰值选择策略枚举
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,13 +69,15 @@ pub trait PeakSelector {
     fn strategy_name(&self) -> &'static str;
 
     /// 检查给定峰值是否被削波
+    #[inline]
     fn is_clipped(&self, peak: f64) -> bool {
-        peak >= CLIPPING_THRESHOLD
+        peak >= dr_analysis::CLIPPING_THRESHOLD
     }
 }
 
 /// 峰值选择策略实现
 impl PeakSelector for PeakSelectionStrategy {
+    #[inline]
     fn select_peak(&self, primary_peak: f64, secondary_peak: f64) -> f64 {
         match self {
             Self::PreferSecondary => {
@@ -100,8 +125,9 @@ pub mod utils {
     use super::*;
 
     /// 检查峰值是否被削波
+    #[inline]
     pub fn is_peak_clipped(peak: f64) -> bool {
-        peak >= CLIPPING_THRESHOLD
+        peak >= dr_analysis::CLIPPING_THRESHOLD
     }
 
     /// 计算峰值比率（次峰/主峰）
