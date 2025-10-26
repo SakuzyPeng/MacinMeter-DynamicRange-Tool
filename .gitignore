@@ -14,6 +14,7 @@ foobar2000_plugin/compile_commands.json
 # 文档和音频文件不上传
 /docs
 /audio
+/benchmark_samples
 /dr14_t.meter
 
 # DR分析结果文件
