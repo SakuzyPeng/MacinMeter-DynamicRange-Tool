@@ -4,8 +4,25 @@ on:
   push:
     branches: [ master, main, early-version, foobar2000-plugin ]
     tags: [ 'v*' ]
+    # 避免纯文档/说明类改动触发完整CI（仍可手动workflow_dispatch）
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'README'
+      - 'README.*'
+      - 'CHANGELOG*'
+      - 'LICENSE*'
+      - 'SILENCE_FILTERING_PLAN.md'
   pull_request:
     branches: [ master, main, early-version, foobar2000-plugin ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'README'
+      - 'README.*'
+      - 'CHANGELOG*'
+      - 'LICENSE*'
+      - 'SILENCE_FILTERING_PLAN.md'
   workflow_dispatch:  # 允许手动触发
     inputs:
       skip_tests:
