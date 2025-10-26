@@ -707,15 +707,52 @@ mod tests {
             })
             .unwrap();
 
-        // 🎯 验证SIMD使用统计
-        assert!(result.simd_usage.used_simd);
-        assert_eq!(result.simd_usage.simd_samples, 1000);
-        assert_eq!(result.simd_usage.scalar_samples, 0);
-        // 验证SIMD覆盖率为1.0（即100%，允许浮点误差）
-        assert!(
-            (result.simd_usage.simd_coverage - 1.0).abs() < 0.01,
-            "SIMD coverage was {}, expected ~1.0 (100%)",
-            result.simd_usage.simd_coverage
-        );
+        // 🎯 平台健壮化断言（支持无SIMD的罕见平台）
+        // 在大多数平台（x86_64, aarch64）上使用SIMD，在罕见的无SIMD平台上则使用scalar路径
+
+        // 获取SIMD支持状态
+        use crate::processing::simd_core::SimdProcessor;
+        let simd_processor = SimdProcessor::new();
+        let has_simd_support = simd_processor.capabilities().has_basic_simd();
+
+        if has_simd_support {
+            // 常见平台（x86_64/aarch64）：期望使用SIMD
+            assert!(
+                result.simd_usage.used_simd,
+                "Expected SIMD to be used on common platforms (x86_64/aarch64)"
+            );
+            assert_eq!(
+                result.simd_usage.simd_samples, 1000,
+                "All samples should be processed with SIMD"
+            );
+            assert_eq!(
+                result.simd_usage.scalar_samples, 0,
+                "Scalar samples should be 0 when SIMD is available"
+            );
+            // 验证SIMD覆盖率为1.0（即100%，允许浮点误差）
+            assert!(
+                (result.simd_usage.simd_coverage - 1.0).abs() < 0.01,
+                "SIMD coverage should be ~1.0 (100%), got {}",
+                result.simd_usage.simd_coverage
+            );
+        } else {
+            // 罕见平台（无SIMD支持）：期望使用scalar路径
+            assert!(
+                !result.simd_usage.used_simd,
+                "SIMD should not be used on platforms without SIMD support"
+            );
+            assert_eq!(
+                result.simd_usage.simd_samples, 0,
+                "SIMD samples should be 0 on non-SIMD platforms"
+            );
+            assert_eq!(
+                result.simd_usage.scalar_samples, 1000,
+                "All samples should be processed with scalar on non-SIMD platforms"
+            );
+            assert_eq!(
+                result.simd_usage.simd_coverage, 0.0,
+                "SIMD coverage should be 0.0 on non-SIMD platforms"
+            );
+        }
     }
 }
