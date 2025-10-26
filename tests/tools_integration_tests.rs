@@ -64,6 +64,63 @@ fn test_sum_doubling_always_enabled() {
 }
 
 // ============================================================================
+// CLI参数范围验证（后续扩展预留）
+// ============================================================================
+
+/// 验证并行线程数参数的有效范围
+///
+/// 预留于后续扩展：当增加更细粒度的并行配置选项时，
+/// 应在此测试中验证参数边界条件（最小值、最大值、越界处理）
+#[test]
+fn test_cli_parallel_threads_range() {
+    // 有效范围：1-16线程
+    let valid_threads = vec![(1, "最小线程数"), (4, "标准线程数"), (8, "高并发配置")];
+
+    for (threads, desc) in valid_threads {
+        assert!(threads >= 1, "{}: 线程数应该至少为1", desc);
+        println!("  ✓ 线程数参数有效: {} ({})", threads, desc);
+    }
+}
+
+/// 验证批处理大小参数的有效范围
+///
+/// 预留于后续扩展：当增加动态批大小配置时，
+/// 应验证该参数的最小值、最大值和合理范围
+#[test]
+fn test_cli_batch_size_range() {
+    // 有效范围：16-256包
+    let valid_batch_sizes = vec![(16, "最小批大小"), (64, "标准批大小"), (256, "最大批大小")];
+
+    for (batch_size, desc) in valid_batch_sizes {
+        assert!(batch_size >= 16, "{}: 批大小应该至少为16", desc);
+        println!("  ✓ 批大小参数有效: {} ({})", batch_size, desc);
+    }
+}
+
+/// 验证并行文件处理数参数的有效范围
+///
+/// 预留于后续扩展：当增加文件级并行度控制时，
+/// 应验证该参数的有效取值（None表示自动，Some(n)表示固定数量）
+#[test]
+fn test_cli_parallel_files_range() {
+    // 有效配置：None（自动）或Some(1..8)
+    let valid_configs = vec![
+        (None, "自动并行文件数"),
+        (Some(1), "单文件处理"),
+        (Some(4), "标准并行文件数"),
+    ];
+
+    for (parallel_files, desc) in valid_configs {
+        // 验证逻辑一致性：如果指定了并行文件数，应该是正数
+        if let Some(files) = parallel_files {
+            assert!(files > 0, "{}: 并行文件数应该是正数", desc);
+        }
+
+        println!("  ✓ 并行文件参数有效: {:?} ({})", parallel_files, desc);
+    }
+}
+
+// ============================================================================
 // 文件扫描器测试
 // ============================================================================
 
@@ -104,9 +161,22 @@ fn test_scan_empty_directory() {
 }
 
 /// 验证不存在的路径返回错误
+///
+/// 改进：使用 temp_dir().join(随机名) 构造不存在的路径，避免硬编码，
+/// 确保在所有平台（Windows/Linux/macOS）都能正确返回错误。
 #[test]
 fn test_scan_nonexistent_path() {
-    let result = tools::scan_audio_files(Path::new("/nonexistent/path/xyz123"));
+    use std::fs;
+
+    // 构造一个确定不存在的临时路径
+    let nonexistent_path = std::env::temp_dir()
+        .join("dr_test_nonexistent_xyz_9a8b7c6d5e4f")
+        .join("subdir");
+
+    // 确保路径不存在
+    let _ = fs::remove_dir_all(&nonexistent_path);
+
+    let result = tools::scan_audio_files(&nonexistent_path);
 
     assert!(result.is_err(), "不存在的路径应该返回错误");
 

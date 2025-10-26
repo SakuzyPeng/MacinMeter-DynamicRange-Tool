@@ -75,14 +75,14 @@ fn test_can_decode_supported_formats() {
     let decoder = UniversalDecoder::new();
 
     let supported_files = vec![
-        PathBuf::from("test.wav"),
-        PathBuf::from("test.flac"),
-        PathBuf::from("test.mp3"),
-        PathBuf::from("test.aac"),
-        PathBuf::from("test.ogg"),
-        PathBuf::from("test.opus"),
-        PathBuf::from("test.m4a"),
-        PathBuf::from("test.aiff"),
+        PathBuf::from_iter(["test.wav"]),
+        PathBuf::from_iter(["test.flac"]),
+        PathBuf::from_iter(["test.mp3"]),
+        PathBuf::from_iter(["test.aac"]),
+        PathBuf::from_iter(["test.ogg"]),
+        PathBuf::from_iter(["test.opus"]),
+        PathBuf::from_iter(["test.m4a"]),
+        PathBuf::from_iter(["test.aiff"]),
     ];
 
     for path in supported_files {
@@ -97,12 +97,12 @@ fn test_can_decode_unsupported_formats() {
     let decoder = UniversalDecoder::new();
 
     let unsupported_files = vec![
-        PathBuf::from("test.txt"),
-        PathBuf::from("test.pdf"),
-        PathBuf::from("test.jpg"),
-        PathBuf::from("test.mp4"), // 视频容器
-        PathBuf::from("test.avi"),
-        PathBuf::from("test.unknown"),
+        PathBuf::from_iter(["test.txt"]),
+        PathBuf::from_iter(["test.pdf"]),
+        PathBuf::from_iter(["test.jpg"]),
+        PathBuf::from_iter(["test.mp4"]), // 视频容器
+        PathBuf::from_iter(["test.avi"]),
+        PathBuf::from_iter(["test.unknown"]),
     ];
 
     for path in unsupported_files {
@@ -121,10 +121,10 @@ fn test_can_decode_case_insensitive() {
     let decoder = UniversalDecoder::new();
 
     // 测试大小写不敏感
-    assert!(decoder.can_decode(&PathBuf::from("test.WAV")));
-    assert!(decoder.can_decode(&PathBuf::from("test.Flac")));
-    assert!(decoder.can_decode(&PathBuf::from("test.MP3")));
-    assert!(decoder.can_decode(&PathBuf::from("test.OpUs")));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["test.WAV"])));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["test.Flac"])));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["test.MP3"])));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["test.OpUs"])));
 
     println!("✓ can_decode() 大小写不敏感");
 }
@@ -134,8 +134,8 @@ fn test_can_decode_no_extension() {
     let decoder = UniversalDecoder::new();
 
     // 无扩展名文件应该返回false
-    assert!(!decoder.can_decode(&PathBuf::from("test")));
-    assert!(!decoder.can_decode(&PathBuf::from("no_extension")));
+    assert!(!decoder.can_decode(&PathBuf::from_iter(["test"])));
+    assert!(!decoder.can_decode(&PathBuf::from_iter(["no_extension"])));
 
     println!("✓ can_decode() 正确处理无扩展名文件");
 }
@@ -145,9 +145,9 @@ fn test_can_decode_complex_paths() {
     let decoder = UniversalDecoder::new();
 
     // 复杂路径
-    assert!(decoder.can_decode(&PathBuf::from("/path/to/music/song.flac")));
-    assert!(decoder.can_decode(&PathBuf::from("../audio/test.mp3")));
-    assert!(decoder.can_decode(&PathBuf::from("./files/track.opus")));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["path", "to", "music", "song.flac"])));
+    assert!(decoder.can_decode(&PathBuf::from_iter(["..", "audio", "test.mp3"])));
+    assert!(decoder.can_decode(&PathBuf::from_iter([".", "files", "track.opus"])));
 
     println!("✓ can_decode() 正确处理复杂路径");
 }
@@ -383,7 +383,7 @@ fn test_create_streaming_parallel_mp3_fallback() {
     let decoder = UniversalDecoder::new();
 
     // 创建一个MP3文件路径（即使不存在，也会触发MP3检测逻辑）
-    let path = PathBuf::from("test.mp3");
+    let path = PathBuf::from_iter(["test.mp3"]);
 
     // MP3格式应该自动回退到串行模式
     // 这个测试主要验证MP3检测逻辑，而不是实际解码
@@ -469,7 +469,7 @@ fn test_multiple_decoders_independence() {
     let decoder2 = UniversalDecoder::new();
 
     // 两个解码器应该独立工作
-    let path = PathBuf::from("test.flac");
+    let path = PathBuf::from_iter(["test.flac"]);
 
     assert!(decoder1.can_decode(&path));
     assert!(decoder2.can_decode(&path));

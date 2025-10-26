@@ -40,27 +40,27 @@
 ## 任务总览（按目录）
 
 - tests/（集成测试）
-  - aiff_diagnostic.rs — pending
-  - audio_format_tests.rs — pending
-  - audio_test_fixtures.rs — pending（基准/治具，关注 I/O 体量）
-  - boundary_tests.rs — resolved（严格断言已落地；truncated诊断用例已 ignore）
-  - chunk_stats_tests.rs — pending
-  - error_handling_tests.rs — pending
-  - error_path_tests.rs — pending
-  - memory_safety_tests.rs — pending
-  - opus_decoder_tests.rs — pending
-  - parallel_decoder_tests.rs — pending（历史上对并发/有界通道较敏感）
-  - parallel_diagnostic_tests.rs — pending
-  - simd_edge_case_tests.rs — pending（指令集/平台差异）
-  - simd_performance_tests.rs — investigating（若含性能断言→建议 ignore）
-  - simd_unit_tests.rs — pending
-  - tools_integration_tests.rs — investigating（CLI/流程用例，关注慢）
-  - universal_decoder_tests.rs — pending
+  - aiff_diagnostic.rs — resolved
+  - audio_format_tests.rs — resolved
+  - audio_test_fixtures.rs — resolved（治具稳定，体量可控）
+  - boundary_tests.rs — resolved（严格断言落地；truncated 诊断用例已 ignore）
+  - chunk_stats_tests.rs — resolved
+  - error_handling_tests.rs — resolved
+  - error_path_tests.rs — resolved
+  - memory_safety_tests.rs — resolved（压力用例按设计 #[ignore]）
+  - opus_decoder_tests.rs — resolved（基于“实际解码帧数”的最小样本校验修复）
+  - parallel_decoder_tests.rs — resolved（压力/高并发按设计 #[ignore]）
+  - parallel_diagnostic_tests.rs — resolved
+  - simd_edge_case_tests.rs — resolved（指令集差异已有 cfg 守护）
+  - simd_performance_tests.rs — resolved（性能类按设计 #[ignore]）
+  - simd_unit_tests.rs — resolved
+  - tools_integration_tests.rs — resolved（fixtures 路径稳定；真实音频用例 #[ignore]）
+  - universal_decoder_tests.rs — resolved
 
 - src/**（模块内单测，聚焦核心）
-  - core/histogram.rs — pending（窗口/20%选择/虚拟零窗边界）
-  - core/dr_calculator.rs — pending（策略/零阈值）
-  - core/peak_selection.rs — pending（策略分支/削波阈值）
+  - core/histogram.rs — investigating（窗口/20%选择/虚拟零窗边界）
+  - core/dr_calculator.rs — investigating（策略/零阈值）
+  - core/peak_selection.rs — investigating（策略分支/削波阈值）
   - processing/simd_core.rs — pending（大量单测；慢用例需甄别）
   - processing/channel_separator.rs — pending（SIMD/余数路径）
   - processing/sample_conversion.rs — pending（多格式/通道组合）
@@ -246,3 +246,34 @@
   - M1：P0 文件完成（boundary/simd/perf/parallel）
   - M2：tests/ 全覆盖
   - M3：src/** 模块内单测全覆盖
+文件：`src/core/histogram.rs`
+- 状态：investigating
+- 快速结论：
+  - 用例覆盖全面（窗口大小/20%采样/虚拟零窗/尾窗峰值调整等）。
+  - 存在潜在脆弱的性能断言：`test_20_percent_sampling_large_segments` 中 `duration.as_millis() < 10`（src/core/histogram.rs:1009–1024）。在 CI 或低性能环境可能偶发失败。
+- 建议与修复项：
+  - [ ] 将该性能断言改为 `#[ignore]` 性能用例，或放宽阈值/改为仅打印；或在 `#[cfg(not(debug_assertions))]` 下执行。
+  - [ ] 明确注释“仅功能正确性为必须，性能仅供参考”。
+- 验收标准：
+  - CI 上不再因时间阈值产生不确定失败；功能用例全部通过。
+
+文件：`src/core/dr_calculator.rs`
+- 状态：investigating
+- 快速结论：
+  - 测试聚焦构造/参数/错误路径/幂等行为，运行快速稳定。
+  - 可补充一例：静音单声道输入时的 DR 归零（与 DR_ZERO_EPS 行为一致性）。
+- 建议与修复项：
+  - [ ] 新增“静音通道 → DR=0.0”的单元测试（验证 `DR_ZERO_EPS=1e-12` 逻辑）。
+- 验收标准：
+  - 新增用例通过且不引入时间/平台依赖。
+
+文件：`src/core/peak_selection.rs`
+- 状态：investigating
+- 快速结论：
+  - 策略用例覆盖 PreferSecondary/ClippingAware/AlwaysPrimary/AlwaysSecondary，合理。
+  - 可加强削波阈值与比率边界：`primary≈0.99999`、`secondary/primary≈0.8±ε` 的决策稳定性。
+- 建议与修复项：
+  - [ ] 新增边界测试：primary=0.99998/0.99999/1.0，secondary=0.0/接近/略高于0.8×primary。
+  - [ ] 若未来引入严格变体（clipping-aware-strict），为其补充特性门控测试（默认关闭）。
+- 验收标准：
+  - 新增边界用例通过；现有行为保持向后兼容。
