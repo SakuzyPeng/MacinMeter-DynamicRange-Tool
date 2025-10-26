@@ -210,12 +210,12 @@ mod tests {
             self.call_count += 1;
 
             // 注入错误路径
-            if let Some(error_at) = self.error_at_call {
-                if self.call_count == error_at {
-                    return Err(crate::error::AudioError::DecodingError(
-                        "Injected error for testing".to_string(),
-                    ));
-                }
+            if let Some(error_at) = self.error_at_call
+                && self.call_count == error_at
+            {
+                return Err(crate::error::AudioError::DecodingError(
+                    "Injected error for testing".to_string(),
+                ));
             }
 
             // 标准 EOF 语义：EOF 后继续返回 None
