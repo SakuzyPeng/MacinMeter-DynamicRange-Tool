@@ -716,7 +716,7 @@ mod tests {
         let factory = SimdProcessor::new();
 
         // 测试处理器创建
-        let _processor = factory.create_channel_processor();
+        let _ = factory.create_channel_processor();
 
         // 测试SIMD推荐逻辑
         assert!(!factory.should_use_simd(50)); // 太少样本，无论是否支持SIMD都不推荐

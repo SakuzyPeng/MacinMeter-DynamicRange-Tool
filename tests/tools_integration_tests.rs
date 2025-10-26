@@ -77,8 +77,8 @@ fn test_cli_parallel_threads_range() {
     let valid_threads = vec![(1, "最小线程数"), (4, "标准线程数"), (8, "高并发配置")];
 
     for (threads, desc) in valid_threads {
-        assert!(threads >= 1, "{}: 线程数应该至少为1", desc);
-        println!("  ✓ 线程数参数有效: {} ({})", threads, desc);
+        assert!(threads >= 1, "{desc}: 线程数应该至少为1");
+        println!("  ✓ 线程数参数有效: {threads} ({desc})");
     }
 }
 
@@ -92,8 +92,8 @@ fn test_cli_batch_size_range() {
     let valid_batch_sizes = vec![(16, "最小批大小"), (64, "标准批大小"), (256, "最大批大小")];
 
     for (batch_size, desc) in valid_batch_sizes {
-        assert!(batch_size >= 16, "{}: 批大小应该至少为16", desc);
-        println!("  ✓ 批大小参数有效: {} ({})", batch_size, desc);
+        assert!(batch_size >= 16, "{desc}: 批大小应该至少为16");
+        println!("  ✓ 批大小参数有效: {batch_size} ({desc})");
     }
 }
 
@@ -113,10 +113,10 @@ fn test_cli_parallel_files_range() {
     for (parallel_files, desc) in valid_configs {
         // 验证逻辑一致性：如果指定了并行文件数，应该是正数
         if let Some(files) = parallel_files {
-            assert!(files > 0, "{}: 并行文件数应该是正数", desc);
+            assert!(files > 0, "{desc}: 并行文件数应该是正数");
         }
 
-        println!("  ✓ 并行文件参数有效: {:?} ({})", parallel_files, desc);
+        println!("  ✓ 并行文件参数有效: {parallel_files:?} ({desc})");
     }
 }
 

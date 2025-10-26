@@ -913,7 +913,7 @@ mod tests {
 
         // 性能验证：1000个窗口的排序应该非常快（<10ms）
         let start = std::time::Instant::now();
-        let _rms_again = analyzer.calculate_20_percent_rms();
+        let _ = analyzer.calculate_20_percent_rms();
         let duration = start.elapsed();
         assert!(
             duration.as_millis() < 10,

@@ -350,7 +350,7 @@ fn test_concurrent_send_with_receiver_close() {
     // 主线程接收一部分数据后关闭
     println!("  接收前1000个数据...");
     for i in 0..1000 {
-        let _data = channel.recv_ordered().unwrap();
+        let _ = channel.recv_ordered().unwrap();
         if i == 999 {
             println!("  接收完成，关闭receiver");
         }

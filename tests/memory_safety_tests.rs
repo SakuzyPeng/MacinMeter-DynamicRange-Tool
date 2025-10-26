@@ -81,7 +81,7 @@ fn test_sequenced_channel_buffer_cleanup() {
 
     // 接收剩余50个
     for _i in 50..100 {
-        let _received = channel.recv_ordered().unwrap();
+        let _ = channel.recv_ordered().unwrap();
     }
 
     // 最终验证：所有数据只有data_refs持有引用
@@ -226,7 +226,7 @@ fn test_streaming_memory_stability() {
 
         // 消费所有数据
         for _i in 0..PER_ROUND {
-            let _received = channel.recv_ordered().unwrap();
+            let _ = channel.recv_ordered().unwrap();
         }
 
         // 验证本轮所有引用都已释放
@@ -278,7 +278,7 @@ fn test_channel_creation_destruction() {
 
         // 接收所有数据
         for _ in 0..ITEMS_PER_CHANNEL {
-            let _data = channel.recv_ordered().unwrap();
+            let _ = channel.recv_ordered().unwrap();
         }
 
         // channel和sender在这里drop

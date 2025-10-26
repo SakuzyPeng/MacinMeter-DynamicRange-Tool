@@ -128,7 +128,7 @@ impl SongbirdOpusDecoder {
 
             // 🎯 智能样本数计算：优先使用精确元数据
             let total_samples = if let Some(n_frames) = codec_params.n_frames {
-                Self::calculate_samples_from_frames(n_frames, sample_rate, channels)
+                Self::calculate_samples_from_frames(n_frames)
             } else {
                 Self::estimate_samples_from_file_size(path, sample_rate)?
             };
@@ -154,7 +154,7 @@ impl SongbirdOpusDecoder {
     /// 计算每声道样本数
     ///
     /// 🎯 经调试验证：songbird/symphonia对Opus也返回每声道帧数，与其他格式一致
-    fn calculate_samples_from_frames(n_frames: u64, _sample_rate: u32, _channels: u16) -> u64 {
+    fn calculate_samples_from_frames(n_frames: u64) -> u64 {
         // 🎯 修正错误假设：Opus的n_frames已经是每声道帧数，无需特殊处理
         // 之前的除法操作是错误的
         n_frames
