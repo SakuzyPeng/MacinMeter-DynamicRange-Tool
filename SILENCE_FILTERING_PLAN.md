@@ -1,116 +1,115 @@
-# Silence Filtering — Plan and Roadmap
+# 静音过滤（Silence Filtering）——计划与路线图
 
-Status: active (experimental feature shipped); Default: disabled (foobar2000‑compatible)
+状态：进行中（实验能力已发布）；默认：关闭（保持 foobar2000 兼容）
 
-## Background
+## 背景
 
-DR computation in this project follows foobar2000’s 3‑second window + top 20% RMS method. Real‑world files may contain encoder padding/silence (head/tail), especially lossy AAC/MP3/Opus. Those low‑energy windows can slightly bias the 20% selection (by inflating the denominator), yielding small DR uplifts (typically +0.01…+0.10 dB).
+本项目的 DR 计算遵循 foobar2000 的“3 秒窗口 + 取最响 20% 窗”的方法。实际音频（尤其有损 AAC/MP3/Opus）常见首尾编码延迟/填充导致的低能量段，这些“静音/近静音窗口”会轻微影响 20% 的挑选（扩大分母），从而带来小幅 DR 抬升（通常 +0.01…+0.10 dB）。
 
-## Current State (shipped)
+## 现状（已上线的实验能力）
 
-- Implementation scope
-  - Window‑level filtering only; PCM samples are untouched.
-  - Filtering is applied before top‑20% selection: windows whose RMS (dBFS) is below a threshold are excluded from the candidate set.
-- Public API / CLI
-  - CLI: `--filter-silence[=<DB>]` (default −70 dBFS if value omitted). Example:
-    - Single file: `./MacinMeter… --filter-silence= -70 audio.wav`
-    - Directory: `./MacinMeter… --filter-silence -- /path/to/dir` (note the `--`)
-  - AppConfig: `silence_filter_threshold_db: Option<f64>` (present ⇒ enabled).
-- Diagnostics (printed when enabled)
-  - Per‑channel: filtered/total windows and percentage.
-- Defaults / Compatibility
-  - Default is OFF (100% foobar2000 behavior). Enabling is experimental.
-- Observed effect (formatTEST)
-  - Typical change: −0.01…−0.04 dB Precise DR vs default; Official DR unchanged.
-  - After external trimming (e.g. ffmpeg silenceremove), our filter often reports 0 filtered windows and results match the non‑filtered path (as expected).
-- Known limitations
-  - Window‑level only: does not shorten the stream nor change sample counts; does not realign window phase between formats.
-  - AAC/ADTS lacks container delay/padding metadata; filtering cannot fully remove AAC vs WAV micro‑differences.
+- 实现范围
+  - 仅做“窗口级”过滤，不改动 PCM 样本本身。
+  - 在“取最响 20%”之前过滤：RMS（dBFS）低于阈值的窗口不进入候选集合。
+- 外部接口 / CLI
+  - CLI：`--filter-silence[=<DB>]`（若不显式给值，默认 −70 dBFS）。示例：
+    - 单文件：`./MacinMeter… --filter-silence=-70 audio.wav` 或 `./MacinMeter… --filter-silence audio.wav`
+    - 目录：`./MacinMeter… --filter-silence -- /path/to/dir`（注意 `--` 防止把路径当作阈值）
+  - AppConfig：`silence_filter_threshold_db: Option<f64>`（有值即启用）。
+- 诊断输出（启用时）
+  - 按声道打印：被过滤/总窗口数与百分比。
+- 默认与兼容性
+  - 默认关闭（100% 复现 foobar2000 行为）。启用为“实验用途”。
+- 观测效果（formatTEST）
+  - 与默认相比，Precise DR 通常降低 −0.01…−0.04 dB；Official DR 不变。
+  - 若已用 ffmpeg 去掉边缘静音，我们的过滤往往“无窗可滤”，结果与未过滤一致（符合预期）。
+- 已知限制
+  - 仅窗口级：不会缩短音频流、不会改变样本数，无法对齐不同格式的窗口相位。
+  - AAC/ADTS 无容器级 delay/padding 元数据，过滤无法完全消除 AAC 与 WAV 的微小差异。
 
-## Rationale and Design Notes
+## 设计动机与取舍
 
-- Why window filtering? Low risk, small code surface, transparent diagnostics, preserves core algorithm structure and foobar2000 comparability when disabled.
-- Why −70 dBFS default? Conservative threshold that avoids accidental removal of very quiet musical passages; parameterizable.
+- 为什么先做“窗口过滤”？风险低、改动小、诊断直观；关闭时完全保留 foobar2000 的口径。
+- 为什么默认 −70 dBFS？更保守，尽量避免误删极弱音乐段；且阈值可配置。
 
-## Roadmap (phased enhancements)
+## 路线图（分阶段增强）
 
-The plan below evolves precision from “window‑level robust” → “sample‑level precise” while keeping defaults safe.
+以下从“窗口级鲁棒”演进到“样本级精确”，同时保持安全默认。
 
-### P0 — Edge‑only sample‑level trimming (experimental)
+### P0 —— 仅裁“首尾”的样本级裁切（实验）
 
-- Goal: remove head/tail silent runs at sample/frame granularity; keep mid‑track silence (artistic intent) intact.
-- Method: streaming state machine over interleaved PCM frames (per‑frame amplitude = max(|L|,|R|))
-  - Enter “trim mode” when below threshold for ≥ min_run frames; switch to “pass mode” after ≥ hysteresis frames above threshold.
-  - Tail: ring buffer (size = min_run) holds recent frames; if sustained silence is detected, drop buffered tail; else flush.
-- Config (new): `--trim-edges[=<DB>]` (default off), `--trim-min-run-ms` (e.g. 200–500 ms), channel aggregation = max.
-- Complexity: O(N) time, O(min_run) memory; isolated to processing layer.
-- Acceptance:
-  - On formatTEST, enable trimming: filtered edge duration reported; Precise DR changes ≤ |0.00…0.05| dB and direction consistent with removing padding.
-  - On silence‑heavy synthetic files, trimming removes head/tail but preserves mid‑track rests.
+- 目标：对首/尾连续静音进行样本/帧级裁切；中段静音（艺术表达）不动。
+- 方法：对交错 PCM 帧做流式状态机（每帧幅度 = max(|L|,|R|)）
+  - 连续低于阈值 ≥ min_run 帧进入“裁切态”；连续高于阈值 ≥ hysteresis 帧转“通过态”。
+  - 尾部使用环形缓冲（容量 = min_run）；若检测到持续静音则丢弃尾缓冲，否则回灌。
+- 新参数（建议）：`--trim-edges[=<DB>]`（默认关）、`--trim-min-run-ms`（如 200–500 ms），多声道聚合取 max。
+- 复杂度：时间 O(N)、空间 O(min_run)；实现集中在处理层。
+- 验收：
+  - 在 formatTEST 中启用后，能报告被裁掉的边缘时长；Precise DR 变化 ≤ |0.00…0.05| dB，方向与去除 padding 一致。
+  - 对“静音占比高”的合成样本，首尾被裁切而中段停顿保留。
 
-### P1 — Container‑aware precise alignment (lossless gapless)
+### P1 —— 容器感知的精确对齐（Gapless 级）
 
-- MP4/ALAC: read iTunSMPB / edts (encoder delay, padding) and crop samples accordingly.
-- Opus: apply pre‑skip from OggOpusHead.
-- FLAC/WAV: typically none; keep as is.
-- Effect: sample‑accurate start/end; best‑effort gapless parity.
-- Acceptance: DR delta vs WAV baseline shrinks to ≤ 0.01–0.02 dB for ALAC/Opus conversions.
+- MP4/ALAC：解析 iTunSMPB/edts（encoder delay、padding）并据此裁样本。
+- Opus：应用 OggOpusHead 的 pre‑skip。
+- FLAC/WAV：通常无需处理。
+- 效果：样本级起止精确，还原 gapless。
+- 验收：ALAC/Opus 转自 WAV 的 DR 差距收敛至 ≤ 0.01–0.02 dB。
 
-### P2 — ADTS/AAC alignment without metadata (auto‑align)
+### P2 —— 无元数据的 ADTS/AAC 对齐（自动对齐）
 
-- Use cross‑correlation (time‑domain; FFT if needed) between source and decoded AAC to estimate start offset; crop to equal length.
-- For batch mode without source WAV: heuristics (e.g., 1024‑sample encoder delay + frame remainder padding) to approximate trimming.
-- Acceptance: on paired WAV/AAC, equal‑length aligned DR delta ≤ 0.01–0.02 dB on average.
+- 源 WAV 与解码后 AAC 做互相关估计开头偏移；裁剪为等长区间再比对。
+- 批量场景无源 WAV 时：采用启发式（如 1024 帧延迟 + 末尾补齐）近似裁切。
+- 验收：配对 WAV/AAC 的等长对齐后，平均 DR 差距 ≤ 0.01–0.02 dB。
 
-### P3 — Robust DR (optional dual report)
+### P3 —— Robust DR（可选，双结果）
 
-- Compute and optionally display “Robust DR” (top‑20% computed over non‑silent windows only).
-- Show both “Official DR” (unaltered) and “Robust DR” when enabled; default OFF.
-- Acceptance: clear labeling in output; no defaults changed.
+- 只在“非静音窗口集合”上计算“最响 20%”，作为附加“Robust DR”。
+- 与“Official DR”（原始口径）同时显示；默认关闭。
+- 验收：输出标签清晰，不改变默认行为。
 
-### P4 — Diagnostics & Developer Tooling
+### P4 —— 诊断与开发辅助
 
-- Optional dump of: selected top‑20% window indices, per‑window RMS dB, noise‑floor estimate (bottom percentile), effective threshold, counts before/after filtering.
-- Verbose gating and `--debug` feature flag to avoid noisy production logs.
+- 可选导出：被选中 top‑20% 的窗口索引、各窗 RMS（dB）、噪底估计（底部分位数）、生效阈值、过滤前后计数。
+- 用 verbose 与 `--debug` 特性开关限制噪声，避免影响常规输出。
 
-### P5 — Test & Bench Coverage
+### P5 —— 测试与基准覆盖
 
-- Unit/property tests for:
-  - Window filtering: threshold, hysteresis, multi‑channel behavior, boundary cases (remainder windows).
-  - Edge trimming state machine: false‑positive protection (classical pianissimo), head/tail only.
-  - Container‑aware alignment (fixture‑based): ALAC/Opus.
-  - Auto‑align (paired WAV/AAC): tolerance assertions on offset & DR.
-- Integration benches (ignored by default) to assert regression envelopes on DR deltas and runtime.
+- 单元/性质测试：
+  - 窗口过滤：阈值、迟滞、多声道、余数窗口等边界。
+  - 首尾裁切状态机：古典弱奏误判保护，仅裁首尾。
+  - 容器感知对齐（基于治具）：ALAC/Opus。
+  - 自动对齐（配对 WAV/AAC）：对偏移与 DR 的容差断言。
+- 集成基准（默认忽略）：约束 DR 变化与运行时在回归范围内。
 
-## Compatibility & Defaults
+## 兼容性与默认
 
-- Defaults remain foobar2000‑compatible (no filtering, no trimming, no alignment) unless explicitly enabled.
-- All experimental options must:
-  - Be OFF by default.
-  - Print clear diagnostics when enabled.
-  - Never relax error handling or change DR formula.
+- 默认保留 foobar2000 兼容（不开过滤、不裁边、不对齐）。
+- 所有实验选项：
+  - 默认关闭；
+  - 启用时打印清晰诊断；
+  - 不放宽错误处理，不改变 DR 公式。
 
-## Risks and Mitigations
+## 风险与缓解
 
-- Risk: misclassifying quiet passages (classical) as silence.
-  - Mitigate with conservative defaults (−70…−80 dBFS), min‑run duration, hysteresis, and edge‑only trimming.
-- Risk: container metadata absent/incorrect.
-  - Provide best‑effort auto‑align with explicit “estimated” labeling; do not overwrite Official DR.
-- Risk: performance overhead in auto‑align.
-  - Restrict correlation to a bounded search window; prefer P0/P1 in default workflows.
+- 风险：把极弱音乐段（如古典）误判为静音。
+  - 缓解：保守阈值（−70…−80 dBFS）、最小持续时长、迟滞，并仅裁首尾。
+- 风险：容器元数据缺失/错误。
+  - 缓解：提供“估算对齐”，并明确标注“estimated”；不覆盖 Official DR。
+- 风险：自动对齐带来性能开销。
+  - 缓解：限制互相关搜索窗口；默认优先使用 P0/P1。
 
-## Implementation Pointers
+## 实现指引
 
-- Current code paths
-  - CLI: `src/tools/cli.rs` (flag `--filter-silence[=<DB>]` → AppConfig.silence_filter_threshold_db)
-  - Processing: `src/tools/processor.rs` (threshold routed to WindowRmsAnalyzer)
-  - Core analyzer: `src/core/histogram.rs` (window‑level filter + per‑channel stats)
-- Docs & examples
-  - README “命令行选项”已包含 `--filter-silence` 使用示例
-  - formatTEST summary: `docs/formatTEST_media_summary.md`（含默认/过滤对照表）
+- 关键代码路径
+  - CLI：`src/tools/cli.rs`（`--filter-silence[=<DB>]` → AppConfig.silence_filter_threshold_db）
+  - 处理层：`src/tools/processor.rs`（将阈值传入 WindowRmsAnalyzer）
+  - 核心分析：`src/core/histogram.rs`（窗口过滤与每声道统计）
+- 文档与示例
+  - README“命令行选项”包含 `--filter-silence` 的使用说明
+  - formatTEST 汇总：`docs/formatTEST_media_summary.md`（含“默认/过滤”对照表）
 
-## Decision Log
+## 决策记录（Decision Log）
 
-- 2025‑10‑26: Shipped window‑level silence filtering under `--filter-silence[=<DB>]`, default OFF; simplified CLI; documented diagnostics and directory `--` usage.
-- Next: implement P0 (edge‑only sample‑level trimming) behind experimental flag; then P1 (container‑aware alignment) for ALAC/Opus.
-
+- 2025‑10‑26：发布“窗口级”静音过滤（`--filter-silence[=<DB>]`），默认关闭；简化 CLI；完善诊断与目录模式下的 `--` 用法文档。
+- 下一步：实现 P0（仅裁首尾的样本级裁切，实验开关）；随后 P1（容器感知对齐，ALAC/Opus）。
