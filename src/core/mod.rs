@@ -8,6 +8,7 @@ pub mod peak_selection;
 
 // 重新导出公共接口
 pub use dr_calculator::{DrCalculator, DrResult};
+pub use histogram::SilenceFilterConfig;
 pub use peak_selection::{PeakSelectionStrategy, PeakSelector};
 // SimpleHistogramAnalyzer和SimpleStats已删除，不再导出
 // ChannelData已移动到processing层，不再从此导出

@@ -16,6 +16,7 @@ fn default_test_config() -> AppConfig {
         parallel_batch_size: 64,
         parallel_threads: 4,
         parallel_files: None,
+        silence_filter_threshold_db: None,
     }
 }
 

@@ -17,6 +17,7 @@ const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 const DEFAULT_PARALLEL_BATCH: &str = "64";
 const DEFAULT_PARALLEL_THREADS: &str = "4";
 const DEFAULT_PARALLEL_FILES: &str = "4";
+const DEFAULT_SILENCE_THRESHOLD_DB_STR: &str = "-70";
 
 /// 自定义范围校验函数
 fn parse_parallel_degree(s: &str) -> Result<usize, String> {
@@ -42,6 +43,17 @@ fn parse_batch_size(s: &str) -> Result<usize, String> {
     }
     if value > max {
         return Err(format!("批大小不能超过 {max}"));
+    }
+    Ok(value)
+}
+
+/// 静音阈值范围校验（-120dB ~ 0dB）
+fn parse_silence_threshold(s: &str) -> Result<f64, String> {
+    let value: f64 = s
+        .parse()
+        .map_err(|_| format!("'{s}' 不是有效的浮点数字（示例：-70）"))?;
+    if !(-120.0..=0.0).contains(&value) {
+        return Err("静音阈值必须在 -120 到 0 dB 之间".to_string());
     }
     Ok(value)
 }
@@ -72,6 +84,9 @@ pub struct AppConfig {
     /// - None: 禁用多文件并行（串行处理）
     /// - Some(n): 并发度n（默认：4）
     pub parallel_files: Option<usize>,
+
+    /// 🧪 实验性：静音过滤阈值（存在即启用；单位 dBFS）
+    pub silence_filter_threshold_db: Option<f64>,
 }
 
 impl AppConfig {
@@ -157,6 +172,16 @@ pub fn parse_args() -> AppConfig {
                 .action(clap::ArgAction::SetTrue)
                 .conflicts_with("parallel-files"),
         )
+        .arg(
+            Arg::new("filter-silence")
+                .long("filter-silence")
+                .help("🧪 启用窗口静音过滤；可选指定阈值（dBFS，范围 -120~0，默认 -70）")
+                .value_name("DB")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value(DEFAULT_SILENCE_THRESHOLD_DB_STR)
+                .value_parser(parse_silence_threshold),
+        )
         .get_matches();
 
     // 确定输入路径（智能路径处理）
@@ -210,6 +235,7 @@ pub fn parse_args() -> AppConfig {
         parallel_batch_size,
         parallel_threads,
         parallel_files,
+        silence_filter_threshold_db: matches.get_one::<f64>("filter-silence").copied(),
     }
 }
 
@@ -276,6 +302,14 @@ mod tests {
             DEFAULT_PARALLEL_FILES.parse::<usize>().unwrap(),
             constants::defaults::PARALLEL_FILES_DEGREE,
             "DEFAULT_PARALLEL_FILES 必须与 constants::defaults::PARALLEL_FILES_DEGREE 同步"
+        );
+
+        let default_threshold = DEFAULT_SILENCE_THRESHOLD_DB_STR
+            .parse::<f64>()
+            .expect("DEFAULT_SILENCE_THRESHOLD_DB_STR 应该是有效浮点数");
+        assert!(
+            (-120.0..=0.0).contains(&default_threshold),
+            "DEFAULT_SILENCE_THRESHOLD_DB 必须在 -120 到 0 dB 范围内"
         );
     }
 

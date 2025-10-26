@@ -9,9 +9,104 @@
 //! - **20%采样算法**: 逆向遍历选择最响20%窗口
 //! - **精确峰值选择**: 主峰/次峰智能切换机制
 //! - **🚀 SIMD优化**: 平方和计算使用SSE2并行加速
+//! - **🧪 实验性静音过滤**: 窗口级静音检测与过滤（可选）
 
 use crate::processing::simd_core::SimdProcessor;
 use crate::tools::constants::dr_analysis::PEAK_EQUALITY_EPSILON;
+
+/// 窗口级静音过滤配置（实验性功能）
+///
+/// ⚠️ **警告**: 启用此功能会打破与foobar2000 DR Meter的兼容性！
+///
+/// 该配置允许在窗口RMS计算后，根据阈值过滤低能量（静音）窗口，
+/// 从而测量"纯音乐内容"的动态范围，而非文件的完整动态范围。
+///
+/// ## 使用场景
+///
+/// - 实验性研究：探索不同DR测量哲学
+/// - AAC格式优化：尝试减少encoder padding的影响（效果有限，约减少25%偏差）
+/// - 诊断分析：了解静音段对DR的潜在影响
+///
+/// ## 设计权衡
+///
+/// **优点**：
+/// - 更"纯粹"地测量音乐内容的动态范围
+/// - 可能轻微减少有损格式的encoder padding影响
+///
+/// **缺点**：
+/// - 破坏与foobar2000 DR Meter的一致性（工具的核心目标）
+/// - 阈值选择主观且难以标准化（-60 dB? -70 dB? -80 dB?）
+/// - 可能误删真实的音乐内容（如古典音乐的pp段落）
+/// - 20%采样算法本身已经具有抗静音能力（最低80%的窗口被自动忽略）
+///
+/// ## 实验结果参考
+///
+/// 基于test_compatibility.wav/aac的实验：
+/// - WAV去静音：DR 10.25 → 10.25 (无变化，证明20%采样已过滤静音影响)
+/// - AAC去静音：DR 10.29 → 10.28 (仅减少0.01 dB，改善有限)
+/// - 结论：AAC的主要偏差来自编码本身（MDCT、量化），而非静音填充
+///
+/// ## 建议
+///
+/// 在大多数情况下，**不建议启用此功能**。默认的20%采样算法已经提供了
+/// 足够的静音鲁棒性，同时保持与foobar2000的一致性。
+#[derive(Debug, Clone, Copy)]
+pub struct SilenceFilterConfig {
+    /// 启用窗口级静音过滤
+    pub enabled: bool,
+    /// 静音阈值（dB FS），例如 -70.0
+    /// 窗口RMS低于此阈值将被过滤，不参与20%采样计算
+    pub threshold_db: f64,
+}
+
+impl Default for SilenceFilterConfig {
+    /// 默认配置：禁用静音过滤（与foobar2000兼容）
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold_db: -70.0, // 默认阈值（仅在启用时生效）
+        }
+    }
+}
+
+impl SilenceFilterConfig {
+    /// 创建禁用静音过滤的配置（与foobar2000兼容）
+    pub fn disabled() -> Self {
+        Self::default()
+    }
+
+    /// 创建启用静音过滤的配置
+    ///
+    /// # 参数
+    ///
+    /// * `threshold_db` - 静音阈值（dB FS），例如 -70.0
+    pub fn enabled(threshold_db: f64) -> Self {
+        Self {
+            enabled: true,
+            threshold_db,
+        }
+    }
+
+    /// 检查窗口RMS是否应该被过滤（低于阈值）
+    ///
+    /// # 返回值
+    ///
+    /// - `true`: 窗口RMS低于阈值，应该被过滤
+    /// - `false`: 窗口RMS高于阈值，应该保留
+    #[inline]
+    fn should_filter(&self, window_rms: f64) -> bool {
+        if !self.enabled {
+            return false;
+        }
+
+        // 将RMS转换为dB FS
+        // dB = 20 * log10(rms)
+        // 使用1e-12作为最小值避免log(0)
+        let rms_db = 20.0 * window_rms.max(1e-12).log10();
+
+        rms_db < self.threshold_db
+    }
+}
 
 /// WindowRmsAnalyzer - 基于master分支的正确20%采样算法
 ///
@@ -43,6 +138,10 @@ pub struct WindowRmsAnalyzer {
     current_second_peak: f64,
     /// 🚀 **SIMD优化**: SIMD处理器用于平方和计算加速
     simd_processor: SimdProcessor,
+    /// 🧪 **实验性**: 静音过滤配置
+    silence_filter: SilenceFilterConfig,
+    /// 🧪 **实验性**: 被过滤的窗口数量（仅在启用静音过滤时有效）
+    filtered_windows_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +169,24 @@ impl WindowRmsAnalyzer {
     ///   该参数暂未使用，未来如需可配置再接入RMS计算逻辑。
     ///   固定行为参见`process_samples()`中的`sum_sq * 2.0`计算。
     pub fn new(sample_rate: u32, _sum_doubling: bool) -> Self {
+        Self::with_silence_filter(sample_rate, _sum_doubling, SilenceFilterConfig::default())
+    }
+
+    /// 创建带静音过滤配置的3秒窗口RMS分析器
+    ///
+    /// # 参数
+    /// * `sample_rate` - 音频采样率，用于计算3秒窗口长度
+    /// * `_sum_doubling` - 预留参数，当前foobar2000兼容模式固定启用Sum Doubling
+    /// * `silence_filter` - 静音过滤配置（实验性功能）
+    ///
+    /// # ⚠️ 警告
+    ///
+    /// 启用静音过滤会打破与foobar2000 DR Meter的兼容性！
+    pub fn with_silence_filter(
+        sample_rate: u32,
+        _sum_doubling: bool,
+        silence_filter: SilenceFilterConfig,
+    ) -> Self {
         let window_len = Self::calculate_standard_window_size(sample_rate);
         Self {
             window_len,
@@ -84,6 +201,8 @@ impl WindowRmsAnalyzer {
             current_peak_count: 0,
             current_second_peak: 0.0,
             simd_processor: SimdProcessor::new(),
+            silence_filter,
+            filtered_windows_count: 0,
         }
     }
 
@@ -130,13 +249,21 @@ impl WindowRmsAnalyzer {
                 // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
                 // 📌 这是foobar2000的固定行为，不受new()参数控制
                 let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
-                self.histogram.add_window_rms(window_rms);
 
-                // ✅ 记录窗口Peak值用于后续排序
-                self.window_peaks.push(self.current_peak);
+                // 🧪 **实验性**: 应用静音过滤
+                if self.silence_filter.should_filter(window_rms) {
+                    // 窗口RMS低于阈值，过滤此窗口
+                    self.filtered_windows_count += 1;
+                } else {
+                    // 窗口RMS高于阈值，正常处理
+                    self.histogram.add_window_rms(window_rms);
 
-                // 🔧 **关键修复**: 直接存储RMS值避免量化损失
-                self.window_rms_values.push(window_rms);
+                    // ✅ 记录窗口Peak值用于后续排序
+                    self.window_peaks.push(self.current_peak);
+
+                    // 🔧 **关键修复**: 直接存储RMS值避免量化损失
+                    self.window_rms_values.push(window_rms);
+                }
 
                 // 重置窗口
                 self.current_sum_sq = 0.0;
@@ -158,26 +285,34 @@ impl WindowRmsAnalyzer {
                 // RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
                 // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
                 let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
-                self.histogram.add_window_rms(window_rms);
-                self.window_rms_values.push(window_rms);
 
-                // 🚀 **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
-                let last_abs = self.last_sample.abs();
-                let adjusted_peak = if (last_abs - self.current_peak).abs() < PEAK_EQUALITY_EPSILON
-                {
-                    // 最后样本是最大值
-                    if self.current_peak_count > 1 {
-                        // 还有其他最大值，Peak不变
-                        self.current_peak
-                    } else {
-                        // 最后样本是唯一最大值，使用次大值
-                        self.current_second_peak
-                    }
+                // 🧪 **实验性**: 应用静音过滤
+                if self.silence_filter.should_filter(window_rms) {
+                    // 尾窗RMS低于阈值，过滤此窗口
+                    self.filtered_windows_count += 1;
                 } else {
-                    // 最后样本不是最大值，Peak不变
-                    self.current_peak
-                };
-                self.window_peaks.push(adjusted_peak);
+                    // 尾窗RMS高于阈值，正常处理
+                    self.histogram.add_window_rms(window_rms);
+                    self.window_rms_values.push(window_rms);
+
+                    // 🚀 **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
+                    let last_abs = self.last_sample.abs();
+                    let adjusted_peak =
+                        if (last_abs - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
+                            // 最后样本是最大值
+                            if self.current_peak_count > 1 {
+                                // 还有其他最大值，Peak不变
+                                self.current_peak
+                            } else {
+                                // 最后样本是唯一最大值，使用次大值
+                                self.current_second_peak
+                            }
+                        } else {
+                            // 最后样本不是最大值，Peak不变
+                            self.current_peak
+                        };
+                    self.window_peaks.push(adjusted_peak);
+                }
             } else {
                 // 尾窗只有1个样本时会完全跳过
             }
@@ -335,6 +470,27 @@ impl WindowRmsAnalyzer {
         second
     }
 
+    /// 获取被过滤的窗口数量（仅在启用静音过滤时有意义）
+    ///
+    /// # 返回值
+    ///
+    /// 返回被静音过滤器过滤掉的窗口数量
+    pub fn filtered_windows_count(&self) -> usize {
+        self.filtered_windows_count
+    }
+
+    /// 获取总窗口数（包括被过滤的窗口）
+    ///
+    /// # 返回值
+    ///
+    /// 返回 (有效窗口数, 被过滤窗口数, 总窗口数)
+    pub fn window_statistics(&self) -> (usize, usize, usize) {
+        let valid_windows = self.window_rms_values.len();
+        let filtered_windows = self.filtered_windows_count;
+        let total_windows = valid_windows + filtered_windows;
+        (valid_windows, filtered_windows, total_windows)
+    }
+
     /// 清空分析器状态
     pub fn clear(&mut self) {
         self.current_sum_sq = 0.0;
@@ -347,6 +503,7 @@ impl WindowRmsAnalyzer {
         self.last_sample = 0.0;
         self.current_peak_count = 0;
         self.current_second_peak = 0.0;
+        self.filtered_windows_count = 0;
     }
 }
 

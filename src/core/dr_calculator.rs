@@ -4,6 +4,7 @@
 //!
 //! 注：本实现通过IDA Pro逆向分析理解算法逻辑，所有代码均为Rust原创实现
 
+use crate::core::SilenceFilterConfig;
 use crate::core::histogram::WindowRmsAnalyzer;
 use crate::core::peak_selection::{PeakSelectionStrategy, PeakSelector};
 use crate::error::{AudioError, AudioResult};
@@ -112,6 +113,9 @@ pub struct DrCalculator {
 
     /// 高性能处理协调器（提供SIMD优化的声道分离）
     processing_coordinator: ProcessingCoordinator,
+
+    /// 🧪 实验性：静音过滤配置
+    silence_filter: SilenceFilterConfig,
 }
 
 impl DrCalculator {
@@ -230,6 +234,47 @@ impl DrCalculator {
         block_duration: f64,
         peak_strategy: PeakSelectionStrategy,
     ) -> AudioResult<Self> {
+        Self::new_with_peak_strategy_and_filter(
+            channel_count,
+            sum_doubling,
+            sample_rate,
+            block_duration,
+            peak_strategy,
+            SilenceFilterConfig::default(),
+        )
+    }
+
+    /// 创建DR计算器（高级配置 + 静音过滤）
+    ///
+    /// # 参数
+    ///
+    /// * `silence_filter` - 静音过滤配置（实验性功能）
+    pub fn new_with_silence_filter(
+        channel_count: usize,
+        sum_doubling: bool,
+        sample_rate: u32,
+        block_duration: f64,
+        peak_strategy: PeakSelectionStrategy,
+        silence_filter: SilenceFilterConfig,
+    ) -> AudioResult<Self> {
+        Self::new_with_peak_strategy_and_filter(
+            channel_count,
+            sum_doubling,
+            sample_rate,
+            block_duration,
+            peak_strategy,
+            silence_filter,
+        )
+    }
+
+    fn new_with_peak_strategy_and_filter(
+        channel_count: usize,
+        sum_doubling: bool,
+        sample_rate: u32,
+        block_duration: f64,
+        peak_strategy: PeakSelectionStrategy,
+        silence_filter: SilenceFilterConfig,
+    ) -> AudioResult<Self> {
         if channel_count == 0 {
             return Err(AudioError::InvalidInput("声道数量必须大于0".to_string()));
         }
@@ -255,6 +300,7 @@ impl DrCalculator {
             block_duration,
             peak_selection_strategy: peak_strategy,
             processing_coordinator: ProcessingCoordinator::new(),
+            silence_filter,
         })
     }
 
@@ -353,7 +399,11 @@ impl DrCalculator {
             channel_samples.len()
         );
 
-        let mut analyzer = WindowRmsAnalyzer::new(self.sample_rate, self.sum_doubling_enabled);
+        let mut analyzer = WindowRmsAnalyzer::with_silence_filter(
+            self.sample_rate,
+            self.sum_doubling_enabled,
+            self.silence_filter,
+        );
 
         // 🎯 关键：一次性处理所有样本，让WindowRmsAnalyzer内部创建正确的3秒窗口
         analyzer.process_samples(channel_samples);

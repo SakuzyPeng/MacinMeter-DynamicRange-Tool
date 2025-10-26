@@ -5,6 +5,19 @@
 use macinmeter_dr_tool::tools::{self, AppConfig};
 use std::path::{Path, PathBuf};
 
+fn base_config() -> AppConfig {
+    AppConfig {
+        input_path: PathBuf::from("."),
+        verbose: false,
+        output_path: None,
+        parallel_decoding: true,
+        parallel_batch_size: 64,
+        parallel_threads: 4,
+        parallel_files: Some(4),
+        silence_filter_threshold_db: None,
+    }
+}
+
 // ============================================================================
 // CLI配置测试
 // ============================================================================
@@ -14,12 +27,7 @@ use std::path::{Path, PathBuf};
 fn test_batch_mode_detection_directory() {
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     assert!(config.is_batch_mode(), "目录路径应该被识别为批量模式");
@@ -31,12 +39,7 @@ fn test_batch_mode_detection_directory() {
 fn test_single_file_mode_detection() {
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures/silence.wav"),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     assert!(!config.is_batch_mode(), "文件路径应该被识别为单文件模式");
@@ -48,12 +51,7 @@ fn test_single_file_mode_detection() {
 fn test_sum_doubling_always_enabled() {
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     assert!(
@@ -243,12 +241,7 @@ fn test_official_dr_formatting() {
 fn test_batch_output_header_generation() {
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     let audio_files = vec![PathBuf::from("test1.flac"), PathBuf::from("test2.wav")];
@@ -311,12 +304,8 @@ fn test_batch_output_footer_with_errors() {
 fn test_batch_output_path_generation() {
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
-        verbose: false,
         output_path: None, // 未指定，应该自动生成
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     let output_path = tools::generate_batch_output_path(&config);
@@ -338,12 +327,8 @@ fn test_batch_output_path_user_specified() {
 
     let config = AppConfig {
         input_path: PathBuf::from("tests/fixtures"),
-        verbose: false,
         output_path: Some(user_path.clone()), // 用户指定
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(4),
+        ..base_config()
     };
 
     let output_path = tools::generate_batch_output_path(&config);
@@ -428,15 +413,11 @@ fn test_batch_vs_single_dr_consistency_wav() {
     println!("测试文件: {}", test_file.display());
 
     // 1️⃣ 单文件模式处理
-    let single_config = AppConfig {
-        input_path: test_file.clone(),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: None, // 单文件模式
-    };
+    let mut single_config = base_config();
+    single_config.input_path = test_file.clone();
+    single_config.parallel_files = None; // 单文件模式
+    single_config.parallel_decoding = true;
+    single_config.output_path = None;
 
     let single_result = tools::process_single_audio_file(&test_file, &single_config);
     assert!(single_result.is_ok(), "单文件处理应该成功");
@@ -449,15 +430,10 @@ fn test_batch_vs_single_dr_consistency_wav() {
     println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
 
     // 2️⃣ 批量模式处理（仅包含同一个文件）
-    let batch_config = AppConfig {
-        input_path: test_file.parent().unwrap().to_path_buf(), // 使用父目录触发批量模式
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(1), // 批量模式，但只处理1个文件
-    };
+    let mut batch_config = base_config();
+    batch_config.input_path = test_file.parent().unwrap().to_path_buf();
+    batch_config.parallel_files = Some(1); // 批量模式，但只处理1个文件
+    batch_config.output_path = None;
 
     // 手动调用批量处理逻辑（模拟只处理这一个文件）
     let batch_result = tools::process_single_audio_file(&test_file, &batch_config);
@@ -526,15 +502,11 @@ fn test_batch_vs_single_dr_consistency_mp3() {
     println!("\n🎯 测试批量/单文件DR值一致性（MP3格式 - 串行解码）");
 
     // 单文件模式
-    let single_config = AppConfig {
-        input_path: test_file.clone(),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: false, // MP3强制串行
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: None,
-    };
+    let mut single_config = base_config();
+    single_config.input_path = test_file.clone();
+    single_config.parallel_decoding = false; // MP3强制串行
+    single_config.parallel_files = None;
+    single_config.output_path = None;
 
     let (single_dr_results, single_format) =
         tools::process_single_audio_file(&test_file, &single_config).expect("单文件处理应该成功");
@@ -546,15 +518,11 @@ fn test_batch_vs_single_dr_consistency_mp3() {
     println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
 
     // 批量模式
-    let batch_config = AppConfig {
-        input_path: test_file.clone(),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: false,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(1),
-    };
+    let mut batch_config = base_config();
+    batch_config.input_path = test_file.clone();
+    batch_config.parallel_decoding = false;
+    batch_config.parallel_files = Some(1);
+    batch_config.output_path = None;
 
     let (batch_dr_results, batch_format) =
         tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");
@@ -597,15 +565,11 @@ fn test_batch_vs_single_dr_consistency_flac() {
     println!("\n🎯 测试批量/单文件DR值一致性（FLAC格式 - 并行解码）");
 
     // 单文件模式（并行解码）
-    let single_config = AppConfig {
-        input_path: test_file.clone(),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true, // FLAC支持并行
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: None,
-    };
+    let mut single_config = base_config();
+    single_config.input_path = test_file.clone();
+    single_config.parallel_decoding = true; // FLAC支持并行
+    single_config.parallel_files = None;
+    single_config.output_path = None;
 
     let (single_dr_results, single_format) =
         tools::process_single_audio_file(&test_file, &single_config).expect("单文件处理应该成功");
@@ -617,15 +581,11 @@ fn test_batch_vs_single_dr_consistency_flac() {
     println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
 
     // 批量模式（并行解码）
-    let batch_config = AppConfig {
-        input_path: test_file.clone(),
-        verbose: false,
-        output_path: None,
-        parallel_decoding: true,
-        parallel_batch_size: 64,
-        parallel_threads: 4,
-        parallel_files: Some(1),
-    };
+    let mut batch_config = base_config();
+    batch_config.input_path = test_file.clone();
+    batch_config.parallel_decoding = true;
+    batch_config.parallel_files = Some(1);
+    batch_config.output_path = None;
 
     let (batch_dr_results, batch_format) =
         tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");
@@ -695,15 +655,11 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         // 单文件模式
         // 有状态编码格式（MP3/AAC/OGG）必须串行解码
         let is_stateful = matches!(format_name, "MP3" | "AAC" | "OGG");
-        let single_config = AppConfig {
-            input_path: test_file.clone(),
-            verbose: false,
-            output_path: None,
-            parallel_decoding: !is_stateful, // 有状态格式使用串行解码
-            parallel_batch_size: 64,
-            parallel_threads: 4,
-            parallel_files: None,
-        };
+        let mut single_config = base_config();
+        single_config.input_path = test_file.clone();
+        single_config.parallel_decoding = !is_stateful;
+        single_config.parallel_files = None;
+        single_config.output_path = None;
 
         let single_result = tools::process_single_audio_file(&test_file, &single_config);
         if single_result.is_err() {
@@ -722,15 +678,11 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         let (single_official, single_precise, _) = single_official_dr.unwrap();
 
         // 批量模式
-        let batch_config = AppConfig {
-            input_path: test_file.clone(),
-            verbose: false,
-            output_path: None,
-            parallel_decoding: !is_stateful, // 有状态格式使用串行解码
-            parallel_batch_size: 64,
-            parallel_threads: 4,
-            parallel_files: Some(1),
-        };
+        let mut batch_config = base_config();
+        batch_config.input_path = test_file.clone();
+        batch_config.parallel_decoding = !is_stateful;
+        batch_config.parallel_files = Some(1);
+        batch_config.output_path = None;
 
         let (batch_dr_results, batch_format) =
             tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");

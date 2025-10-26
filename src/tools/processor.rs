@@ -7,7 +7,10 @@ use super::{formatter, utils};
 use crate::{
     AudioError, AudioFormat, AudioResult, DrResult,
     audio::UniversalDecoder,
-    core::{PeakSelectionStrategy, histogram::WindowRmsAnalyzer, peak_selection::PeakSelector},
+    core::{
+        PeakSelectionStrategy, SilenceFilterConfig, histogram::WindowRmsAnalyzer,
+        peak_selection::PeakSelector,
+    },
     processing::ChannelSeparator,
 };
 
@@ -214,8 +217,19 @@ fn analyze_streaming_decoder(
     // 以兼容未知总长度（如部分 Opus 流）场景，避免误判。
 
     // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
+    let silence_filter_config = config
+        .silence_filter_threshold_db
+        .map(SilenceFilterConfig::enabled)
+        .unwrap_or_else(SilenceFilterConfig::disabled);
+
     let mut analyzers: Vec<WindowRmsAnalyzer> = (0..format.channels)
-        .map(|_| WindowRmsAnalyzer::new(format.sample_rate, config.sum_doubling_enabled()))
+        .map(|_| {
+            WindowRmsAnalyzer::with_silence_filter(
+                format.sample_rate,
+                config.sum_doubling_enabled(),
+                silence_filter_config,
+            )
+        })
         .collect();
 
     // 🚀 创建SIMD优化的声道分离器
@@ -451,6 +465,29 @@ fn analyze_streaming_decoder(
         ));
     }
 
+    if let Some(threshold_db) = config.silence_filter_threshold_db {
+        println!("🧪 静音过滤诊断: 阈值 {threshold_db:.1} dBFS");
+        for (channel_idx, analyzer) in analyzers.iter().enumerate() {
+            let (valid_windows, filtered_windows, total_windows) = analyzer.window_statistics();
+            if total_windows == 0 {
+                println!("   • 声道 {}: 无窗口参与（文件过短）", channel_idx + 1);
+                continue;
+            }
+            if filtered_windows > 0 {
+                let percent = (filtered_windows as f64 / total_windows as f64) * 100.0;
+                println!(
+                    "   • 声道 {}: 过滤 {filtered_windows}/{total_windows} 窗口 ({percent:.2}%) - 有效窗口 {valid_windows}",
+                    channel_idx + 1
+                );
+            } else {
+                println!(
+                    "   • 声道 {}: 未检测到静音窗口（保留全部 {total_windows} 个窗口）",
+                    channel_idx + 1
+                );
+            }
+        }
+    }
+
     if config.verbose {
         println!("✅ DR计算完成，共 {} 个声道", dr_results.len());
     }
@@ -597,6 +634,7 @@ pub fn save_individual_result(
         parallel_batch_size: super::constants::defaults::PARALLEL_BATCH_SIZE,
         parallel_threads: super::constants::defaults::PARALLEL_THREADS,
         parallel_files: None, // 单文件处理不需要并行
+        silence_filter_threshold_db: None,
     };
 
     if let Err(e) = output_results(results, &temp_config, format, true) {
