@@ -170,7 +170,7 @@ pub fn create_output_header(
         constants::app_info::format_output_header(VERSION)
     ));
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    output.push_str(&format!("log date: {now}\n\n"));
+    output.push_str(&format!("日志时间 / Log date: {now}\n\n"));
 
     // 分隔线
     output.push_str(
@@ -179,10 +179,13 @@ pub fn create_output_header(
 
     // 文件统计信息
     let file_name = utils::extract_filename(&config.input_path);
-    output.push_str(&format!("Statistics for: {file_name}\n"));
+    output.push_str(&format!("统计对象 / Statistics for: {file_name}\n"));
 
     // 从AudioFormat获取真实的音频信息
-    output.push_str(&format!("Number of samples: {}\n", format.sample_count));
+    output.push_str(&format!(
+        "样本总数 / Number of samples: {}\n",
+        format.sample_count
+    ));
 
     // 🎯 智能时长显示：<1小时用 MM:SS，≥1小时用 HH:MM:SS
     let total_seconds = format.duration_seconds() as u32;
@@ -194,7 +197,7 @@ pub fn create_output_header(
     } else {
         format!("{minutes}:{seconds:02}")
     };
-    output.push_str(&format!("Duration: {duration_display} \n"));
+    output.push_str(&format!("时长 / Duration: {duration_display}\n"));
 
     if let Some(report) = edge_trim_report {
         let cfg = report.config;
@@ -205,38 +208,37 @@ pub fn create_output_header(
         let total_samples = report.total_samples_trimmed();
 
         output.push_str(&format!(
-            "Edge trimming enabled: threshold {threshold_db:.1} dBFS, min run {min_run_ms:.0} ms (hysteresis {hysteresis_ms:.0} ms)\n",
+            "边缘裁切启用 / Edge trimming enabled: threshold {threshold_db:.1} dBFS, min run {min_run_ms:.0} ms (hysteresis {hysteresis_ms:.0} ms)\n",
             threshold_db = cfg.threshold_db,
             min_run_ms = cfg.min_run_ms,
             hysteresis_ms = cfg.hysteresis_ms
         ));
         output.push_str(&format!(
-            "Edge trimming removed {total_sec:.3} s ({total_samples} samples) \
-leading {leading_sec:.3} s, trailing {trailing_sec:.3} s\n"
+            "裁切剔除 / Trimmed: {total_sec:.3} s ({total_samples} samples) | 前端 / Leading {leading_sec:.3} s, 末端 / Trailing {trailing_sec:.3} s\n"
         ));
     }
 
     if let Some(report) = silence_filter_report {
         output.push_str(&format!(
-            "Silence filter enabled: threshold {threshold_db:.1} dBFS\n",
+            "静音过滤启用 / Silence filter enabled: threshold {threshold_db:.1} dBFS\n",
             threshold_db = report.threshold_db
         ));
 
         for channel in &report.channels {
             if channel.total_windows == 0 {
                 output.push_str(&format!(
-                    "Channel {}: no analysis windows (file too short)\n",
-                    channel.channel_index + 1
+                    "通道 Channel {}: 无可分析窗口（文件过短）/ No analysis windows (file too short)\n",
+                    channel.channel_index + 1,
                 ));
             } else if channel.filtered_windows == 0 {
                 output.push_str(&format!(
-                    "Channel {}: no silent windows removed ({} total windows)\n",
+                    "通道 Channel {}: 未移除静音窗口 / No silent windows removed （总窗口 / Total: {}）\n",
                     channel.channel_index + 1,
                     channel.total_windows
                 ));
             } else {
                 output.push_str(&format!(
-                    "Channel {}: filtered {filtered}/{total} windows ({percent:.2}%), valid {valid}\n",
+                    "通道 Channel {}: 移除 {filtered}/{total} 窗口 ({percent:.2}%)，有效 / Valid {valid}\n",
                     channel.channel_index + 1,
                     filtered = channel.filtered_windows,
                     total = channel.total_windows,
@@ -261,11 +263,14 @@ pub fn format_mono_results(result: &DrResult) -> String {
     // let peak_db = utils::linear_to_db(result.peak);
     // let rms_db = utils::linear_to_db(result.rms);
 
-    output.push_str("                 Mono\n\n");
+    output.push_str("                 单声道 / Mono\n\n");
     // 暂时隐藏Peak和RMS显示
     // output.push_str(&format!("Peak Value:     {peak_db:.2} dB   \n"));
     // output.push_str(&format!("Avg RMS:       {rms_db:.2} dB   \n"));
-    output.push_str(&format!("DR channel:      {:.2} dB   \n", result.dr_value));
+    output.push_str(&format!(
+        "DR通道 / DR Channel:      {:.2} dB   \n",
+        result.dr_value
+    ));
 
     output
 }
@@ -279,7 +284,7 @@ pub fn format_stereo_results(results: &[DrResult]) -> String {
     // let left_rms_db = utils::linear_to_db(results[0].rms);
     // let right_rms_db = utils::linear_to_db(results[1].rms);
 
-    output.push_str("                 Left              Right\n\n");
+    output.push_str("                         左声道 / Left      右声道 / Right\n\n");
     // 暂时隐藏Peak和RMS显示
     // output.push_str(&format!(
     //     "Peak Value:     {left_peak_db:.2} dB   ---     {right_peak_db:.2} dB   \n"
@@ -287,8 +292,9 @@ pub fn format_stereo_results(results: &[DrResult]) -> String {
     // output.push_str(&format!(
     //     "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
     // ));
+    output.push_str("DR通道 / DR Channel:      ");
     output.push_str(&format!(
-        "DR channel:      {:.2} dB   ---    {:.2} dB   \n",
+        "{:.2} dB   ---    {:.2} dB   \n",
         results[0].dr_value, results[1].dr_value
     ));
 
@@ -302,7 +308,7 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
     // 生成声道标题行
     let mut header = String::new();
     for i in 0..results.len() {
-        header.push_str(&format!("          Channel {}", i + 1));
+        header.push_str(&format!("          通道 Channel {}", i + 1));
     }
     output.push_str(&header);
     output.push_str("\n\n");
@@ -332,7 +338,7 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
     // output.push('\n');
 
     // DR channel行
-    output.push_str("DR channel:");
+    output.push_str("DR通道 / DR Channel:");
     for (i, result) in results.iter().enumerate() {
         let dr_value_str = if result.peak > 0.0 && result.rms > 0.0 {
             format!("{:.2} dB", result.dr_value)
@@ -395,7 +401,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
         //     note
         // ));
         output.push_str(&format!(
-            "            Channel {:2}:                                     {:>6} dB    {}\n",
+            "            通道 Channel {:2}:                                     {:>6} dB    {}\n",
             i + 1,
             dr_value_str,
             note
@@ -422,10 +428,10 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
             _ => "多声道",
         };
         output.push_str(&format!(
-            "注: 检测为{format_name}格式，LFE(低频效果)声道已从DR计算中排除，符合音频分析标准。\n"
+            "注 / Note: 检测为 {format_name} 格式，LFE (低频效果) 声道已从 DR 计算中排除，符合音频分析标准。\n"
         ));
         output.push_str(&format!(
-            "    LFE声道位置: Channel {}\n",
+            "    LFE声道位置 / LFE channels: Channel {}\n",
             lfe_channels
                 .iter()
                 .map(|&i| (i + 1).to_string())
@@ -622,7 +628,7 @@ pub fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<S
             };
 
             format!(
-                "⚠️  {header_zh} / {header_en}\n\
+                "{header_zh} / {header_en}\n\
                  Precise DR {precise_dr:.2} dB 距离 {boundary_desc_zh} {distance:.2} dB\n\
                  Distance to {boundary_desc_en}: {distance:.2} dB\n\
                  可能被舍入至 DR{target_dr} 而非 DR{official_dr}\n\
@@ -670,9 +676,18 @@ pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> Stri
 pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    output.push_str(&format!("Samplerate:        {} Hz\n", format.sample_rate));
-    output.push_str(&format!("Channels:          {}\n", format.channels));
-    output.push_str(&format!("Bits per sample:   {}\n", format.bits_per_sample));
+    output.push_str(&format!(
+        "{:<22}{} Hz\n",
+        "采样率 / Sample rate:", format.sample_rate
+    ));
+    output.push_str(&format!(
+        "{:<22}{}\n",
+        "声道数 / Channels:", format.channels
+    ));
+    output.push_str(&format!(
+        "{:<22}{}\n",
+        "位深 / Bits per sample:", format.bits_per_sample
+    ));
 
     // 🎯 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
     let extension_fallback = utils::extract_extension_uppercase(&config.input_path);
@@ -681,7 +696,7 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
             Ok(bitrate) => format!("{bitrate} kbps"),
             Err(_) => "N/A".to_string(), // 计算失败时显示N/A（如部分分析模式）
         };
-    output.push_str(&format!("Bitrate:           {bitrate_display}\n"));
+    output.push_str(&format!("{:<22}{bitrate_display}\n", "比特率 / Bitrate:"));
 
     // 🎯 优先使用真实的编解码器类型，回退到文件扩展名
     let codec_display = if let Some(codec_type) = format.codec_type {
@@ -689,7 +704,7 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     } else {
         extension_fallback
     };
-    output.push_str(&format!("Codec:             {codec_display}\n"));
+    output.push_str(&format!("{:<22}{codec_display}\n", "编码 / Codec:"));
 
     output.push_str(
         "================================================================================\n",
