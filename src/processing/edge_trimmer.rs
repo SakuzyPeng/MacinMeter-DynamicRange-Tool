@@ -42,9 +42,9 @@ impl Default for EdgeTrimConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            threshold_db: -70.0,
-            min_run_ms: 300.0,    // 300ms 最小静音持续时长
-            hysteresis_ms: 100.0, // 100ms 迟滞确认
+            threshold_db: -60.0,
+            min_run_ms: 60.0,    // 60ms 最小静音持续时长
+            hysteresis_ms: 50.0, // 50ms 迟滞确认
         }
     }
 }
@@ -112,6 +112,35 @@ impl TrimStats {
     pub fn total_duration_sec(&self, sample_rate: u32, channels: usize) -> f64 {
         self.leading_duration_sec(sample_rate, channels)
             + self.trailing_duration_sec(sample_rate, channels)
+    }
+}
+
+/// 边缘裁切报告（包含配置与统计）
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeTrimReport {
+    pub config: EdgeTrimConfig,
+    pub stats: TrimStats,
+}
+
+impl EdgeTrimReport {
+    #[inline]
+    pub fn leading_duration_sec(&self, sample_rate: u32, channels: usize) -> f64 {
+        self.stats.leading_duration_sec(sample_rate, channels)
+    }
+
+    #[inline]
+    pub fn trailing_duration_sec(&self, sample_rate: u32, channels: usize) -> f64 {
+        self.stats.trailing_duration_sec(sample_rate, channels)
+    }
+
+    #[inline]
+    pub fn total_duration_sec(&self, sample_rate: u32, channels: usize) -> f64 {
+        self.stats.total_duration_sec(sample_rate, channels)
+    }
+
+    #[inline]
+    pub fn total_samples_trimmed(&self) -> usize {
+        self.stats.leading_samples_trimmed + self.stats.trailing_samples_trimmed
     }
 }
 
@@ -188,7 +217,7 @@ impl EdgeTrimmer {
     ///
     /// **PCM归一化假设**
     /// - 本模块假设输入 PCM 样本已归一化到 ±1.0FS（标准浮点范围）
-    /// - dBFS 转幅度：`10^(db/20)`，例 -70 dBFS ≈ 3.16e-4
+    /// - dBFS 转幅度：`10^(db/20)`，例 -60 dBFS ≈ 1.00e-3
     /// - 若输入未归一化，应在解码层进行规范化，或在阈值处理前进行转换
     #[inline]
     fn frame_amplitude(&self, samples: &[f32], frame_idx: usize) -> f64 {
@@ -417,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_leading_short_silence_回灌() {
-        // 短静音 (50帧 < 300帧=min_run @ 300ms) 应该被回灌，不裁
+        // 短静音 (50帧 ≈ 1.13ms < 10ms min_run) 应该被回灌，不裁
         let mut config = EdgeTrimConfig::enabled(-40.0, 10.0);
         config.hysteresis_ms = 5.0;
         let mut trimmer = EdgeTrimmer::new(config, 2, 44100);

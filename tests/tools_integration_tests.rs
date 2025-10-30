@@ -423,7 +423,7 @@ fn test_batch_vs_single_dr_consistency_wav() {
 
     let single_result = tools::process_single_audio_file(&test_file, &single_config);
     assert!(single_result.is_ok(), "单文件处理应该成功");
-    let (single_dr_results, single_format) = single_result.unwrap();
+    let (single_dr_results, single_format, _, _) = single_result.unwrap();
 
     let single_official_dr = tools::compute_official_precise_dr(&single_dr_results, &single_format);
     assert!(single_official_dr.is_some(), "单文件模式应该计算出DR值");
@@ -440,7 +440,7 @@ fn test_batch_vs_single_dr_consistency_wav() {
     // 手动调用批量处理逻辑（模拟只处理这一个文件）
     let batch_result = tools::process_single_audio_file(&test_file, &batch_config);
     assert!(batch_result.is_ok(), "批量处理应该成功");
-    let (batch_dr_results, batch_format) = batch_result.unwrap();
+    let (batch_dr_results, batch_format, _, _) = batch_result.unwrap();
 
     let batch_official_dr = tools::compute_official_precise_dr(&batch_dr_results, &batch_format);
     assert!(batch_official_dr.is_some(), "批量模式应该计算出DR值");
@@ -510,7 +510,7 @@ fn test_batch_vs_single_dr_consistency_mp3() {
     single_config.parallel_files = None;
     single_config.output_path = None;
 
-    let (single_dr_results, single_format) =
+    let (single_dr_results, single_format, _, _) =
         tools::process_single_audio_file(&test_file, &single_config).expect("单文件处理应该成功");
 
     let (single_official, single_precise, _) =
@@ -526,7 +526,7 @@ fn test_batch_vs_single_dr_consistency_mp3() {
     batch_config.parallel_files = Some(1);
     batch_config.output_path = None;
 
-    let (batch_dr_results, batch_format) =
+    let (batch_dr_results, batch_format, _, _) =
         tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");
 
     let (batch_official, batch_precise, _) =
@@ -573,7 +573,7 @@ fn test_batch_vs_single_dr_consistency_flac() {
     single_config.parallel_files = None;
     single_config.output_path = None;
 
-    let (single_dr_results, single_format) =
+    let (single_dr_results, single_format, _, _) =
         tools::process_single_audio_file(&test_file, &single_config).expect("单文件处理应该成功");
 
     let (single_official, single_precise, _) =
@@ -589,7 +589,7 @@ fn test_batch_vs_single_dr_consistency_flac() {
     batch_config.parallel_files = Some(1);
     batch_config.output_path = None;
 
-    let (batch_dr_results, batch_format) =
+    let (batch_dr_results, batch_format, _, _) =
         tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");
 
     let (batch_official, batch_precise, _) =
@@ -669,7 +669,7 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
             continue;
         }
 
-        let (single_dr_results, single_format) = single_result.unwrap();
+        let (single_dr_results, single_format, _, _) = single_result.unwrap();
         let single_official_dr =
             tools::compute_official_precise_dr(&single_dr_results, &single_format);
         if single_official_dr.is_none() {
@@ -686,7 +686,7 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         batch_config.parallel_files = Some(1);
         batch_config.output_path = None;
 
-        let (batch_dr_results, batch_format) =
+        let (batch_dr_results, batch_format, _, _) =
             tools::process_single_audio_file(&test_file, &batch_config).expect("批量处理应该成功");
 
         let (batch_official, batch_precise, _) =

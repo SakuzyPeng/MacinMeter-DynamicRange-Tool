@@ -36,4 +36,39 @@ pub use performance_metrics::{
 };
 
 // 边缘裁切类型（P0阶段实验性功能）
-pub use edge_trimmer::{EdgeTrimConfig, EdgeTrimmer, TrimStats};
+pub use edge_trimmer::{EdgeTrimConfig, EdgeTrimReport, EdgeTrimmer, TrimStats};
+
+/// 静音窗口过滤报告（供输出模块使用）
+#[derive(Debug, Clone)]
+pub struct SilenceFilterChannelReport {
+    pub channel_index: usize,
+    pub valid_windows: usize,
+    pub filtered_windows: usize,
+    pub total_windows: usize,
+}
+
+impl SilenceFilterChannelReport {
+    #[inline]
+    pub fn filtered_percent(&self) -> f64 {
+        if self.total_windows == 0 {
+            0.0
+        } else {
+            (self.filtered_windows as f64 / self.total_windows as f64) * 100.0
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SilenceFilterReport {
+    pub threshold_db: f64,
+    pub channels: Vec<SilenceFilterChannelReport>,
+}
+
+impl SilenceFilterReport {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.channels
+            .iter()
+            .all(|c| c.total_windows == 0 || c.filtered_windows == 0)
+    }
+}

@@ -215,7 +215,7 @@ fn test_opus_dr_calculation() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, format)) => {
+        Ok((dr_results, format, _, _)) => {
             println!("✓ Opus文件DR计算成功");
             println!(
                 "  格式: {}Hz, {}bit, {}ch",
@@ -270,7 +270,7 @@ fn test_ogg_opus_compatibility() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, format)) => {
+        Ok((dr_results, format, _, _)) => {
             println!("✓ OGG文件处理成功");
             println!(
                 "  格式: {}Hz, {}bit, {}ch",
@@ -345,7 +345,7 @@ fn test_opus_decoding_performance() {
     let elapsed = start.elapsed();
 
     match result {
-        Ok((dr_results, _format)) => {
+        Ok((dr_results, _format, _, _)) => {
             let file_size = std::fs::metadata(&path).unwrap().len();
             let throughput_mbps = (file_size as f64 / 1_048_576.0) / elapsed.as_secs_f64();
 

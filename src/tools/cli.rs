@@ -18,8 +18,8 @@ const DEFAULT_PARALLEL_BATCH: &str = "64";
 const DEFAULT_PARALLEL_THREADS: &str = "4";
 const DEFAULT_PARALLEL_FILES: &str = "4";
 const DEFAULT_SILENCE_THRESHOLD_DB_STR: &str = "-70";
-const DEFAULT_TRIM_THRESHOLD_DB_STR: &str = "-70";
-const DEFAULT_TRIM_MIN_RUN_MS_STR: &str = "300";
+const DEFAULT_TRIM_THRESHOLD_DB_STR: &str = "-60";
+const DEFAULT_TRIM_MIN_RUN_MS_STR: &str = "60";
 
 /// 自定义范围校验函数
 fn parse_parallel_degree(s: &str) -> Result<usize, String> {
@@ -204,7 +204,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
-                .help("🧪 P0: 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -70）")
+                .help("🧪 P0: 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
                 .value_name("DB")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -214,7 +214,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("trim-min-run")
                 .long("trim-min-run")
-                .help("🧪 P0: 裁切最小持续时间（毫秒，范围 50-2000，默认 300）")
+                .help("🧪 P0: 裁切最小持续时间（毫秒，范围 50-2000，默认 60；若未指定则自动使用默认）")
                 .value_name("MS")
                 .requires("trim-edges")
                 .value_parser(parse_trim_min_run)

@@ -148,12 +148,19 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         }
 
         match tools::process_single_audio_file(audio_file, config) {
-            Ok((results, format)) => {
+            Ok((results, format, trim_report, silence_report)) => {
                 stats.inc_processed();
 
                 if is_single_file {
                     // 🎯 单文件模式：只生成单独的DR结果文件
-                    let _ = tools::save_individual_result(&results, &format, audio_file, config);
+                    let _ = tools::save_individual_result(
+                        &results,
+                        &format,
+                        audio_file,
+                        config,
+                        trim_report,
+                        silence_report,
+                    );
                 } else {
                     // 🎯 多文件模式：只添加到批量输出
                     tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file);
@@ -213,10 +220,18 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
 
 /// 单文件处理模式
 fn process_single_mode(config: &AppConfig) -> Result<(), AudioError> {
-    let (results, format) = tools::process_single_audio_file(&config.input_path, config)?;
+    let (results, format, trim_report, silence_report) =
+        tools::process_single_audio_file(&config.input_path, config)?;
 
     // 输出结果（如果用户未指定输出文件，则自动保存）
-    tools::output_results(&results, config, &format, config.output_path.is_none())
+    tools::output_results(
+        &results,
+        config,
+        &format,
+        trim_report,
+        silence_report,
+        config.output_path.is_none(),
+    )
 }
 
 /// 应用程序主逻辑（便于测试和复用）

@@ -341,7 +341,7 @@ impl StreamingAnalysisSession {
 
         // 🎯 100%复用主项目process_streaming_decoder算法
         match process_streaming_decoder(&mut self.decoder, &config) {
-            Ok((dr_results, _final_format)) => {
+            Ok((dr_results, _final_format, _trim_report, _silence_report)) => {
                 self.report_progress(92, 100, "DR计算完成，正在处理结果...");
                 self.report_progress(94, 100, "计算整体DR值...");
 

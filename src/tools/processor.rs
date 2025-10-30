@@ -11,14 +11,25 @@ use crate::{
         PeakSelectionStrategy, SilenceFilterConfig, histogram::WindowRmsAnalyzer,
         peak_selection::PeakSelector,
     },
-    processing::ChannelSeparator,
+    processing::{
+        ChannelSeparator, EdgeTrimConfig, EdgeTrimReport, EdgeTrimmer, SilenceFilterChannelReport,
+        SilenceFilterReport,
+    },
 };
+
+/// DR 分析输出（结果 + 最终格式 + 辅助诊断）
+pub type AnalysisOutput = (
+    Vec<DrResult>,
+    AudioFormat,
+    Option<EdgeTrimReport>,
+    Option<SilenceFilterReport>,
+);
 
 /// 处理单个音频文件
 pub fn process_audio_file(
     path: &std::path::Path,
     config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+) -> AudioResult<AnalysisOutput> {
     // 🚀 直接使用流式处理实现：零内存累积，恒定内存使用
     // 注：旧的全量加载方法已移除，避免8GB内存占用问题
     process_audio_file_streaming(path, config)
@@ -28,14 +39,14 @@ pub fn process_audio_file(
 pub fn process_single_audio_file(
     file_path: &std::path::Path,
     config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+) -> AudioResult<AnalysisOutput> {
     if config.verbose {
         println!("🎵 正在加载音频文件: {}", file_path.display());
         println!("🎯 使用流式窗口分析（3秒标准窗口）进行DR计算");
     }
 
     // 处理音频文件
-    let (dr_results, format) = process_audio_file(file_path, config)?;
+    let (dr_results, format, trim_report, silence_report) = process_audio_file(file_path, config)?;
 
     if config.verbose {
         println!("📊 音频格式信息:");
@@ -46,7 +57,7 @@ pub fn process_single_audio_file(
         println!("   时长: {:.2} 秒", format.duration_seconds());
     }
 
-    Ok((dr_results, format))
+    Ok((dr_results, format, trim_report, silence_report))
 }
 
 /// 🚀 新的流式处理实现：真正的零内存累积处理
@@ -55,7 +66,7 @@ pub fn process_single_audio_file(
 pub fn process_audio_file_streaming(
     path: &std::path::Path,
     config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+) -> AudioResult<AnalysisOutput> {
     if config.verbose {
         println!("🌊 使用流式处理模式进行DR分析...");
     }
@@ -184,7 +195,7 @@ fn compact_buffer(
 fn analyze_streaming_decoder(
     streaming_decoder: &mut dyn crate::audio::StreamingDecoder,
     config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+) -> AudioResult<AnalysisOutput> {
     #[cfg(feature = "flame-prof")]
     let _guard_processing = {
         let enabled = std::env::var("DR_FLAME").map(|v| v == "1").unwrap_or(false);
@@ -236,10 +247,12 @@ fn analyze_streaming_decoder(
     let channel_separator = ChannelSeparator::new();
 
     // 🧪 P0阶段：创建边缘裁切器（如果启用）
-    let mut trim_config_applied = None;
+    let mut trim_config_applied: Option<EdgeTrimConfig> = None;
     let mut edge_trimmer = if let Some(threshold_db) = config.edge_trim_threshold_db {
-        let min_run_ms = config.edge_trim_min_run_ms.unwrap_or(300.0);
-        let trim_config = crate::processing::EdgeTrimConfig::enabled(threshold_db, min_run_ms);
+        let min_run_ms = config
+            .edge_trim_min_run_ms
+            .unwrap_or_else(|| EdgeTrimConfig::default().min_run_ms);
+        let trim_config = EdgeTrimConfig::enabled(threshold_db, min_run_ms);
         trim_config_applied = Some(trim_config);
 
         if config.verbose {
@@ -249,7 +262,7 @@ fn analyze_streaming_decoder(
             );
         }
 
-        Some(crate::processing::EdgeTrimmer::new(
+        Some(EdgeTrimmer::new(
             trim_config,
             format.channels as usize,
             format.sample_rate,
@@ -257,6 +270,9 @@ fn analyze_streaming_decoder(
     } else {
         None
     };
+
+    let mut trim_report: Option<EdgeTrimReport> = None;
+    let mut silence_filter_report: Option<SilenceFilterReport> = None;
 
     // 🎯 使用集中管理的窗口时长常量（foobar2000标准）
     use super::constants::buffers::{
@@ -416,6 +432,13 @@ fn analyze_streaming_decoder(
             sample_buffer.extend_from_slice(&final_chunk);
         }
 
+        if let Some(cfg) = trim_config_applied {
+            trim_report = Some(EdgeTrimReport {
+                config: cfg,
+                stats: trim_stats,
+            });
+        }
+
         // 输出裁切诊断信息（包含详细的参数和样本统计）
         if config.verbose
             || trim_stats.leading_samples_trimmed > 0
@@ -555,26 +578,48 @@ fn analyze_streaming_decoder(
     }
 
     if let Some(threshold_db) = config.silence_filter_threshold_db {
-        println!("🧪 静音过滤诊断: 阈值 {threshold_db:.1} dBFS");
-        for (channel_idx, analyzer) in analyzers.iter().enumerate() {
+        let mut channel_reports = Vec::with_capacity(analyzers.len());
+        for (idx, analyzer) in analyzers.iter().enumerate() {
             let (valid_windows, filtered_windows, total_windows) = analyzer.window_statistics();
-            if total_windows == 0 {
-                println!("   • 声道 {}: 无窗口参与（文件过短）", channel_idx + 1);
-                continue;
-            }
-            if filtered_windows > 0 {
-                let percent = (filtered_windows as f64 / total_windows as f64) * 100.0;
-                println!(
-                    "   • 声道 {}: 过滤 {filtered_windows}/{total_windows} 窗口 ({percent:.2}%) - 有效窗口 {valid_windows}",
-                    channel_idx + 1
-                );
-            } else {
-                println!(
-                    "   • 声道 {}: 未检测到静音窗口（保留全部 {total_windows} 个窗口）",
-                    channel_idx + 1
-                );
+            channel_reports.push(SilenceFilterChannelReport {
+                channel_index: idx,
+                valid_windows,
+                filtered_windows,
+                total_windows,
+            });
+        }
+
+        if config.verbose {
+            println!("🧪 静音过滤诊断: 阈值 {threshold_db:.1} dBFS");
+            for channel in &channel_reports {
+                if channel.total_windows == 0 {
+                    println!(
+                        "   • 声道 {}: 无窗口参与（文件过短）",
+                        channel.channel_index + 1
+                    );
+                } else if channel.filtered_windows > 0 {
+                    println!(
+                        "   • 声道 {}: 过滤 {}/{} 窗口 ({:.2}%) - 有效窗口 {}",
+                        channel.channel_index + 1,
+                        channel.filtered_windows,
+                        channel.total_windows,
+                        channel.filtered_percent(),
+                        channel.valid_windows,
+                    );
+                } else {
+                    println!(
+                        "   • 声道 {}: 未检测到静音窗口（保留全部 {} 个窗口）",
+                        channel.channel_index + 1,
+                        channel.total_windows
+                    );
+                }
             }
         }
+
+        silence_filter_report = Some(SilenceFilterReport {
+            threshold_db,
+            channels: channel_reports,
+        });
     }
 
     if config.verbose {
@@ -630,7 +675,7 @@ fn analyze_streaming_decoder(
         }
     }
 
-    Ok((dr_results, final_format))
+    Ok((dr_results, final_format, trim_report, silence_filter_report))
 }
 
 /// 🚀 处理StreamingDecoder进行DR分析（插件专用API）
@@ -639,7 +684,7 @@ fn analyze_streaming_decoder(
 pub fn process_streaming_decoder(
     streaming_decoder: &mut dyn crate::audio::StreamingDecoder,
     config: &AppConfig,
-) -> AudioResult<(Vec<DrResult>, AudioFormat)> {
+) -> AudioResult<AnalysisOutput> {
     if config.verbose {
         println!("🌊 使用StreamingDecoder进行DR分析...");
     }
@@ -653,13 +698,20 @@ pub fn output_results(
     results: &[DrResult],
     config: &AppConfig,
     format: &AudioFormat,
+    edge_trim_report: Option<EdgeTrimReport>,
+    silence_filter_report: Option<SilenceFilterReport>,
     auto_save: bool,
 ) -> AudioResult<()> {
     // 使用模块化的方法组装输出内容
     let mut output = String::new();
 
     // 1. 创建头部信息
-    output.push_str(&formatter::create_output_header(config, format));
+    output.push_str(&formatter::create_output_header(
+        config,
+        format,
+        edge_trim_report,
+        silence_filter_report,
+    ));
 
     // 2. 根据声道数格式化DR结果
     output.push_str(&formatter::format_dr_results_by_channel_count(
@@ -720,6 +772,8 @@ pub fn save_individual_result(
     format: &AudioFormat,
     audio_file: &std::path::Path,
     config: &AppConfig,
+    edge_trim_report: Option<EdgeTrimReport>,
+    silence_filter_report: Option<SilenceFilterReport>,
 ) -> AudioResult<()> {
     let temp_config = AppConfig {
         input_path: audio_file.to_path_buf(),
@@ -734,7 +788,14 @@ pub fn save_individual_result(
         edge_trim_min_run_ms: None,
     };
 
-    if let Err(e) = output_results(results, &temp_config, format, true) {
+    if let Err(e) = output_results(
+        results,
+        &temp_config,
+        format,
+        edge_trim_report,
+        silence_filter_report,
+        true,
+    ) {
         eprintln!("   ⚠️  保存单独结果文件失败: {e}");
     } else if config.verbose {
         let parent_dir = utils::get_parent_dir(audio_file);

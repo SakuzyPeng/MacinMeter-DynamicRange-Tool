@@ -106,7 +106,7 @@ fn test_tiny_duration_audio() {
 
     // 10ms文件可以被解码，但应该返回有限的DR值（0-40dB）
     match result {
-        Ok((dr_results, _format)) => {
+        Ok((dr_results, _format, _, _)) => {
             assert!(!dr_results.is_empty(), "处理成功应该返回DR结果");
             if let Some(dr) = dr_results.first() {
                 // DR值必须有限且在合理范围内
@@ -142,7 +142,7 @@ fn test_silence_handling() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, _format)) => {
+        Ok((dr_results, _format, _, _)) => {
             assert!(!dr_results.is_empty(), "处理成功应该返回DR结果");
             if let Some(dr) = dr_results.first() {
                 // 静音文件的DR应该是有限且非常接近0（使用DR_ZERO_EPS逻辑）
@@ -179,7 +179,7 @@ fn test_full_scale_clipping() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, _format)) => {
+        Ok((dr_results, _format, _, _)) => {
             if let Some(dr) = dr_results.first() {
                 println!("✓ 削波文件处理成功: DR={:.2}", dr.dr_value);
                 // 全削波的DR应该接近0（极小动态范围）
@@ -205,7 +205,7 @@ fn test_edge_value_patterns() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, _format)) => {
+        Ok((dr_results, _format, _, _)) => {
             if let Some(dr) = dr_results.first() {
                 println!("✓ 边缘值文件处理成功: DR={:.2}", dr.dr_value);
                 // 应该有有效的DR值，不应该有NaN
@@ -230,7 +230,7 @@ fn test_high_sample_rate() {
     let result = process_audio_file_streaming(&path, &config);
 
     match result {
-        Ok((dr_results, format)) => {
+        Ok((dr_results, format, _, _)) => {
             if let Some(dr) = dr_results.first() {
                 println!("✓ 高采样率文件处理成功: DR={:.2}", dr.dr_value);
                 println!(
@@ -342,7 +342,7 @@ fn test_truncated_wav() {
     // - 当预期样本 > 实际样本时，应标记 is_partial() == true
     // 当前的测试文件可能不足以触发这些条件，因此标记为 #[ignore]
     match result {
-        Ok((dr_results, format)) => {
+        Ok((dr_results, format, _, _)) => {
             println!("截断文件处理结果: is_partial={}", format.is_partial());
             println!(
                 "  DR结果数: {}, 跳过包数: {}",
@@ -383,7 +383,7 @@ fn test_multiple_files_stress() {
         print!("  处理 {filename}...");
 
         match process_audio_file_streaming(&path, &config) {
-            Ok((dr_results, _)) => {
+            Ok((dr_results, _, _, _)) => {
                 if let Some(dr) = dr_results.first() {
                     println!(" ✓ DR={:.2}", dr.dr_value);
                 }

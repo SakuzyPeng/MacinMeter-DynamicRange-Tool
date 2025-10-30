@@ -5,7 +5,10 @@
 use super::cli::AppConfig;
 use super::constants;
 use super::utils;
-use crate::{AudioError, AudioFormat, AudioResult, DrResult};
+use crate::{
+    AudioError, AudioFormat, AudioResult, DrResult,
+    processing::{EdgeTrimReport, SilenceFilterReport},
+};
 
 // 引入symphonia编解码器类型用于精确判断
 use symphonia::core::codecs::{
@@ -153,7 +156,12 @@ fn identify_lfe_channels(channel_count: u16) -> Vec<usize> {
 }
 
 /// 创建输出文件头部信息
-pub fn create_output_header(config: &AppConfig, format: &AudioFormat) -> String {
+pub fn create_output_header(
+    config: &AppConfig,
+    format: &AudioFormat,
+    edge_trim_report: Option<EdgeTrimReport>,
+    silence_filter_report: Option<SilenceFilterReport>,
+) -> String {
     let mut output = String::new();
 
     // 🎯 使用统一的头部标识常量（避免跨模块文案漂移）
@@ -187,6 +195,57 @@ pub fn create_output_header(config: &AppConfig, format: &AudioFormat) -> String 
         format!("{minutes}:{seconds:02}")
     };
     output.push_str(&format!("Duration: {duration_display} \n"));
+
+    if let Some(report) = edge_trim_report {
+        let cfg = report.config;
+        let leading_sec = report.leading_duration_sec(format.sample_rate, format.channels as usize);
+        let trailing_sec =
+            report.trailing_duration_sec(format.sample_rate, format.channels as usize);
+        let total_sec = report.total_duration_sec(format.sample_rate, format.channels as usize);
+        let total_samples = report.total_samples_trimmed();
+
+        output.push_str(&format!(
+            "Edge trimming enabled: threshold {threshold_db:.1} dBFS, min run {min_run_ms:.0} ms (hysteresis {hysteresis_ms:.0} ms)\n",
+            threshold_db = cfg.threshold_db,
+            min_run_ms = cfg.min_run_ms,
+            hysteresis_ms = cfg.hysteresis_ms
+        ));
+        output.push_str(&format!(
+            "Edge trimming removed {total_sec:.3} s ({total_samples} samples) \
+leading {leading_sec:.3} s, trailing {trailing_sec:.3} s\n"
+        ));
+    }
+
+    if let Some(report) = silence_filter_report {
+        output.push_str(&format!(
+            "Silence filter enabled: threshold {threshold_db:.1} dBFS\n",
+            threshold_db = report.threshold_db
+        ));
+
+        for channel in &report.channels {
+            if channel.total_windows == 0 {
+                output.push_str(&format!(
+                    "Channel {}: no analysis windows (file too short)\n",
+                    channel.channel_index + 1
+                ));
+            } else if channel.filtered_windows == 0 {
+                output.push_str(&format!(
+                    "Channel {}: no silent windows removed ({} total windows)\n",
+                    channel.channel_index + 1,
+                    channel.total_windows
+                ));
+            } else {
+                output.push_str(&format!(
+                    "Channel {}: filtered {filtered}/{total} windows ({percent:.2}%), valid {valid}\n",
+                    channel.channel_index + 1,
+                    filtered = channel.filtered_windows,
+                    total = channel.total_windows,
+                    percent = channel.filtered_percent(),
+                    valid = channel.valid_windows,
+                ));
+            }
+        }
+    }
 
     output.push_str(
         "--------------------------------------------------------------------------------\n\n",

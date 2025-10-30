@@ -6,7 +6,7 @@ use super::cli::AppConfig;
 use super::{
     ParallelBatchStats, add_failed_to_batch_output, add_to_batch_output,
     create_batch_output_header, finalize_and_write_batch_output, process_single_audio_file,
-    save_individual_result, utils,
+    processor::AnalysisOutput, save_individual_result, utils,
 };
 use crate::AudioError;
 use crate::error::ErrorCategory;
@@ -24,7 +24,7 @@ struct OrderedResult {
     file_path: PathBuf,
 
     /// 处理结果
-    result: Result<(Vec<crate::DrResult>, crate::AudioFormat), AudioError>,
+    result: Result<AnalysisOutput, AudioError>,
 }
 
 /// 🚀 多文件并行处理（优雅实现）
@@ -149,9 +149,16 @@ pub fn process_batch_parallel(
 
     for ordered_result in sorted_results {
         match ordered_result.result {
-            Ok((results, format)) => {
+            Ok((results, format, trim_report, silence_report)) => {
                 if is_single_file {
-                    save_individual_result(&results, &format, &ordered_result.file_path, config)?;
+                    save_individual_result(
+                        &results,
+                        &format,
+                        &ordered_result.file_path,
+                        config,
+                        trim_report,
+                        silence_report,
+                    )?;
                 } else {
                     add_to_batch_output(
                         &mut batch_output,

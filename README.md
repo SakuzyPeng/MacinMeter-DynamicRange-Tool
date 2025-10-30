@@ -136,11 +136,11 @@ DR13	13.17 dB	肖邦第一钢琴协奏曲.flac
 # 启用边缘裁切（使用默认参数）
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges audio.aac
 
-# 指定静音阈值（-70 dBFS 是推荐默认值）
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges=-70 audio.aac
+# 指定静音阈值（-60 dBFS 为默认值）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges=-60 audio.aac
 
-# 指定最小持续时长（默认 300ms）
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges --trim-min-run-ms=500 audio.flac
+# 指定最小持续时长（默认 60ms）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges --trim-min-run=120 audio.flac
 
 # 结合详细输出查看处理细节
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges --verbose audio.aac
@@ -151,9 +151,10 @@ DR13	13.17 dB	肖邦第一钢琴协奏曲.flac
 
 #### 参数说明
 
-- `--trim-edges[=<DB>]`：启用边缘裁切，可选指定静音阈值（默认 -70 dBFS，范围 -120…0 dB）
-- `--trim-min-run-ms=<MS>`：最小连续静音持续时长（默认 300ms，范围 50…2000ms）
+- `--trim-edges[=<DB>]`：启用边缘裁切，可选指定静音阈值（默认 -60 dBFS，范围 -120…0 dB）
+- `--trim-min-run=<MS>`：最小连续静音持续时长（默认 60ms，范围 50…2000ms）
   - 仅当首尾连续静音时长 ≥ min_run 时才被裁切；短于该值的首尾静音完整保留
+- 结果 TXT 会自动记录裁切统计（首/尾/总时长与样本数）以及静音过滤窗口统计（过滤数、总窗口、百分比），便于复现与追踪
 
 #### 工作原理
 
