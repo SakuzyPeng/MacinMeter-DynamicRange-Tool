@@ -588,7 +588,7 @@ pub fn detect_boundary_risk_level(
 /// - 中风险（距任何边界 0.03~0.05 dB）：需留意foobar2000的对比结果
 ///
 /// 返回预警消息（如果需要预警），否则返回None
-fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<String> {
+pub fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<String> {
     detect_boundary_risk_level(official_dr, precise_dr).map(
         |(risk_level, direction, distance)| {
             let (header_zh, header_en, recommendation) = match risk_level {

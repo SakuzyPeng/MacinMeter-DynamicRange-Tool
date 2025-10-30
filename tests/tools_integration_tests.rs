@@ -291,9 +291,9 @@ fn test_batch_output_footer_with_errors() {
 
     // 验证底部包含统计信息
     assert!(footer.contains("批量处理统计"));
-    assert!(footer.contains("总文件数: 3"));
-    assert!(footer.contains("成功处理: 2"));
-    assert!(footer.contains("处理失败: 1"));
+    assert!(footer.contains("总文件数") && footer.contains("3")); // 双语化后格式为"总文件数 / Total Files: 3"
+    assert!(footer.contains("成功处理") && footer.contains("2")); // 双语化后格式为"成功处理 / Processed Successfully: 2"
+    assert!(footer.contains("处理失败") && footer.contains("1")); // 双语化后格式为"处理失败 / Failed: 1"
     assert!(footer.contains("错误分类统计"));
     assert!(footer.contains("格式错误"));
     assert!(footer.contains("test3.mp3"));

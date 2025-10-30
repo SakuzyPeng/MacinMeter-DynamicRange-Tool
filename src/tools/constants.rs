@@ -251,10 +251,10 @@ pub mod app_info {
     pub const BRANCH_INFO: &str = "foobar2000-plugin (默认批处理模式)";
 
     /// 基础描述信息
-    pub const BASE_DESCRIPTION: &str = "基于foobar2000 DR Meter逆向分析";
+    pub const BASE_DESCRIPTION: &str = "基于foobar2000 DR Meter逆向分析 (Measuring_DR_ENv3规范) / Based on foobar2000 DR Meter Reverse Analysis (Measuring_DR_ENv3 Specification)";
 
     /// 计算模式描述
-    pub const CALCULATION_MODE: &str = "使用批处理DR计算模式";
+    pub const CALCULATION_MODE: &str = "使用批处理DR计算模式 / Using Batch DR Calculation Mode";
 
     /// 应用程序完整名称
     pub const APP_NAME: &str = "MacinMeter DR Tool";

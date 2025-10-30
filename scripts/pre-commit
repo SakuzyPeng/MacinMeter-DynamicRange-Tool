@@ -45,52 +45,13 @@ echo "✅ 编译检查通过"
 # 🧪 4. 单元测试
 echo ""
 echo "🧪 4. 运行单元测试..."
-# 运行测试并过滤输出：只显示失败、忽略的测试和最后的统计信息
-TEST_OUTPUT=$(cargo test 2>&1)
-TEST_EXIT=$?
-
-# 检查是否有失败
-if echo "$TEST_OUTPUT" | grep -q "test result: FAILED"; then
-    echo "$TEST_OUTPUT" | grep -E "^test .* FAILED|^test result:" || true
+# 直接运行测试，cargo test 会自动显示输出
+cargo test
+TEST_RESULT=$?
+if [ $TEST_RESULT -ne 0 ]; then
     echo "❌ 单元测试失败！请修复测试问题"
     exit 1
 fi
-
-# 按类型汇总统计（库单元测试、集成测试、文档测试）
-echo "📊 测试结果统计："
-
-# 提取各类型的测试统计
-UNIT_LINE=$(echo "$TEST_OUTPUT" | grep "^test result:" | head -1)
-DOC_LINE=$(echo "$TEST_OUTPUT" | grep "Doc-tests" -A 1000 | grep "^test result:" | head -1)
-
-# 解析单元测试统计
-if [ -n "$UNIT_LINE" ]; then
-    UNIT_P=$(echo "$UNIT_LINE" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
-    UNIT_I=$(echo "$UNIT_LINE" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
-    echo "  单元测试:  ✅ ${UNIT_P:-0} | ⚠️  ${UNIT_I:-0}"
-else
-    UNIT_P=0
-    UNIT_I=0
-fi
-
-# 解析文档测试统计
-if [ -n "$DOC_LINE" ]; then
-    DOC_P=$(echo "$DOC_LINE" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "[0-9]+")
-    DOC_I=$(echo "$DOC_LINE" | grep -oE "[0-9]+ ignored" | head -1 | grep -oE "[0-9]+")
-    echo "  文档测试:  ✅ ${DOC_P:-0} | ⚠️  ${DOC_I:-0}"
-else
-    DOC_P=0
-    DOC_I=0
-fi
-
-# 计算总数和集成测试数
-TOTAL_P=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
-TOTAL_I=$(echo "$TEST_OUTPUT" | grep "^test result:" | grep -oE "[0-9]+ ignored" | grep -oE "[0-9]+" | awk '{sum+=$1} END {print sum}')
-
-echo "  集成测试:  ✅ $(($TOTAL_P - ${UNIT_P:-0} - ${DOC_P:-0})) | ⚠️  $(($TOTAL_I - ${UNIT_I:-0} - ${DOC_I:-0}))"
-echo "  ─────────────────────────"
-echo "  总  计:    ✅ ${TOTAL_P:-0} | ⚠️  ${TOTAL_I:-0}"
-
 echo "✅ 单元测试通过"
 
 # 🐳 5. x86 Docker CI模拟测试（跨平台验证）
