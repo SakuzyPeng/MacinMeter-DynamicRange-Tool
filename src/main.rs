@@ -135,6 +135,9 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
     // 🎯 使用统一的批处理统计管理（串行版本）
     let mut stats = tools::SerialBatchStats::new();
 
+    // 收集边界风险预警
+    let mut batch_warnings = Vec::new();
+
     // 逐个处理音频文件
     for (index, audio_file) in audio_files.iter().enumerate() {
         // 🎯 进度提示：verbose模式显示详细信息，静默模式仅显示基本进度
@@ -162,8 +165,12 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                         silence_report,
                     );
                 } else {
-                    // 🎯 多文件模式：只添加到批量输出
-                    tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file);
+                    // 🎯 多文件模式：添加到批量输出并收集预警信息
+                    if let Some(warning) =
+                        tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file)
+                    {
+                        batch_warnings.push(warning);
+                    }
                 }
 
                 if config.verbose {
@@ -215,6 +222,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         snapshot.failed,
         &snapshot.error_stats,
         is_single_file,
+        batch_warnings,
     )
 }
 

@@ -734,12 +734,23 @@ pub fn output_results(
 }
 
 /// 批量处理的单个文件结果添加到批量输出
+/// 批量预警信息
+#[derive(Debug, Clone)]
+pub struct BatchWarningInfo {
+    pub file_name: String,
+    pub official_dr: i32,
+    pub precise_dr: f64,
+    pub risk_level: formatter::BoundaryRiskLevel,
+    pub direction: formatter::BoundaryDirection,
+    pub distance: f64,
+}
+
 pub fn add_to_batch_output(
     batch_output: &mut String,
     results: &[DrResult],
     format: &AudioFormat,
     file_path: &std::path::Path,
-) {
+) -> Option<BatchWarningInfo> {
     let file_name = utils::extract_filename_lossy(file_path);
 
     // 🎯 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
@@ -752,9 +763,22 @@ pub fn add_to_batch_output(
                 format!("{:.2} dB", precise_dr),
                 file_name
             ));
+
+            // 检测边界风险
+            formatter::detect_boundary_risk_level(official_dr, precise_dr).map(
+                |(risk_level, direction, distance)| BatchWarningInfo {
+                    file_name,
+                    official_dr,
+                    precise_dr,
+                    risk_level,
+                    direction,
+                    distance,
+                },
+            )
         }
         None => {
             batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "无有效声道", file_name));
+            None
         }
     }
 }

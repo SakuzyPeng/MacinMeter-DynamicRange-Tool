@@ -229,6 +229,7 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
 /// * `failed_count` - 处理失败的文件数
 /// * `error_stats` - 错误分类统计
 /// * `is_single_file` - 是否为单文件模式
+#[allow(clippy::too_many_arguments)]
 pub fn finalize_and_write_batch_output(
     config: &AppConfig,
     audio_files: &[PathBuf],
@@ -237,9 +238,55 @@ pub fn finalize_and_write_batch_output(
     failed_count: usize,
     error_stats: &std::collections::HashMap<crate::error::ErrorCategory, Vec<String>>,
     is_single_file: bool,
+    batch_warnings: Vec<super::processor::BatchWarningInfo>,
 ) -> AudioResult<()> {
     if !is_single_file {
         // 多文件模式：生成批量输出文件
+
+        // 🎯 添加边界风险预警汇总（在footer之前）
+        if !batch_warnings.is_empty() {
+            batch_output.push('\n');
+            batch_output.push_str("=====================================\n");
+            batch_output.push_str("   边界风险警告 / Boundary Risk Warnings\n");
+            batch_output.push_str("=====================================\n\n");
+            batch_output
+                .push_str("以下文件的DR值接近四舍五入边界，可能与foobar2000结果相差±1级：\n");
+            batch_output.push_str("The following files have DR values near rounding boundaries and may differ from foobar2000 by ±1 level:\n\n");
+
+            for warning in &batch_warnings {
+                let risk_label = match warning.risk_level {
+                    super::formatter::BoundaryRiskLevel::High => "高风险 / High Risk",
+                    super::formatter::BoundaryRiskLevel::Medium => "中风险 / Medium Risk",
+                    _ => "未知 / Unknown",
+                };
+
+                let (direction_label, potential_dr) = match warning.direction {
+                    super::formatter::BoundaryDirection::Upper => {
+                        ("上边界 / Upper Boundary", warning.official_dr + 1)
+                    }
+                    super::formatter::BoundaryDirection::Lower => {
+                        ("下边界 / Lower Boundary", (warning.official_dr - 1).max(0))
+                    }
+                };
+
+                batch_output.push_str(&format!(
+                    "[{risk}]\n\
+                     文件 / File: {file}\n\
+                     我们的结果 / Our Result: DR{official} ({precise:.2} dB)\n\
+                     接近边界 / Boundary: {direction}（距 {distance:.2} dB）\n\
+                     foobar2000可能判为 / May Report: DR{potential}\n\
+                     建议 / Recommendation: 使用foobar2000交叉验证 / Cross-validate with foobar2000\n\n",
+                    risk = risk_label,
+                    file = warning.file_name,
+                    official = warning.official_dr,
+                    precise = warning.precise_dr,
+                    direction = direction_label,
+                    distance = warning.distance,
+                    potential = potential_dr
+                ));
+            }
+        }
+
         batch_output.push_str(&create_batch_output_footer(
             audio_files,
             processed_count,

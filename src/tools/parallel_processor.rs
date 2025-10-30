@@ -147,6 +147,9 @@ pub fn process_batch_parallel(
         String::new()
     };
 
+    // 收集边界风险预警
+    let mut batch_warnings = Vec::new();
+
     for ordered_result in sorted_results {
         match ordered_result.result {
             Ok((results, format, trim_report, silence_report)) => {
@@ -160,12 +163,15 @@ pub fn process_batch_parallel(
                         silence_report,
                     )?;
                 } else {
-                    add_to_batch_output(
+                    // 收集预警信息
+                    if let Some(warning) = add_to_batch_output(
                         &mut batch_output,
                         &results,
                         &format,
                         &ordered_result.file_path,
-                    );
+                    ) {
+                        batch_warnings.push(warning);
+                    }
                 }
             }
             Err(_) => {
@@ -186,5 +192,6 @@ pub fn process_batch_parallel(
         snapshot.failed,
         &snapshot.error_stats,
         is_single_file,
+        batch_warnings,
     )
 }

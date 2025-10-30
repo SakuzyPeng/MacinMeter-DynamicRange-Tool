@@ -495,6 +495,143 @@ pub fn compute_official_precise_dr(
     Some((official_dr, avg_dr, excluded_count))
 }
 
+/// DR边界风险阈值常量（避免浮点精度问题）
+const DR_BOUNDARY_STRICT: f64 = 0.031; // 高风险阈值（容忍浮点误差）
+const DR_BOUNDARY_LOOSE: f64 = 0.051; // 中风险阈值（容忍浮点误差）
+
+/// 预警风险级别
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BoundaryRiskLevel {
+    /// 高风险：距上边界 ≤0.03 dB
+    High,
+    /// 中风险：距上边界 0.03~0.05 dB
+    Medium,
+    /// 无风险
+    None,
+}
+
+/// 预警方向（接近上边界或下边界）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BoundaryDirection {
+    Upper,
+    Lower,
+}
+
+/// 检测DR边界风险级别（用于批量模式）
+///
+/// 返回风险级别、接近的边界方向以及距离该边界的距离
+pub fn detect_boundary_risk_level(
+    official_dr: i32,
+    precise_dr: f64,
+) -> Option<(BoundaryRiskLevel, BoundaryDirection, f64)> {
+    fn classify(distance: f64) -> Option<BoundaryRiskLevel> {
+        if distance < 0.0 {
+            None
+        } else if distance <= DR_BOUNDARY_STRICT {
+            Some(BoundaryRiskLevel::High)
+        } else if distance <= DR_BOUNDARY_LOOSE {
+            Some(BoundaryRiskLevel::Medium)
+        } else {
+            None
+        }
+    }
+
+    fn priority(level: BoundaryRiskLevel) -> u8 {
+        match level {
+            BoundaryRiskLevel::High => 2,
+            BoundaryRiskLevel::Medium => 1,
+            BoundaryRiskLevel::None => 0,
+        }
+    }
+
+    let boundary_upper = official_dr as f64 + 0.5;
+    let boundary_lower = official_dr as f64 - 0.5;
+    let distance_to_upper = boundary_upper - precise_dr;
+    let distance_to_lower = precise_dr - boundary_lower;
+
+    let upper_candidate = classify(distance_to_upper)
+        .map(|level| (level, BoundaryDirection::Upper, distance_to_upper));
+    let lower_candidate = classify(distance_to_lower)
+        .map(|level| (level, BoundaryDirection::Lower, distance_to_lower));
+
+    match (upper_candidate, lower_candidate) {
+        (Some(upper), Some(lower)) => {
+            if priority(upper.0) > priority(lower.0) {
+                Some(upper)
+            } else if priority(upper.0) < priority(lower.0) {
+                Some(lower)
+            } else if upper.2 <= lower.2 {
+                Some(upper)
+            } else {
+                Some(lower)
+            }
+        }
+        (Some(upper), None) => Some(upper),
+        (None, Some(lower)) => Some(lower),
+        (None, None) => None,
+    }
+}
+
+/// DR边界风险检测（双向四舍五入预警）
+///
+/// 检测precise DR是否接近任何rounding boundary（上下两边），可能导致与foobar2000的Official DR不同
+///
+/// # 风险场景
+/// - **上边界风险**：precise_dr ≈ (official_dr + 0.5)，可能被向上舍入到 DR(official_dr+1)
+///   - 例：precise=11.49, official=DR11, 但可能被舍为DR12（距离仅0.01）
+///
+/// - **下边界风险**：precise_dr ≈ (official_dr - 0.5)，可能被向下舍入到 DR(official_dr-1)
+///   - 例：precise=15.51, official=DR16, 但可能被舍为DR15（距离仅0.01）
+///
+/// # 预警级别
+/// - 高风险（距任何边界 ≤0.03 dB）：精确度在0.01 dB内，舍入方向可能改变
+/// - 中风险（距任何边界 0.03~0.05 dB）：需留意foobar2000的对比结果
+///
+/// 返回预警消息（如果需要预警），否则返回None
+fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<String> {
+    detect_boundary_risk_level(official_dr, precise_dr).map(
+        |(risk_level, direction, distance)| {
+            let (header_zh, header_en, recommendation) = match risk_level {
+                BoundaryRiskLevel::High => (
+                    "边界风险（高）",
+                    "Boundary Risk (High)",
+                    "建议 / Recommendation: 使用 foobar2000 DR Meter 交叉验证 / Cross-validate with foobar2000",
+                ),
+                BoundaryRiskLevel::Medium => (
+                    "接近边界",
+                    "Near Boundary",
+                    "建议 / Recommendation: 留意与 foobar2000 的对比结果 / Compare with foobar2000 results",
+                ),
+                BoundaryRiskLevel::None => ("", "", ""),
+            };
+
+            let (boundary_desc_zh, boundary_desc_en, target_dr) = match direction {
+                BoundaryDirection::Upper => (
+                    format!("DR{official_dr}/DR{} 上边界", official_dr + 1),
+                    format!("upper boundary between DR{official_dr} and DR{}", official_dr + 1),
+                    official_dr + 1,
+                ),
+                BoundaryDirection::Lower => (
+                    format!("DR{}/DR{official_dr} 下边界", (official_dr - 1).max(0)),
+                    format!(
+                        "lower boundary between DR{} and DR{official_dr}",
+                        (official_dr - 1).max(0)
+                    ),
+                    (official_dr - 1).max(0),
+                ),
+            };
+
+            format!(
+                "⚠️  {header_zh} / {header_en}\n\
+                 Precise DR {precise_dr:.2} dB 距离 {boundary_desc_zh} {distance:.2} dB\n\
+                 Distance to {boundary_desc_en}: {distance:.2} dB\n\
+                 可能被舍入至 DR{target_dr} 而非 DR{official_dr}\n\
+                 May round to DR{target_dr} instead of DR{official_dr}\n\
+                 {recommendation}\n"
+            )
+        },
+    )
+}
 /// 计算并格式化Official DR Value
 pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
@@ -503,7 +640,15 @@ pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> Stri
     match compute_official_precise_dr(results, format) {
         Some((official_dr, precise_dr, excluded_count)) => {
             output.push_str(&format!("Official DR Value: DR{official_dr}\n"));
-            output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n\n"));
+            output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n"));
+
+            // 🎯 边界风险预警（四舍五入跨级检测）
+            if let Some(warning) = detect_dr_boundary_warning(official_dr, precise_dr) {
+                output.push('\n');
+                output.push_str(&warning);
+            }
+
+            output.push('\n');
 
             // 显示计算说明（仅当有排除声道时）
             if excluded_count > 0 {
@@ -601,4 +746,96 @@ pub fn write_output(output: &str, config: &AppConfig, auto_save: bool) -> AudioR
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_boundary_warning_high_risk() {
+        // 高风险：10.48 距上边界 0.02，foobar可能测得10.53→DR11
+        let warning = detect_dr_boundary_warning(10, 10.48);
+        assert!(warning.is_some());
+        let msg = warning.unwrap();
+        assert!(msg.contains("边界风险（高）"));
+        assert!(msg.contains("Boundary Risk (High)"));
+        assert!(msg.contains("DR11")); // 提示可能变为DR11
+
+        // 高风险：10.50 正好在边界上
+        let warning = detect_dr_boundary_warning(10, 10.50);
+        assert!(warning.is_some());
+        assert!(warning.unwrap().contains("边界风险（高）"));
+
+        // 高风险：10.47 距上边界 0.03
+        let warning = detect_dr_boundary_warning(10, 10.47);
+        assert!(warning.is_some());
+    }
+
+    #[test]
+    fn test_boundary_warning_medium_risk() {
+        // 中风险：10.45 距上边界 0.05（刚好触发）
+        let warning = detect_dr_boundary_warning(10, 10.45);
+        assert!(warning.is_some());
+        let msg = warning.unwrap();
+        assert!(msg.contains("接近边界"));
+        assert!(msg.contains("Near Boundary"));
+
+        // 中风险：10.46 距上边界 0.04
+        let warning = detect_dr_boundary_warning(10, 10.46);
+        assert!(warning.is_some());
+    }
+
+    #[test]
+    fn test_boundary_warning_safe_zone() {
+        // 安全：10.30 距上边界 0.20（远离边界）
+        let warning = detect_dr_boundary_warning(10, 10.30);
+        assert!(warning.is_none());
+
+        // 安全：10.44 距上边界 0.06（刚好安全）
+        let warning = detect_dr_boundary_warning(10, 10.44);
+        assert!(warning.is_none());
+
+        // 安全：10.10 距上边界 0.40
+        let warning = detect_dr_boundary_warning(10, 10.10);
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn test_boundary_warning_no_risk_when_above() {
+        // 10.52 (DR11)：接近10.5下边界，距离仅0.02 dB → 有风险（双向预警）
+        let warning = detect_dr_boundary_warning(11, 10.52);
+        assert!(warning.is_some(), "10.52 应该接近下边界10.5，距离仅0.02");
+        assert!(warning.unwrap().contains("DR10"), "应该警告可能被舍为DR10");
+
+        // 10.60 (DR11)：距离上下边界都较远 → 无风险
+        let warning = detect_dr_boundary_warning(11, 10.60);
+        assert!(warning.is_none(), "10.60距离两个边界都远，应该无风险");
+    }
+
+    #[test]
+    fn test_boundary_warning_direction() {
+        // 验证双向预警系统（上下两个边界都检测）
+
+        // 10.48 (DR10)：接近上边界10.5，距离仅0.02 dB → 高风险
+        let warning = detect_dr_boundary_warning(10, 10.48);
+        assert!(warning.is_some());
+        assert!(warning.unwrap().contains("DR11"), "应该警告可能被舍为DR11");
+
+        // 9.52 (DR10)：接近下边界9.5，距离仅0.02 dB → 高风险（双向预警捕捉）
+        let warning = detect_dr_boundary_warning(10, 9.52);
+        assert!(warning.is_some(), "9.52应该接近下边界9.5，距离仅0.02");
+        assert!(warning.unwrap().contains("DR9"), "应该警告可能被舍为DR9");
+
+        // 10.29 dB → DR10，距离上边界 10.5 还有 0.21，不预警
+        assert!(detect_dr_boundary_warning(10, 10.29).is_none());
+
+        // 10.47 dB → DR10，距离上边界 10.5 只有 0.03，预警
+        assert!(detect_dr_boundary_warning(10, 10.47).is_some());
+
+        // 10.53 dB → DR11，接近下边界10.5，距离仅0.03 dB → 预警（可能被舍为DR10）
+        let warning = detect_dr_boundary_warning(11, 10.53);
+        assert!(warning.is_some(), "10.53应该接近下边界10.5，距离仅0.03");
+        assert!(warning.unwrap().contains("DR10"));
+    }
 }
