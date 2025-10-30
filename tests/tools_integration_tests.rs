@@ -15,6 +15,8 @@ fn base_config() -> AppConfig {
         parallel_threads: 4,
         parallel_files: Some(4),
         silence_filter_threshold_db: None,
+        edge_trim_threshold_db: None,
+        edge_trim_min_run_ms: None,
     }
 }
 

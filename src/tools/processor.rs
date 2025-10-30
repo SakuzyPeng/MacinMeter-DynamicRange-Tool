@@ -235,6 +235,29 @@ fn analyze_streaming_decoder(
     // 🚀 创建SIMD优化的声道分离器
     let channel_separator = ChannelSeparator::new();
 
+    // 🧪 P0阶段：创建边缘裁切器（如果启用）
+    let mut trim_config_applied = None;
+    let mut edge_trimmer = if let Some(threshold_db) = config.edge_trim_threshold_db {
+        let min_run_ms = config.edge_trim_min_run_ms.unwrap_or(300.0);
+        let trim_config = crate::processing::EdgeTrimConfig::enabled(threshold_db, min_run_ms);
+        trim_config_applied = Some(trim_config);
+
+        if config.verbose {
+            println!(
+                "🧪 启用首尾边缘裁切: 阈值 {threshold_db:.1} dBFS, 最小持续 {min_run_ms:.0} ms, 迟滞约 {:.0} ms",
+                trim_config.hysteresis_ms
+            );
+        }
+
+        Some(crate::processing::EdgeTrimmer::new(
+            trim_config,
+            format.channels as usize,
+            format.sample_rate,
+        ))
+    } else {
+        None
+    };
+
     // 🎯 使用集中管理的窗口时长常量（foobar2000标准）
     use super::constants::buffers::{
         BUFFER_CAPACITY_MULTIPLIER, MAX_BUFFER_RATIO, window_alignment_enabled,
@@ -300,10 +323,19 @@ fn analyze_streaming_decoder(
     // 🌊 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
     while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
         total_chunks += 1;
-        total_samples_processed += chunk_samples.len() as u64;
+
+        // 🧪 P0阶段：首尾边缘裁切（如果启用）
+        let processed_samples = if let Some(ref mut trimmer) = edge_trimmer {
+            trimmer.process_chunk(&chunk_samples)
+        } else {
+            chunk_samples
+        };
+
+        // ✅ 修复：累加实际处理后的样本数（启用裁切时会减少）
+        total_samples_processed += processed_samples.len() as u64;
 
         // 积累chunk到缓冲区
-        sample_buffer.extend_from_slice(&chunk_samples);
+        sample_buffer.extend_from_slice(&processed_samples);
 
         if config.verbose && total_chunks % 500 == 0 {
             let progress = streaming_decoder.progress() * 100.0;
@@ -371,6 +403,63 @@ fn analyze_streaming_decoder(
                     config.verbose,
                     "执行Compact",
                 );
+            }
+        }
+    }
+
+    // 🧪 P0阶段：处理边缘裁切的尾部缓冲区并输出诊断
+    if let Some(trimmer) = edge_trimmer {
+        let (final_chunk, trim_stats) = trimmer.finalize();
+        // 将尾部缓冲区内容加入sample_buffer
+        if !final_chunk.is_empty() {
+            total_samples_processed += final_chunk.len() as u64;
+            sample_buffer.extend_from_slice(&final_chunk);
+        }
+
+        // 输出裁切诊断信息（包含详细的参数和样本统计）
+        if config.verbose
+            || trim_stats.leading_samples_trimmed > 0
+            || trim_stats.trailing_samples_trimmed > 0
+        {
+            let leading_sec =
+                trim_stats.leading_duration_sec(format.sample_rate, format.channels as usize);
+            let trailing_sec =
+                trim_stats.trailing_duration_sec(format.sample_rate, format.channels as usize);
+            let total_sec =
+                trim_stats.total_duration_sec(format.sample_rate, format.channels as usize);
+            let total_trimmed =
+                trim_stats.leading_samples_trimmed + trim_stats.trailing_samples_trimmed;
+
+            println!("🧪 边缘裁切诊断（P0阶段）:");
+            if let Some(cfg) = trim_config_applied {
+                println!(
+                    "   阈值: {:.1} dBFS, 最小持续: {:.0}ms, 迟滞: {:.0}ms",
+                    cfg.threshold_db, cfg.min_run_ms, cfg.hysteresis_ms
+                );
+            }
+
+            if trim_stats.leading_samples_trimmed > 0 {
+                println!(
+                    "   首部: 裁切 {} 样本 ({:.3}秒)",
+                    trim_stats.leading_samples_trimmed, leading_sec
+                );
+            } else {
+                println!("   首部: 保留全部（无符合min_run的静音段）");
+            }
+
+            if trim_stats.trailing_samples_trimmed > 0 {
+                println!(
+                    "   尾部: 裁切 {} 样本 ({:.3}秒)",
+                    trim_stats.trailing_samples_trimmed, trailing_sec
+                );
+            } else {
+                println!("   尾部: 保留全部（无符合min_run的静音段）");
+            }
+
+            if total_trimmed > 0 {
+                println!("   总计: 裁切 {total_trimmed} 样本，损失 {total_sec:.3}秒音频内容");
+            } else {
+                println!("   总计: 无裁切（边缘静音均短于min_run阈值）");
             }
         }
     }
@@ -507,13 +596,19 @@ fn analyze_streaming_decoder(
         );
     }
 
-    if actual_samples < expected_samples {
+    // 若启用了首尾裁切，将格式信息同步为裁切后的样本数，避免误判“部分分析”
+    if config.edge_trim_threshold_db.is_some() {
+        final_format.update_sample_count(actual_samples);
+    }
+
+    if actual_samples < final_format.sample_count {
         let skipped_approx = (expected_samples - actual_samples) as usize;
         if config.verbose {
             println!(
                 "⚠️  检测到文件截断: 预期 {expected_samples} 个样本，实际解码 {actual_samples} 个样本（缺少约 {skipped_approx} 个）"
             );
         }
+        // 若确实是编码损坏导致的缺失，则标记部分分析；裁切场景已通过 update_sample_count 避免进入此分支
         final_format.mark_as_partial(skipped_approx);
     } else if actual_samples > expected_samples && config.verbose {
         eprintln!("[WARNING] 实际解码样本({actual_samples}) 多于预期({expected_samples})");
@@ -635,6 +730,8 @@ pub fn save_individual_result(
         parallel_threads: super::constants::defaults::PARALLEL_THREADS,
         parallel_files: None, // 单文件处理不需要并行
         silence_filter_threshold_db: None,
+        edge_trim_threshold_db: None,
+        edge_trim_min_run_ms: None,
     };
 
     if let Err(e) = output_results(results, &temp_config, format, true) {

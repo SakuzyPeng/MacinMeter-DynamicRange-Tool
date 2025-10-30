@@ -27,6 +27,8 @@ fn default_test_config() -> AppConfig {
         parallel_threads: 4,
         parallel_files: None, // 测试不需要多文件并行
         silence_filter_threshold_db: None,
+        edge_trim_threshold_db: None,
+        edge_trim_min_run_ms: None,
     }
 }
 

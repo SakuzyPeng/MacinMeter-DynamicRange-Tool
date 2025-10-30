@@ -18,6 +18,8 @@ const DEFAULT_PARALLEL_BATCH: &str = "64";
 const DEFAULT_PARALLEL_THREADS: &str = "4";
 const DEFAULT_PARALLEL_FILES: &str = "4";
 const DEFAULT_SILENCE_THRESHOLD_DB_STR: &str = "-70";
+const DEFAULT_TRIM_THRESHOLD_DB_STR: &str = "-70";
+const DEFAULT_TRIM_MIN_RUN_MS_STR: &str = "300";
 
 /// 自定义范围校验函数
 fn parse_parallel_degree(s: &str) -> Result<usize, String> {
@@ -58,6 +60,17 @@ fn parse_silence_threshold(s: &str) -> Result<f64, String> {
     Ok(value)
 }
 
+/// 裁切最小持续时间校验（50ms ~ 2000ms）
+fn parse_trim_min_run(s: &str) -> Result<f64, String> {
+    let value: f64 = s
+        .parse()
+        .map_err(|_| format!("'{s}' 不是有效的浮点数字（示例：300）"))?;
+    if !(50.0..=2000.0).contains(&value) {
+        return Err("最小持续时间必须在 50 到 2000 毫秒之间".to_string());
+    }
+    Ok(value)
+}
+
 /// 应用程序配置（简化版 - 遵循零配置优雅性原则）
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -87,6 +100,12 @@ pub struct AppConfig {
 
     /// 🧪 实验性：静音过滤阈值（存在即启用；单位 dBFS）
     pub silence_filter_threshold_db: Option<f64>,
+
+    /// 🧪 实验性：首尾边缘裁切阈值（存在即启用；单位 dBFS）
+    pub edge_trim_threshold_db: Option<f64>,
+
+    /// 🧪 实验性：裁切最小持续时间（毫秒）
+    pub edge_trim_min_run_ms: Option<f64>,
 }
 
 impl AppConfig {
@@ -182,6 +201,25 @@ pub fn parse_args() -> AppConfig {
                 .default_missing_value(DEFAULT_SILENCE_THRESHOLD_DB_STR)
                 .value_parser(parse_silence_threshold),
         )
+        .arg(
+            Arg::new("trim-edges")
+                .long("trim-edges")
+                .help("🧪 P0: 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -70）")
+                .value_name("DB")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value(DEFAULT_TRIM_THRESHOLD_DB_STR)
+                .value_parser(parse_silence_threshold),
+        )
+        .arg(
+            Arg::new("trim-min-run")
+                .long("trim-min-run")
+                .help("🧪 P0: 裁切最小持续时间（毫秒，范围 50-2000，默认 300）")
+                .value_name("MS")
+                .requires("trim-edges")
+                .value_parser(parse_trim_min_run)
+                .default_value(DEFAULT_TRIM_MIN_RUN_MS_STR),
+        )
         .get_matches();
 
     // 确定输入路径（智能路径处理）
@@ -227,6 +265,15 @@ pub fn parse_args() -> AppConfig {
         Some(effective_parallel_degree(degree, None))
     };
 
+    // 🧪 P0阶段：首尾边缘裁切配置
+    let edge_trim_threshold_db = matches.get_one::<f64>("trim-edges").copied();
+    let edge_trim_min_run_ms = if edge_trim_threshold_db.is_some() {
+        // trim-edges启用时，解析trim-min-run（有默认值）
+        matches.get_one::<f64>("trim-min-run").copied()
+    } else {
+        None // trim-edges未启用，忽略trim-min-run
+    };
+
     AppConfig {
         input_path,
         verbose: matches.get_flag("verbose"),
@@ -236,6 +283,8 @@ pub fn parse_args() -> AppConfig {
         parallel_threads,
         parallel_files,
         silence_filter_threshold_db: matches.get_one::<f64>("filter-silence").copied(),
+        edge_trim_threshold_db,
+        edge_trim_min_run_ms,
     }
 }
 

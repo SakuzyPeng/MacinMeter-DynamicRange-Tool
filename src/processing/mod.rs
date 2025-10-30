@@ -9,6 +9,7 @@
 
 pub mod channel_separator;
 pub mod dr_channel_state;
+pub mod edge_trimmer;
 pub mod performance_metrics;
 pub mod processing_coordinator;
 pub mod sample_conversion;
@@ -33,3 +34,6 @@ pub use simd_core::SimdCapabilities;
 pub use performance_metrics::{
     PerformanceEvaluator, PerformanceResult, PerformanceStats, SimdUsageStats,
 };
+
+// 边缘裁切类型（P0阶段实验性功能）
+pub use edge_trimmer::{EdgeTrimConfig, EdgeTrimmer, TrimStats};

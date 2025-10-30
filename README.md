@@ -126,6 +126,75 @@ DR13	13.17 dB	肖邦第一钢琴协奏曲.flac
 > - 建议阈值在 **-60 ~ -80 dBFS** 之间，过高会误删真实音乐静音段（如古典弱奏）。
 ```
 
+### 🎬 P0 阶段：边缘裁切（Edge Trimming）- 实验性功能
+
+**P0 是样本级的首尾边缘裁切**，用于去除编码过程中引入的首尾静音/padding，实现更精确的 DR 测量。
+
+#### 基本用法
+
+```bash
+# 启用边缘裁切（使用默认参数）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges audio.aac
+
+# 指定静音阈值（-70 dBFS 是推荐默认值）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges=-70 audio.aac
+
+# 指定最小持续时长（默认 300ms）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges --trim-min-run-ms=500 audio.flac
+
+# 结合详细输出查看处理细节
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges --verbose audio.aac
+
+# 批量处理目录
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --trim-edges -- /path/to/audio/dir
+```
+
+#### 参数说明
+
+- `--trim-edges[=<DB>]`：启用边缘裁切，可选指定静音阈值（默认 -70 dBFS，范围 -120…0 dB）
+- `--trim-min-run-ms=<MS>`：最小连续静音持续时长（默认 300ms，范围 50…2000ms）
+  - 仅当首尾连续静音时长 ≥ min_run 时才被裁切；短于该值的首尾静音完整保留
+
+#### 工作原理
+
+1. **三态状态机**
+   - **Leading**：累积首部静音帧，直到累积时长 ≥ min_run 才确认丢弃
+   - **Passing**：正常通过，输出所有帧
+   - **Trailing**：缓冲尾部帧，EOF 时仅丢弃末尾连续静音 ≥ min_run 的帧
+
+2. **声道数量大于1时的策略**：取最大值 `max(|L|, |R|)`
+   - 只要任意一声道不是静音，整帧就保留
+   - 确保立体声中的单声道信息不被误伤
+
+3. **迟滞机制**：防止古典音乐弱音段被误判为静音
+   - 要求连续 N 帧满足条件才转换状态
+   - 与 min_run 结合，确保鲁棒性
+
+#### 典型应用场景
+
+- **AAC/MP3 vs WAV 精确对齐**：AAC 编码常引入首尾填充，导致 DR 偏高 0.02…0.05 dB；启用 P0 后可精确对齐
+- **无损格式编码测试**：FLAC/ALAC 转码过程中可能引入微小 padding，P0 可自动清理
+- **诊断与研究**：了解音频文件的真实边缘特性
+
+#### ⚠️ 注意事项
+
+- **默认关闭**：保持与 foobar2000 DR Meter 100% 兼容，需显式启用
+- **阈值选择**：建议 -70 ~ -80 dBFS；过高会误删真实音乐停顿（如古典弱音）
+- **短静音保留**：P0 会正确处理短首尾静音，无论多短都不会被裁切，除非达到 min_run 阈值
+- **中段静音保留**：中间的任何静音段（艺术表达）完全保留，不做任何处理
+
+#### 诊断输出示例
+
+启用 `--verbose` 时，P0 会输出处理统计：
+
+```
+🧪 边缘裁切诊断（P0阶段）:
+   阈值: -70.0 dBFS, 最小持续: 300ms, 迟滞: ~100ms
+   • 首部: 保留全部（无符合min_run的静音段）
+   • 尾部: 保留全部（无符合min_run的静音段）
+   📄 结果已保存到: audio/formatTEST/audio_DR_Analysis.txt
+```
+
 ## 🔬 技术实现说明
 
 ### 逆向工程方法
