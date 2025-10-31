@@ -168,7 +168,7 @@ pub mod performance {
     /// 而非E-core（效能核心），从而提升计算密集型任务的性能。
     ///
     /// # 策略
-    /// - Windows: 使用THREAD_PRIORITY_HIGHEST (优先级2)，避免过度抢占
+    /// - Windows: 使用THREAD_PRIORITY_TIME_CRITICAL (优先级15，最高优先级)
     /// - Unix/macOS: 使用相对高优先级值
     ///
     /// # 返回
@@ -178,10 +178,23 @@ pub mod performance {
     /// # 注意
     /// - 失败不会影响程序运行，只是可能无法获得P-core优先权
     /// - macOS/Linux可能需要sudo权限才能设置高于normal的优先级
-    /// - Windows通常可以成功设置THREAD_PRIORITY_HIGHEST
+    /// - Windows使用TIME_CRITICAL优先级，仅次于实时线程优先级
+    /// - TIME_CRITICAL优先级非常高，但不会影响系统关键进程
     pub fn set_high_priority() -> Result<(), String> {
-        thread_priority::set_current_thread_priority(ThreadPriority::Max)
+        #[cfg(target_os = "windows")]
+        {
+            use thread_priority::WinAPIThreadPriority;
+            thread_priority::set_current_thread_priority(ThreadPriority::Os(
+                WinAPIThreadPriority::TimeCritical.into(),
+            ))
             .map_err(|e| format!("Failed to set thread priority: {e} / 设置线程优先级失败: {e}"))
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            thread_priority::set_current_thread_priority(ThreadPriority::Max).map_err(|e| {
+                format!("Failed to set thread priority: {e} / 设置线程优先级失败: {e}")
+            })
+        }
     }
 
     /// 为Rayon线程池配置高优先级spawn handler
