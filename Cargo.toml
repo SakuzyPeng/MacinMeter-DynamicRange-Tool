@@ -58,6 +58,8 @@ pprof = { version = "0.13", features = ["flamegraph"], optional = true }
 default = []
 # 启用后将链接 pprof 依赖，但仍需通过环境变量 DR_FLAME=1 才会实际记录
 flame-prof = ["pprof"]
+# 启用SIMD性能测试（包含大数据集，可能导致CI链接器崩溃，默认禁用）
+simd-perf-tests = []
 
 # 📝 安全警告说明：
 # songbird的Discord依赖存在已知安全问题，但不影响我们的使用场景：

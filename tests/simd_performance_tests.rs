@@ -7,6 +7,20 @@
 //! - 吞吐量 >= 40M样本/秒（Docker环境），700-800M/s（本地环境）
 //! - 对齐vs非对齐overhead < 15%
 //! - 小数据集性能可接受
+//!
+//! ## 运行方式
+//! 由于包含大数据集测试，可能导致CI链接器资源耗尽，默认禁用。
+//!
+//! **本地运行性能测试**:
+//! ```bash
+//! cargo test --features simd-perf-tests --test simd_performance_tests
+//! ```
+//!
+//! **CI环境**:
+//! 默认跳过编译（无需 --features 参数）
+
+// 通过 Cargo feature 控制编译（默认禁用，避免CI链接器崩溃）
+#![cfg(feature = "simd-perf-tests")]
 
 use macinmeter_dr_tool::{SampleConversion, SampleConverter};
 use std::time::Instant;
