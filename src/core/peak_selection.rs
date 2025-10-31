@@ -30,10 +30,11 @@
 use crate::tools::constants::dr_analysis;
 
 /// 峰值选择策略枚举
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PeakSelectionStrategy {
     /// 标准模式：优先使用次峰(Pk_2nd)，仅在次峰无效时回退到主峰
     /// 对应 Measuring_DR_ENv3.md 标准
+    #[default]
     PreferSecondary,
 
     /// 削波检测模式：优先使用主峰，仅在削波时使用次峰
@@ -45,12 +46,6 @@ pub enum PeakSelectionStrategy {
 
     /// 次峰优先模式：总是使用次峰（如果可用）
     AlwaysSecondary,
-}
-
-impl Default for PeakSelectionStrategy {
-    fn default() -> Self {
-        Self::PreferSecondary
-    }
 }
 
 /// 峰值选择器trait，定义峰值选择行为
