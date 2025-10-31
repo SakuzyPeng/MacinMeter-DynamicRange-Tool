@@ -55,6 +55,14 @@ jobs:
       rust: ${{ steps.changes.outputs.rust }}
       docs: ${{ steps.changes.outputs.docs }}
     steps:
+    - name: 🧹 Disk usage (preflight)
+      run: |
+        echo "Filesystem usage before job:"
+        df -h || true
+        echo "Workspace usage (top 20):"
+        du -xh -d1 . 2>/dev/null | sort -h | tail -n 20 || true
+        echo "Home cache usage (if any):"
+        du -xh -d1 "$HOME/.cache" 2>/dev/null | sort -h | tail -n 20 || true
     - name: 📥 Checkout Repository
       uses: actions/checkout@v4
       
@@ -86,6 +94,12 @@ jobs:
       RUSTFLAGS: '-C opt-level=3'  # 简化编译标志避免特性冲突
     
     steps:
+    - name: 🧹 Disk usage (preflight)
+      run: |
+        echo "Filesystem usage before build:"
+        df -h || true
+        echo "Workspace usage (top 20):"
+        du -xh -d1 . 2>/dev/null | sort -h | tail -n 20 || true
     - name: 📥 Checkout Repository
       uses: actions/checkout@v4
       
@@ -106,14 +120,7 @@ jobs:
           
     # 注意：跳过git依赖缓存，因为项目仅使用crates.io依赖
           
-    - name: 📦 Smart Cache - Target Directory
-      uses: actions/cache@v4
-      with:
-        path: target/
-        key: ${{ runner.os }}-target-quality-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**/*.rs') }}
-        restore-keys: |
-          ${{ runner.os }}-target-quality-${{ hashFiles('**/Cargo.lock') }}-
-          ${{ runner.os }}-target-quality-
+    # 说明：质量检查阶段不再缓存 target/ 以减少磁盘占用（避免在自托管Runner上积累）
           
     - name: 📦 Cache Cargo Tools (Stable Key)
       uses: actions/cache@v4
@@ -161,15 +168,26 @@ jobs:
         
     - name: 🛡️ Security Audit
       run: |
-        echo "🔒 Running security audit..."
-        # 忽略songbird Discord依赖的已知安全问题（本地文件处理无攻击面）
-        cargo audit --ignore RUSTSEC-2025-0009 --ignore RUSTSEC-2024-0336 --ignore RUSTSEC-2023-0065 --ignore RUSTSEC-2025-0055 --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2025-0010
+        echo "🔒 Running security audit (stale DB to reduce writes)..."
+        cargo audit --stale \
+          --ignore RUSTSEC-2025-0009 --ignore RUSTSEC-2024-0336 \
+          --ignore RUSTSEC-2023-0065 --ignore RUSTSEC-2025-0055 \
+          --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2025-0010
         
     - name: 🧪 Run Unit Tests
       if: ${{ !github.event.inputs.skip_tests }}
       run: |
         echo "🧪 Running unit tests..."
         cargo test --all-features -- --nocapture
+    
+    - name: 🧹 Cleanup workspace (free disk)
+      if: always()
+      run: |
+        echo "Cleaning target/ and temporary registries to free disk..."
+        rm -rf target || true
+        rm -rf "$HOME/.cargo/registry/src" || true
+        echo "Filesystem usage after cleanup:"
+        df -h || true
         
     - name: 📊 Generate Test Coverage (Optional)
       run: |
@@ -253,14 +271,8 @@ jobs:
         restore-keys: |
           cargo-git-
           
-    - name: 📦 Platform Cache - Build Target
-      uses: actions/cache@v4
-      with:
-        path: target/
-        key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**/*.rs', 'Cargo.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}-
-          ${{ runner.os }}-${{ matrix.target }}-target-
+    # 注意：尽量避免缓存 target/（占用大且容易填满自托管磁盘）；
+    # 如需缓存编译产物，请改用 Swatinem/rust-cache 并限定 save-if 仅在主分支保存。
           
     # 🕐 生成精确到秒的时间戳（UTC时区） - Windows
     - name: 🕐 Generate Timestamp (Windows)
@@ -490,6 +502,15 @@ jobs:
         path: ${{ matrix.os == 'windows-latest' && steps.binary-windows.outputs.binary_path || steps.compress.outputs.compressed_path }}
         retention-days: 14  # 私有仓库优化：减少存储成本
         compression-level: ${{ matrix.os == 'windows-latest' && '9' || '0' }}  # Windows压缩，Unix已压缩
+    
+    - name: 🧹 Cleanup workspace (free disk)
+      if: always()
+      run: |
+        echo "Cleaning target/ and cargo registries to free disk..."
+        rm -rf target || true
+        rm -rf "$HOME/.cargo/registry/src" || true
+        echo "Filesystem usage after cleanup:"
+        df -h || true
         
   # 📋 构建摘要和发布准备
   build-summary:

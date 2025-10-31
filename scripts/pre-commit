@@ -57,35 +57,66 @@ echo "✅ 单元测试通过"
 # 🐳 5. x86 Docker CI模拟测试（跨平台验证）
 echo ""
 echo "🐳 5. x86 Docker CI模拟测试..."
-if command -v docker &> /dev/null; then
-    # 检查是否有 macinmeter-ci 镜像
-    if docker images macinmeter-ci:standalone -q | grep -q .; then
-        echo "   正在使用Docker模拟x86 CI环境运行完整测试..."
-        echo "   📊 开始时间: $(date +%H:%M:%S)"
 
-        DOCKER_START=$(date +%s)
-        # 使用项目专用CI镜像（已预装所有依赖）
-        if docker run --rm \
-            --platform linux/amd64 \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            macinmeter-ci:standalone \
-            bash -c "cargo test 2>&1 | tail -100"; then
-            DOCKER_END=$(date +%s)
-            DOCKER_TIME=$((DOCKER_END - DOCKER_START))
-            echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
+#!/usr/bin/env bash
+# 检测是否存在与编译/测试相关的代码变更（仅在变更时才运行Docker）
+# 优先使用已暂存（staged）的变更；若为空则回退到工作区变更
+CODE_CHANGED=0
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMRTUXB)
+    if [ -z "$CHANGED_FILES" ]; then
+        CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB)
+    fi
+    # 逐条判定，只有命中以下路径才认为是“代码变更”
+    while IFS= read -r f; do
+        case "$f" in
+            src/*|tests/*|benches/*|examples/*|build.rs|Cargo.toml|Cargo.lock)
+                CODE_CHANGED=1; break ;;
+            *) ;;
+        esac
+    done <<< "$CHANGED_FILES"
+fi
+
+# 允许通过环境变量强制运行或强制跳过
+if [ "${PRECOMMIT_FORCE_DOCKER:-}" = "1" ]; then
+    CODE_CHANGED=1
+elif [ "${PRECOMMIT_SKIP_DOCKER:-}" = "1" ]; then
+    CODE_CHANGED=0
+fi
+
+if [ "$CODE_CHANGED" -ne 1 ]; then
+    echo "⏭️  未检测到与构建/测试相关的代码变更，跳过Docker CI模拟"
+else
+    if command -v docker &> /dev/null; then
+        # 检查是否有 macinmeter-ci 镜像
+        if docker images macinmeter-ci:standalone -q | grep -q .; then
+            echo "   正在使用Docker模拟x86 CI环境运行完整测试..."
+            echo "   开始时间: $(date +%H:%M:%S)"
+
+            DOCKER_START=$(date +%s)
+            # 使用项目专用CI镜像（已预装所有依赖）
+            if docker run --rm \
+                --platform linux/amd64 \
+                -v "$(pwd):/workspace" \
+                -w /workspace \
+                macinmeter-ci:standalone \
+                bash -c "cargo test 2>&1 | tail -100"; then
+                DOCKER_END=$(date +%s)
+                DOCKER_TIME=$((DOCKER_END - DOCKER_START))
+                echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
+            else
+                echo "❌ x86 Docker CI测试失败！"
+                echo "💡 提示: 这可能是跨平台差异，请检查上述错误"
+                exit 1
+            fi
         else
-            echo "❌ x86 Docker CI测试失败！"
-            echo "💡 提示: 这可能是跨平台差异，请检查上述错误"
-            exit 1
+            echo "⚠️  macinmeter-ci:standalone 镜像未找到，跳过x86 CI模拟"
+            echo "💡 提示: 运行 'docker pull macinmeter-ci:standalone' 或构建镜像"
         fi
     else
-        echo "⚠️  macinmeter-ci:standalone 镜像未找到，跳过x86 CI模拟"
-        echo "💡 提示: 运行 'docker pull macinmeter-ci:standalone' 或构建镜像"
+        echo "⚠️  Docker未安装，跳过x86 CI模拟测试"
+        echo "💡 建议安装Docker以在本地验证x86兼容性"
     fi
-else
-    echo "⚠️  Docker未安装，跳过x86 CI模拟测试"
-    echo "💡 建议安装Docker以在本地验证x86兼容性"
 fi
 
 # 🛡️ 6. 安全审计 (可选，如果安装了cargo-audit)
