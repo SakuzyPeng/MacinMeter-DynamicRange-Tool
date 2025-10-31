@@ -229,12 +229,12 @@ impl SimdChannelData {
     /// - 完整处理所有样本（包括剩余样本）
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "sse2")]
-    #[allow(unused_unsafe)] // 🎯 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
+    #[allow(unused_unsafe)] // 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
     unsafe fn process_samples_sse2(&mut self, samples: &[f32]) -> usize {
         let len = samples.len();
         let mut i = 0;
 
-        // 🚀 SSE2向量化累加器：2个f64值 (128位寄存器)
+        // SSE2向量化累加器：2个f64值 (128位寄存器)
         let mut sum_pd = _mm_setzero_pd();
 
         // SIMD加速RMS计算：4样本并行处理
@@ -245,7 +245,7 @@ impl SimdChannelData {
             // _mm_loadu_ps允许未对齐访问，不要求16字节对齐，因此总是安全的。
             let samples_vec = unsafe { _mm_loadu_ps(samples.as_ptr().add(i)) };
 
-            // 🎯 真正向量化：直接用SSE2指令做f32→f64转换和平方累加
+            // 真正向量化：直接用SSE2指令做f32→f64转换和平方累加
             // SAFETY: SSE2向量化f32→f64转换和平方累加
             // _mm_cvtps_pd将__m128的低2个f32转为2个f64 (__m128d)
             // _mm_movehl_ps将高2个f32移到低位，再用_mm_cvtps_pd转换
@@ -266,7 +266,7 @@ impl SimdChannelData {
             i += 4;
         }
 
-        // 🔧 水平提取：将2个f64累加到标量
+        // 水平提取：将2个f64累加到标量
         // SAFETY: _mm_storeu_pd将__m128d存储到未对齐的f64数组
         // sum_array是有效的2元素f64数组，已正确初始化
         unsafe {
@@ -275,7 +275,7 @@ impl SimdChannelData {
             self.inner.rms_accumulator += sum_array[0] + sum_array[1];
         }
 
-        // 🎯 处理剩余样本（标量方式，确保完整性）
+        // 处理剩余样本（标量方式，确保完整性）
         while i < len {
             let sample = samples[i] as f64;
             self.inner.rms_accumulator += sample * sample;
@@ -307,14 +307,14 @@ impl SimdChannelData {
     /// - 完整处理所有样本（包括剩余样本）
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    #[allow(unused_unsafe)] // 🎯 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
+    #[allow(unused_unsafe)] // 跨平台兼容: 抑制CI环境"unnecessary unsafe block"警告，保持精度一致性
     unsafe fn process_samples_neon(&mut self, samples: &[f32]) -> usize {
         use std::arch::aarch64::*;
 
         let len = samples.len();
         let mut i = 0;
 
-        // 🚀 NEON向量化累加器：2个f64值 (128位寄存器)
+        // NEON向量化累加器：2个f64值 (128位寄存器)
         let mut sum_pd = vdupq_n_f64(0.0);
 
         // SIMD加速RMS计算：4样本并行处理
@@ -325,7 +325,7 @@ impl SimdChannelData {
             // vld1q_f32允许未对齐访问，因此总是安全的。
             let samples_vec = unsafe { vld1q_f32(samples.as_ptr().add(i)) };
 
-            // 🎯 真正向量化：直接用NEON指令做f32→f64转换和平方累加
+            // 真正向量化：直接用NEON指令做f32→f64转换和平方累加
             // SAFETY: NEON向量化f32→f64转换和平方累加
             // vcvt_f64_f32将float32x2_t的2个f32转为2个f64 (float64x2_t)
             // vget_low_f32和vget_high_f32拆分4个f32为低2个和高2个
@@ -348,7 +348,7 @@ impl SimdChannelData {
             i += 4;
         }
 
-        // 🔧 水平提取：将2个f64累加到标量
+        // 水平提取：将2个f64累加到标量
         // SAFETY: vst1q_f64将float64x2_t存储到未对齐的f64数组
         // sum_array是有效的2元素f64数组，已正确初始化
         unsafe {
@@ -357,7 +357,7 @@ impl SimdChannelData {
             self.inner.rms_accumulator += sum_array[0] + sum_array[1];
         }
 
-        // 🎯 处理剩余样本（标量方式，确保完整性）
+        // 处理剩余样本（标量方式，确保完整性）
         while i < len {
             let sample = samples[i] as f64;
             self.inner.rms_accumulator += sample * sample;
@@ -409,7 +409,7 @@ impl SimdChannelData {
 
     /// 获取有效Peak值（返回备选峰值，不做最终选择）
     ///
-    /// ⚠️ **重要**：此方法仅代理到 `ChannelData::get_effective_peak()`。
+    /// **重要**：此方法仅代理到 `ChannelData::get_effective_peak()`。
     /// 参见那里的文档说明为何不应在 DR 计算中直接使用此值。
     ///
     /// 正确做法：通过 `PeakSelectionStrategy::select_peak()` 进行峰值选择。
@@ -473,7 +473,7 @@ impl SimdProcessor {
         sample_count >= 100
     }
 
-    /// 🚀 **SIMD优化**: 计算数组平方和 (专为RMS 20%采样优化)
+    /// **SIMD优化**: 计算数组平方和 (专为RMS 20%采样优化)
     ///
     /// 使用SSE2/NEON并行计算 sum(x²)，
     /// 针对histogram.rs中的RMS计算进行专门优化。
@@ -508,7 +508,7 @@ impl SimdProcessor {
                 #[cfg(debug_assertions)]
                 {
                     eprintln!(
-                        "⚠️ [PERFORMANCE_WARNING] SSE2不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
+                        "[PERFORMANCE_WARNING] SSE2 unavailable, falling back to scalar square-sum (≈3x slower) / SSE2不可用，RMS平方和计算回退到标量实现，性能将下降约3倍"
                     );
                 }
                 values.iter().map(|&x| x * x).sum()
@@ -525,7 +525,7 @@ impl SimdProcessor {
                 #[cfg(debug_assertions)]
                 {
                     eprintln!(
-                        "⚠️ [PERFORMANCE_WARNING] NEON不可用，RMS平方和计算回退到标量实现，性能将下降~3倍"
+                        "[PERFORMANCE_WARNING] NEON unavailable, falling back to scalar square-sum (≈3x slower) / NEON不可用，RMS平方和计算回退到标量实现，性能将下降约3倍"
                     );
                 }
                 values.iter().map(|&x| x * x).sum()
@@ -538,10 +538,13 @@ impl SimdProcessor {
             static WARN_ONCE: Once = Once::new();
             WARN_ONCE.call_once(|| {
                 eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，RMS平方和计算使用标量实现",
+                    "[PERFORMANCE_WARNING] Architecture {} lacks SIMD support; using scalar square-sum / 架构{}不支持SIMD，RMS平方和计算使用标量实现",
+                    std::env::consts::ARCH,
                     std::env::consts::ARCH
                 );
-                eprintln!("💡 [PERFORMANCE_TIP] 当前性能可能较x86_64/ARM64慢~3倍");
+                eprintln!(
+                    "[PERFORMANCE_TIP] Expect up to ~3x slower than x86_64/ARM64 SIMD paths / 当前性能可能较x86_64/ARM64慢约3倍"
+                );
             });
             values.iter().map(|&x| x * x).sum()
         }
@@ -605,7 +608,7 @@ impl SimdProcessor {
         let len = values.len();
         let mut i = 0;
 
-        // 🚀 **NEON优化**: 使用128位NEON向量处理2个f64值
+        // **NEON优化**: 使用128位NEON向量处理2个f64值
         // 累加器：初始化为零向量
         let mut sum_vec = vdupq_n_f64(0.0); // 2x f64 向量，初始化为0
 
@@ -627,11 +630,11 @@ impl SimdProcessor {
             i += 2;
         }
 
-        // 🔧 **精度保证**: 提取并累加向量中的两个f64值
+        // **精度保证**: 提取并累加向量中的两个f64值
         // 使用水平加法提取NEON向量的两个元素
         let mut total_sum = vgetq_lane_f64(sum_vec, 0) + vgetq_lane_f64(sum_vec, 1);
 
-        // 🔄 **边界处理**: 处理剩余的奇数个元素（标量方式）
+        // **边界处理**: 处理剩余的奇数个元素（标量方式）
         while i < len {
             total_sum += values[i] * values[i];
             i += 1;
@@ -656,11 +659,14 @@ mod tests {
         let caps = SimdCapabilities::detect();
 
         // 至少应该能检测基本信息（不管是否支持）
-        println!("SIMD能力检测:");
+        println!("SIMD capability detection / SIMD能力检测:");
         println!("  SSE2: {}", caps.sse2);
         println!("  SSE4.1: {}", caps.sse4_1);
         println!("  AVX: {}", caps.avx);
-        println!("  推荐并行度: {}", caps.recommended_parallelism());
+        println!(
+            "  Recommended parallelism / 推荐并行度: {}",
+            caps.recommended_parallelism()
+        );
 
         // 基本检查
         assert!(caps.recommended_parallelism() >= 1);
@@ -676,7 +682,7 @@ mod tests {
 
         // 应该能正确报告SIMD支持状态
         let has_simd = processor.has_simd_support();
-        println!("当前系统SIMD支持: {has_simd}");
+        println!("SIMD support on this system: {has_simd} / 当前系统SIMD支持: {has_simd}");
     }
 
     #[test]
@@ -701,14 +707,25 @@ mod tests {
 
         // 验证SIMD处理器是否真的处理了样本
         if simd_processor.inner().rms_accumulator == 0.0 {
-            panic!("❌ SIMD处理器RMS累加器为0，说明样本没有被正确处理！");
+            panic!(
+                "SIMD accumulator is zero; samples were not processed / SIMD处理器RMS累加器为0，说明样本没有被正确处理！"
+            );
         }
 
-        assert!(rms_diff < 1e-6, "RMS差异过大: {rms_diff}");
-        assert!(peak1_diff < 1e-6, "主Peak差异过大: {peak1_diff}");
-        assert!(peak2_diff < 1e-6, "次Peak差异过大: {peak2_diff}");
+        assert!(
+            rms_diff < 1e-6,
+            "RMS difference too large: {rms_diff} / RMS差异过大: {rms_diff}"
+        );
+        assert!(
+            peak1_diff < 1e-6,
+            "Primary peak difference too large: {peak1_diff} / 主Peak差异过大: {peak1_diff}"
+        );
+        assert!(
+            peak2_diff < 1e-6,
+            "Secondary peak difference too large: {peak2_diff} / 次Peak差异过大: {peak2_diff}"
+        );
 
-        println!("✅ SIMD与标量实现一致性验证通过");
+        println!("SIMD vs scalar consistency verified / SIMD与标量实现一致性验证通过");
     }
 
     #[test]
@@ -730,7 +747,7 @@ mod tests {
             assert!(!factory.should_use_simd(1000)); // 不支持SIMD
         }
 
-        println!("当前系统SIMD支持: {supports_simd}");
+        println!("SIMD support available: {supports_simd} / 当前系统SIMD支持: {supports_simd}");
     }
 
     #[test]
@@ -753,12 +770,14 @@ mod tests {
     }
 
     // ========================================================================
-    // 🔬 深度SIMD精度测试 (从tests/simd_precision_test.rs合并)
+    // 深度SIMD精度测试 (从tests/simd_precision_test.rs合并)
     // ========================================================================
 
     #[test]
     fn test_extreme_precision_requirements() {
-        println!("🔬 执行极端精度要求测试...");
+        println!(
+            "[PRECISION_TEST] Testing extreme precision requirements / 执行极端精度要求测试..."
+        );
 
         // 使用更大的测试数据集
         let test_samples: Vec<f32> = (0..10000)
@@ -780,49 +799,51 @@ mod tests {
         let peak1_diff = (simd_processor.inner().peak_primary - scalar_data.peak_primary).abs();
         let peak2_diff = (simd_processor.inner().peak_secondary - scalar_data.peak_secondary).abs();
 
-        println!("📊 大数据集精度对比:");
-        println!("  样本数量: {}", test_samples.len());
-        println!("  RMS累积:");
+        println!("[TEST_RESULT] Large dataset precision comparison / 大数据集精度对比:");
+        println!("  样本数量 / Sample count: {}", test_samples.len());
+        println!("  RMS累积 / RMS Accumulation:");
         println!("    SIMD:  {:.16}", simd_processor.inner().rms_accumulator);
-        println!("    标量:  {:.16}", scalar_data.rms_accumulator);
-        println!("    差异:  {rms_diff:.2e}");
+        println!("    Scalar / 标量:  {:.16}", scalar_data.rms_accumulator);
+        println!("    差异 / Difference:  {rms_diff:.2e}");
         println!(
-            "    相对误差: {:.2e}",
+            "    相对误差 / Relative Error: {:.2e}",
             rms_diff / scalar_data.rms_accumulator
         );
 
-        println!("  主Peak:");
+        println!("  Primary Peak / 主Peak:");
         println!("    SIMD:  {:.16}", simd_processor.inner().peak_primary);
-        println!("    标量:  {:.16}", scalar_data.peak_primary);
-        println!("    差异:  {peak1_diff:.2e}");
+        println!("    Scalar / 标量:  {:.16}", scalar_data.peak_primary);
+        println!("    差异 / Difference:  {peak1_diff:.2e}");
 
-        println!("  次Peak:");
+        println!("  Secondary Peak / 次Peak:");
         println!("    SIMD:  {:.16}", simd_processor.inner().peak_secondary);
-        println!("    标量:  {:.16}", scalar_data.peak_secondary);
-        println!("    差异:  {peak2_diff:.2e}");
+        println!("    Scalar / 标量:  {:.16}", scalar_data.peak_secondary);
+        println!("    差异 / Difference:  {peak2_diff:.2e}");
 
         // 更严格的精度要求（类似dr14_t.meter的标准）
         let relative_rms_error = rms_diff / scalar_data.rms_accumulator;
 
-        println!("🎯 精度评估:");
-        println!("  RMS相对误差: {relative_rms_error:.2e}");
+        println!("[PRECISION_ASSESSMENT] Precision evaluation / 精度评估:");
+        println!("  RMS相对误差 / RMS Relative Error: {relative_rms_error:.2e}");
 
         if relative_rms_error > 1e-10 {
-            println!("⚠️  警告：RMS精度可能不足，相对误差 > 1e-10");
+            println!(
+                "[WARNING] RMS precision may be insufficient, relative error > 1e-10 / 警告：RMS精度可能不足，相对误差 > 1e-10"
+            );
         } else {
-            println!("✅ RMS精度满足要求");
+            println!("[OK] RMS precision meets requirements / RMS精度满足要求");
         }
 
         if peak1_diff > 1e-12 {
-            println!("⚠️  警告：Peak精度可能不足");
+            println!("[WARNING] Peak precision may be insufficient / 警告：Peak精度可能不足");
         } else {
-            println!("✅ Peak精度满足要求");
+            println!("[OK] Peak precision meets requirements / Peak精度满足要求");
         }
     }
 
     #[test]
     fn test_dr_calculation_precision() {
-        println!("🎵 DR计算精度测试...");
+        println!("DR precision test / DR计算精度测试...");
 
         // 模拟真实音频：3秒48kHz立体声
         let samples_per_channel = 3 * 48000;
@@ -839,9 +860,19 @@ mod tests {
         let left_samples: Vec<f32> = stereo_samples.iter().step_by(2).cloned().collect();
         let right_samples: Vec<f32> = stereo_samples.iter().skip(1).step_by(2).cloned().collect();
 
-        println!("  样本信息：{}秒，{}kHz，立体声", 3, 48);
-        println!("  左声道样本数：{}", left_samples.len());
-        println!("  右声道样本数：{}", right_samples.len());
+        println!(
+            "  Sample info: {sec} s, {khz} kHz, stereo / 样本信息：{sec}秒，{khz}kHz，立体声",
+            sec = 3,
+            khz = 48
+        );
+        println!(
+            "  Left channel samples: {count} / 左声道样本数：{count}",
+            count = left_samples.len()
+        );
+        println!(
+            "  Right channel samples: {count} / 右声道样本数：{count}",
+            count = right_samples.len()
+        );
 
         // 测试左声道
         let mut simd_left = SimdChannelData::new();
@@ -855,25 +886,36 @@ mod tests {
         let left_rms_simd = simd_left.calculate_rms(left_samples.len());
         let left_rms_scalar = scalar_left.calculate_rms(left_samples.len());
 
-        println!("  左声道RMS对比:");
-        println!("    SIMD:  {:.8} dB", 20.0 * left_rms_simd.log10());
-        println!("    标量:  {:.8} dB", 20.0 * left_rms_scalar.log10());
+        println!("  Left channel RMS comparison / 左声道RMS对比:");
+        println!("    SIMD:  {:.8} dB / SIMD", 20.0 * left_rms_simd.log10());
+        println!(
+            "    Scalar:  {:.8} dB / 标量",
+            20.0 * left_rms_scalar.log10()
+        );
 
         let rms_db_diff = 20.0 * (left_rms_simd / left_rms_scalar).log10();
-        println!("    差异:  {rms_db_diff:.6} dB");
+        println!("    Difference: {rms_db_diff:.6} dB / 差异: {rms_db_diff:.6} dB");
 
         // DR计算精度要求：误差应 < 0.01 dB
         if rms_db_diff.abs() > 0.01 {
-            println!("⚠️  警告：RMS差异 > 0.01dB，可能影响DR测量精度");
-            println!("   这类似于dr14_t.meter的超级向量化精度问题！");
+            println!(
+                " Warning: RMS difference > 0.01 dB, potential DR precision risk / 警告：RMS差异 > 0.01 dB，可能影响DR测量精度"
+            );
+            println!(
+                "   Similar to dr14_t.meter super-vectorized precision issue / 类似于dr14_t.meter的超级向量化精度问题"
+            );
         } else {
-            println!("✅ RMS精度满足DR测量要求 (< 0.01dB)");
+            println!(
+                "RMS precision within DR tolerance (< 0.01 dB) / RMS精度满足DR测量要求 (< 0.01 dB)"
+            );
         }
     }
 
     #[test]
     fn test_cumulative_error_analysis() {
-        println!("📈 累积误差分析测试...");
+        println!(
+            "[CUMULATIVE_ERROR_ANALYSIS] Cumulative error analysis test / 累积误差分析测试..."
+        );
 
         // 测试不同长度的累积误差增长
         let test_lengths = [100, 1000, 10000, 100000];
@@ -892,18 +934,22 @@ mod tests {
             let rms_diff = (simd_proc.inner().rms_accumulator - scalar_data.rms_accumulator).abs();
             let relative_error = rms_diff / scalar_data.rms_accumulator;
 
-            println!("  样本数 {len:6}: 相对误差 {relative_error:.2e}");
+            println!(
+                "  样本数 / Sample count {len:6}: 相对误差 / Relative error {relative_error:.2e}"
+            );
 
             // 检查误差是否随样本数增长
             if len > 1000 && relative_error > 1e-9 {
-                println!("    ⚠️  累积误差随样本数增长，存在精度风险");
+                println!(
+                    "[WARNING]     Cumulative error grows with sample count, precision risk exists / 累积误差随样本数增长，存在精度风险"
+                );
             }
         }
     }
 
     #[test]
     fn test_calculate_square_sum_basic() {
-        println!("📊 测试calculate_square_sum基本功能...");
+        println!("Testing calculate_square_sum basics / 测试calculate_square_sum基本功能...");
 
         let processor = SimdProcessor::new();
 
@@ -920,12 +966,16 @@ mod tests {
         let result = processor.calculate_square_sum(&small);
         assert!((result - expected).abs() < 1e-10);
 
-        println!("  小数组结果: {result}, 预期: {expected}");
+        println!(
+            "  Result (small array): {result}, expected: {expected} / 小数组结果: {result}, 预期: {expected}"
+        );
     }
 
     #[test]
     fn test_calculate_square_sum_large_array() {
-        println!("📊 测试calculate_square_sum大数组SIMD优化...");
+        println!(
+            "Testing large-array SIMD optimization for calculate_square_sum / 测试calculate_square_sum大数组SIMD优化..."
+        );
 
         let processor = SimdProcessor::new();
 
@@ -941,9 +991,9 @@ mod tests {
         let diff = (simd_result - scalar_result).abs();
         let relative_error = diff / scalar_result;
 
-        println!("  SIMD结果:  {simd_result:.12}");
-        println!("  标量结果:  {scalar_result:.12}");
-        println!("  相对误差: {relative_error:.2e}");
+        println!("  SIMD result: {simd_result:.12} / SIMD结果: {simd_result:.12}");
+        println!("  Scalar result: {scalar_result:.12} / 标量结果: {scalar_result:.12}");
+        println!("  Relative error: {relative_error:.2e} / 相对误差: {relative_error:.2e}");
 
         // SIMD和标量结果应该高度一致
         assert!(
@@ -954,7 +1004,9 @@ mod tests {
 
     #[test]
     fn test_calculate_square_sum_boundary() {
-        println!("🔬 测试calculate_square_sum边界情况...");
+        println!(
+            "[BOUNDARY_TEST] Testing calculate_square_sum boundary cases / 测试calculate_square_sum边界情况..."
+        );
 
         let processor = SimdProcessor::new();
 
@@ -963,9 +1015,9 @@ mod tests {
         let result = processor.calculate_square_sum(&boundary);
         let expected: f64 = boundary.iter().map(|&x| x * x).sum();
 
-        println!("  100元素数组:");
-        println!("    结果: {result}");
-        println!("    预期: {expected}");
+        println!("  100-element array / 100元素数组:");
+        println!("    结果 / Result: {result}");
+        println!("    预期 / Expected: {expected}");
         assert!((result - expected).abs() / expected < 1e-10);
 
         // 测试99个元素（刚好低于阈值，应使用标量）
@@ -986,7 +1038,7 @@ mod tests {
         let caps = SimdCapabilities::detect();
         let has_advanced = caps.has_advanced_simd();
 
-        println!("🔍 高级SIMD能力检测:");
+        println!("Advanced SIMD capability check / 高级SIMD能力检测:");
         println!("  SSE4.1: {}", caps.sse4_1);
         println!("  NEON FP16: {}", caps.neon_fp16);
         println!("  has_advanced_simd: {has_advanced}");
@@ -1000,11 +1052,14 @@ mod tests {
         let caps = SimdCapabilities::detect();
         let parallelism = caps.recommended_parallelism();
 
-        println!("⚙️  推荐并行度分析:");
-        println!("  AVX2: {} -> 推荐: 8", caps.avx2);
-        println!("  SSE2/NEON: {} -> 推荐: 4", caps.has_basic_simd());
-        println!("  无SIMD: -> 推荐: 1");
-        println!("  实际推荐: {parallelism}");
+        println!("[PARALLELISM_ANALYSIS] Recommended parallelism analysis / 推荐并行度分析:");
+        println!("  AVX2: {} -> 推荐 / Recommended: 8", caps.avx2);
+        println!(
+            "  SSE2/NEON: {} -> 推荐 / Recommended: 4",
+            caps.has_basic_simd()
+        );
+        println!("  无SIMD / No SIMD: -> 推荐 / Recommended: 1");
+        println!("  实际推荐 / Actual recommendation: {parallelism}");
 
         // 验证逻辑
         if caps.avx2 {
@@ -1021,17 +1076,17 @@ mod tests {
     fn test_simd_processor_should_use_simd_thresholds() {
         let processor = SimdProcessor::new();
 
-        println!("🎚️  SIMD使用阈值测试:");
+        println!("[SIMD_THRESHOLD_TEST] SIMD threshold usage test / SIMD使用阈值测试:");
 
         // 测试不同样本数量
         let test_cases = vec![
-            (10, false, "太少样本"),
-            (50, false, "低于阈值"),
-            (99, false, "刚好低于100"),
-            (100, true, "阈值边界"),
-            (101, true, "刚好高于100"),
-            (1000, true, "充足样本"),
-            (10000, true, "大量样本"),
+            (10, false, "too few samples / 太少样本"),
+            (50, false, "below threshold / 低于阈值"),
+            (99, false, "just below 100 / 刚好低于100"),
+            (100, true, "threshold boundary / 阈值边界"),
+            (101, true, "just above 100 / 刚好高于100"),
+            (1000, true, "sufficient samples / 充足样本"),
+            (10000, true, "large sample set / 大量样本"),
         ];
 
         for (count, expected_if_simd, desc) in test_cases {
@@ -1048,11 +1103,11 @@ mod tests {
             }
 
             println!(
-                "  {count:5}样本 ({desc:12}): {}",
+                "  {count:5} samples ({desc:12}): {}",
                 if should_use {
-                    "✅ 使用SIMD"
+                    "use SIMD / 使用SIMD"
                 } else {
-                    "❌ 使用标量"
+                    "use scalar / 使用标量"
                 }
             );
         }
@@ -1060,7 +1115,7 @@ mod tests {
 
     #[test]
     fn test_simd_different_data_patterns() {
-        println!("🎨 测试不同数据模式的SIMD处理...");
+        println!("Testing SIMD across data patterns / 测试不同数据模式的SIMD处理...");
 
         let patterns = vec![
             ("全零", vec![0.0; 100]),
@@ -1089,7 +1144,9 @@ mod tests {
             let max_val = scalar_data.rms_accumulator.abs().max(1e-10);
             let relative_error = rms_diff / max_val;
 
-            println!("  {name:8}: RMS差异={rms_diff:.2e}, 相对误差={relative_error:.2e}");
+            println!(
+                "  {name:8}: RMS diff={rms_diff:.2e}, relative error={relative_error:.2e} / RMS差异={rms_diff:.2e}, 相对误差={relative_error:.2e}"
+            );
 
             if scalar_data.rms_accumulator.abs() > 1e-10 {
                 assert!(
@@ -1105,10 +1162,22 @@ mod tests {
         let processor = SimdProcessor::new();
         let caps = processor.capabilities();
 
-        println!("🔍 验证capabilities()方法访问:");
-        println!("  基础SIMD: {}", caps.has_basic_simd());
-        println!("  高级SIMD: {}", caps.has_advanced_simd());
-        println!("  并行度: {}", caps.recommended_parallelism());
+        println!("Verifying capabilities() access / 验证capabilities()方法访问:");
+        println!(
+            "  Basic SIMD: {} / 基础SIMD: {}",
+            caps.has_basic_simd(),
+            caps.has_basic_simd()
+        );
+        println!(
+            "  Advanced SIMD: {} / 高级SIMD: {}",
+            caps.has_advanced_simd(),
+            caps.has_advanced_simd()
+        );
+        println!(
+            "  Recommended parallelism: {} / 推荐并行度: {}",
+            caps.recommended_parallelism(),
+            caps.recommended_parallelism()
+        );
 
         // 验证返回的引用有效
         assert!(caps.recommended_parallelism() >= 1);
@@ -1126,10 +1195,13 @@ mod tests {
         // 计算RMS
         let rms = processor.calculate_rms(samples.len());
 
-        println!("📐 测试calculate_rms方法:");
-        println!("  RMS累加器: {}", processor.inner().rms_accumulator);
-        println!("  样本数: {}", samples.len());
-        println!("  计算RMS: {rms}");
+        println!("[RMS_TEST] Testing calculate_rms method / 测试calculate_rms方法:");
+        println!(
+            "  RMS累加器 / RMS Accumulator: {}",
+            processor.inner().rms_accumulator
+        );
+        println!("  样本数 / Sample count: {}", samples.len());
+        println!("  计算RMS / Calculated RMS: {rms}");
 
         // RMS应该是正数且合理
         assert!(rms > 0.0);
@@ -1154,10 +1226,19 @@ mod tests {
         processor.process_samples_simd(&[0.5, -0.7, 0.3]);
         let inner = processor.inner();
 
-        println!("🔍 测试inner()访问:");
-        println!("  RMS累加器: {}", inner.rms_accumulator);
-        println!("  主Peak: {}", inner.peak_primary);
-        println!("  次Peak: {}", inner.peak_secondary);
+        println!("Testing inner() access / 测试inner()访问:");
+        println!(
+            "  RMS accumulator: {} / RMS累加器: {}",
+            inner.rms_accumulator, inner.rms_accumulator
+        );
+        println!(
+            "  Primary peak: {} / 主Peak: {}",
+            inner.peak_primary, inner.peak_primary
+        );
+        println!(
+            "  Secondary peak: {} / 次Peak: {}",
+            inner.peak_secondary, inner.peak_secondary
+        );
 
         // 验证状态更新
         assert!(inner.rms_accumulator > 0.0);

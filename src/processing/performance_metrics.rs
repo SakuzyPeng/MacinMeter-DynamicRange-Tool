@@ -401,13 +401,13 @@ impl PerformanceEvaluator {
         simd_stats: &SimdUsageStats,
     ) -> String {
         format!(
-            "📊 性能报告:\n\
-             ⏱️  处理时间: {:.2}ms\n\
-             🚀 处理速度: {:.0} samples/s\n\
-             📈 SIMD加速: {:.1}x\n\
-             🎯 SIMD覆盖: {:.1}%\n\
-             📊 声道数量: {}\n\
-             📦 样本总数: {}",
+            "Performance report / 性能报告:\n\
+             Processing time: {0:.2} ms / 处理时间: {0:.2} 毫秒\n\
+             Processing throughput: {1:.0} samples/s / 处理速度: {1:.0} 样本/秒\n\
+             SIMD speedup: {2:.1}x / SIMD加速: {2:.1} 倍\n\
+             SIMD coverage: {3:.1}% / SIMD覆盖: {3:.1}%\n\
+             Channel count: {4} / 声道数量: {4}\n\
+             Total samples: {5} / 样本总数: {5}",
             stats.total_duration_us as f64 / 1000.0,
             stats.samples_per_second,
             stats.simd_speedup,
@@ -431,7 +431,10 @@ mod tests {
     #[test]
     fn test_performance_evaluator_creation() {
         let evaluator = PerformanceEvaluator::new();
-        println!("性能评估器SIMD能力: {:?}", evaluator.capabilities());
+        println!(
+            "Performance evaluator SIMD capabilities: {caps:?} / 性能评估器SIMD能力: {caps:?}",
+            caps = evaluator.capabilities()
+        );
     }
 
     #[test]
@@ -455,10 +458,10 @@ mod tests {
             assert!(large_speedup >= medium_speedup);
         }
 
-        println!("SIMD加速比估算测试通过:");
-        println!("  小数据集: {small_speedup:.1}x");
-        println!("  中数据集: {medium_speedup:.1}x");
-        println!("  大数据集: {large_speedup:.1}x");
+        println!("SIMD speedup estimation test passed / SIMD加速比估算测试通过:");
+        println!("  Small dataset: {small_speedup:.1}x / 小数据集: {small_speedup:.1}x");
+        println!("  Medium dataset: {medium_speedup:.1}x / 中数据集: {medium_speedup:.1}x");
+        println!("  Large dataset: {large_speedup:.1}x / 大数据集: {large_speedup:.1}x");
     }
 
     #[test]
@@ -478,9 +481,15 @@ mod tests {
         assert!(stats.samples_per_second > 0.0);
         assert!(stats.simd_speedup >= 1.0);
 
-        println!("性能统计计算测试通过:");
-        println!("  处理速度: {:.0} samples/s", stats.samples_per_second);
-        println!("  SIMD加速: {:.1}x", stats.simd_speedup);
+        println!("Performance stats calculation test passed / 性能统计计算测试通过:");
+        println!(
+            "  Throughput: {throughput:.0} samples/s / 处理速度: {throughput:.0} samples/s",
+            throughput = stats.samples_per_second
+        );
+        println!(
+            "  SIMD speedup: {speedup:.1}x / SIMD加速: {speedup:.1}x",
+            speedup = stats.simd_speedup
+        );
     }
 
     #[test]
@@ -499,9 +508,16 @@ mod tests {
         let stats_no_simd = evaluator.create_simd_usage_stats(0, 1000);
         assert!(!stats_no_simd.used_simd); // 自动推导：simd_samples == 0
 
-        println!("SIMD使用统计测试通过:");
-        println!("  SIMD覆盖率: {:.1}%", stats.simd_coverage * 100.0);
-        println!("  无SIMD时used_simd={}", stats_no_simd.used_simd);
+        println!("SIMD usage stats test passed / SIMD使用统计测试通过:");
+        println!(
+            "  SIMD coverage: {:.1}% / SIMD覆盖率: {:.1}%",
+            stats.simd_coverage * 100.0,
+            stats.simd_coverage * 100.0
+        );
+        println!(
+            "  used_simd without SIMD samples: {used} / 无SIMD样本时 used_simd={used}",
+            used = stats_no_simd.used_simd
+        );
     }
 
     #[test]
@@ -519,7 +535,9 @@ mod tests {
             assert!(!evaluator.should_use_simd(1000)); // 不支持SIMD
         }
 
-        println!("SIMD推荐测试通过 (当前系统SIMD支持: {supports_simd})");
+        println!(
+            "SIMD recommendation test passed (SIMD supported: {supports_simd}) / SIMD推荐测试通过 (当前系统SIMD支持: {supports_simd})"
+        );
     }
 
     #[test]
@@ -543,12 +561,12 @@ mod tests {
 
         let report = evaluator.generate_performance_report(&stats, &simd_stats);
 
-        assert!(report.contains("50.00ms"));
+        assert!(report.contains("Processing time: 50.00 ms"));
         assert!(report.contains("960000"));
         assert!(report.contains("3.5x"));
         assert!(report.contains("93.8%"));
 
-        println!("性能报告生成测试通过:");
+        println!("Performance report generation test passed / 性能报告生成测试通过:");
         println!("{report}");
     }
 }

@@ -36,7 +36,7 @@ macro_rules! impl_streaming_decoder_state_methods {
     };
 }
 
-/// 🌟 统一音频解码器 - 真正的Universal
+/// 统一音频解码器 - 真正的Universal
 ///
 /// 直接基于Symphonia处理所有音频格式，无需中间层抽象
 pub struct UniversalDecoder;
@@ -56,11 +56,11 @@ impl UniversalDecoder {
     /// 获取支持的格式信息
     pub fn supported_formats(&self) -> &FormatSupport {
         static SUPPORT: FormatSupport = FormatSupport {
-            // 🚀 统一格式支持声明 - 基于Symphonia features + Songbird扩展（已验证）
+            // 统一格式支持声明 - 基于Symphonia features + Songbird扩展（已验证）
             extensions: &[
-                // 无损格式 (✅ 已验证)
-                "wav", "flac", "aiff", "m4a", // 有损格式 (✅ 已验证)
-                "mp3", "mp1", "aac", "ogg", "opus", // 容器格式 (✅ 新增)
+                // 无损格式 (已验证)
+                "wav", "flac", "aiff", "m4a", // 有损格式 (已验证)
+                "mp3", "mp1", "aac", "ogg", "opus", // 容器格式 (新增)
                 "mkv", "webm",
             ],
         };
@@ -82,7 +82,7 @@ impl UniversalDecoder {
     pub fn probe_format<P: AsRef<Path>>(&self, path: P) -> AudioResult<AudioFormat> {
         let path = path.as_ref();
 
-        // 🎵 检查是否为Opus格式，使用专用探测方法
+        // 检查是否为Opus格式，使用专用探测方法
         if let Some(ext) = path.extension().and_then(|s| s.to_str())
             && ext.to_lowercase() == "opus"
         {
@@ -108,7 +108,7 @@ impl UniversalDecoder {
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
-        // 🎵 检查是否为Opus格式，使用专用解码器
+        // 检查是否为Opus格式，使用专用解码器
         if let Some(ext) = path.extension().and_then(|s| s.to_str())
             && ext.to_lowercase() == "opus"
         {
@@ -119,12 +119,12 @@ impl UniversalDecoder {
         Ok(Box::new(UniversalStreamProcessor::new(path)?))
     }
 
-    /// 🚀 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
+    /// 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
     ///
     /// 基于基准测试发现解码是唯一瓶颈的关键洞察，使用有序并行解码架构。
     /// 预期获得3-5倍性能提升，处理速度从115MB/s提升到350-600MB/s。
     ///
-    /// ⚠️ 实验性功能：在生产环境使用前请进行充分测试。
+    /// 实验性功能：在生产环境使用前请进行充分测试。
     pub fn create_streaming_parallel<P: AsRef<Path>>(
         &self,
         path: P,
@@ -134,14 +134,14 @@ impl UniversalDecoder {
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
-        // 🎵 Opus格式暂不支持并行解码，回退到专用解码器
+        // Opus格式暂不支持并行解码，回退到专用解码器
         if let Some(ext) = path.extension().and_then(|s| s.to_str())
             && ext.to_lowercase() == "opus"
         {
             return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
         }
 
-        // ⚠️ 有状态编码格式必须使用串行解码
+        // 有状态编码格式必须使用串行解码
         // MP3/AAC/OGG每个包依赖前一个包的解码器状态，并行解码会导致样本错误
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
             let ext_lower = ext.to_lowercase();
@@ -149,7 +149,7 @@ impl UniversalDecoder {
             {
                 #[cfg(debug_assertions)]
                 eprintln!(
-                    "⚠️  {}格式检测到，使用串行解码器（有状态编码需要保持解码器上下文）",
+                    "[WARNING] {} Format detected - using serial decoder (stateful encoding requires decoder context) / 格式检测到，使用串行解码器（有状态编码需要保持解码器上下文）",
                     ext_lower.to_uppercase()
                 );
 
@@ -157,7 +157,7 @@ impl UniversalDecoder {
             }
         }
 
-        // 🚀 创建并行流式处理器（支持FLAC、WAV、AAC等格式）
+        // 创建并行流式处理器（支持FLAC、WAV、AAC等格式）
         use crate::tools::constants::decoder_performance::*;
 
         let parallel_processor = ParallelUniversalStreamProcessor::new(path)?.with_parallel_config(
@@ -189,7 +189,7 @@ impl UniversalDecoder {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| error::format_error("格式探测失败", e))?;
+            .map_err(|e| error::format_error("Failed to probe format / 格式探测失败", e))?;
 
         let format_reader = probed.format;
 
@@ -209,7 +209,7 @@ impl UniversalDecoder {
         // 获取样本数，支持多种方式
         let sample_count = self.detect_sample_count(codec_params);
 
-        // 🎯 获取真实的编解码器类型
+        // 获取真实的编解码器类型
         let format = AudioFormat::with_codec(
             sample_rate,
             channels,
@@ -242,7 +242,7 @@ impl UniversalDecoder {
 
     /// 检测声道数，支持多种格式（包括M4A等特殊格式）
     ///
-    /// ⚠️ 多声道处理策略：
+    /// 多声道处理策略：
     /// - 3+声道文件：此处默认返回2（立体声），但DR计算器（上层）会验证并拒绝处理
     /// - 这样设计确保格式探测阶段不会失败，由专业的处理层负责声道数验证
     /// - 仅支持1-2声道是DR计算的技术约束，非格式探测的限制
@@ -300,7 +300,7 @@ impl UniversalDecoder {
     }
 }
 
-/// 🚀 批量包预读器 - I/O性能优化核心
+/// 批量包预读器 - I/O性能优化核心
 ///
 /// 通过批量预读减少系统调用次数，可减少约99%的I/O系统调用
 /// 内存开销约1-2MB，换取显著的整体性能提升
@@ -308,11 +308,11 @@ struct BatchPacketReader {
     format_reader: Box<dyn symphonia::core::formats::FormatReader>,
     packet_buffer: std::collections::VecDeque<symphonia::core::formats::Packet>,
 
-    // 🎯 性能调优参数（见 constants::decoder_performance）
+    // 性能调优参数（见 constants::decoder_performance）
     batch_size: usize,         // 每次预读包数
     prefetch_threshold: usize, // 触发预读的阈值
 
-    // 📊 性能统计
+    // 性能统计
     total_reads: usize,   // 总预读次数
     total_packets: usize, // 总处理包数
 }
@@ -332,7 +332,7 @@ impl BatchPacketReader {
         }
     }
 
-    /// 🚀 智能预读：当缓冲区不足时批量读取包
+    /// 智能预读：当缓冲区不足时批量读取包
     ///
     /// 这是性能优化的核心：将频繁的单次I/O调用合并为批量操作
     fn ensure_buffered(&mut self) -> AudioResult<()> {
@@ -340,7 +340,7 @@ impl BatchPacketReader {
         if self.packet_buffer.len() < self.prefetch_threshold {
             self.total_reads += 1;
 
-            // 🔥 批量预读：一次读取多个包，大幅减少系统调用
+            // 批量预读：一次读取多个包，大幅减少系统调用
             for _ in 0..self.batch_size {
                 match self.format_reader.next_packet() {
                     Ok(packet) => {
@@ -352,14 +352,19 @@ impl BatchPacketReader {
                     {
                         break; // 正常EOF，停止预读
                     }
-                    Err(e) => return Err(error::format_error("预读包失败", e)),
+                    Err(e) => {
+                        return Err(error::format_error(
+                            "Failed to prefetch packets / 预读包失败",
+                            e,
+                        ));
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    /// 🔥 零系统调用的包获取：从缓冲区直接获取
+    /// 零系统调用的包获取：从缓冲区直接获取
     ///
     /// 替代原来的format_reader.next_packet()，消除大部分I/O等待
     fn next_packet(&mut self) -> AudioResult<Option<symphonia::core::formats::Packet>> {
@@ -371,7 +376,7 @@ impl BatchPacketReader {
     }
 }
 
-/// 🎯 共同状态 - 消除串行和并行的重复字段
+/// 共同状态 - 消除串行和并行的重复字段
 ///
 /// 提取60%的共同字段，避免代码重复
 struct ProcessorState {
@@ -407,7 +412,7 @@ impl ProcessorState {
     fn get_format(&self) -> AudioFormat {
         let mut current_format = self.format.clone();
         current_format.update_sample_count(self.total_samples);
-        // 🎯 如果跳过了损坏包，标记为部分分析
+        // 如果跳过了损坏包，标记为部分分析
         if self.skipped_packets > 0 {
             current_format.mark_as_partial(self.skipped_packets);
         }
@@ -443,19 +448,19 @@ impl ProcessorState {
     }
 }
 
-/// 🌟 统一流式处理器 - 串行优化版本
+/// 统一流式处理器 - 串行优化版本
 ///
 /// 使用BatchPacketReader进行I/O优化，适合单线程场景
 pub struct UniversalStreamProcessor {
     state: ProcessorState,
 
-    // 🚀 串行专用组件
+    // 串行专用组件
     batch_packet_reader: Option<BatchPacketReader>,
     decoder: Option<Box<dyn symphonia::core::codecs::Decoder>>,
 }
 
 impl UniversalStreamProcessor {
-    /// 🚀 创建统一流式处理器（串行模式）
+    /// 创建统一流式处理器（串行模式）
     ///
     /// 固定启用智能缓冲流式处理，遵循"无条件高性能原则"。
     /// foobar2000-plugin分支专用，提供最优的流式处理性能。
@@ -491,7 +496,7 @@ impl UniversalStreamProcessor {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| error::format_error("创建解码器失败", e))?;
+            .map_err(|e| error::format_error("Failed to create decoder / 创建解码器失败", e))?;
 
         let format_reader = probed.format;
 
@@ -512,9 +517,9 @@ impl UniversalStreamProcessor {
         let decoder_opts = DecoderOptions::default();
         let decoder = symphonia::default::get_codecs()
             .make(codec_params, &decoder_opts)
-            .map_err(|e| error::format_error("创建解码器失败", e))?;
+            .map_err(|e| error::format_error("Failed to create decoder / 创建解码器失败", e))?;
 
-        // 🚀 创建批量包预读器：核心I/O优化
+        // 创建批量包预读器：核心I/O优化
         self.batch_packet_reader = Some(BatchPacketReader::new(format_reader));
         self.decoder = Some(decoder);
         self.state.track_id = Some(track_id);
@@ -532,15 +537,15 @@ impl UniversalStreamProcessor {
         Ok(samples)
     }
 
-    /// 🚀 转换symphonia缓冲区为交错格式 (SIMD优化)
+    /// 转换symphonia缓冲区为交错格式 (SIMD优化)
     ///
-    /// 🎯 优化#11：使用processing层的统一转换函数，消除重复代码
+    /// 优化#11：使用processing层的统一转换函数，消除重复代码
     fn convert_buffer_to_interleaved_with_simd(
         sample_converter: &SampleConverter,
         audio_buf: &symphonia::core::audio::AudioBufferRef,
         samples: &mut Vec<f32>,
     ) -> AudioResult<()> {
-        // 🚀 使用processing层的统一公共函数
+        // 使用processing层的统一公共函数
         sample_converter.convert_buffer_to_interleaved(audio_buf, samples)
     }
 }
@@ -567,9 +572,9 @@ impl StreamingDecoder for UniversalStreamProcessor {
             .track_id
             .expect("track_id必须已初始化，initialize_symphonia()已设置");
 
-        // 🔄 使用循环替代递归，避免栈溢出风险
+        // 使用循环替代递归，避免栈溢出风险
         loop {
-            // 🚀 使用批量预读器获取包：大幅减少I/O系统调用
+            // 使用批量预读器获取包：大幅减少I/O系统调用
             match batch_reader.next_packet()? {
                 Some(packet) => {
                     if packet.track_id() != track_id {
@@ -587,10 +592,10 @@ impl StreamingDecoder for UniversalStreamProcessor {
                                 &decoded,
                             )?;
 
-                            // 🎯 成功解码，重置连续错误计数
+                            // 成功解码，重置连续错误计数
                             self.state.consecutive_errors = 0;
 
-                            // 🎯 更新位置和样本数
+                            // 更新位置和样本数
                             self.state
                                 .update_position(&samples, self.state.format.channels);
 
@@ -598,26 +603,31 @@ impl StreamingDecoder for UniversalStreamProcessor {
                         }
                         Err(e) => match e {
                             symphonia::core::errors::Error::DecodeError(_) => {
-                                // 🎯 容错处理：跳过解码错误的包，继续处理
+                                // 容错处理：跳过解码错误的包，继续处理
                                 self.state.skipped_packets += 1;
                                 self.state.consecutive_errors += 1;
 
-                                // 🎯 安全检查：连续错误过多表示文件严重损坏
+                                // 安全检查：连续错误过多表示文件严重损坏
                                 const MAX_CONSECUTIVE_ERRORS: usize = 100;
                                 if self.state.consecutive_errors > MAX_CONSECUTIVE_ERRORS {
                                     return Err(error::decoding_error(
-                                        "连续解码失败过多，文件严重损坏",
+                                        "Too many consecutive decode failures, file may be corrupted / 连续解码失败过多，文件可能已损坏",
                                         format!(
-                                            "连续失败{}次，总共跳过{}个包",
-                                            self.state.consecutive_errors,
-                                            self.state.skipped_packets
+                                            "Consecutive failures: {failures} times, skipped {skipped} packets in total / 连续失败{failures}次，总共跳过{skipped}个包",
+                                            failures = self.state.consecutive_errors,
+                                            skipped = self.state.skipped_packets
                                         ),
                                     ));
                                 }
 
                                 continue; // 继续处理下一个包
                             }
-                            _ => return Err(error::decoding_error("音频包解码失败", e)),
+                            _ => {
+                                return Err(error::decoding_error(
+                                    "Audio packet decoding failed / 音频包解码失败",
+                                    e,
+                                ));
+                            }
                         },
                     }
                 }
@@ -641,30 +651,30 @@ impl StreamingDecoder for UniversalStreamProcessor {
     }
 }
 
-/// 🚀 并行统一流式处理器 - 攻击解码瓶颈的高性能版本
+/// 并行统一流式处理器 - 攻击解码瓶颈的高性能版本
 ///
 /// 基于基准测试发现解码是唯一瓶颈的关键洞察，使用有序并行解码架构
 /// 预期获得3-5倍性能提升，处理速度从115MB/s提升到350-600MB/s
 pub struct ParallelUniversalStreamProcessor {
     state: ProcessorState,
 
-    // 🚀 并行专用组件
+    // 并行专用组件
     parallel_decoder: Option<super::parallel_decoder::OrderedParallelDecoder>,
     format_reader: Option<Box<dyn symphonia::core::formats::FormatReader>>,
 
-    // 📊 并行优化配置
+    // 并行优化配置
     parallel_enabled: bool,   // 是否启用并行解码
     batch_size: usize,        // 批量解码包数
     thread_count: usize,      // 并行线程数
     processed_packets: usize, // 已处理包数量
 
-    // 🔧 Flushing状态样本缓存
+    // Flushing状态样本缓存
     drained_samples: Option<std::collections::VecDeque<Vec<f32>>>, // 缓存drain_all_samples()的结果
-                                                                   // 🚀 Phase 3.2优化：使用VecDeque允许pop_front() move数据，避免clone开销
+                                                                   // 使用VecDeque以便pop_front()直接移动数据，避免额外克隆
 }
 
 impl ParallelUniversalStreamProcessor {
-    /// 🚀 创建并行流式处理器
+    /// 创建并行流式处理器
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         use crate::tools::constants::decoder_performance::*;
 
@@ -684,7 +694,7 @@ impl ParallelUniversalStreamProcessor {
         })
     }
 
-    /// 🎯 配置并行解码参数
+    /// 配置并行解码参数
     pub fn with_parallel_config(
         mut self,
         enabled: bool,
@@ -697,7 +707,7 @@ impl ParallelUniversalStreamProcessor {
         self
     }
 
-    /// 🚀 初始化并行解码器
+    /// 初始化并行解码器
     fn initialize_parallel(&mut self) -> AudioResult<()> {
         if self.format_reader.is_some() {
             return Ok(()); // 已初始化
@@ -721,11 +731,13 @@ impl ParallelUniversalStreamProcessor {
 
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &fmt_opts, &meta_opts)
-            .map_err(|e| error::format_error("并行解码器探测失败", e))?;
+            .map_err(|e| {
+                error::format_error("Failed to probe parallel decoder / 并行解码器探测失败", e)
+            })?;
 
         let format_reader = probed.format;
 
-        // 🎯 找到音频轨道
+        // 找到音频轨道
         let track = format_reader
             .tracks()
             .iter()
@@ -740,7 +752,7 @@ impl ParallelUniversalStreamProcessor {
         let track_id = track.id;
         let codec_params = track.codec_params.clone();
 
-        // 🚀 创建有序并行解码器（带SIMD优化）
+        // 创建有序并行解码器（带SIMD优化）
         let parallel_decoder = if self.parallel_enabled {
             super::parallel_decoder::OrderedParallelDecoder::new(
                 codec_params.clone(),
@@ -762,7 +774,7 @@ impl ParallelUniversalStreamProcessor {
         Ok(())
     }
 
-    /// 🔄 处理一批包并返回下一个可用样本
+    /// 处理一批包并返回下一个可用样本
     fn process_packets_batch(&mut self, batch_size: usize) -> AudioResult<()> {
         let format_reader = self
             .format_reader
@@ -777,12 +789,12 @@ impl ParallelUniversalStreamProcessor {
             .track_id
             .expect("track_id必须已初始化，initialize_parallel_symphonia()已设置");
 
-        // 🎯 批量读取包并提交给并行解码器
+        // 批量读取包并提交给并行解码器
         let mut packets_added = 0;
         while packets_added < batch_size {
             match format_reader.next_packet() {
                 Ok(packet) => {
-                    // 🎯 只处理目标轨道的包
+                    // 只处理目标轨道的包
                     if packet.track_id() == target_track_id {
                         self.state.chunk_stats.add_chunk(packet.dur() as usize);
                         parallel_decoder.add_packet(packet)?;
@@ -794,12 +806,15 @@ impl ParallelUniversalStreamProcessor {
                 Err(symphonia::core::errors::Error::IoError(e))
                     if e.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
-                    // 🏁 到达文件末尾，处理剩余包
+                    // 处理文件末尾剩余的包
                     parallel_decoder.flush_remaining()?;
                     break;
                 }
                 Err(e) => {
-                    return Err(error::format_error("并行读包失败", e));
+                    return Err(error::format_error(
+                        "Failed to read packet in parallel mode / 并行读包失败",
+                        e,
+                    ));
                 }
             }
         }
@@ -807,7 +822,7 @@ impl ParallelUniversalStreamProcessor {
         Ok(())
     }
 
-    /// 🎯 同步跳过包计数（从并行解码器到ProcessorState）
+    /// 同步跳过包计数（从并行解码器到ProcessorState）
     fn sync_skipped_packets(&mut self) {
         if let Some(decoder) = &self.parallel_decoder {
             self.state.skipped_packets = decoder.get_skipped_packets();
@@ -819,26 +834,26 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
     // 使用宏实现通用方法（format和progress）
     impl_streaming_decoder_state_methods!();
 
-    /// 🚀 并行解码的核心方法 - 三阶段状态机驱动
+    /// 并行解码的核心方法 - 三阶段状态机驱动
     fn next_chunk(&mut self) -> AudioResult<Option<Vec<f32>>> {
-        // 🎯 延迟初始化：首次调用时设置并行解码器
+        // 延迟初始化：首次调用时设置并行解码器
         if self.parallel_decoder.is_none() {
             self.initialize_parallel()?;
         }
 
-        // 🔄 使用循环替代递归，处理状态切换
+        // 使用循环替代递归，处理状态切换
         loop {
-            // ✅ 获取当前状态
+            // 获取当前状态
             let current_state = self
                 .parallel_decoder
                 .as_ref()
                 .expect("parallel_decoder必须已初始化")
                 .get_state();
 
-            // ✅ 状态机驱动
+            // 状态机驱动
             match current_state {
                 DecodingState::Decoding => {
-                    // 🔄 尝试获取已解码样本
+                    // 尝试获取已解码样本
                     match self
                         .parallel_decoder
                         .as_mut()
@@ -854,11 +869,11 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                         _ => {}
                     }
 
-                    // 🔄 没有样本，读取更多包
+                    // 没有样本，读取更多包
                     let batch_size = self.batch_size;
                     self.process_packets_batch(batch_size)?;
 
-                    // 🔄 等待后台线程解码，最多等待100ms
+                    // 等待后台线程解码，最多等待100ms
                     const MAX_WAIT_ATTEMPTS: usize = 100;
                     const WAIT_INTERVAL_MS: u64 = 1;
 
@@ -880,7 +895,7 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                         std::thread::sleep(std::time::Duration::from_millis(WAIT_INTERVAL_MS));
                     }
 
-                    // ✅ 等待超时，检查状态是否已切换到Flushing（process_packets_batch遇到EOF）
+                    // 等待超时，检查状态是否已切换到Flushing（process_packets_batch遇到EOF）
                     let new_state = self
                         .parallel_decoder
                         .as_ref()
@@ -897,8 +912,8 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                 }
 
                 DecodingState::Flushing => {
-                    // ✅ EOF已到，drain所有剩余样本
-                    // 🚀 Phase 3.2优化：首次进入Flushing状态时，调用drain_all_samples()并转换为VecDeque
+                    // EOF已到，drain所有剩余样本
+                    // 首次进入Flushing时拉取全部剩余批次，并转为VecDeque方便逐批弹出
                     if self.drained_samples.is_none() {
                         let remaining = self
                             .parallel_decoder
@@ -908,7 +923,7 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                         self.drained_samples = Some(std::collections::VecDeque::from(remaining));
                     }
 
-                    // 🚀 Phase 3.2优化：逐批move样本（不clone），消除dealloc开销
+                    // 逐批移动样本（不clone），减少多余的内存分配/释放
                     if let Some(ref mut samples_batches) = self.drained_samples {
                         if let Some(samples) = samples_batches.pop_front() {
                             if !samples.is_empty() {
@@ -918,7 +933,7 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                                 return Ok(Some(samples));
                             }
                         } else {
-                            // ✅ 所有批次已消费完，切换到Completed状态
+                            // 所有批次已消费完，切换到Completed状态
                             self.parallel_decoder
                                 .as_mut()
                                 .unwrap()
@@ -932,7 +947,7 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                 }
 
                 DecodingState::Completed => {
-                    // ✅ 真正的EOF
+                    // 真正的EOF
                     return Ok(None);
                 }
             }

@@ -192,7 +192,7 @@ pub trait SampleConversion {
     fn simd_capabilities(&self) -> &super::simd_core::SimdCapabilities;
 }
 
-/// 🚀 高性能样本转换引擎
+/// 高性能样本转换引擎
 ///
 /// 提供音频样本格式到f32的SIMD优化转换，支持：
 /// - 多种输入格式：i8/u8/i16/u16/i24/u24/i32/u32/f64
@@ -249,7 +249,7 @@ impl SampleConverter {
         self.enable_stats = enabled;
     }
 
-    /// 🚀 转换单个S16声道并写入interleaved数组（零拷贝优化）
+    /// 转换单个S16声道并写入interleaved数组（零拷贝优化）
     ///
     /// **优化#9**：直接在SIMD内核中按stride写入interleaved缓冲，
     /// 消除中间Vec分配和二次遍历，预期性能提升20-30%。
@@ -267,7 +267,7 @@ impl SampleConverter {
         channel_index: usize,
         channel_count: usize,
     ) -> AudioResult<()> {
-        // 🚀 零拷贝优化：直接调用stride写入的SIMD实现
+        // 零拷贝优化：直接调用stride写入的SIMD实现
         self.convert_i16_to_f32_interleaved_simd(
             input_channel,
             output_interleaved,
@@ -276,7 +276,7 @@ impl SampleConverter {
         )
     }
 
-    /// 🚀 转换单个S24声道并写入interleaved数组（零拷贝优化）
+    /// 转换单个S24声道并写入interleaved数组（零拷贝优化）
     ///
     /// **优化#9**：直接在SIMD内核中按stride写入interleaved缓冲，
     /// 消除中间Vec分配和二次遍历，预期性能提升20-30%。
@@ -294,7 +294,7 @@ impl SampleConverter {
         channel_index: usize,
         channel_count: usize,
     ) -> AudioResult<()> {
-        // 🚀 零拷贝优化：直接调用stride写入的SIMD实现
+        // 零拷贝优化：直接调用stride写入的SIMD实现
         self.convert_i24_to_f32_interleaved_simd(
             input_channel,
             output_interleaved,
@@ -303,7 +303,7 @@ impl SampleConverter {
         )
     }
 
-    /// 🚀 统一的样本缓冲区转换函数（优化#11）
+    /// 统一的样本缓冲区转换函数（优化#11）
     ///
     /// 将Symphonia的AudioBufferRef转换为交错f32格式，消除audio层的重复代码。
     ///
@@ -343,16 +343,16 @@ impl SampleConverter {
             AudioBufferRef::S8(buf) => crate::extract_buffer_info!(buf),
         };
 
-        // ✅ 统一预分配模式：所有格式都使用 resize
+        // 统一预分配模式：所有格式都使用 resize
         let total_samples = channel_count * frame_count;
         samples.resize(total_samples, 0.0);
 
-        // 🚀 针对不同格式使用SIMD优化
+        // 针对不同格式使用SIMD优化
         match audio_buf {
             AudioBufferRef::F32(buf) => {
                 crate::convert_samples!(buf, |s| s, samples, channel_count)
             }
-            // 🚀 S16 SIMD优化 (统一助手函数)
+            // S16 SIMD优化 (统一助手函数)
             AudioBufferRef::S16(buf) => {
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
@@ -364,7 +364,7 @@ impl SampleConverter {
                     )?;
                 }
             }
-            // 🚀 S24 SIMD优化 (统一助手函数，主要性能提升点)
+            // S24 SIMD优化 (统一助手函数，主要性能提升点)
             AudioBufferRef::S24(buf) => {
                 for ch in 0..channel_count {
                     let channel_data = buf.chan(ch);
@@ -430,7 +430,7 @@ impl SampleConverter {
         Ok(())
     }
 
-    /// 🎯 智能格式转换 - 自动选择最优实现
+    /// 智能格式转换 - 自动选择最优实现
     ///
     /// 根据输入格式和硬件能力，自动选择SIMD优化或标量实现
     pub fn convert_to_f32<T>(
@@ -444,7 +444,7 @@ impl SampleConverter {
     {
         if self.enable_stats {
             debug_conversion!(
-                "🎯 智能转换: 格式={:?}, 样本数={}, SIMD支持={}",
+                "智能转换: 格式={:?}, 样本数={}, SIMD支持={}",
                 format,
                 input.len(),
                 self.has_simd_support()
@@ -520,7 +520,7 @@ impl SampleConverter {
         }
 
         debug_conversion!(
-            "✅ 转换完成: 输入={}, 输出={}, SIMD效率={:.1}%",
+            "转换完成: 输入={}, 输出={}, SIMD效率={:.1}%",
             input.len(),
             output.len(),
             if let Ok(ref stats) = final_result {
@@ -542,7 +542,7 @@ impl Default for SampleConverter {
 
 // ==================== 宏：消除重复代码模式 ====================
 
-/// 🔥 公共工具宏：提取Symphonia缓冲区信息（声道数和帧数）
+/// 公共工具宏：提取Symphonia缓冲区信息（声道数和帧数）
 ///
 /// 用于从AudioBuffer中提取基本元数据，消除audio层的重复代码
 #[macro_export]
@@ -550,7 +550,7 @@ macro_rules! extract_buffer_info {
     ($buf:expr) => {{ ($buf.spec().channels.count(), $buf.frames()) }};
 }
 
-/// 🔥 公共工具宏：标量样本转换（统一 resize + chunks_mut 模式）
+/// 公共工具宏：标量样本转换（统一 resize + chunks_mut 模式）
 ///
 /// 用于标量格式的样本转换，消除audio层的重复代码。
 #[macro_export]
@@ -587,7 +587,7 @@ macro_rules! impl_sample_conversion_method {
             let start_len = output.len();
 
             if self.enable_stats {
-                debug_conversion!("🔄 {}→f32转换: {} 个样本", $format_name, input.len());
+                debug_conversion!("{}→f32转换: {} 个样本", $format_name, input.len());
             }
 
             if self.has_simd_support() && input.len() >= 8 {
@@ -603,7 +603,7 @@ macro_rules! impl_sample_conversion_method {
 
             if self.enable_stats {
                 debug_conversion!(
-                    "✅ {}→f32完成: SIMD={}, 效率={:.1}%",
+                    "{}→f32完成: SIMD={}, 效率={:.1}%",
                     $format_name,
                     stats.used_simd,
                     stats.simd_efficiency()
@@ -646,7 +646,7 @@ macro_rules! impl_simd_dispatch {
             #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
             {
                 eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量{}→f32转换，性能将显著下降",
+                    "[PERFORMANCE_WARNING] 架构{}不支持SIMD，回退到标量{}→f32转换，性能将显著下降",
                     std::env::consts::ARCH,
                     $format_name
                 );
@@ -676,12 +676,12 @@ macro_rules! impl_sse2_wrapper {
             stats: &mut ConversionStats,
         ) -> AudioResult<()> {
             if self.enable_stats {
-                debug_conversion!("🚀 使用SSE2优化{}→f32转换", $format_name);
+                debug_conversion!("使用SSE2优化{}→f32转换", $format_name);
             }
 
             if !self.simd_processor.capabilities().has_basic_simd() {
                 eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] SSE2不可用，回退到标量{}→f32转换，性能将显著下降",
+                    "[PERFORMANCE_WARNING] SSE2不可用，回退到标量{}→f32转换，性能将显著下降",
                     $format_name
                 );
                 self.$scalar_method(input, output, stats);
@@ -715,12 +715,15 @@ macro_rules! impl_neon_wrapper {
             stats: &mut ConversionStats,
         ) -> AudioResult<()> {
             if self.enable_stats {
-                debug_conversion!("🍎 使用NEON优化{}→f32转换", $format_name);
+                debug_conversion!(
+                    "Using NEON optimization for {0}->f32 conversion / 使用NEON优化{0}->f32转换",
+                    $format_name
+                );
             }
 
             if !self.simd_processor.capabilities().has_basic_simd() {
                 eprintln!(
-                    "⚠️ [PERFORMANCE_WARNING] NEON不可用，回退到标量{}→f32转换，性能将显著下降",
+                    "[PERFORMANCE_WARNING] NEON不可用，回退到标量{}→f32转换，性能将显著下降",
                     $format_name
                 );
                 self.$scalar_method(input, output, stats);
@@ -844,7 +847,7 @@ impl SampleConverter {
         output: &mut Vec<f32>,
         stats: &mut ConversionStats,
     ) {
-        debug_conversion!("📊 使用标量i16→f32转换");
+        debug_conversion!("使用标量i16→f32转换");
 
         const SCALE: f32 = 1.0 / 32768.0;
 
@@ -862,7 +865,7 @@ impl SampleConverter {
         output: &mut Vec<f32>,
         stats: &mut ConversionStats,
     ) {
-        debug_conversion!("📊 使用标量i24→f32转换");
+        debug_conversion!("使用标量i24→f32转换");
 
         const SCALE: f64 = 1.0 / 8388608.0; // 2^23 = 8388608
 
@@ -978,12 +981,12 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // 🚀 **性能优化**: 预分配输出容量，避免重复realloc
+        // **性能优化**: 预分配输出容量，避免重复realloc
         output.reserve(len);
 
-        // 🚀 **NEON优化**: 一次处理8个i24样本（双向量并行）
+        // **NEON优化**: 一次处理8个i24样本（双向量并行）
         while i + 8 <= len {
-            // 🔧 **内存优化**: 直接构造NEON向量，避免临时数组
+            // **内存优化**: 直接构造NEON向量，避免临时数组
             // 第一组4个样本
             let i32_vec1 = vsetq_lane_s32(
                 input[i].inner(),
@@ -1014,7 +1017,7 @@ impl SampleConverter {
                 0,
             );
 
-            // 🚀 **并行转换**: 同时处理两个向量
+            // **并行转换**: 同时处理两个向量
             let f32_vec1 = vmulq_f32(vcvtq_f32_s32(i32_vec1), scale_vec);
             let f32_vec2 = vmulq_f32(vcvtq_f32_s32(i32_vec2), scale_vec);
 
@@ -1034,7 +1037,7 @@ impl SampleConverter {
             stats.simd_samples += 8;
         }
 
-        // 🔄 **回退处理**: 处理剩余4个样本（单向量）
+        // **回退处理**: 处理剩余4个样本（单向量）
         if i + 4 <= len {
             let i32_vec = vsetq_lane_s32(
                 input[i].inner(),
@@ -1127,7 +1130,7 @@ impl SampleConverter {
                 // 加载8个i16值 (128位)
                 let i16_data = _mm_loadu_si128(input.as_ptr().add(i) as *const __m128i);
 
-                // 🔧 修复符号扩展：生成符号掩码（负数→0xFFFF，非负→0x0000）
+                // 修复符号扩展：生成符号掩码（负数→0xFFFF，非负→0x0000）
                 let sign_mask = _mm_cmplt_epi16(i16_data, _mm_setzero_si128());
                 // 使用符号掩码进行符号扩展（而非零扩展）
                 let i32_lo = _mm_unpacklo_epi16(i16_data, sign_mask);
@@ -1229,7 +1232,7 @@ impl SampleConverter {
         output: &mut Vec<f32>,
         stats: &mut ConversionStats,
     ) {
-        debug_conversion!("📊 使用标量i32→f32转换");
+        debug_conversion!("使用标量i32→f32转换");
 
         const SCALE: f64 = 1.0 / 2147483648.0; // 2^31 = 2147483648
 
@@ -1400,7 +1403,7 @@ impl SampleConverter {
 
     // ==================== 优化#9：零拷贝 Interleaved 转换 ====================
 
-    /// 🚀 i16→f32 零拷贝interleaved转换（SIMD优化）
+    /// i16→f32 零拷贝interleaved转换（SIMD优化）
     ///
     /// 直接在SIMD内核中按stride写入interleaved缓冲，消除中间Vec分配。
     ///
@@ -1469,7 +1472,7 @@ impl SampleConverter {
         Ok(())
     }
 
-    /// 🚀 i24→f32 零拷贝interleaved转换（SIMD优化）
+    /// i24→f32 零拷贝interleaved转换（SIMD优化）
     ///
     /// 直接在SIMD内核中按stride写入interleaved缓冲，消除中间Vec分配。
     ///
@@ -1486,7 +1489,7 @@ impl SampleConverter {
         channel_count: usize,
         channel_offset: usize,
     ) -> AudioResult<()> {
-        // 🔧 修复阈值：i24 SIMD每次处理4个样本，门槛应为>=4（不是8）
+        // 修复阈值：i24 SIMD每次处理4个样本，门槛应为>=4（不是8）
         if self.has_simd_support() && input.len() >= 4 {
             // 使用SIMD优化路径
             #[cfg(target_arch = "x86_64")]
@@ -1589,7 +1592,7 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        // 优化#11：尺寸断言，帮助编译器消除后续边界检查
         debug_assert_eq!(output.len(), input.len() * channel_count);
 
         // SAFETY: SSE2向量化i16→f32 interleaved转换（优化版）。
@@ -1606,7 +1609,7 @@ impl SampleConverter {
                 // 加载8个i16值
                 let i16_data = _mm_loadu_si128(input.as_ptr().add(i) as *const __m128i);
 
-                // 🔧 修复符号扩展：使用符号掩码而非零扩展
+                // 修复符号扩展：使用符号掩码而非零扩展
                 let sign_mask = _mm_cmplt_epi16(i16_data, _mm_setzero_si128());
                 let i32_lo = _mm_unpacklo_epi16(i16_data, sign_mask);
                 let i32_hi = _mm_unpackhi_epi16(i16_data, sign_mask);
@@ -1619,7 +1622,7 @@ impl SampleConverter {
                 _mm_storeu_ps(temp_lo.as_mut_ptr(), f32_lo);
                 _mm_storeu_ps(temp_hi.as_mut_ptr(), f32_hi);
 
-                // 🚀 优化#12：指针递增消除循环内乘法
+                // 优化#12：指针递增消除循环内乘法
                 // SAFETY:
                 // - base_ptr 已偏移到正确声道位置
                 // - 指针递增替代乘法，进一步降低指令开销
@@ -1667,7 +1670,7 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        // 优化#11：尺寸断言，帮助编译器消除后续边界检查
         debug_assert_eq!(output.len(), input.len() * channel_count);
 
         // SAFETY: ARM NEON向量化i16→f32 interleaved转换（优化版）。
@@ -1695,7 +1698,7 @@ impl SampleConverter {
                 vst1q_f32(temp_lo.as_mut_ptr(), f32_lo);
                 vst1q_f32(temp_hi.as_mut_ptr(), f32_hi);
 
-                // 🚀 优化#12：指针递增消除循环内乘法
+                // 优化#12：指针递增消除循环内乘法
                 // SAFETY:
                 // - base_ptr 已偏移到正确声道位置
                 // - 指针递增替代乘法，进一步降低指令开销
@@ -1742,7 +1745,7 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        // 优化#11：尺寸断言，帮助编译器消除后续边界检查
         debug_assert_eq!(output.len(), input.len() * channel_count);
 
         // SAFETY: SSE2向量化i24→f32 interleaved转换（优化版）。
@@ -1770,7 +1773,7 @@ impl SampleConverter {
                 let mut temp = [0.0f32; 4];
                 _mm_storeu_ps(temp.as_mut_ptr(), f32_vec);
 
-                // 🚀 优化#12：指针递增消除循环内乘法
+                // 优化#12：指针递增消除循环内乘法
                 // SAFETY:
                 // - base_ptr 已偏移到正确声道位置
                 // - 指针递增替代乘法，进一步降低指令开销
@@ -1813,7 +1816,7 @@ impl SampleConverter {
         let len = input.len();
         let mut i = 0;
 
-        // 🔒 优化#11：尺寸断言，帮助编译器消除后续边界检查
+        // 优化#11：尺寸断言，帮助编译器消除后续边界检查
         debug_assert_eq!(output.len(), input.len() * channel_count);
 
         // SAFETY: ARM NEON向量化i24→f32 interleaved转换（优化版）。
@@ -1848,7 +1851,7 @@ impl SampleConverter {
                 let mut temp = [0.0f32; 4];
                 vst1q_f32(temp.as_mut_ptr(), f32_vec);
 
-                // 🚀 优化#12：指针递增消除循环内乘法
+                // 优化#12：指针递增消除循环内乘法
                 // SAFETY:
                 // - base_ptr 已偏移到正确声道位置
                 // - 指针递增替代乘法，进一步降低指令开销

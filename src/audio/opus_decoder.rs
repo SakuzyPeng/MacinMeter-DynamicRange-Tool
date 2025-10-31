@@ -12,7 +12,7 @@ use songbird::input::Input;
 use std::path::Path;
 use symphonia_core::{codecs::CODEC_TYPE_OPUS, errors::Error as SymphError};
 
-/// 🎵 Songbird Opus解码器
+/// Songbird Opus解码器
 ///
 /// 通过songbird库提供Opus格式的真实解码功能
 /// 完美适配现有StreamingDecoder接口
@@ -40,12 +40,12 @@ pub struct SongbirdOpusDecoder {
     /// 解码完成标志
     is_finished: bool,
 
-    /// 🚀 样本转换器（启用SIMD优化）
+    /// 样本转换器（启用SIMD优化）
     sample_converter: SampleConverter,
 }
 
 impl SongbirdOpusDecoder {
-    /// 🚀 打开并解析Opus输入源（公共辅助函数，消除重复）
+    /// 打开并解析Opus输入源（公共辅助函数，消除重复）
     ///
     /// 统一的 songbird Input 创建和解析逻辑，避免重复创建 tokio runtime。
     #[allow(clippy::unnecessary_to_owned)]
@@ -71,7 +71,7 @@ impl SongbirdOpusDecoder {
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         let path = path.as_ref().to_path_buf();
 
-        // 🚀 深度优化：一次性完成解析和探测（避免重复 Runtime + 解析）
+        // 深度优化：一次性完成解析和探测（避免重复 Runtime + 解析）
         // 1. 打开并解析输入（唯一一次 Tokio Runtime 创建）
         let parsed_input = Self::open_playable_input(&path)?;
 
@@ -94,13 +94,13 @@ impl SongbirdOpusDecoder {
 
     /// 探测Opus文件格式信息
     ///
-    /// 🎯 从已解析的 Input 中提取格式元数据（避免重复解析）
+    /// 从已解析的 Input 中提取格式元数据（避免重复解析）
     ///
     /// # 参数
     /// - `parsed_input`: 已解析的 songbird Input
     /// - `path`: 文件路径（仅用于估算样本数时的回退）
     fn probe_opus_format(parsed_input: &Input, path: &Path) -> AudioResult<AudioFormat> {
-        // 🚀 直接从已解析的 Input 中提取格式（零开销）
+        // 直接从已解析的 Input 中提取格式（零开销）
         if let Some(parsed) = parsed_input.parsed() {
             let track = parsed
                 .format
@@ -120,20 +120,20 @@ impl SongbirdOpusDecoder {
             let sample_rate = codec_params.sample_rate.unwrap_or(48000); // Opus默认48kHz
             let channels = codec_params.channels.map(|ch| ch.count()).unwrap_or(2) as u16; // 默认立体声
 
-            // 📝 位深语义说明：
+            // 位深语义说明：
             // - bits_per_sample = 16 表示 Opus 源格式的典型位深（元数据用途）
             // - 实际解码输出为 f32 格式（通过 SampleConverter 转换）
             // - 此字段用于格式信息展示，不影响实际样本处理
             let bits_per_sample = 16;
 
-            // 🎯 智能样本数计算：优先使用精确元数据
+            // 智能样本数计算：优先使用精确元数据
             let total_samples = if let Some(n_frames) = codec_params.n_frames {
                 Self::calculate_samples_from_frames(n_frames)
             } else {
                 Self::estimate_samples_from_file_size(path, sample_rate)?
             };
 
-            // 🎯 使用真实的Opus编解码器类型
+            // 使用真实的Opus编解码器类型
             let format = AudioFormat::with_codec(
                 sample_rate,
                 channels,
@@ -153,22 +153,22 @@ impl SongbirdOpusDecoder {
 
     /// 计算每声道样本数
     ///
-    /// 🎯 经调试验证：songbird/symphonia对Opus也返回每声道帧数，与其他格式一致
+    /// 经调试验证：songbird/symphonia对Opus也返回每声道帧数，与其他格式一致
     fn calculate_samples_from_frames(n_frames: u64) -> u64 {
-        // 🎯 修正错误假设：Opus的n_frames已经是每声道帧数，无需特殊处理
+        // 修正错误假设：Opus的n_frames已经是每声道帧数，无需特殊处理
         // 之前的除法操作是错误的
         n_frames
     }
 
     /// 智能文件大小估算样本数
     ///
-    /// 🎯 动态分析文件特征，避免硬编码比特率
+    /// 动态分析文件特征，避免硬编码比特率
     fn estimate_samples_from_file_size(path: &Path, sample_rate: u32) -> AudioResult<u64> {
         let file_size = std::fs::metadata(path)
             .map_err(crate::error::AudioError::IoError)?
             .len();
 
-        // 🎯 智能比特率估算：基于文件大小范围
+        // 智能比特率估算：基于文件大小范围
         let estimated_bitrate = if file_size < 1_000_000 {
             // 小文件：可能是低码率或短时长
             128_000
@@ -198,7 +198,7 @@ impl SongbirdOpusDecoder {
             return Ok(());
         }
 
-        // 🚀 使用公共函数创建并解析输入
+        // 使用公共函数创建并解析输入
         let parsed_input = Self::open_playable_input(&self.file_path)?;
 
         // 验证输入已正确解析
@@ -240,11 +240,11 @@ impl SongbirdOpusDecoder {
 
         let target_samples = 4096; // 目标样本数 (per channel)
 
-        // 🚀 性能优化：预分配容量避免realloc
+        // 性能优化：预分配容量避免realloc
         let capacity = target_samples * self.format.channels as usize;
         let mut output_samples = Vec::with_capacity(capacity);
 
-        // 🚀 零成本优化：复用临时向量，避免每次解码包都分配
+        // 零成本优化：复用临时向量，避免每次解码包都分配
         let mut temp_samples = Vec::with_capacity(2048); // 典型包大小缓冲
 
         // 解码循环：读取包并解码直到获得足够样本
@@ -270,7 +270,7 @@ impl SongbirdOpusDecoder {
             // 解码包
             match parsed.decoder.decode(&packet) {
                 Ok(audio_buf) => {
-                    // 🚀 使用统一转换器（启用SIMD优化，复用processing层）
+                    // 使用统一转换器（启用SIMD优化，复用processing层）
                     temp_samples.clear(); // 复用缓冲，避免重复分配
                     self.sample_converter
                         .convert_buffer_to_interleaved(&audio_buf, &mut temp_samples)?;
@@ -293,7 +293,7 @@ impl SongbirdOpusDecoder {
         let frames_decoded = output_samples.len() as u64 / (self.format.channels as u64);
         self.current_position += frames_decoded;
 
-        // 📊 记录chunk统计（维度：interleaved样本总数）
+        // 记录chunk统计（维度：interleaved样本总数）
         // - add_chunk 接收交错格式的样本总数（frames × channels）
         // - 用于分析解码块大小分布和性能特征
         // - 如需帧数统计，应传入 frames_decoded
@@ -320,7 +320,7 @@ impl StreamingDecoder for SongbirdOpusDecoder {
             match self.read_next_chunk()? {
                 Some(new_data) => {
                     self.sample_buffer = new_data;
-                    // 🔄 迭代模式：继续循环从新数据中返回第一个chunk
+                    // 迭代模式：继续循环从新数据中返回第一个chunk
                 }
                 None => return Ok(None),
             }
@@ -328,7 +328,7 @@ impl StreamingDecoder for SongbirdOpusDecoder {
     }
 
     fn format(&self) -> AudioFormat {
-        // 🎯 动态构造包含实时样本数的格式信息
+        // 动态构造包含实时样本数的格式信息
         let mut current_format = self.format.clone();
         current_format.update_sample_count(self.current_position);
         current_format

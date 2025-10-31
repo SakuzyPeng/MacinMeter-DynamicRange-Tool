@@ -83,25 +83,37 @@ impl AudioFormat {
     /// 验证格式参数的有效性
     pub fn validate(&self) -> AudioResult<()> {
         if self.sample_rate == 0 {
-            return Err(error::format_error("采样率不能为0", ""));
+            return Err(error::format_error(
+                "Invalid sample rate / 采样率无效",
+                "Sample rate must be greater than zero / 采样率必须大于0",
+            ));
         }
         if self.channels == 0 {
-            return Err(error::format_error("声道数不能为0", ""));
+            return Err(error::format_error(
+                "Invalid channel count / 声道数无效",
+                "Channel count must be greater than zero / 声道数必须大于0",
+            ));
         }
         // 放宽位深校验：支持常见的PCM位深和浮点格式
         // 8位: 8位PCM, 16位: 16位PCM, 24位: 24位PCM
         // 32位: 32位整数或32位浮点, 64位: 64位浮点
         if ![8, 16, 24, 32, 64].contains(&self.bits_per_sample) {
             return Err(error::format_error(
-                "不支持的位深度",
-                format!("{}位（仅支持 8/16/24/32/64）", self.bits_per_sample),
+                "Unsupported bit depth / 不支持的位深度",
+                format!(
+                    "{} bits (supported: 8/16/24/32/64) / {}位（仅支持8/16/24/32/64）",
+                    self.bits_per_sample, self.bits_per_sample
+                ),
             ));
         }
         // 声道数限制检查（架构约束：仅支持1-2声道）
         if self.channels > MAX_CHANNELS {
             return Err(error::format_error(
-                "不支持的声道数",
-                format!("{}声道（仅支持单声道或立体声，即1-2声道）", self.channels),
+                "Unsupported channel count / 不支持的声道数",
+                format!(
+                    "{} channels (only mono or stereo supported) / {}声道（仅支持单声道或立体声）",
+                    self.channels, self.channels
+                ),
             ));
         }
         Ok(())

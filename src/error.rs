@@ -43,13 +43,19 @@ pub enum AudioError {
 impl fmt::Display for AudioError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AudioError::InvalidInput(msg) => write!(f, "输入验证失败: {msg}"),
-            AudioError::IoError(err) => write!(f, "文件I/O错误: {err}"),
-            AudioError::FormatError(msg) => write!(f, "音频格式错误: {msg}"),
-            AudioError::DecodingError(msg) => write!(f, "音频解码失败: {msg}"),
-            AudioError::CalculationError(msg) => write!(f, "计算异常: {msg}"),
-            AudioError::OutOfMemory => write!(f, "内存不足"),
-            AudioError::ResourceError(msg) => write!(f, "资源访问错误: {msg}"),
+            AudioError::InvalidInput(msg) => {
+                write!(f, "输入验证失败 / Input validation failed: {msg}")
+            }
+            AudioError::IoError(err) => write!(f, "文件I/O错误 / File I/O error: {err}"),
+            AudioError::FormatError(msg) => write!(f, "音频格式错误 / Audio format error: {msg}"),
+            AudioError::DecodingError(msg) => {
+                write!(f, "音频解码失败 / Audio decoding failed: {msg}")
+            }
+            AudioError::CalculationError(msg) => write!(f, "计算异常 / Calculation error: {msg}"),
+            AudioError::OutOfMemory => write!(f, "内存不足 / Out of memory"),
+            AudioError::ResourceError(msg) => {
+                write!(f, "资源访问错误 / Resource access error: {msg}")
+            }
         }
     }
 }
@@ -71,7 +77,7 @@ impl From<io::Error> for AudioError {
 
 impl From<hound::Error> for AudioError {
     fn from(err: hound::Error) -> Self {
-        AudioError::DecodingError(format!("WAV解码错误: {err}"))
+        AudioError::DecodingError(format!("WAV解码错误 / WAV decoding error: {err}"))
     }
 }
 
@@ -132,11 +138,11 @@ impl ErrorCategory {
     /// 获取错误类别的显示名称
     pub fn display_name(&self) -> &'static str {
         match self {
-            Self::Format => "格式错误",
-            Self::Decoding => "解码错误",
+            Self::Format => "FORMAT/格式错误",
+            Self::Decoding => "DECODING/解码错误",
             Self::Io => "I/O错误",
-            Self::Calculation => "计算错误",
-            Self::Other => "其他错误",
+            Self::Calculation => "CALCULATION/计算错误",
+            Self::Other => "OTHER/其他错误",
         }
     }
 }
@@ -153,34 +159,37 @@ mod tests {
         let errors = vec![
             (
                 AudioError::InvalidInput("无效参数".to_string()),
-                "输入验证失败: 无效参数",
+                "输入验证失败 / Input validation failed: 无效参数",
             ),
             (
                 AudioError::IoError(IoError::new(ErrorKind::NotFound, "文件未找到")),
-                "文件I/O错误: 文件未找到",
+                "文件I/O错误 / File I/O error: 文件未找到",
             ),
             (
                 AudioError::FormatError("不支持的格式".to_string()),
-                "音频格式错误: 不支持的格式",
+                "音频格式错误 / Audio format error: 不支持的格式",
             ),
             (
                 AudioError::DecodingError("解码失败".to_string()),
-                "音频解码失败: 解码失败",
+                "音频解码失败 / Audio decoding failed: 解码失败",
             ),
             (
                 AudioError::CalculationError("除零错误".to_string()),
-                "计算异常: 除零错误",
+                "计算异常 / Calculation error: 除零错误",
             ),
-            (AudioError::OutOfMemory, "内存不足"),
+            (AudioError::OutOfMemory, "内存不足 / Out of memory"),
             (
                 AudioError::ResourceError("资源不可用".to_string()),
-                "资源访问错误: 资源不可用",
+                "资源访问错误 / Resource access error: 资源不可用",
             ),
         ];
 
         for (error, expected_msg) in errors {
             let msg = format!("{error}");
-            assert_eq!(msg, expected_msg, "错误消息格式不匹配");
+            assert_eq!(
+                msg, expected_msg,
+                "错误消息格式不匹配 / Error message format mismatch"
+            );
         }
     }
 
@@ -189,7 +198,10 @@ mod tests {
         // IoError应该有source
         let io_err = IoError::new(ErrorKind::PermissionDenied, "权限不足");
         let audio_err = AudioError::IoError(io_err);
-        assert!(audio_err.source().is_some(), "IoError应该有source");
+        assert!(
+            audio_err.source().is_some(),
+            "IoError应该有source / IoError should have source"
+        );
 
         // 其他错误类型没有source
         let errors_without_source = vec![
@@ -202,7 +214,10 @@ mod tests {
         ];
 
         for err in errors_without_source {
-            assert!(err.source().is_none(), "错误 {err:?} 不应该有source");
+            assert!(
+                err.source().is_none(),
+                "错误 {err:?} 不应该有source / Error {err:?} should not have source"
+            );
         }
     }
 
@@ -215,7 +230,7 @@ mod tests {
             AudioError::IoError(_) => {
                 assert!(format!("{audio_err}").contains("文件I/O错误"));
             }
-            _ => panic!("From<IoError>转换失败"),
+            _ => panic!("From<IoError>转换失败 / From<IoError> conversion failed"),
         }
     }
 
@@ -230,7 +245,7 @@ mod tests {
                 assert!(msg.contains("WAV解码错误"));
                 assert!(msg.contains("测试WAV错误"));
             }
-            _ => panic!("From<hound::Error>转换失败"),
+            _ => panic!("From<hound::Error>转换失败 / From<hound::Error> conversion failed"),
         }
     }
 
@@ -243,7 +258,7 @@ mod tests {
                 assert!(msg.contains("解析头部"));
                 assert!(msg.contains("无效magic number"));
             }
-            _ => panic!("format_error返回了错误的类型"),
+            _ => panic!("format_error返回了错误的类型 / format_error returned wrong type"),
         }
     }
 
@@ -256,7 +271,7 @@ mod tests {
                 assert!(msg.contains("FLAC解码"));
                 assert!(msg.contains("帧头损坏"));
             }
-            _ => panic!("decoding_error返回了错误的类型"),
+            _ => panic!("decoding_error返回了错误的类型 / decoding_error returned wrong type"),
         }
     }
 
@@ -269,7 +284,9 @@ mod tests {
                 assert!(msg.contains("RMS计算"));
                 assert!(msg.contains("样本数为0"));
             }
-            _ => panic!("calculation_error返回了错误的类型"),
+            _ => {
+                panic!("calculation_error返回了错误的类型 / calculation_error returned wrong type")
+            }
         }
     }
 
@@ -305,18 +322,21 @@ mod tests {
 
         for (error, expected_category) in test_cases {
             let category = ErrorCategory::from_audio_error(&error);
-            assert_eq!(category, expected_category, "错误 {error:?} 的分类不正确");
+            assert_eq!(
+                category, expected_category,
+                "错误 {error:?} 的分类不正确 / Error {error:?} categorization is incorrect"
+            );
         }
     }
 
     #[test]
     fn test_error_category_display_name() {
         let categories = vec![
-            (ErrorCategory::Format, "格式错误"),
-            (ErrorCategory::Decoding, "解码错误"),
+            (ErrorCategory::Format, "FORMAT/格式错误"),
+            (ErrorCategory::Decoding, "DECODING/解码错误"),
             (ErrorCategory::Io, "I/O错误"),
-            (ErrorCategory::Calculation, "计算错误"),
-            (ErrorCategory::Other, "其他错误"),
+            (ErrorCategory::Calculation, "CALCULATION/计算错误"),
+            (ErrorCategory::Other, "OTHER/其他错误"),
         ];
 
         for (category, expected_name) in categories {
@@ -357,7 +377,7 @@ mod tests {
             Err(AudioError::InvalidInput(msg)) => {
                 assert_eq!(msg, "测试错误");
             }
-            _ => panic!("AudioResult错误类型不匹配"),
+            _ => panic!("AudioResult错误类型不匹配 / AudioResult error type mismatch"),
         }
     }
 
@@ -372,7 +392,7 @@ mod tests {
             let io_source = source.downcast_ref::<IoError>().unwrap();
             assert_eq!(io_source.kind(), ErrorKind::PermissionDenied);
         } else {
-            panic!("应该有source");
+            panic!("应该有source / Should have source");
         }
     }
 

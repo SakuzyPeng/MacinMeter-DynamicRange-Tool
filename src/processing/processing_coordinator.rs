@@ -56,7 +56,7 @@ impl ProcessingCoordinator {
         }
     }
 
-    /// 🚀 高性能音频样本处理服务（协调器模式）
+    /// 高性能音频样本处理服务（协调器模式）
     ///
     /// 纯粹的服务协调器，专注于编排各种高性能服务，保持算法中立性。
     /// 通过回调方式让调用者保持算法控制权，专注于性能优化服务编排。
@@ -83,14 +83,18 @@ impl ProcessingCoordinator {
     {
         let start_time = std::time::Instant::now();
 
-        // 🎛️ 基础参数验证
+        // 基础参数验证
         if samples.is_empty() {
-            return Err(AudioError::InvalidInput("样本数据不能为空".to_string()));
+            return Err(AudioError::InvalidInput(
+                "Sample data cannot be empty / 样本数据不能为空".to_string(),
+            ));
         }
 
         if !samples.len().is_multiple_of(channel_count) {
             return Err(AudioError::InvalidInput(format!(
-                "样本数量({})必须是声道数({})的倍数",
+                "Sample count ({}) must be a multiple of channel count ({}) / 样本数量({})必须是声道数({})的倍数",
+                samples.len(),
+                channel_count,
                 samples.len(),
                 channel_count
             )));
@@ -99,24 +103,27 @@ impl ProcessingCoordinator {
         let samples_per_channel = samples.len() / channel_count;
 
         debug_coordinator!(
-            "🎛️ Processing协调器启动: channels={}, samples_per_channel={}, total_samples={}, 委托模式=始终启用",
+            "Processing coordinator start: channels={}, samples_per_channel={}, total_samples={}, delegation=always on / Processing协调器启动: channels={}, samples_per_channel={}, total_samples={}, 委托模式=始终启用",
+            channel_count,
+            samples_per_channel,
+            samples.len(),
             channel_count,
             samples_per_channel,
             samples.len()
         );
 
-        // 🎛️ 智能并行协调（多声道并行，单声道顺序）
+        // 智能并行协调（多声道并行，单声道顺序）
         let dr_results = if channel_count > 1 {
-            // 🚀 并行协调：委托多个声道分离服务
+            // 并行协调：委托多个声道分离服务
             self.coordinate_parallel_processing(samples, channel_count, channel_processor)?
         } else {
-            // 📝 顺序协调：单声道无需并行开销
+            // 顺序协调：单声道无需并行开销
             self.coordinate_sequential_processing(samples, channel_count, channel_processor)?
         };
 
         let duration = start_time.elapsed();
 
-        // 🎛️ 委托性能评估服务
+        // 委托性能评估服务
         let performance_stats = self.performance_evaluator.calculate_performance_stats(
             duration.as_micros() as u64,
             samples.len(),
@@ -124,7 +131,7 @@ impl ProcessingCoordinator {
             samples_per_channel,
         );
 
-        // 🎛️ 委托SIMD使用统计服务
+        // 委托SIMD使用统计服务
         //
         // 注意：当前假设所有样本都走SIMD路径（Processing层默认行为）。
         // 实际的SIMD覆盖情况在ChannelSeparator和SampleConverter层有更准确的统计。
@@ -137,7 +144,9 @@ impl ProcessingCoordinator {
         );
 
         debug_coordinator!(
-            "🎛️ 协调完成: SIMD=始终启用, speedup={:.1}x, samples/sec={:.0}",
+            "Coordination finished: SIMD always on, speedup={:.1}x, samples/sec={:.0} / 协调完成: SIMD=始终启用, speedup={:.1}x, samples/sec={:.0}",
+            performance_stats.simd_speedup,
+            performance_stats.samples_per_second,
             performance_stats.simd_speedup,
             performance_stats.samples_per_second
         );
@@ -149,7 +158,7 @@ impl ProcessingCoordinator {
         })
     }
 
-    /// 🚀 并行处理协调（多声道）
+    /// 并行处理协调（多声道）
     fn coordinate_parallel_processing<F>(
         &self,
         samples: &[f32],
@@ -159,12 +168,16 @@ impl ProcessingCoordinator {
     where
         F: Fn(&[f32], usize) -> AudioResult<DrResult> + Sync + Send,
     {
-        debug_coordinator!("🚀 启动并行协调模式: {} 声道", channel_count);
+        debug_coordinator!(
+            "Entering parallel coordination: {} channels / 启动并行协调模式: {} 声道",
+            channel_count,
+            channel_count
+        );
 
         let results: Result<Vec<_>, _> = (0..channel_count)
             .into_par_iter()
             .map(|channel_idx| {
-                // 🎛️ 委托声道分离服务
+                // 委托声道分离服务
                 let channel_samples = self.channel_separator.extract_channel_samples_optimized(
                     samples,
                     channel_idx,
@@ -172,12 +185,14 @@ impl ProcessingCoordinator {
                 );
 
                 debug_coordinator!(
-                    "🎛️ 并行协调声道{}: 委托分离{}个样本",
+                    "Parallel coordination channel {}: delegating {} samples / 并行协调声道{}: 委托分离{}个样本",
+                    channel_idx,
+                    channel_samples.len(),
                     channel_idx,
                     channel_samples.len()
                 );
 
-                // 🎛️ 委托算法层进行DR计算（保持算法中立）
+                // 委托算法层进行DR计算（保持算法中立）
                 let result = channel_processor(&channel_samples, channel_idx);
 
                 // 仅在调试构建下访问结果用于日志，避免 release 下未使用变量的 Clippy 警告
@@ -185,7 +200,9 @@ impl ProcessingCoordinator {
                 {
                     if let Ok(ref dr_result) = result {
                         debug_coordinator!(
-                            "🎛️ 声道{} DR计算完成: DR={:.2}",
+                            "Channel {} DR computed: DR={:.2} / 声道{} DR计算完成: DR={:.2}",
+                            channel_idx,
+                            dr_result.dr_value,
                             channel_idx,
                             dr_result.dr_value
                         );
@@ -199,7 +216,7 @@ impl ProcessingCoordinator {
         results
     }
 
-    /// 📝 顺序处理协调（单声道）
+    /// 顺序处理协调（单声道）
     fn coordinate_sequential_processing<F>(
         &self,
         samples: &[f32],
@@ -209,12 +226,16 @@ impl ProcessingCoordinator {
     where
         F: Fn(&[f32], usize) -> AudioResult<DrResult>,
     {
-        debug_coordinator!("📝 启动顺序协调模式: {} 声道", channel_count);
+        debug_coordinator!(
+            "Entering sequential coordination: {} channels / 启动顺序协调模式: {} 声道",
+            channel_count,
+            channel_count
+        );
 
         let mut dr_results = Vec::with_capacity(channel_count);
 
         for channel_idx in 0..channel_count {
-            // 🎛️ 委托声道分离服务
+            // 委托声道分离服务
             let channel_samples = self.channel_separator.extract_channel_samples_optimized(
                 samples,
                 channel_idx,
@@ -222,12 +243,14 @@ impl ProcessingCoordinator {
             );
 
             debug_coordinator!(
-                "🎛️ 顺序协调声道{}: 委托分离{}个样本",
+                "Sequential coordination channel {}: delegating {} samples / 顺序协调声道{}: 委托分离{}个样本",
+                channel_idx,
+                channel_samples.len(),
                 channel_idx,
                 channel_samples.len()
             );
 
-            // 🎛️ 委托算法层进行DR计算
+            // 委托算法层进行DR计算
             let result = channel_processor(&channel_samples, channel_idx)?;
             dr_results.push(result);
         }
@@ -269,7 +292,10 @@ mod tests {
         let coordinator = ProcessingCoordinator::new();
 
         // 验证委托服务正常初始化
-        println!("协调器SIMD能力: {:?}", coordinator.simd_capabilities());
+        println!(
+            "Processing coordinator SIMD capabilities: {caps:?} / 协调器SIMD能力: {caps:?}",
+            caps = coordinator.simd_capabilities()
+        );
     }
 
     #[test]
@@ -319,13 +345,14 @@ mod tests {
             assert!(dr_result.peak >= dr_result.rms);
         }
 
-        println!("✅ 协调器处理测试通过");
+        println!("Processing coordination test passed / 协调器处理测试通过");
         println!(
-            "   处理时间: {}μs",
-            result.performance_stats.total_duration_us
+            "   Processing time: {time} μs / 处理时间: {time} μs",
+            time = result.performance_stats.total_duration_us
         );
         println!(
-            "   样本处理速度: {:.0} samples/s",
+            "   Throughput: {:.0} samples/s / 样本处理速度: {:.0} samples/s",
+            result.performance_stats.samples_per_second,
             result.performance_stats.samples_per_second
         );
     }
@@ -389,16 +416,16 @@ mod tests {
             assert!(peak_diff < 1e-6, "Peak差异过大: {peak_diff}");
         }
 
-        println!("✅ 协调器一致性验证通过");
+        println!("Coordinator consistency check passed / 协调器一致性验证通过");
     }
 
-    // ==================== Phase 1: 参数验证和错误处理 ====================
+    // ==================== 阶段1：参数验证与错误处理 ====================
 
     #[test]
     fn test_empty_samples_error() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 测试空样本应该返回错误
+        // 测试空样本应该返回错误
         let result = coordinator.process_channels(&[], 1, |_samples, _idx| {
             use crate::core::DrResult;
             Ok(DrResult {
@@ -424,7 +451,7 @@ mod tests {
     fn test_sample_channel_mismatch_error() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 测试样本数不是声道数倍数的错误
+        // 测试样本数不是声道数倍数的错误
         let samples = vec![0.5, 0.3, 0.7]; // 3个样本，无法整除2声道
         let result = coordinator.process_channels(&samples, 2, |_samples, _idx| {
             use crate::core::DrResult;
@@ -454,26 +481,28 @@ mod tests {
 
         let samples = vec![0.5, 0.3, 0.7, 0.4]; // 2声道，2个样本每声道
 
-        // 🎯 测试回调函数错误应该被传播
+        // 测试回调函数错误应该被传播
         let result = coordinator.process_channels(&samples, 2, |_samples, _idx| {
-            Err(AudioError::CalculationError("模拟DR计算失败".to_string()))
+            Err(AudioError::CalculationError(
+                "Simulated DR calculation failed / 模拟DR计算失败".to_string(),
+            ))
         });
 
         assert!(result.is_err());
         if let Err(AudioError::CalculationError(msg)) = result {
-            assert_eq!(msg, "模拟DR计算失败");
+            assert_eq!(msg, "Simulated DR calculation failed / 模拟DR计算失败");
         } else {
             panic!("Expected CalculationError");
         }
     }
 
-    // ==================== Phase 2: 单声道路径测试 ====================
+    // ==================== 阶段2：单声道处理路径测试 ====================
 
     #[test]
     fn test_mono_sequential_processing() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 单声道样本数据
+        // 单声道样本数据
         let samples = vec![0.1, 0.2, 0.3, 0.5, 1.0, 0.8]; // 6个单声道样本
 
         let result = coordinator
@@ -495,7 +524,7 @@ mod tests {
             })
             .unwrap();
 
-        // ✅ 验证单声道结果
+        // 验证单声道结果
         assert_eq!(result.dr_results.len(), 1);
         assert_eq!(result.performance_stats.channels_processed, 1);
         assert_eq!(result.performance_stats.total_samples, 6);
@@ -505,13 +534,13 @@ mod tests {
     fn test_mono_channel_extraction() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 单声道数据，验证声道分离逻辑
+        // 单声道数据，验证声道分离逻辑
         let samples = vec![0.5, 0.6, 0.7, 0.8];
 
         coordinator
             .process_channels(&samples, 1, |channel_samples, _idx| {
                 use crate::core::DrResult;
-                // ✅ 单声道应该提取所有样本
+                // 单声道应该提取所有样本
                 assert_eq!(channel_samples, &samples[..]);
 
                 Ok(DrResult {
@@ -531,7 +560,7 @@ mod tests {
     fn test_mono_vs_stereo_performance_stats() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 单声道样本
+        // 单声道样本
         let mono_samples = vec![0.5; 100];
         let mono_result = coordinator
             .process_channels(&mono_samples, 1, |samples, idx| {
@@ -548,7 +577,7 @@ mod tests {
             })
             .unwrap();
 
-        // 🎯 立体声样本（相同总样本数）
+        // 立体声样本（相同总样本数）
         let stereo_samples = vec![0.5; 100];
         let stereo_result = coordinator
             .process_channels(&stereo_samples, 2, |samples, idx| {
@@ -565,7 +594,7 @@ mod tests {
             })
             .unwrap();
 
-        // ✅ 验证统计信息差异
+        // 验证统计信息差异
         assert_eq!(mono_result.performance_stats.channels_processed, 1);
         assert_eq!(stereo_result.performance_stats.channels_processed, 2);
         assert_eq!(mono_result.performance_stats.total_samples, 100);
@@ -576,28 +605,28 @@ mod tests {
         assert_eq!(stereo_result.dr_results[0].sample_count, 50);
     }
 
-    // ==================== Phase 3: 辅助方法和报告测试 ====================
+    // ==================== 阶段3：辅助方法与报告生成测试 ====================
 
     #[test]
     fn test_simd_capabilities_access() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 访问委托的SIMD能力
+        // 访问委托的SIMD能力
         let capabilities = coordinator.simd_capabilities();
 
-        // ✅ 验证SIMD能力信息存在
+        // 验证SIMD能力信息存在
         assert!(std::mem::size_of_val(capabilities) > 0);
-        println!("SIMD能力: {capabilities:?}");
+        println!("SIMD capabilities: {capabilities:?} / SIMD能力: {capabilities:?}");
     }
 
     #[test]
     fn test_performance_evaluator_access() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 访问委托的性能评估器
+        // 访问委托的性能评估器
         let evaluator = coordinator.performance_evaluator();
 
-        // ✅ 验证评估器存在
+        // 验证评估器存在
         assert!(std::mem::size_of_val(evaluator) > 0);
     }
 
@@ -621,23 +650,23 @@ mod tests {
             })
             .unwrap();
 
-        // 🎯 生成性能报告
+        // 生成性能报告
         let report = coordinator.generate_performance_report(&result);
 
-        // ✅ 验证报告包含关键信息
+        // 验证报告包含关键信息
         assert!(!report.is_empty());
         assert!(report.contains("SIMD") || report.contains("性能") || report.contains("samples"));
-        println!("性能报告:\n{report}");
+        println!("Performance report:\n{report}\n性能报告:\n{report}");
     }
 
-    // ==================== Phase 4: 高级功能测试 ====================
+    // ==================== 阶段4：高级功能测试 ====================
 
     #[test]
     fn test_default_trait() {
-        // 🎯 测试Default trait实现
+        // 测试Default trait实现
         let coordinator = ProcessingCoordinator::default();
 
-        // ✅ 验证通过default创建的协调器功能正常
+        // 验证通过default创建的协调器功能正常
         let samples = vec![0.5; 10];
         let result = coordinator.process_channels(&samples, 1, |samples, idx| {
             use crate::core::DrResult;
@@ -659,7 +688,7 @@ mod tests {
     fn test_large_sample_processing() {
         let coordinator = ProcessingCoordinator::new();
 
-        // 🎯 测试大样本处理（模拟真实场景）
+        // 测试大样本处理（模拟真实场景）
         let large_samples = vec![0.5; 48000 * 2]; // 1秒立体声@48kHz
 
         let result = coordinator
@@ -680,7 +709,7 @@ mod tests {
             })
             .unwrap();
 
-        // ✅ 验证大样本处理结果
+        // 验证大样本处理结果
         assert_eq!(result.dr_results.len(), 2);
         assert_eq!(result.performance_stats.total_samples, 96000);
         assert_eq!(result.dr_results[0].sample_count, 48000); // 每声道样本数
@@ -707,7 +736,7 @@ mod tests {
             })
             .unwrap();
 
-        // 🎯 平台健壮化断言（支持无SIMD的罕见平台）
+        // 平台健壮化断言（支持无SIMD的罕见平台）
         // 在大多数平台（x86_64, aarch64）上使用SIMD，在罕见的无SIMD平台上则使用scalar路径
 
         // 获取SIMD支持状态

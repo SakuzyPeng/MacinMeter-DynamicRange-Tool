@@ -30,7 +30,7 @@ pub fn process_audio_file(
     path: &std::path::Path,
     config: &AppConfig,
 ) -> AudioResult<AnalysisOutput> {
-    // 🚀 直接使用流式处理实现：零内存累积，恒定内存使用
+    // 直接使用流式处理实现：零内存累积，恒定内存使用
     // 注：旧的全量加载方法已移除，避免8GB内存占用问题
     process_audio_file_streaming(path, config)
 }
@@ -41,26 +41,31 @@ pub fn process_single_audio_file(
     config: &AppConfig,
 ) -> AudioResult<AnalysisOutput> {
     if config.verbose {
-        println!("🎵 正在加载音频文件: {}", file_path.display());
-        println!("🎯 使用流式窗口分析（3秒标准窗口）进行DR计算");
+        println!("加载音频文件 / Loading audio file: {}", file_path.display());
+        println!(
+            "使用流式窗口分析（3秒标准窗口）进行DR计算 / Using streaming window analysis (3-second standard window) for DR calculation"
+        );
     }
 
     // 处理音频文件
     let (dr_results, format, trim_report, silence_report) = process_audio_file(file_path, config)?;
 
     if config.verbose {
-        println!("📊 音频格式信息:");
-        println!("   采样率: {} Hz", format.sample_rate);
-        println!("   声道数: {}", format.channels);
-        println!("   位深度: {} 位", format.bits_per_sample);
-        println!("   样本数: {}", format.sample_count);
-        println!("   时长: {:.2} 秒", format.duration_seconds());
+        println!("音频格式信息 / Audio format information:");
+        println!("   采样率 / Sample rate: {} Hz", format.sample_rate);
+        println!("   声道数 / Channels: {}", format.channels);
+        println!("   位深度 / Bit depth: {} bits", format.bits_per_sample);
+        println!("   样本数 / Sample count: {}", format.sample_count);
+        println!(
+            "   时长 / Duration: {:.2} seconds",
+            format.duration_seconds()
+        );
     }
 
     Ok((dr_results, format, trim_report, silence_report))
 }
 
-/// 🚀 新的流式处理实现：真正的零内存累积处理
+/// 新的流式处理实现：真正的零内存累积处理
 ///
 /// 利用WindowRmsAnalyzer的流式能力，避免将整个文件加载到内存
 pub fn process_audio_file_streaming(
@@ -68,17 +73,17 @@ pub fn process_audio_file_streaming(
     config: &AppConfig,
 ) -> AudioResult<AnalysisOutput> {
     if config.verbose {
-        println!("🌊 使用流式处理模式进行DR分析...");
+        println!("使用流式处理模式进行DR分析 / Using streaming processing mode for DR analysis...");
     }
 
     let decoder = UniversalDecoder;
 
-    // 🚀 创建高性能流式解码器（支持并行解码）
+    // 创建高性能流式解码器（支持并行解码）
     // 注：直接创建解码器并从中获取格式信息，避免双重 I/O 操作
     let mut streaming_decoder = if config.parallel_decoding {
         if config.verbose {
             println!(
-                "⚡ 启用并行解码模式 ({}线程, {}包批量) - 攻击解码瓶颈",
+                "启用并行解码模式 / Parallel decoding enabled ({}threads, {}batch size) - 攻击解码瓶颈 / attacking decode bottleneck",
                 config.parallel_threads, config.parallel_batch_size
             );
         }
@@ -90,7 +95,9 @@ pub fn process_audio_file_streaming(
         )?
     } else {
         if config.verbose {
-            println!("🔄 使用串行解码模式（BatchPacketReader优化）");
+            println!(
+                "使用串行解码模式 / Using serial decoding mode (BatchPacketReader optimization)"
+            );
         }
         decoder.create_streaming(path)?
     };
@@ -99,17 +106,17 @@ pub fn process_audio_file_streaming(
     if config.verbose {
         let format = streaming_decoder.format();
         println!(
-            "📊 音频格式: {}声道, {}Hz, {}位",
+            "音频格式 / Audio format: {}声道 / channels, {}Hz, {}位 / bits",
             format.channels, format.sample_rate, format.bits_per_sample
         );
-        println!("🌊 开始流式解码和分析...");
+        println!("开始流式解码和分析 / Starting streaming decoding and analysis...");
     }
 
-    // 🎯 委托给核心分析引擎（消除150行重复代码）
+    // 委托给核心分析引擎（消除150行重复代码）
     analyze_streaming_decoder(&mut *streaming_decoder, config)
 }
 
-/// 🚀 SIMD优化窗口声道分离处理（辅助函数，内存优化版本）
+/// SIMD优化窗口声道分离处理（辅助函数，内存优化版本）
 ///
 /// 使用ChannelSeparator的SIMD优化方法分离声道并送入WindowRmsAnalyzer
 ///
@@ -125,7 +132,7 @@ fn process_window_with_simd_separation(
     left_buffer: &mut Vec<f32>,
     right_buffer: &mut Vec<f32>,
 ) {
-    // 🛡️ 安全检查：确保analyzers数量与声道数一致（防止多声道扩展时误用）
+    // 安全检查：确保analyzers数量与声道数一致（防止多声道扩展时误用）
     debug_assert!(
         !analyzers.is_empty() && analyzers.len() <= 2,
         "当前仅支持1-2声道，实际analyzers数量: {}",
@@ -145,7 +152,7 @@ fn process_window_with_simd_separation(
     } else if channel_count == 2 {
         // 立体声：使用SIMD优化分离左右声道（复用缓冲区）
 
-        // 🚀 SIMD优化提取左声道（写入预分配缓冲区）
+        // SIMD优化提取左声道（写入预分配缓冲区）
         channel_separator.extract_channel_into(
             window_samples,
             0, // 左声道索引
@@ -153,7 +160,7 @@ fn process_window_with_simd_separation(
             left_buffer,
         );
 
-        // 🚀 SIMD优化提取右声道（写入预分配缓冲区）
+        // SIMD优化提取右声道（写入预分配缓冲区）
         channel_separator.extract_channel_into(
             window_samples,
             1, // 右声道索引
@@ -167,7 +174,7 @@ fn process_window_with_simd_separation(
     }
 }
 
-/// 🔧 内联辅助函数：执行缓冲区compact操作（统一逻辑，减少重复）
+/// 内联辅助函数：执行缓冲区compact操作（统一逻辑，减少重复）
 #[inline(always)]
 fn compact_buffer(
     sample_buffer: &mut Vec<f32>,
@@ -177,7 +184,7 @@ fn compact_buffer(
 ) {
     if verbose {
         println!(
-            "🔧 {}: 移除前{}个样本 ({:.1}KB → {:.1}KB)",
+            "{}: 移除前{}个样本 ({:.1}KB → {:.1}KB)",
             reason,
             *buffer_offset,
             sample_buffer.len() * 4 / 1024,
@@ -188,7 +195,7 @@ fn compact_buffer(
     *buffer_offset = 0;
 }
 
-/// 🎯 核心DR分析引擎（私有函数）：处理任何StreamingDecoder实现
+/// 核心DR分析引擎（私有函数）：处理任何StreamingDecoder实现
 ///
 /// 包含完整的流式DR分析流程：声道检查→窗口分析→DR计算
 /// 消除process_audio_file_streaming和process_streaming_decoder的~150行重复代码
@@ -204,7 +211,9 @@ fn analyze_streaming_decoder(
             match pprof::ProfilerGuard::new(250) {
                 Ok(g) => Some(g),
                 Err(e) => {
-                    eprintln!("⚠️  启用 processing 范围火焰图采样失败: {e}");
+                    eprintln!(
+                        "[WARNING] 启用 processing 范围火焰图采样失败 / Failed to enable processing scope flame graph sampling: {e}"
+                    );
                     None
                 }
             }
@@ -214,12 +223,12 @@ fn analyze_streaming_decoder(
     };
     let format = streaming_decoder.format();
 
-    // 🎯 声道数检查：支持单声道和立体声，拒绝多声道
+    // 声道数检查：支持单声道和立体声，拒绝多声道
     if format.channels > 2 {
         return Err(AudioError::InvalidInput(format!(
             "目前仅支持单声道和立体声文件 (1-2声道)，当前为{}声道。\n\
-            💡 多声道支持正在开发中，敬请期待未来版本。\n\
-            📝 原因：暂未找到多声道SIMD优化的业界标准实现。",
+            多声道支持正在开发中，敬请期待未来版本。\n\
+            原因：暂未找到多声道SIMD优化的业界标准实现。",
             format.channels
         )));
     }
@@ -227,7 +236,7 @@ fn analyze_streaming_decoder(
     // 样本数最小值在流式解码结束后基于“实际解码帧数”再校验，
     // 以兼容未知总长度（如部分 Opus 流）场景，避免误判。
 
-    // 🔧 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
+    // 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）
     let silence_filter_config = config
         .silence_filter_threshold_db
         .map(SilenceFilterConfig::enabled)
@@ -243,10 +252,10 @@ fn analyze_streaming_decoder(
         })
         .collect();
 
-    // 🚀 创建SIMD优化的声道分离器
+    // 创建SIMD优化的声道分离器
     let channel_separator = ChannelSeparator::new();
 
-    // 🧪 P0阶段：创建边缘裁切器（如果启用）
+    // 创建边缘裁切器（如果启用）
     let mut trim_config_applied: Option<EdgeTrimConfig> = None;
     let mut edge_trimmer = if let Some(threshold_db) = config.edge_trim_threshold_db {
         let min_run_ms = config
@@ -257,7 +266,7 @@ fn analyze_streaming_decoder(
 
         if config.verbose {
             println!(
-                "🧪 启用首尾边缘裁切: 阈值 {threshold_db:.1} dBFS, 最小持续 {min_run_ms:.0} ms, 迟滞约 {:.0} ms",
+                "[EXPERIMENTAL] Enable edge trimming / 启用首尾边缘裁切: threshold / 阈值 {threshold_db:.1} dBFS, min duration / 最小持续 {min_run_ms:.0} ms, hysteresis / 迟滞 {:.0} ms",
                 trim_config.hysteresis_ms
             );
         }
@@ -274,7 +283,7 @@ fn analyze_streaming_decoder(
     let mut trim_report: Option<EdgeTrimReport> = None;
     let mut silence_filter_report: Option<SilenceFilterReport> = None;
 
-    // 🎯 使用集中管理的窗口时长常量（foobar2000标准）
+    // 使用集中管理的窗口时长常量（foobar2000标准）
     use super::constants::buffers::{
         BUFFER_CAPACITY_MULTIPLIER, MAX_BUFFER_RATIO, window_alignment_enabled,
     };
@@ -284,7 +293,7 @@ fn analyze_streaming_decoder(
         * (WINDOW_DURATION_SECONDS as usize)
         * (format.channels as usize);
 
-    // 🚀 阶段D内存优化：预分配sample_buffer容量（减少扩容抖动）
+    // 内存优化策略：预分配sample_buffer容量（减少扩容抖动）
     // 通过内部策略开关控制（默认启用，debug模式可通过环境变量禁用）
     let window_align_enabled = window_alignment_enabled();
     let mut sample_buffer = if window_align_enabled {
@@ -293,12 +302,12 @@ fn analyze_streaming_decoder(
         Vec::new()
     };
 
-    // 🚀 阶段B内存优化：引入offset+compact机制（消除每窗口drain的内存搬移）
+    // 内存优化策略：引入offset+compact机制（消除每窗口drain的内存搬移）
     let mut buffer_offset = 0usize;
     // Compact阈值：当已处理样本占比超过50%时触发compact
     const COMPACT_THRESHOLD_RATIO: f64 = 0.5;
 
-    // 🚀 阶段A内存优化：预分配声道分离缓冲区（复用，避免每窗口分配）
+    // 内存优化策略：预分配声道分离缓冲区（复用，避免每窗口分配）
     // 每个缓冲区容量 = 窗口样本数 / 声道数（即单声道的样本数）
     let channel_buffer_capacity = window_size_samples / format.channels as usize;
     let mut left_buffer = Vec::with_capacity(channel_buffer_capacity);
@@ -315,39 +324,38 @@ fn analyze_streaming_decoder(
 
     if config.verbose {
         println!(
-            "🎯 窗口配置: {:.1}秒 = {} 个样本 ({}Hz × {} 声道)",
+            "窗口配置 / Window config: {:.1}秒 / seconds = {} 样本 / samples ({}Hz × {} 声道 / channels)",
             WINDOW_DURATION_SECONDS, window_size_samples, format.sample_rate, format.channels
         );
-        println!("🚀 内存优化: 预分配声道缓冲区 ({channel_buffer_capacity} 样本容量 × 2 声道)");
         println!(
-            "🚀 阶段B优化: offset+compact机制 (阈值: {:.0}%)",
+            "内存优化 / Memory optimization: 预分配声道缓冲区 / pre-allocate channel buffer ({channel_buffer_capacity} samples)"
+        );
+        println!(
+            "缓冲管理 / Buffer management: offset+compact (阈值 / threshold: {:.0}%)",
             COMPACT_THRESHOLD_RATIO * 100.0
         );
         if window_align_enabled {
             println!(
-                "🚀 阶段D优化: sample_buffer预分配 (容量: {} 样本, 硬上限: {:.1}×窗口) [启用]",
-                window_size_samples * BUFFER_CAPACITY_MULTIPLIER,
+                "样本缓冲 / Sample buffer: 预分配 {:.1}×窗口 / pre-allocated to {:.1}x window size, 硬上限 / hard limit: {:.1}x",
+                BUFFER_CAPACITY_MULTIPLIER as f64,
+                BUFFER_CAPACITY_MULTIPLIER as f64,
                 MAX_BUFFER_RATIO
-            );
-        } else {
-            println!(
-                "🚀 阶段D优化: sample_buffer预分配 [禁用 - 环境变量DR_DISABLE_WINDOW_ALIGN=1]"
             );
         }
     }
 
-    // 🌊 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
+    // 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
     while let Some(chunk_samples) = streaming_decoder.next_chunk()? {
         total_chunks += 1;
 
-        // 🧪 P0阶段：首尾边缘裁切（如果启用）
+        // 首尾边缘裁切（如果启用）
         let processed_samples = if let Some(ref mut trimmer) = edge_trimmer {
             trimmer.process_chunk(&chunk_samples)
         } else {
             chunk_samples
         };
 
-        // ✅ 修复：累加实际处理后的样本数（启用裁切时会减少）
+        // 修复：累加实际处理后的样本数（启用裁切时会减少）
         total_samples_processed += processed_samples.len() as u64;
 
         // 积累chunk到缓冲区
@@ -356,23 +364,25 @@ fn analyze_streaming_decoder(
         if config.verbose && total_chunks % 500 == 0 {
             let progress = streaming_decoder.progress() * 100.0;
             println!(
-                "⌛ 智能缓冲进度: {progress:.1}% (已处理{total_chunks}个chunk, 缓冲: {:.1}KB, 偏移: {buffer_offset})",
+                "[PROGRESS] Smart buffer progress / 智能缓冲进度: {progress:.1}% (processed / 已处理 {total_chunks} chunks, buffer / 缓冲: {:.1}KB, offset / 偏移: {buffer_offset})",
                 sample_buffer.len() * 4 / 1024
             );
         }
 
-        // 🎯 当积累到完整窗口时，处理并移动offset（消除drain的内存搬移）
+        // 当积累到完整窗口时，处理并移动offset（消除drain的内存搬移）
         while sample_buffer.len() - buffer_offset >= window_size_samples {
             windows_processed += 1;
 
             if config.verbose && windows_processed % 20 == 0 {
-                println!("🔧 处理第{windows_processed}个{WINDOW_DURATION_SECONDS:.1}秒标准窗口...");
+                println!(
+                    "处理第 / Processing window #{windows_processed} {WINDOW_DURATION_SECONDS:.1}秒 / second standard window..."
+                );
             }
 
             // 提取一个完整的标准窗口（从offset开始）
             let window_samples = &sample_buffer[buffer_offset..buffer_offset + window_size_samples];
 
-            // 🚀 使用SIMD优化的声道分离处理（保持窗口完整性，复用缓冲区）
+            // 使用SIMD优化的声道分离处理（保持窗口完整性，复用缓冲区）
             process_window_with_simd_separation(
                 window_samples,
                 format.channels as u32,
@@ -382,10 +392,10 @@ fn analyze_streaming_decoder(
                 &mut right_buffer,
             );
 
-            // 🚀 阶段B优化：仅移动offset，延迟实际内存搬移
+            // Offset+compact优化：仅移动offset，延迟实际内存搬移
             buffer_offset += window_size_samples;
 
-            // 🚀 阶段D优化：硬上限检查（防止缓冲区无限增长）
+            // 硬上限优化：防止缓冲区无限增长
             // 仅在窗口对齐优化启用时执行硬上限检查
             if window_align_enabled {
                 let max_buffer_size = (window_size_samples as f64 * MAX_BUFFER_RATIO) as usize;
@@ -394,10 +404,12 @@ fn analyze_streaming_decoder(
                         &mut sample_buffer,
                         &mut buffer_offset,
                         config.verbose,
-                        &format!("触发硬上限Compact: 缓冲区超过{MAX_BUFFER_RATIO:.1}×窗口"),
+                        &format!(
+                            "Trigger hard limit compact / 触发硬上限Compact: buffer exceeded / 缓冲区超过 {MAX_BUFFER_RATIO:.1}×window / 窗口"
+                        ),
                     );
                 }
-                // 🎯 Compact触发：当已处理样本占比超过阈值时，执行一次性内存整理
+                // Compact触发：当已处理样本占比超过阈值时，执行一次性内存整理
                 else if buffer_offset > 0
                     && buffer_offset as f64 / sample_buffer.len() as f64 > COMPACT_THRESHOLD_RATIO
                 {
@@ -405,11 +417,11 @@ fn analyze_streaming_decoder(
                         &mut sample_buffer,
                         &mut buffer_offset,
                         config.verbose,
-                        "执行Compact",
+                        "Executing compact / 执行Compact",
                     );
                 }
             }
-            // 阶段D优化禁用时，仅使用阶段B的compact机制
+            // 窗口对齐优化禁用时，仅使用compact阈值机制
             else if buffer_offset > 0
                 && buffer_offset as f64 / sample_buffer.len() as f64 > COMPACT_THRESHOLD_RATIO
             {
@@ -417,13 +429,13 @@ fn analyze_streaming_decoder(
                     &mut sample_buffer,
                     &mut buffer_offset,
                     config.verbose,
-                    "执行Compact",
+                    "Executing compact / 执行Compact",
                 );
             }
         }
     }
 
-    // 🧪 P0阶段：处理边缘裁切的尾部缓冲区并输出诊断
+    // 处理边缘裁切的尾部缓冲区并输出诊断
     if let Some(trimmer) = edge_trimmer {
         let (final_chunk, trim_stats) = trimmer.finalize();
         // 将尾部缓冲区内容加入sample_buffer
@@ -453,7 +465,7 @@ fn analyze_streaming_decoder(
             let total_trimmed =
                 trim_stats.leading_samples_trimmed + trim_stats.trailing_samples_trimmed;
 
-            println!("🧪 边缘裁切诊断（P0阶段）:");
+            println!("Edge trimming diagnostics (experimental) / 边缘裁切诊断（实验功能）:");
             if let Some(cfg) = trim_config_applied {
                 println!(
                     "   阈值: {:.1} dBFS, 最小持续: {:.0}ms, 迟滞: {:.0}ms",
@@ -463,33 +475,41 @@ fn analyze_streaming_decoder(
 
             if trim_stats.leading_samples_trimmed > 0 {
                 println!(
-                    "   首部: 裁切 {} 样本 ({:.3}秒)",
+                    "   首部 / Leading: 裁切 / trimmed {} 样本 / samples ({:.3}秒 / seconds)",
                     trim_stats.leading_samples_trimmed, leading_sec
                 );
             } else {
-                println!("   首部: 保留全部（无符合min_run的静音段）");
+                println!(
+                    "   首部 / Leading: 保留全部（无符合min_run的静音段）/ Kept all (no silence segments matching min_run)"
+                );
             }
 
             if trim_stats.trailing_samples_trimmed > 0 {
                 println!(
-                    "   尾部: 裁切 {} 样本 ({:.3}秒)",
+                    "   尾部 / Trailing: 裁切 / trimmed {} 样本 / samples ({:.3}秒 / seconds)",
                     trim_stats.trailing_samples_trimmed, trailing_sec
                 );
             } else {
-                println!("   尾部: 保留全部（无符合min_run的静音段）");
+                println!(
+                    "   尾部 / Trailing: 保留全部（无符合min_run的静音段）/ Kept all (no silence segments matching min_run)"
+                );
             }
 
             if total_trimmed > 0 {
-                println!("   总计: 裁切 {total_trimmed} 样本，损失 {total_sec:.3}秒音频内容");
+                println!(
+                    "   总计 / Total: 裁切 / trimmed {total_trimmed} 样本 / samples，损失 / lost {total_sec:.3}秒 / seconds音频内容 / audio content"
+                );
             } else {
-                println!("   总计: 无裁切（边缘静音均短于min_run阈值）");
+                println!(
+                    "   总计 / Total: 无裁切（边缘静音均短于min_run阈值）/ No trimming (all edge silences shorter than min_run threshold)"
+                );
             }
         }
     }
 
-    // 🏁 处理最后剩余的不足标准窗口大小的样本（从offset开始）
+    // 处理最后剩余的不足标准窗口大小的样本（从offset开始）
     //
-    // 📝 尾块处理策略说明：
+    // 尾块处理策略说明：
     // 末尾不足3秒的尾块直接参与计算（符合多数实现标准）：
     // - 尾块样本计入 20% RMS 统计（通过 WindowRmsAnalyzer.process_samples）
     // - 尾块峰值参与峰值检测（主Peak、次Peak更新）
@@ -498,7 +518,7 @@ fn analyze_streaming_decoder(
     if remaining_samples > 0 {
         if config.verbose {
             println!(
-                "🔧 处理最后剩余样本: {} 个 ({:.2}秒)...",
+                "处理最后剩余样本 / Processing remaining samples: {} ({:.2} seconds)...",
                 remaining_samples,
                 remaining_samples as f64 / (format.sample_rate as f64 * format.channels as f64)
             );
@@ -516,14 +536,14 @@ fn analyze_streaming_decoder(
 
     if config.verbose {
         println!(
-            "✅ 流式处理完成：共处理 {} 个chunk，总样本数: {}M",
+            "流式处理完成 / Streaming processing completed: {} chunks processed, {} M samples total",
             total_chunks,
             total_samples_processed / 1_000_000
         );
-        println!("🔧 计算最终DR值...");
+        println!("计算最终DR值 / Calculating final DR value...");
     }
 
-    // 🎯 最小样本数校验（基于实际解码帧数）
+    // 最小样本数校验（基于实际解码帧数）
     // - 兼容未知总长度的流式格式（如部分Opus），避免基于header的误判
     // - 对于零长度/单样本输入，在此处统一返回错误
     const MINIMUM_SAMPLES_FOR_ANALYSIS: u64 = 2;
@@ -536,11 +556,11 @@ fn analyze_streaming_decoder(
         return Err(AudioError::InvalidInput(format!(
             "音频文件样本数过少，无法进行可靠的DR分析。\n\
             要求最少：{MINIMUM_SAMPLES_FOR_ANALYSIS} 个样本，实际：{actual_frames} 个样本。\n\
-            💡 音频文件需要足够的样本用于RMS计算和峰值检测。"
+            音频文件需要足够的样本用于RMS计算和峰值检测。"
         )));
     }
 
-    // 🎯 从每个WindowRmsAnalyzer获取最终DR结果
+    // 从每个WindowRmsAnalyzer获取最终DR结果
     let mut dr_results = Vec::new();
 
     for (channel_idx, analyzer) in analyzers.iter().enumerate() {
@@ -551,7 +571,7 @@ fn analyze_streaming_decoder(
         let window_primary_peak = analyzer.get_largest_peak();
         let window_secondary_peak = analyzer.get_second_largest_peak();
 
-        // 🎯 使用官方峰值选择策略系统（与foobar2000一致）
+        // 使用官方峰值选择策略系统（与foobar2000一致）
         let peak_strategy = PeakSelectionStrategy::default(); // PreferSecondary
         let peak_for_dr = peak_strategy.select_peak(window_primary_peak, window_secondary_peak);
 
@@ -562,7 +582,7 @@ fn analyze_streaming_decoder(
             0.0
         };
 
-        // 📝 样本计数说明：
+        // 样本计数说明：
         // - sample_count 表示"参与分析的总帧数"（每帧包含所有声道样本）
         // - total_samples_processed 是交错样本总数，除以声道数得到帧数
         // - 此计数与最终 format.sample_count 一致性由解码器保证
@@ -590,16 +610,18 @@ fn analyze_streaming_decoder(
         }
 
         if config.verbose {
-            println!("🧪 静音过滤诊断: 阈值 {threshold_db:.1} dBFS");
+            println!(
+                "静音过滤诊断 / Silence filtering diagnostics: 阈值 / threshold {threshold_db:.1} dBFS"
+            );
             for channel in &channel_reports {
                 if channel.total_windows == 0 {
                     println!(
-                        "   • 声道 {}: 无窗口参与（文件过短）",
+                        "   • 声道 / Channel {}: 无窗口参与（文件过短）/ No analysis windows (file too short)",
                         channel.channel_index + 1
                     );
                 } else if channel.filtered_windows > 0 {
                     println!(
-                        "   • 声道 {}: 过滤 {}/{} 窗口 ({:.2}%) - 有效窗口 {}",
+                        "   • 声道 / Channel {}: 过滤 / filtered {}/{} 窗口 / windows ({:.2}%) - 有效窗口 / valid windows {}",
                         channel.channel_index + 1,
                         channel.filtered_windows,
                         channel.total_windows,
@@ -608,7 +630,7 @@ fn analyze_streaming_decoder(
                     );
                 } else {
                     println!(
-                        "   • 声道 {}: 未检测到静音窗口（保留全部 {} 个窗口）",
+                        "   • 声道 / Channel {}: No silence windows detected / 未检测到静音窗口 (retained all / 保留全部 {} windows)",
                         channel.channel_index + 1,
                         channel.total_windows
                     );
@@ -623,13 +645,16 @@ fn analyze_streaming_decoder(
     }
 
     if config.verbose {
-        println!("✅ DR计算完成，共 {} 个声道", dr_results.len());
+        println!(
+            "DR计算完成 / DR calculation completed, {} channels total",
+            dr_results.len()
+        );
     }
 
-    // 🎯 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
+    // 获取包含实际样本数的最终格式信息（关键修复：AAC等格式）
     let mut final_format = streaming_decoder.format();
 
-    // 🎯 检测截断：比较预期样本数与实际解码样本数
+    // 检测截断：比较预期样本数与实际解码样本数
     // 如果实际处理的样本少于预期，标记为部分分析（is_partial）
     let expected_samples = final_format.sample_count;
     let actual_samples = total_samples_processed / final_format.channels as u64;
@@ -650,7 +675,7 @@ fn analyze_streaming_decoder(
         let skipped_approx = (expected_samples - actual_samples) as usize;
         if config.verbose {
             println!(
-                "⚠️  检测到文件截断: 预期 {expected_samples} 个样本，实际解码 {actual_samples} 个样本（缺少约 {skipped_approx} 个）"
+                "[WARNING] 检测到文件截断 / File truncation detected: 预期 / expected {expected_samples} samples, 实际解码 / actual {actual_samples} samples (缺少约 / missing ~{skipped_approx})"
             );
         }
         // 若确实是编码损坏导致的缺失，则标记部分分析；裁切场景已通过 update_sample_count 避免进入此分支
@@ -671,14 +696,14 @@ fn analyze_streaming_decoder(
         if let Ok(file) = File::create(&out_path)
             && report.flamegraph_with_options(file, &mut options).is_ok()
         {
-            eprintln!("✅ FlameGraph(processing) 生成成功: {out_path}");
+            eprintln!("FlameGraph(processing) generated successfully / 生成成功: {out_path}");
         }
     }
 
     Ok((dr_results, final_format, trim_report, silence_filter_report))
 }
 
-/// 🚀 处理StreamingDecoder进行DR分析（插件专用API）
+/// 处理StreamingDecoder进行DR分析（插件专用API）
 ///
 /// 为插件提供的零算法重复接口，接受任何实现StreamingDecoder的对象
 pub fn process_streaming_decoder(
@@ -686,10 +711,10 @@ pub fn process_streaming_decoder(
     config: &AppConfig,
 ) -> AudioResult<AnalysisOutput> {
     if config.verbose {
-        println!("🌊 使用StreamingDecoder进行DR分析...");
+        println!("使用StreamingDecoder进行DR分析 / Using StreamingDecoder for DR analysis...");
     }
 
-    // 🎯 直接委托给核心分析引擎（消除150行重复代码）
+    // 直接委托给核心分析引擎（消除150行重复代码）
     analyze_streaming_decoder(streaming_decoder, config)
 }
 
@@ -753,10 +778,10 @@ pub fn add_to_batch_output(
 ) -> Option<BatchWarningInfo> {
     let file_name = utils::extract_filename_lossy(file_path);
 
-    // 🎯 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
+    // 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
     match formatter::compute_official_precise_dr(results, format) {
         Some((official_dr, precise_dr, _excluded_count)) => {
-            // 🎯 使用固定宽度对齐（左对齐17字符），确保列对齐美观
+            // 使用固定宽度对齐（左对齐17字符），确保列对齐美观
             batch_output.push_str(&format!(
                 "{:<17}{:<17}{}\n",
                 format!("DR{}", official_dr),
@@ -786,7 +811,7 @@ pub fn add_to_batch_output(
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    // 🎯 使用固定宽度对齐（与成功结果格式一致）
+    // 使用固定宽度对齐（与成功结果格式一致）
     batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "处理失败", file_name));
 }
 
@@ -820,12 +845,15 @@ pub fn save_individual_result(
         silence_filter_report,
         true,
     ) {
-        eprintln!("   ⚠️  保存单独结果文件失败: {e}");
+        eprintln!("   [WARNING] 保存单独结果文件失败 / Failed to save individual result file: {e}");
     } else if config.verbose {
         let parent_dir = utils::get_parent_dir(audio_file);
         let file_stem = utils::extract_file_stem(audio_file);
         let individual_path = parent_dir.join(format!("{file_stem}_DR_Analysis.txt"));
-        println!("   📄 单独结果已保存: {}", individual_path.display());
+        println!(
+            "   Individual result saved / 单独结果已保存: {}",
+            individual_path.display()
+        );
     }
 
     Ok(())

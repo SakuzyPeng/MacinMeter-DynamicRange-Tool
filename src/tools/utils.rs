@@ -147,10 +147,10 @@ pub mod parallel {
     /// ```
     #[inline]
     pub fn effective_parallel_degree(requested_degree: usize, max_items: Option<usize>) -> usize {
-        // 1️⃣ 应用基本限制（1-16范围）
+        // 应用基本限制（1-16范围）
         let clamped = requested_degree.clamp(MIN_PARALLEL_DEGREE, MAX_PARALLEL_DEGREE);
 
-        // 2️⃣ 如果提供了工作项数量，不超过实际数量
+        // 如果提供了工作项数量，不超过实际数量
         match max_items {
             Some(count) if count > 0 => clamped.min(count),
             _ => clamped,
@@ -181,7 +181,7 @@ pub mod performance {
     /// - Windows通常可以成功设置THREAD_PRIORITY_HIGHEST
     pub fn set_high_priority() -> Result<(), String> {
         thread_priority::set_current_thread_priority(ThreadPriority::Max)
-            .map_err(|e| format!("设置线程优先级失败: {e}"))
+            .map_err(|e| format!("Failed to set thread priority: {e} / 设置线程优先级失败: {e}"))
     }
 
     /// 为Rayon线程池配置高优先级spawn handler
@@ -195,7 +195,7 @@ pub mod performance {
     ///
     /// // 在Rayon初始化前调用
     /// if let Err(e) = performance::setup_rayon_high_priority() {
-    ///     eprintln!("⚠️ 无法设置Rayon高优先级: {}", e);
+    ///     eprintln!("无法设置Rayon高优先级: {}", e);
     /// }
     /// ```
     ///
@@ -226,7 +226,9 @@ pub mod performance {
                 Ok(())
             })
             .build_global()
-            .map_err(|e| format!("Rayon线程池初始化失败: {e}"))
+            .map_err(|e| {
+                format!("Failed to initialize Rayon global pool: {e} / Rayon线程池初始化失败: {e}")
+            })
     }
 
     /// 智能性能优化初始化（推荐使用）
@@ -245,7 +247,7 @@ pub mod performance {
     /// use macinmeter_dr_tool::tools::utils::performance;
     ///
     /// if let Err(e) = performance::optimize_for_performance() {
-    ///     eprintln!("⚠️ 性能优化失败: {}", e);
+    ///     eprintln!("性能优化失败: {}", e);
     ///     // 继续运行，性能可能受影响但功能正常
     /// }
     /// // ... 其余程序逻辑
@@ -255,17 +257,20 @@ pub mod performance {
 
         // 1. 优化主线程优先级
         if let Err(e) = set_high_priority() {
-            errors.push(format!("主线程: {e}"));
+            errors.push(format!("Main thread: {e} / 主线程: {e}"));
         }
 
         // 2. 优化Rayon线程池
         if let Err(e) = setup_rayon_high_priority() {
-            errors.push(format!("Rayon: {e}"));
+            errors.push(format!("Rayon pool: {e} / Rayon线程池: {e}"));
         }
 
         // 如果所有优化都失败才报错
         if errors.len() >= 2 {
-            Err(format!("所有性能优化均失败: {}", errors.join(", ")))
+            let joined = errors.join(", ");
+            Err(format!(
+                "All performance optimizations failed: {joined} / 所有性能优化均失败: {joined}"
+            ))
         } else {
             Ok(())
         }

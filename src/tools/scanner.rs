@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 /// 获取支持的音频格式扩展名
 ///
-/// 🚀 从UniversalDecoder获取统一的格式支持声明，确保一致性
+/// 从UniversalDecoder获取统一的格式支持声明，确保一致性
 fn get_supported_extensions() -> &'static [&'static str] {
     use crate::audio::UniversalDecoder;
     let decoder = UniversalDecoder::new();
@@ -70,7 +70,8 @@ pub fn scan_audio_files(dir_path: &std::path::Path) -> AudioResult<Vec<PathBuf>>
 pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
     if audio_files.is_empty() {
         println!(
-            "⚠️  在目录 {} 中没有找到支持的音频文件",
+            " 在目录 {} 中没有找到支持的音频文件 / No supported audio files found in directory {}",
+            config.input_path.display(),
             config.input_path.display()
         );
         let mut supported_formats: Vec<String> = get_supported_extensions()
@@ -79,12 +80,19 @@ pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
             .collect();
         supported_formats.sort();
         let supported_formats = supported_formats.join(", ");
-        println!("   支持的格式: {supported_formats}");
+        println!("   Supported formats / 支持的格式: {supported_formats}");
         return;
     }
 
-    println!("📁 扫描目录: {}", config.input_path.display());
-    println!("🎵 找到 {} 个音频文件", audio_files.len());
+    println!(
+        "扫描目录 / Scanning directory: {}",
+        config.input_path.display()
+    );
+    println!(
+        "找到 {} 个音频文件 / Found {} audio files",
+        audio_files.len(),
+        audio_files.len()
+    );
 
     if config.verbose {
         for (i, file) in audio_files.iter().enumerate() {
@@ -128,7 +136,7 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
         audio_files.len()
     ));
 
-    // 🎯 添加结果表头（使用固定宽度确保对齐）
+    // 添加结果表头（使用固定宽度确保对齐）
     batch_output.push_str("Official DR      Precise DR        文件名 / File Name\n");
     batch_output.push_str(
         "================================================================================\n",
@@ -165,7 +173,7 @@ pub fn create_batch_output_footer(
         processed_count as f64 / audio_files.len() as f64 * 100.0
     ));
 
-    // 🎯 错误分类统计（仅在有失败时显示）
+    // 错误分类统计（仅在有失败时显示）
     if !error_stats.is_empty() {
         output.push('\n');
         output.push_str("错误分类统计:\n");
@@ -214,7 +222,7 @@ pub fn create_batch_output_footer(
 /// 生成批量输出文件路径
 pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
     config.output_path.clone().unwrap_or_else(|| {
-        // 🎯 生成友好的时间格式 YYYY-MM-DD_HH-MM-SS
+        // 生成友好的时间格式 YYYY-MM-DD_HH-MM-SS
         let readable_time = {
             use std::time::{SystemTime, UNIX_EPOCH};
             let duration = SystemTime::now()
@@ -226,7 +234,7 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
             datetime.format("%Y-%m-%d_%H-%M-%S").to_string()
         };
 
-        // 🎯 使用目录名作为基础名称，并清理不合法字符（跨平台兼容）
+        // 使用目录名作为基础名称，并清理不合法字符（跨平台兼容）
         let dir_name =
             utils::sanitize_filename(utils::extract_filename(config.input_path.as_path()));
 
@@ -264,7 +272,7 @@ pub fn finalize_and_write_batch_output(
     if !is_single_file {
         // 多文件模式：生成批量输出文件
 
-        // 🎯 添加边界风险预警汇总（在footer之前）
+        // 添加边界风险预警汇总（在footer之前）
         if !batch_warnings.is_empty() {
             // 按风险等级（高 → 中 → 低）和距离（升序）排序，保证输出稳定
             batch_warnings.sort_by(|a, b| {
@@ -348,9 +356,9 @@ pub fn finalize_and_write_batch_output(
     } else {
         // 单文件模式：显示简单的完成信息
         if processed_count > 0 {
-            println!("✅ 单文件处理完成");
+            println!("单文件处理完成 / Single file processing completed");
         } else {
-            println!("❌ 单文件处理失败");
+            println!("单文件处理失败 / Single file processing failed");
         }
     }
 
@@ -367,21 +375,25 @@ pub fn show_batch_completion_info(
     is_single_file: bool,
 ) {
     println!();
-    println!("📊 批量处理完成!");
-    println!("   成功处理: {processed_count} / {total_count} 个文件");
+    println!("批量处理完成 / Batch processing completed!");
+    println!(
+        "   成功处理 / Successfully processed: {processed_count} / {total_count} 文件 / files"
+    );
     if failed_count > 0 {
-        println!("   失败文件: {failed_count} 个");
+        println!("   失败文件 / Failed files: {failed_count}");
     }
 
     println!();
-    println!("📄 生成的文件:");
-    println!("   🗂️  批量汇总: {}", output_path.display());
+    println!("生成的文件 / Generated files:");
+    println!("   批量汇总 / Batch summary: {}", output_path.display());
 
-    // 🎯 修正提示逻辑：只在单文件目录且处理成功时显示单独结果文件
+    // 修正提示逻辑：只在单文件目录且处理成功时显示单独结果文件
     if is_single_file && processed_count > 0 {
-        println!("   📝 单独结果: 1 个 *_DR_Analysis.txt 文件");
+        println!("   单独结果 / Individual result: 1 *_DR_Analysis.txt file");
         if config.verbose {
-            println!("   💡 单文件目录自动生成单独DR结果文件");
+            println!(
+                "   单文件目录自动生成单独DR结果文件 / Single-file directory auto-generates individual DR result file"
+            );
         }
     }
 }

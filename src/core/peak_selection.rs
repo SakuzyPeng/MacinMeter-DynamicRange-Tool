@@ -8,14 +8,14 @@
 //! 本模块仅负责：**给定 primary_peak 和 secondary_peak，选择哪个用于 DR 计算**。
 //!
 //! ### 本模块的职责：
-//! - ✅ 定义不同的峰值选择策略（PreferSecondary, ClippingAware, 等）
-//! - ✅ 实现策略的选择逻辑和削波检测
-//! - ✅ 提供可观测的策略名称和工具函数
+//! - 定义不同的峰值选择策略（PreferSecondary, ClippingAware, 等）
+//! - 实现策略的选择逻辑和削波检测
+//! - 提供可观测的策略名称和工具函数
 //!
 //! ### 本模块不负责的事项：
-//! - ❌ 峰值数据的存储和更新（由 `dr_channel_state::ChannelData` 负责）
-//! - ❌ 峰值是否有效的判断（由调用方决定，通常通过检查 > 0.0）
-//! - ❌ 峰值计算的算法细节（由 `WindowRmsAnalyzer` 负责）
+//! - 峰值数据的存储和更新（由 `dr_channel_state::ChannelData` 负责）
+//! - 峰值是否有效的判断（由调用方决定，通常通过检查 > 0.0）
+//! - 峰值计算的算法细节（由 `WindowRmsAnalyzer` 负责）
 //!
 //! ### 调用方的职责：
 //! - 调用方应通过 `PeakSelectionStrategy::select_peak()` 获取最终使用的峰值
@@ -70,7 +70,7 @@ pub trait PeakSelector {
 
     /// 检查给定峰值是否被削波
     ///
-    /// ℹ️ **注意**：此方法与 `utils::is_peak_clipped()` 逻辑完全相同。
+    /// **注意**：此方法与 `utils::is_peak_clipped()` 逻辑完全相同。
     /// - Trait 版本：供 `PeakSelectionStrategy` 内部使用
     /// - Utils 版本：供外部工具函数使用（如 `suggest_strategy()`）
     ///
@@ -306,38 +306,36 @@ mod tests {
         // 2. else if peak_ratio > 0.8 → PreferSecondary
         // 3. else → AlwaysPrimary
 
-        // 案例1: 比率刚好低于 0.8（不满足 > 0.8）→ AlwaysPrimary
+        // 案例1：0.71 / 0.9 ≈ 0.789（小于0.8）→ 保持 AlwaysPrimary 策略
         let strategy_low = utils::suggest_strategy(0.9, 0.71); // 0.71/0.9 ≈ 0.789
         assert_eq!(
             strategy_low,
             PeakSelectionStrategy::AlwaysPrimary,
-            "比率 ~0.789（不 > 0.8）应该返回 AlwaysPrimary"
+            "Ratio ≈0.789 (<0.8) should return AlwaysPrimary / 比率≈0.789（小于0.8）应返回 AlwaysPrimary"
         );
 
-        // 案例2: 比率刚好高于 0.8（满足 > 0.8）→ PreferSecondary
-        // 0.721/0.9 = 0.80111... > 0.8
+        // 案例2：0.721 / 0.9 ≈ 0.801（大于0.8）→ 切换至 PreferSecondary 策略
         let strategy_high = utils::suggest_strategy(0.9, 0.721);
         assert_eq!(
             strategy_high,
             PeakSelectionStrategy::PreferSecondary,
-            "比率 ~0.801（> 0.8）应该返回 PreferSecondary"
+            "Ratio ≈0.801 (>0.8) should return PreferSecondary / 比率≈0.801（大于0.8）应返回 PreferSecondary"
         );
 
-        // 案例3: 明显高于 0.8（满足 > 0.8）→ PreferSecondary
+        // 案例3：0.8 / 0.9 ≈ 0.889（显著大于0.8）→ 继续 PreferSecondary 策略
         let strategy_clear = utils::suggest_strategy(0.9, 0.8); // 0.8/0.9 ≈ 0.889
         assert_eq!(
             strategy_clear,
             PeakSelectionStrategy::PreferSecondary,
-            "比率 ~0.889（> 0.8）应该返回 PreferSecondary"
+            "Ratio ≈0.889 (>0.8) should return PreferSecondary / 比率≈0.889（大于0.8）应返回 PreferSecondary"
         );
 
-        // 案例4: 削波优先（primary ≥ CLIPPING_THRESHOLD）
-        // 削波检查优先于比率检查
+        // 案例4：primary ≥ CLIPPING_THRESHOLD（发生削波）→ ClippingAware 优先于比率判断
         let strategy_clipped = utils::suggest_strategy(0.99999, 0.7);
         assert_eq!(
             strategy_clipped,
             PeakSelectionStrategy::ClippingAware,
-            "削波情况下应该优先返回 ClippingAware（不论比率）"
+            "Clipping should force ClippingAware regardless of ratio / 削波时应优先返回 ClippingAware（无视比率）"
         );
     }
 }

@@ -12,7 +12,7 @@ use crate::processing::ProcessingCoordinator;
 #[allow(unused_imports)]
 use crate::tools::constants::dr_analysis;
 
-// 🔧 配置常量：集中管理默认值，提高可维护性
+// 配置常量：集中管理默认值，提高可维护性
 /// 标准音频采样率（CD质量）
 const DEFAULT_SAMPLE_RATE: u32 = 44100;
 
@@ -114,7 +114,7 @@ pub struct DrCalculator {
     /// 高性能处理协调器（提供SIMD优化的声道分离）
     processing_coordinator: ProcessingCoordinator,
 
-    /// 🧪 实验性：静音过滤配置
+    /// 实验性：静音过滤配置
     silence_filter: SilenceFilterConfig,
 }
 
@@ -276,21 +276,27 @@ impl DrCalculator {
         silence_filter: SilenceFilterConfig,
     ) -> AudioResult<Self> {
         if channel_count == 0 {
-            return Err(AudioError::InvalidInput("声道数量必须大于0".to_string()));
+            return Err(AudioError::InvalidInput(
+                "Channel count must be greater than zero / 声道数量必须大于0".to_string(),
+            ));
         }
 
         if channel_count > MAX_SUPPORTED_CHANNELS {
             return Err(AudioError::InvalidInput(format!(
-                "声道数量不能超过{MAX_SUPPORTED_CHANNELS}"
+                "Channel count cannot exceed {MAX_SUPPORTED_CHANNELS} / 声道数量不能超过{MAX_SUPPORTED_CHANNELS}"
             )));
         }
 
         if sample_rate == 0 {
-            return Err(AudioError::InvalidInput("采样率必须大于0".to_string()));
+            return Err(AudioError::InvalidInput(
+                "Sample rate must be greater than zero / 采样率必须大于0".to_string(),
+            ));
         }
 
         if block_duration <= 0.0 {
-            return Err(AudioError::InvalidInput("块持续时间必须大于0".to_string()));
+            return Err(AudioError::InvalidInput(
+                "Block duration must be greater than zero / 块持续时间必须大于0".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -325,50 +331,56 @@ impl DrCalculator {
         // 验证输入参数
         if !samples.len().is_multiple_of(channel_count) {
             return Err(AudioError::InvalidInput(
-                "样本数量必须是声道数的整数倍".to_string(),
+                "Sample count must be an integer multiple of channel count / 样本数量必须是声道数的整数倍"
+                    .to_string(),
             ));
         }
 
         if channel_count != self.channel_count {
             return Err(AudioError::InvalidInput(format!(
-                "声道数量不匹配：期望{}, 实际{}",
-                self.channel_count, channel_count
+                "Channel count mismatch: expected {expected}, got {actual} / 声道数量不匹配：期望{expected}，实际{actual}",
+                expected = self.channel_count,
+                actual = channel_count
             )));
         }
 
         if samples.is_empty() {
-            return Err(AudioError::InvalidInput("样本数据不能为空".to_string()));
+            return Err(AudioError::InvalidInput(
+                "Sample data cannot be empty / 样本数据不能为空".to_string(),
+            ));
         }
 
-        // 🎯 声道数检查：支持单声道和立体声，拒绝多声道
+        // 声道数检查：支持单声道和立体声，拒绝多声道
         if channel_count > CURRENT_MAX_CHANNELS {
             return Err(AudioError::InvalidInput(format!(
                 "目前仅支持单声道和立体声文件 (1-{CURRENT_MAX_CHANNELS}声道)，当前文件为{channel_count}声道。\n\
-                💡 多声道支持正在开发中，敬请期待未来版本。\n\
-                📝 原因：暂未找到多声道SIMD优化的业界标准实现。"
+                多声道支持正在开发中，敬请期待未来版本。\n\
+                原因：暂未找到多声道DR计算的业界标准实现。"
             )));
         }
 
-        // 🔍 [TRACE] 使用ProcessingCoordinator享受SIMD优化的声道分离服务
-        #[cfg(debug_assertions)]
-        eprintln!("🔍 [DRCALC] 调用ProcessingCoordinator::process_channels");
+        // [TRACE] 使用ProcessingCoordinator享受SIMD优化的声道分离服务
         #[cfg(debug_assertions)]
         eprintln!(
-            "🔍 [DRCALC] 输入: samples={}, channels={}",
-            samples.len(),
-            channel_count
+            "[DRCALC] Calling ProcessingCoordinator::process_channels / 调用ProcessingCoordinator::process_channels"
+        );
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[DRCALC] Input: samples={samples}, channels={channels} / 输入: samples={samples}, channels={channels}",
+            samples = samples.len(),
+            channels = channel_count
         );
 
         let performance_result = self.processing_coordinator.process_channels(
             samples,
             channel_count,
             |channel_samples, channel_idx| {
-                // 🔍 [TRACE] 回调：使用core层的DR算法计算单声道结果
+                // [TRACE] 回调：使用core层的DR算法计算单声道结果
                 #[cfg(debug_assertions)]
                 eprintln!(
-                    "🔍 [DRCALC] 回调处理声道{}: {} 个样本",
-                    channel_idx,
-                    channel_samples.len()
+                    "[DRCALC] Callback processing channel {channel_idx}: {samples} samples / 回调处理声道{channel_idx}: {samples} 个样本",
+                    channel_idx = channel_idx,
+                    samples = channel_samples.len()
                 );
 
                 self.calculate_single_channel_dr(channel_samples, channel_idx)
@@ -377,26 +389,29 @@ impl DrCalculator {
 
         #[cfg(debug_assertions)]
         eprintln!(
-            "🔍 [DRCALC] ProcessingCoordinator返回: {} 个DR结果",
-            performance_result.dr_results.len()
+            "[DRCALC] ProcessingCoordinator returned {count} DR results / ProcessingCoordinator返回: {count} 个DR结果",
+            count = performance_result.dr_results.len()
         );
 
         Ok(performance_result.dr_results)
     }
 
-    /// 🎯 单声道DR计算算法（纯算法逻辑）
+    /// 单声道DR计算算法（纯算法逻辑）
     fn calculate_single_channel_dr(
         &self,
         channel_samples: &[f32],
         channel_idx: usize,
     ) -> AudioResult<DrResult> {
-        // 🔍 [TRACE] 创建WindowRmsAnalyzer进行DR分析
-        #[cfg(debug_assertions)]
-        eprintln!("🔍 [ANALYZER] 声道{channel_idx}: 创建WindowRmsAnalyzer");
+        // [TRACE] 创建WindowRmsAnalyzer进行DR分析
         #[cfg(debug_assertions)]
         eprintln!(
-            "🔍 [ANALYZER] 声道{channel_idx}: 处理 {} 个样本",
-            channel_samples.len()
+            "[ANALYZER] Channel {channel_idx}: creating WindowRmsAnalyzer / 声道{channel_idx}: 创建WindowRmsAnalyzer"
+        );
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[ANALYZER] Channel {channel_idx}: processing {samples} samples / 声道{channel_idx}: 处理 {samples} 个样本",
+            channel_idx = channel_idx,
+            samples = channel_samples.len()
         );
 
         let mut analyzer = WindowRmsAnalyzer::with_silence_filter(
@@ -405,13 +420,13 @@ impl DrCalculator {
             self.silence_filter,
         );
 
-        // 🎯 关键：一次性处理所有样本，让WindowRmsAnalyzer内部创建正确的3秒窗口
+        // 关键：一次性处理所有样本，让WindowRmsAnalyzer内部创建正确的3秒窗口
         analyzer.process_samples(channel_samples);
 
         // 使用WindowRmsAnalyzer的20%采样算法
         let rms_20_percent = analyzer.calculate_20_percent_rms();
 
-        // 🎯 使用配置的峰值选择策略
+        // 使用配置的峰值选择策略
         let window_primary_peak = analyzer.get_largest_peak();
         let window_secondary_peak = analyzer.get_second_largest_peak();
 
@@ -574,23 +589,25 @@ mod tests {
 
         // 静音输入的DR应该是0.0
         assert_eq!(
-            dr_result.dr_value, 0.0,
-            "静音输入应该产生DR=0.0，实际值={}",
-            dr_result.dr_value
+            dr_result.dr_value,
+            0.0,
+            "Silent input should yield DR=0.0, actual value={value} / 静音输入应该产生DR=0.0，实际值={value}",
+            value = dr_result.dr_value
         );
 
         // RMS应该非常小（接近0），使用与实现相同的容差阈值
         assert!(
             dr_result.rms < dr_analysis::DR_ZERO_EPS * 100.0, // 允许稍微宽松的容差
-            "静音输入的RMS应该接近0，实际值={}",
-            dr_result.rms
+            "Silent input RMS should be near 0, actual value={value} / 静音输入的RMS应该接近0，实际值={value}",
+            value = dr_result.rms
         );
 
         // Peak也应该是0（或非常小）
         assert_eq!(
-            dr_result.peak, 0.0,
-            "静音输入的Peak应该是0，实际值={}",
-            dr_result.peak
+            dr_result.peak,
+            0.0,
+            "Silent input peak should be 0, actual value={value} / 静音输入的Peak应该是0，实际值={value}",
+            value = dr_result.peak
         );
     }
 }

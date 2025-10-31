@@ -8,15 +8,15 @@
 //! - **3秒窗口处理**: 按照DR测量标准的窗口长度
 //! - **20%采样算法**: 逆向遍历选择最响20%窗口
 //! - **精确峰值选择**: 主峰/次峰智能切换机制
-//! - **🚀 SIMD优化**: 平方和计算使用SSE2并行加速
-//! - **🧪 实验性静音过滤**: 窗口级静音检测与过滤（可选）
+//! - **SIMD优化**: 平方和计算使用SSE2并行加速
+//! - **实验性静音过滤**: 窗口级静音检测与过滤（可选）
 
 use crate::processing::simd_core::SimdProcessor;
 use crate::tools::constants::dr_analysis::PEAK_EQUALITY_EPSILON;
 
 /// 窗口级静音过滤配置（实验性功能）
 ///
-/// ⚠️ **警告**: 启用此功能会打破与foobar2000 DR Meter的兼容性！
+/// **警告**: 启用此功能会打破与foobar2000 DR Meter的兼容性！
 ///
 /// 该配置允许在窗口RMS计算后，根据阈值过滤低能量（静音）窗口，
 /// 从而测量"纯音乐内容"的动态范围，而非文件的完整动态范围。
@@ -126,21 +126,21 @@ pub struct WindowRmsAnalyzer {
     histogram: DrHistogram,
     /// 所有窗口的Peak值集合（用于排序和选择第二大Peak值）
     window_peaks: Vec<f64>,
-    /// 🔧 **关键修复**: 直接存储窗口RMS值以避免直方图量化损失
+    /// **关键修复**: 直接存储窗口RMS值以避免直方图量化损失
     window_rms_values: Vec<f64>,
     /// 处理的样本总数（用于虚拟零窗逻辑）
     total_samples_processed: usize,
     /// 最后一个样本值（用于尾窗处理）
     last_sample: f64,
-    /// 🚀 **流式双峰跟踪**: 当前窗口的最大值出现次数（用于尾窗Peak调整）
+    /// **流式双峰跟踪**: 当前窗口的最大值出现次数（用于尾窗Peak调整）
     current_peak_count: usize,
-    /// 🚀 **流式双峰跟踪**: 当前窗口的次大Peak值（用于尾窗Peak调整）
+    /// **流式双峰跟踪**: 当前窗口的次大Peak值（用于尾窗Peak调整）
     current_second_peak: f64,
-    /// 🚀 **SIMD优化**: SIMD处理器用于平方和计算加速
+    /// **SIMD优化**: SIMD处理器用于平方和计算加速
     simd_processor: SimdProcessor,
-    /// 🧪 **实验性**: 静音过滤配置
+    /// 实验性：静音过滤配置
     silence_filter: SilenceFilterConfig,
-    /// 🧪 **实验性**: 被过滤的窗口数量（仅在启用静音过滤时有效）
+    /// 实验性：被过滤的窗口数量（仅在启用静音过滤时有效）
     filtered_windows_count: usize,
 }
 
@@ -179,7 +179,7 @@ impl WindowRmsAnalyzer {
     /// * `_sum_doubling` - 预留参数，当前foobar2000兼容模式固定启用Sum Doubling
     /// * `silence_filter` - 静音过滤配置（实验性功能）
     ///
-    /// # ⚠️ 警告
+    /// # 警告
     ///
     /// 启用静音过滤会打破与foobar2000 DR Meter的兼容性！
     pub fn with_silence_filter(
@@ -208,7 +208,7 @@ impl WindowRmsAnalyzer {
 
     /// 处理单声道样本，按3秒窗口计算RMS并填入直方图
     pub fn process_samples(&mut self, samples: &[f32]) {
-        // 🚀 **长曲目优化**: 首次调用时预估窗口数，减少realloc
+        // **长曲目优化**: 首次调用时预估窗口数，减少realloc
         if self.total_samples_processed == 0 && !samples.is_empty() {
             let estimated_windows = samples.len() / self.window_len + 1;
             self.window_rms_values.reserve(estimated_windows);
@@ -222,10 +222,10 @@ impl WindowRmsAnalyzer {
             let sample_f64 = sample as f64;
             let abs_sample = sample_f64.abs();
 
-            // 🔧 **dr14兼容性**: 保存当前样本作为潜在的"最后样本"
+            // **dr14兼容性**: 保存当前样本作为潜在的"最后样本"。当前已不以dr14为兼容目标。
             self.last_sample = sample_f64;
 
-            // 🚀 **流式双峰跟踪**: 更新Peak和次Peak
+            // **流式双峰跟踪**: 更新Peak和次Peak
             if abs_sample > self.current_peak {
                 // 新样本是新最大值
                 self.current_second_peak = self.current_peak; // 旧最大值变成次大值
@@ -245,12 +245,12 @@ impl WindowRmsAnalyzer {
 
             // 窗口满了，计算窗口RMS和Peak并添加到直方图
             if self.current_count >= self.window_len {
-                // ✅ 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
-                // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
-                // 📌 这是foobar2000的固定行为，不受new()参数控制
+                // 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
+                // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
+                // 这是foobar2000的固定行为，不受new()参数控制
                 let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
 
-                // 🧪 **实验性**: 应用静音过滤
+                // 实验性功能：应用静音过滤
                 if self.silence_filter.should_filter(window_rms) {
                     // 窗口RMS低于阈值，过滤此窗口
                     self.filtered_windows_count += 1;
@@ -258,10 +258,10 @@ impl WindowRmsAnalyzer {
                     // 窗口RMS高于阈值，正常处理
                     self.histogram.add_window_rms(window_rms);
 
-                    // ✅ 记录窗口Peak值用于后续排序
+                    // 记录窗口Peak值用于后续排序
                     self.window_peaks.push(self.current_peak);
 
-                    // 🔧 **关键修复**: 直接存储RMS值避免量化损失
+                    // **关键修复**: 直接存储RMS值避免量化损失
                     self.window_rms_values.push(window_rms);
                 }
 
@@ -283,10 +283,10 @@ impl WindowRmsAnalyzer {
                 let adjusted_count = self.current_count - 1;
 
                 // RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
-                // 💡 Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
+                // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
                 let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
 
-                // 🧪 **实验性**: 应用静音过滤
+                // 实验性功能：应用静音过滤
                 if self.silence_filter.should_filter(window_rms) {
                     // 尾窗RMS低于阈值，过滤此窗口
                     self.filtered_windows_count += 1;
@@ -295,7 +295,7 @@ impl WindowRmsAnalyzer {
                     self.histogram.add_window_rms(window_rms);
                     self.window_rms_values.push(window_rms);
 
-                    // 🚀 **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
+                    // **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
                     let last_abs = self.last_sample.abs();
                     let adjusted_peak =
                         if (last_abs - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
@@ -336,7 +336,7 @@ impl WindowRmsAnalyzer {
             return 0.0;
         }
 
-        // 🎯 **关键修复**: 判断是否需要虚拟0窗
+        // 关键修复：依据是否整除窗口长度决定是否补充虚拟0窗
         let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
         let seg_cnt = if has_virtual_zero {
             self.window_rms_values.len() + 1 // 恰好整除：添加0窗
@@ -344,19 +344,18 @@ impl WindowRmsAnalyzer {
             self.window_rms_values.len() // 有尾窗：不添加0窗
         };
 
-        // 步骤2: 🚀 **Phase 3优化**: 构建RMS数组（容量预留+extend避免realloc）
+        // 构建临时RMS数组并预留容量，避免重复分配
         let mut rms_array = Vec::with_capacity(self.window_rms_values.len() + 1);
         rms_array.extend_from_slice(&self.window_rms_values);
         if has_virtual_zero {
             rms_array.push(0.0);
         }
 
-        // 🚀 **性能优化**: 部分选择算法 O(n log n) → O(n)
-        // 步骤3: 计算20%采样窗口数
+        // 计算需要保留的最响窗口数量（20%）
         let cut_best_bins = 0.2;
         let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
 
-        // 步骤4: 使用部分选择找到最高20%的RMS值
+        // 使用部分选择算法聚焦最高20%的 RMS 值
         let start_index = seg_cnt - n_blk;
 
         // 使用select_nth_unstable进行O(n)部分选择
@@ -364,15 +363,15 @@ impl WindowRmsAnalyzer {
         // 使用total_cmp安全处理NaN：NaN会被排序到最后
         rms_array.select_nth_unstable_by(start_index, |a: &f64, b: &f64| a.total_cmp(b));
 
-        // 步骤5: 🚀 **SIMD优化**: 计算最高20%RMS值的平方和
+        // 计算最高20% RMS 值的平方和（SIMD 加速）
         let top_20_values = &rms_array[start_index..start_index + n_blk];
         let rms_sum = self.simd_processor.calculate_square_sum(top_20_values);
 
-        // 步骤6: 开方平均
+        // 开方平均得到最终的 20% RMS
         (rms_sum / n_blk as f64).sqrt()
     }
 
-    /// 🚀 **O(n)优化**: 单遍扫描找出最大值和次大值
+    /// **O(n)优化**: 单遍扫描找出最大值和次大值
     ///
     /// 用O(n)单遍扫描代替O(n log n)排序，语义与排序后取最后两个元素一致：
     /// - 对于重复值，自然保留（例如多个最大值时，次大值就是该最大值）
@@ -441,7 +440,7 @@ impl WindowRmsAnalyzer {
 
         let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
 
-        // 🚀 **微优化**: 直接扫描window_peaks，无临时Vec分配
+        // **微优化**: 直接扫描window_peaks，无临时Vec分配
         // find_top_two 内部处理虚拟0窗语义
         let (max, _second) = Self::find_top_two(&self.window_peaks, has_virtual_zero);
         max
@@ -464,7 +463,7 @@ impl WindowRmsAnalyzer {
 
         let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
 
-        // 🚀 **微优化**: 直接扫描window_peaks，无临时Vec分配
+        // **微优化**: 直接扫描window_peaks，无临时Vec分配
         // find_top_two 内部处理虚拟0窗语义
         let (_max, second) = Self::find_top_two(&self.window_peaks, has_virtual_zero);
         second
@@ -882,9 +881,9 @@ mod tests {
         assert!((analyzer.get_second_largest_peak() - 0.5).abs() < 1e-6);
     }
 
-    /// 🚀 **Phase 1回归测试**: 尾窗最后样本是唯一最大值
+    /// 回归场景：尾窗仅最后一个样本达到最大值（唯一最大值）
     ///
-    /// 验证流式双峰跟踪在尾窗排除唯一最大值时使用次大值的正确性
+    /// 验证流式双峰跟踪在尾窗排除唯一最大值时是否正确回退到次大值
     #[test]
     fn test_tail_window_peak_adjustment_unique_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -909,9 +908,9 @@ mod tests {
         );
     }
 
-    /// 🚀 **Phase 1回归测试**: 尾窗最后样本是最大值但出现多次
+    /// 回归场景：尾窗最后样本是最大值且出现多次
     ///
-    /// 验证流式双峰跟踪在尾窗排除重复最大值时保持最大值的正确性
+    /// 验证流式双峰跟踪在尾窗排除重复最大值时仍能保持最大值
     #[test]
     fn test_tail_window_peak_adjustment_duplicate_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -937,9 +936,9 @@ mod tests {
         );
     }
 
-    /// 🚀 **Phase 1回归测试**: 尾窗最后样本不是最大值
+    /// 回归场景：尾窗最后样本不是最大值
     ///
-    /// 验证流式双峰跟踪在尾窗排除非最大值样本时保持Peak不变的正确性
+    /// 验证流式双峰跟踪在尾窗排除非最大值样本时保持 Peak 不变
     #[test]
     fn test_tail_window_peak_adjustment_non_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -966,9 +965,9 @@ mod tests {
         );
     }
 
-    /// 🧪 Phase 4.2: 20%采样边界测试 - 小segment计数
+    /// 场景：20% 采样边界（窗口数量较少，1~5）
     ///
-    /// 测试当window_rms_values非常少（1-5个）时，20%采样逻辑的正确性
+    /// 测试 window_rms_values 很少时 20% 采样逻辑的正确性
     #[test]
     fn test_20_percent_sampling_small_segments() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -1011,11 +1010,11 @@ mod tests {
         );
     }
 
-    /// 🧪 Phase 4.2: 20%采样边界测试 - 大segment计数
+    /// 场景：20% 采样边界（窗口数量较多，1000+）
     ///
-    /// 测试当window_rms_values非常多（1000+）时，20%采样逻辑的正确性和性能
+    /// 测试 window_rms_values 很多时 20% 采样逻辑的正确性与性能
     ///
-    /// ⚠️ 此测试包含硬性时间门限（<10ms），在不同CI环境或低性能机器上易偶发失败。
+    /// 此测试包含硬性时间门限（<10ms），在不同CI环境或低性能机器上易偶发失败。
     /// 已标记为 #[ignore] 以避免CI抖动。使用以下命令手动执行性能测试：
     /// `cargo test --release -- --ignored`
     #[test]
@@ -1078,9 +1077,9 @@ mod tests {
         );
     }
 
-    /// 🧪 Phase 4.3: 虚拟0窗口一致性测试
+    /// 场景：虚拟 0 窗口一致性
     ///
-    /// 测试虚拟0窗口逻辑在各种场景下的正确性和一致性
+    /// 测试虚拟 0 窗口逻辑在各种场景下的正确性和一致性
     #[test]
     fn test_virtual_zero_window_consistency() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -1173,7 +1172,7 @@ mod tests {
         assert_eq!(rms_zero, 0.0, "空analyzer的20% RMS应该为0");
     }
 
-    /// 🚀 **O(n)优化验证**: 验证 find_top_two 与排序方法的等价性
+    /// **O(n)优化验证**: 验证 find_top_two 与排序方法的等价性
     ///
     /// 确保 O(n) 单遍扫描算法与 O(n log n) 排序方法返回相同的结果
     #[test]

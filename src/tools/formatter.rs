@@ -24,7 +24,7 @@ use symphonia::core::codecs::{
 /// 应用程序版本信息
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// 🎯 将 CodecType 映射为人类可读的编解码器名称
+/// 将 CodecType 映射为人类可读的编解码器名称
 ///
 /// 优先使用真实的解码器类型信息，比文件扩展名更准确
 fn codec_type_to_string(codec_type: CodecType) -> &'static str {
@@ -53,7 +53,7 @@ fn codec_type_to_string(codec_type: CodecType) -> &'static str {
     }
 }
 
-/// 🎯 根据真实编解码器类型判断是否为有损压缩
+/// 根据真实编解码器类型判断是否为有损压缩
 ///
 /// 使用symphonia的编解码器常量进行精确判断，比文件扩展名更准确
 fn is_lossy_codec_type(codec_type: CodecType) -> bool {
@@ -67,7 +67,7 @@ fn is_lossy_codec_type(codec_type: CodecType) -> bool {
     // 无损格式：CODEC_TYPE_FLAC, CODEC_TYPE_ALAC, CODEC_TYPE_PCM_*
 }
 
-/// 🎯 智能比特率计算：根据真实编解码器类型选择合适的计算方法
+/// 智能比特率计算：根据真实编解码器类型选择合适的计算方法
 ///
 /// 有损压缩格式(OPUS/MP3/AAC/OGG): 使用文件大小÷时长计算真实比特率
 /// 无损格式(WAV/FLAC/ALAC): 使用采样率×声道×位深计算PCM比特率
@@ -79,14 +79,14 @@ fn calculate_actual_bitrate(
     format: &AudioFormat,
     codec_fallback: &str,
 ) -> AudioResult<u32> {
-    // 🎯 部分分析时无法准确计算比特率（样本数不完整）
+    // 部分分析时无法准确计算比特率（样本数不完整）
     if format.is_partial() {
         return Err(AudioError::InvalidInput(
             "部分分析模式下无法准确计算比特率".to_string(),
         ));
     }
 
-    // 🎯 优先使用真实的编解码器信息
+    // 优先使用真实的编解码器信息
     let is_lossy_compressed = if let Some(codec_type) = format.codec_type {
         is_lossy_codec_type(codec_type)
     } else {
@@ -112,7 +112,7 @@ fn calculate_actual_bitrate(
         Ok((bitrate_bps / 1000.0).round() as u32)
     } else {
         // 无损格式(WAV/FLAC/M4A-ALAC)：使用PCM比特率公式
-        // 🎯 使用 u64 防止极端采样率/声道/位深组合下的溢出
+        // 使用 u64 防止极端采样率/声道/位深组合下的溢出
         // 例如：384kHz × 32ch × 32bit = 393,216,000 bps (接近 u32 上限)
         let bitrate_bps =
             format.sample_rate as u64 * format.channels as u64 * format.bits_per_sample as u64;
@@ -164,7 +164,7 @@ pub fn create_output_header(
 ) -> String {
     let mut output = String::new();
 
-    // 🎯 使用统一的头部标识常量（避免跨模块文案漂移）
+    // 使用统一的头部标识常量（避免跨模块文案漂移）
     output.push_str(&format!(
         "{}\n",
         constants::app_info::format_output_header(VERSION)
@@ -187,7 +187,7 @@ pub fn create_output_header(
         format.sample_count
     ));
 
-    // 🎯 智能时长显示：<1小时用 MM:SS，≥1小时用 HH:MM:SS
+    // 智能时长显示：<1小时用 MM:SS，≥1小时用 HH:MM:SS
     let total_seconds = format.duration_seconds() as u32;
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
@@ -360,7 +360,7 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
 pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // 🎯 提前计算LFE声道映射，避免在循环内重复计算
+    // 提前计算LFE声道映射，避免在循环内重复计算
     let lfe_channels = identify_lfe_channels(format.channels);
 
     // 暂时隐藏Peak和RMS列的表头
@@ -384,9 +384,9 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 
         // 检查是否为LFE声道或静音声道
         let note = if lfe_channels.contains(&i) {
-            "LFE (已排除)"
+            "LFE removed / LFE声道已排除"
         } else if result.peak == 0.0 && result.rms == 0.0 {
-            "静音声道"
+            "Silent channel / 静音声道"
         } else {
             ""
         };
@@ -443,7 +443,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
     output
 }
 
-/// 🎯 统一的DR聚合计算（核心函数）
+/// 统一的DR聚合计算（核心函数）
 ///
 /// 排除LFE声道和静音声道，确保批量模式与单文件模式口径一致
 ///
@@ -642,13 +642,13 @@ pub fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<S
 pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // 🎯 使用统一的DR聚合函数
+    // 使用统一的DR聚合函数
     match compute_official_precise_dr(results, format) {
         Some((official_dr, precise_dr, excluded_count)) => {
             output.push_str(&format!("Official DR Value: DR{official_dr}\n"));
             output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n"));
 
-            // 🎯 边界风险预警（四舍五入跨级检测）
+            // 边界风险预警（四舍五入跨级检测）
             if let Some(warning) = detect_dr_boundary_warning(official_dr, precise_dr) {
                 output.push('\n');
                 output.push_str(&warning);
@@ -689,7 +689,7 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
         "位深 / Bits per sample:", format.bits_per_sample
     ));
 
-    // 🎯 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
+    // 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
     let extension_fallback = utils::extract_extension_uppercase(&config.input_path);
     let bitrate_display =
         match calculate_actual_bitrate(&config.input_path, format, &extension_fallback) {
@@ -698,7 +698,7 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
         };
     output.push_str(&format!("{:<22}{bitrate_display}\n", "比特率 / Bitrate:"));
 
-    // 🎯 优先使用真实的编解码器类型，回退到文件扩展名
+    // 优先使用真实的编解码器类型，回退到文件扩展名
     let codec_display = if let Some(codec_type) = format.codec_type {
         codec_type_to_string(codec_type).to_string()
     } else {
@@ -717,10 +717,10 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
 pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // 🎯 部分分析警告（如果跳过了损坏的音频包）
+    // 部分分析警告（如果跳过了损坏的音频包）
     if format.is_partial() {
         output.push_str(&format!(
-            "⚠️  部分分析警告：跳过了 {} 个损坏的音频包\n",
+            " 部分分析警告：跳过了 {} 个损坏的音频包\n",
             format.skipped_packets()
         ));
         output.push_str("    分析结果可能不完整，建议检查源文件质量。\n\n");
@@ -744,7 +744,7 @@ pub fn write_output(output: &str, config: &AppConfig, auto_save: bool) -> AudioR
         Some(output_path) => {
             // 用户指定了输出文件路径
             std::fs::write(output_path, output).map_err(AudioError::IoError)?;
-            println!("📄 结果已保存到: {}", output_path.display());
+            println!("Results saved / 结果已保存到: {}", output_path.display());
         }
         None => {
             if auto_save {
@@ -753,7 +753,10 @@ pub fn write_output(output: &str, config: &AppConfig, auto_save: bool) -> AudioR
                 let file_stem = utils::extract_file_stem(&config.input_path);
                 let auto_output_path = parent_dir.join(format!("{file_stem}_DR_Analysis.txt"));
                 std::fs::write(&auto_output_path, output).map_err(AudioError::IoError)?;
-                println!("📄 结果已保存到: {}", auto_output_path.display());
+                println!(
+                    "Results saved / 结果已保存到: {}",
+                    auto_output_path.display()
+                );
             } else {
                 // 控制台输出模式
                 print!("{output}");

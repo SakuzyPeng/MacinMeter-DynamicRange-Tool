@@ -109,9 +109,9 @@ pub mod decoder_performance {
     ///
     /// **实测数据**：
     /// - 容量=128（batch_size×2）：218.78 MB/s，62.79 MB（基线）
-    /// - 容量=16（threads×4）：236.69 MB/s，68.81 MB（+8.2%速度，+9.6%内存）✅
-    /// - 容量=12（threads×3）：栈溢出崩溃（背压过度）❌
-    /// - 容量=8（threads×2）：栈溢出崩溃（背压过度）❌
+    /// - 容量=16（threads×4）：236.69 MB/s，68.81 MB（+8.2%速度，+9.6%内存）
+    /// - 容量=12（threads×3）：栈溢出崩溃（背压过度）
+    /// - 容量=8（threads×2）：栈溢出崩溃（背压过度）
     pub const SEQUENCED_CHANNEL_CAPACITY_MULTIPLIER: usize = 4;
 
     /// drain_all_samples() 接收超时时间（毫秒）
@@ -187,7 +187,7 @@ pub mod parallel_limits {
     pub const MAX_PARALLEL_BATCH_SIZE: usize = 256;
 }
 
-/// 缓冲区内存优化常量（阶段D）
+/// 缓冲区内存优化常量（硬上限策略）
 pub mod buffers {
     /// 样本缓冲区容量预分配倍数
     ///
@@ -209,7 +209,7 @@ pub mod buffers {
 
     /// 窗口对齐优化开关（内部策略，面向开发者）
     ///
-    /// **默认行为（Release）**：固定返回 true，启用阶段D优化（预分配+硬上限）
+    /// **默认行为（Release）**：固定返回 true，启用硬上限内存优化（预分配+容量限制）
     ///
     /// **调试模式（Debug/Test）**：读取环境变量 `DR_DISABLE_WINDOW_ALIGN`
     /// - `DR_DISABLE_WINDOW_ALIGN=1` 或 `=true` → 禁用优化（用于A/B对比测试）

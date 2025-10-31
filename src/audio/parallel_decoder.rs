@@ -1,4 +1,4 @@
-//! 🚀 有序并行解码器 - 攻击真正瓶颈的高性能音频解码
+//! 有序并行解码器 - 攻击真正瓶颈的高性能音频解码
 //!
 //! 基于大量基准测试发现解码是唯一瓶颈(占70-80% CPU时间)的关键洞察，
 //! 实现保证顺序的并行解码架构，预期获得3-5倍性能提升。
@@ -42,7 +42,7 @@ use symphonia::core::{
     formats::Packet,
 };
 
-/// 🎯 解码数据块 - 显式EOF标记
+/// 解码数据块 - 显式EOF标记
 ///
 /// 通过枚举明确区分"样本数据"和"结束信号"，彻底解决生产者-消费者EOF识别问题
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ pub enum DecodedChunk {
     EOF,
 }
 
-/// 🎯 解码器状态 - 三阶段状态机
+/// 解码器状态 - 三阶段状态机
 ///
 /// 用于明确区分"包已读完"和"样本已消费完"，解决样本丢失问题
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,13 +66,13 @@ pub enum DecodingState {
     Completed,
 }
 
-/// 📦 带序列号的数据包装器
+/// 带序列号的数据包装器
 struct SequencedPacket {
     sequence: usize,
     packet: Packet,
 }
 
-/// 🔄 有序通道 - 确保乱序并行结果按顺序输出
+/// 有序通道 - 确保乱序并行结果按顺序输出
 ///
 /// ## 核心机制
 ///
@@ -157,7 +157,7 @@ impl<T> SequencedChannel<T> {
     }
 }
 
-/// 📤 有序发送端 - 在发送端实现重排序逻辑
+/// 有序发送端 - 在发送端实现重排序逻辑
 ///
 /// ## 重排序算法
 ///
@@ -171,7 +171,7 @@ impl<T> SequencedChannel<T> {
 /// - **锁竞争**：多个发送线程竞争 `Mutex<HashMap>`，在高并发（16+线程）下可能成为瓶颈
 /// - **内存占用**：缓冲区大小取决于乱序程度，最坏情况为 O(并发度)
 /// - **原子操作**：使用 `AtomicUsize` 读取 `next_expected`，减少锁持有时间
-/// - **扩展建议**：高并发（>8-16线程）场景建议迁移到接收端重排架构（参见优化#13），
+/// - **扩展建议**：高并发（>8-16线程）场景建议迁移到接收端重排架构（参见 `PARALLEL_DECODER_OPTIMIZATION_PLAN.md` 中的接收端重排序方案），
 ///   避免发送端锁竞争成为瓶颈
 ///
 /// **背压特性**：使用 crossbeam bounded Sender，当通道满时 send() 会阻塞，形成自然的背压。
@@ -218,24 +218,24 @@ impl<T> OrderedSender<T> {
         let next_expected = self.next_expected.load(Ordering::Acquire);
 
         if sequence == next_expected {
-            // 🎯 正好是期望的序列号，直接发送
+            // 正好是期望的序列号，直接发送
             drop(buffer); // 释放锁
             self.sender.send(data)?;
             // 原子序优化：Release 让写入对其他线程可见
             self.next_expected
                 .store(next_expected + 1, Ordering::Release);
 
-            // 🔄 检查缓冲区中是否有后续连续的序列号可以发送
+            // 检查缓冲区中是否有后续连续的序列号可以发送
             self.flush_consecutive_from_buffer();
         } else {
-            // 🔄 不是期望的序列号，存入重排序缓冲区等待
+            // 不是期望的序列号，存入重排序缓冲区等待
             buffer.insert(sequence, data);
         }
 
         Ok(())
     }
 
-    /// 🔄 从缓冲区中发送连续的序列号数据
+    /// 从缓冲区中发送连续的序列号数据
     ///
     /// ## 算法逻辑
     ///
@@ -274,13 +274,13 @@ impl<T> OrderedSender<T> {
     }
 }
 
-/// 🚀 有序并行解码器 - 核心性能优化组件
+/// 有序并行解码器 - 核心性能优化组件
 ///
 /// 职责：将包批量化并行解码，保证输出顺序与输入完全一致
 pub struct OrderedParallelDecoder {
     batch_size: usize,
     thread_pool_size: usize,
-    /// 🚀 Rayon线程池 - 复用工作线程（Arc包装，支持廉价clone）
+    /// Rayon线程池 - 复用工作线程（Arc包装，支持廉价clone）
     thread_pool: Arc<rayon::ThreadPool>,
     /// 当前批次缓冲区
     current_batch: Vec<SequencedPacket>,
@@ -292,11 +292,11 @@ pub struct OrderedParallelDecoder {
     decoder_factory: DecoderFactory,
     /// 统计信息
     stats: ParallelDecodingStats,
-    /// 🎯 解码状态 - 三阶段状态机
+    /// 解码状态 - 三阶段状态机
     decoding_state: DecodingState,
-    /// 🎯 防止重复flush的标志位
+    /// 防止重复flush的标志位
     flushed: bool,
-    /// 🎯 EOF遇到标志 - 防止next_samples()消费EOF导致drain无法收到
+    /// EOF遇到标志 - 防止next_samples()消费EOF导致drain无法收到
     eof_encountered: bool,
 }
 
@@ -322,12 +322,12 @@ impl ParallelDecodingStats {
     }
 }
 
-/// 🏭 解码器工厂 - 为每个并行线程创建独立解码器
+/// 解码器工厂 - 为每个并行线程创建独立解码器
 #[derive(Clone, Debug)]
 struct DecoderFactory {
     codec_params: symphonia::core::codecs::CodecParameters,
     decoder_options: DecoderOptions,
-    sample_converter: SampleConverter, // 🚀 新增：SIMD样本转换器
+    sample_converter: SampleConverter, // 新增：SIMD样本转换器
 }
 
 impl DecoderFactory {
@@ -366,11 +366,11 @@ impl OrderedParallelDecoder {
         codec_params: symphonia::core::codecs::CodecParameters,
         sample_converter: SampleConverter,
     ) -> Self {
-        // 🚀 创建rayon线程池，使用统一配置的线程数（Arc包装，支持clone）
+        // 创建rayon线程池，使用统一配置的线程数（Arc包装，支持clone）
         let thread_pool = Arc::new(
             ThreadPoolBuilder::new()
                 .num_threads(decoder_performance::PARALLEL_DECODE_THREADS)
-                .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
+                .stack_size(4 * 1024 * 1024) // 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
                 .build()
                 .expect("创建rayon线程池失败"),
         );
@@ -390,7 +390,7 @@ impl OrderedParallelDecoder {
         }
     }
 
-    /// 🎯 配置并行参数 - 根据硬件和文件特性调优
+    /// 配置并行参数 - 根据硬件和文件特性调优
     pub fn with_config(mut self, batch_size: usize, thread_pool_size: usize) -> Self {
         self.batch_size = batch_size.clamp(
             parallel_limits::MIN_PARALLEL_BATCH_SIZE,
@@ -401,16 +401,16 @@ impl OrderedParallelDecoder {
             parallel_limits::MAX_PARALLEL_DEGREE,
         );
 
-        // 🚀 重建rayon线程池，使用新的线程数配置（Arc包装）
+        // 重建rayon线程池，使用新的线程数配置（Arc包装）
         self.thread_pool = Arc::new(
             ThreadPoolBuilder::new()
                 .num_threads(self.thread_pool_size)
-                .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
+                .stack_size(4 * 1024 * 1024) // 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
                 .build()
                 .expect("创建rayon线程池失败"),
         );
 
-        // ✅ 根据线程数重新创建通道，容量 = thread_pool_size × multiplier
+        // 根据线程数重新创建通道，容量 = thread_pool_size × multiplier
         // 核心洞察：乱序样本缓冲峰值取决于并发度（线程数），而非批次大小
         let channel_capacity =
             self.thread_pool_size * decoder_performance::SEQUENCED_CHANNEL_CAPACITY_MULTIPLIER;
@@ -419,7 +419,7 @@ impl OrderedParallelDecoder {
         self
     }
 
-    /// 📦 添加包到当前批次，批次满时触发并行解码
+    /// 添加包到当前批次，批次满时触发并行解码
     pub fn add_packet(&mut self, packet: Packet) -> AudioResult<()> {
         let sequenced_packet = SequencedPacket {
             sequence: self.sequence_counter,
@@ -430,7 +430,7 @@ impl OrderedParallelDecoder {
         self.sequence_counter += 1;
         self.stats.packets_added += 1;
 
-        // 🚀 批次满了，启动并行解码
+        // 批次满了，启动并行解码
         if self.current_batch.len() >= self.batch_size {
             self.process_current_batch()?;
         }
@@ -438,9 +438,9 @@ impl OrderedParallelDecoder {
         Ok(())
     }
 
-    /// 🏁 处理最后剩余的不满批次的包
+    /// 处理最后剩余的不满批次的包
     pub fn flush_remaining(&mut self) -> AudioResult<()> {
-        // ✅ 防止重复flush
+        // 防止重复flush
         if self.flushed {
             return Ok(());
         }
@@ -450,21 +450,21 @@ impl OrderedParallelDecoder {
             self.process_current_batch()?;
         }
 
-        // ✅ 发送EOF标记，告知消费者所有包已解码完毕
+        // 发送EOF标记，告知消费者所有包已解码完毕
         let eof_sequence = self.sequence_counter;
         let sender = self.samples_channel.sender();
         sender
             .send_sequenced(eof_sequence, DecodedChunk::EOF)
             .map_err(|_| error::decoding_error("发送EOF失败", "channel已关闭"))?;
 
-        // ✅ 转换到Flushing状态
+        // 转换到Flushing状态
         self.decoding_state = DecodingState::Flushing;
         self.flushed = true;
 
         Ok(())
     }
 
-    /// 📥 获取下一个有序的解码样本
+    /// 获取下一个有序的解码样本
     ///
     /// **重要**：此方法只返回Samples，遇到EOF时设置标志但不消费（留给drain）
     pub fn next_samples(&mut self) -> Option<Vec<f32>> {
@@ -485,7 +485,7 @@ impl OrderedParallelDecoder {
                 Some(samples)
             }
             Ok(DecodedChunk::EOF) => {
-                // ⚠️ EOF已被消费，设置标志让drain知道不用再等EOF了
+                // EOF已被消费，设置标志让drain知道不用再等EOF了
                 self.eof_encountered = true;
                 // 不改变状态！让drain_all_samples()负责切换到Completed
                 None
@@ -500,12 +500,12 @@ impl OrderedParallelDecoder {
         }
     }
 
-    /// 🎯 获取当前解码状态
+    /// 获取当前解码状态
     pub fn get_state(&self) -> DecodingState {
         self.decoding_state
     }
 
-    /// 🎯 设置解码状态（仅供状态机内部使用）
+    /// 设置解码状态（仅供状态机内部使用）
     pub fn set_state(&mut self, state: DecodingState) {
         self.decoding_state = state;
     }
@@ -515,7 +515,7 @@ impl OrderedParallelDecoder {
         self.stats.failed_packets
     }
 
-    /// ✅ 确定性drain所有剩余样本 - 短超时阻塞等待，100%可靠
+    /// 确定性drain所有剩余样本 - 短超时阻塞等待，100%可靠
     ///
     /// 通过eof_encountered标志实现确定性结束，彻底解决MP3并行解码样本丢失问题。
     /// 使用短超时(5ms)的recv_timeout避免CPU空轮询，直到eof_encountered=true且channel为空。
@@ -537,12 +537,12 @@ impl OrderedParallelDecoder {
                     }
                 }
                 Ok(DecodedChunk::EOF) => {
-                    // ✅ 收到EOF（如果next_samples()没消费的话）
+                    // 收到EOF（如果next_samples()没消费的话）
                     self.eof_encountered = true;
                     break;
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    // ✅ Channel空了，检查EOF是否已被遇到
+                    // Channel空了，检查EOF是否已被遇到
                     if self.eof_encountered {
                         // EOF已在next_samples()中被遇到，所有数据已接收完毕
                         break;
@@ -559,11 +559,11 @@ impl OrderedParallelDecoder {
             }
         }
 
-        // ⚠️ 不在这里改状态！让Flushing状态消费完所有批次后再改
+        // 不在这里改状态！让Flushing状态消费完所有批次后再改
         all_samples
     }
 
-    /// 🚀 处理当前批次 - 核心并行解码逻辑
+    /// 处理当前批次 - 核心并行解码逻辑
     fn process_current_batch(&mut self) -> AudioResult<()> {
         if self.current_batch.is_empty() {
             return Ok(());
@@ -572,29 +572,29 @@ impl OrderedParallelDecoder {
         let batch = std::mem::take(&mut self.current_batch);
         let sender = self.samples_channel.sender();
         let decoder_factory = self.decoder_factory.clone();
-        let thread_pool = self.thread_pool.clone(); // 🚀 Clone线程池（Arc包装，廉价操作）
+        let thread_pool = self.thread_pool.clone(); // Clone线程池（Arc包装，廉价操作）
         self.stats.batches_processed += 1;
 
-        // 🚀 直接在rayon线程池中调度批次处理（避免OS线程创建开销和嵌套）
+        // 直接在rayon线程池中调度批次处理（避免OS线程创建开销和嵌套）
         //
-        // 优化#10：使用 spawn_fifo + 移除 install 嵌套
+        // 调度策略：spawn_fifo + 无 install 嵌套
         // - 消除每批次的 OS 线程创建开销（~100-200μs）
-        // - 移除 install 嵌套，避免不必要的作用域同步开销
+        // - 避免 install 嵌套带来的作用域同步成本
         // - spawn_fifo 保证 FIFO 顺序，改善批次公平性和 P99 延迟
-        // - 在池上下文中直接 into_par_iter，自动使用当前池
+        // - 在池上下文中直接 into_par_iter，自动复用当前 rayon 池
         thread_pool.spawn_fifo(move || {
             use rayon::prelude::*;
 
-            // 🚀 直接调用 into_par_iter，无需 install 嵌套
+            // 直接调用 into_par_iter，无需 install 嵌套
             // 在 rayon 池线程上下文中，par_iter 自动使用当前池
             batch.into_par_iter().for_each_init(
                 || {
-                    // ✅ 初始化阶段：每个rayon工作线程只执行一次
+                    // 初始化阶段：每个rayon工作线程只执行一次
                     let decoder = decoder_factory.create_decoder().ok()?;
                     let sample_converter = decoder_factory.get_sample_converter();
                     let thread_sender = sender.clone();
 
-                    // 🚀 优化#8：线程本地样本缓冲区复用
+                    // 线程本地样本缓冲区复用
                     //
                     // 预分配容量，避免解码过程中的频繁内存分配：
                     // - 初始容量：THREAD_LOCAL_SAMPLE_BUFFER_CAPACITY (8192样本 = 32KB)
@@ -609,7 +609,7 @@ impl OrderedParallelDecoder {
                     Some((decoder, sample_converter, thread_sender, samples_buffer))
                 },
                 |state, sequenced_packet| {
-                    // ✅ 处理阶段：复用decoder和buffer解码多个包
+                    // 处理阶段：复用decoder和buffer解码多个包
                     if let Some((decoder, sample_converter, thread_sender, samples_buffer)) = state
                     {
                         match Self::decode_single_packet_with_simd_into(
@@ -619,12 +619,12 @@ impl OrderedParallelDecoder {
                             samples_buffer, // 复用缓冲区
                         ) {
                             Ok(()) => {
-                                // 🚀 获取所有权用于发送，同时为下次处理准备新缓冲区
+                                // 获取所有权用于发送，同时为下次处理准备新缓冲区
                                 //
                                 // 使用 mem::replace 避免 clone 开销：
                                 // - 取走 samples_buffer 的所有权（包含数据和容量）
                                 // - 放入新的空Vec，容量保持为当前容量或初始容量的较大值
-                                // - 优化点：保持"常见容量"，避免反复从初始容量起步
+                                // - 容量采样：保持"常见容量"，避免反复从初始容量起步
                                 //
                                 // 容量策略：
                                 // - 使用 prev_cap.max(THREAD_LOCAL_SAMPLE_BUFFER_CAPACITY)
@@ -637,14 +637,14 @@ impl OrderedParallelDecoder {
                                         prev_cap.max(THREAD_LOCAL_SAMPLE_BUFFER_CAPACITY),
                                     ),
                                 );
-                                // 🎯 直接发送到OrderedSender，无中间通道hop
+                                // 直接发送到OrderedSender，无中间通道hop
                                 let _ = thread_sender.send_sequenced(
                                     sequenced_packet.sequence,
                                     DecodedChunk::Samples(samples_to_send),
                                 );
                             }
                             Err(_) => {
-                                // ⚠️ 解码失败，发送空样本保持序列连续性
+                                // 解码失败，发送空样本保持序列连续性
                                 samples_buffer.clear(); // 确保缓冲区清空，保留容量
                                 let _ = thread_sender.send_sequenced(
                                     sequenced_packet.sequence,
@@ -661,7 +661,7 @@ impl OrderedParallelDecoder {
         Ok(())
     }
 
-    /// 🚀 解码单个数据包到可复用缓冲区（带SIMD优化，零分配优化）
+    /// 解码单个数据包到可复用缓冲区（带SIMD优化，零分配优化）
     ///
     /// 使用传入的可复用缓冲区而非每次创建新Vec，降低内存分配开销
     fn decode_single_packet_with_simd_into(
@@ -672,14 +672,14 @@ impl OrderedParallelDecoder {
     ) -> AudioResult<()> {
         match decoder.decode(&packet) {
             Ok(audio_buf) => {
-                // 🚀 使用SIMD优化转换样本，直接填充到提供的buffer
+                // 使用SIMD优化转换样本，直接填充到提供的buffer
                 samples.clear(); // 清空但保留容量
                 Self::convert_to_interleaved_with_simd(sample_converter, &audio_buf, samples)?;
                 Ok(())
             }
             Err(e) => match e {
                 symphonia::core::errors::Error::DecodeError(_) => {
-                    // 🎯 容错处理：清空样本
+                    // 容错处理：清空样本
                     samples.clear();
                     Ok(())
                 }
@@ -688,15 +688,15 @@ impl OrderedParallelDecoder {
         }
     }
 
-    /// 🚀 将音频缓冲区转换为交错f32样本（SIMD优化）
+    /// 将音频缓冲区转换为交错f32样本（SIMD优化）
     ///
-    /// 🎯 优化#11：使用processing层的统一转换函数，消除重复代码
+    /// 使用processing层的统一转换函数，确保转换逻辑与SIMD优化保持一致
     fn convert_to_interleaved_with_simd(
         sample_converter: &SampleConverter,
         audio_buf: &AudioBufferRef,
         samples: &mut Vec<f32>,
     ) -> AudioResult<()> {
-        // 🚀 使用processing层的统一公共函数
+        // 使用processing层的统一公共函数
         sample_converter.convert_buffer_to_interleaved(audio_buf, samples)
     }
 }
@@ -710,7 +710,7 @@ mod tests {
         let channel = SequencedChannel::new();
         let sender = channel.sender();
 
-        // 🎯 模拟乱序发送
+        // 模拟乱序发送
         std::thread::spawn({
             let sender = sender.clone();
             move || {
@@ -720,7 +720,7 @@ mod tests {
             }
         });
 
-        // ✅ 验证有序接收
+        // 验证有序接收
         assert_eq!(channel.recv_ordered().unwrap(), "first");
         assert_eq!(channel.recv_ordered().unwrap(), "middle");
         assert_eq!(channel.recv_ordered().unwrap(), "second");
@@ -748,24 +748,24 @@ mod tests {
         let channel = SequencedChannel::new();
         let sender = channel.sender();
 
-        // 🎯 测试重排序缓冲区：先发送seq=3，应该被缓存
+        // 测试重排序缓冲区：先发送seq=3，应该被缓存
         sender.send_sequenced(3, "third").unwrap();
 
-        // ✅ 此时应该收不到数据（seq=0未到）
+        // 此时应该收不到数据（seq=0未到）
         assert!(channel.try_recv_ordered().is_err());
 
-        // 🎯 发送seq=0，应该立即收到
+        // 发送seq=0，应该立即收到
         sender.send_sequenced(0, "first").unwrap();
         assert_eq!(channel.try_recv_ordered().unwrap(), "first");
 
-        // 🎯 发送seq=1，应该立即收到
+        // 发送seq=1，应该立即收到
         sender.send_sequenced(1, "second").unwrap();
         assert_eq!(channel.try_recv_ordered().unwrap(), "second");
 
-        // 🎯 此时seq=2仍未到，seq=3在缓冲区等待
+        // 此时seq=2仍未到，seq=3在缓冲区等待
         assert!(channel.try_recv_ordered().is_err());
 
-        // 🎯 发送seq=2，应该立即收到seq=2和seq=3（flush连续序列）
+        // 发送seq=2，应该立即收到seq=2和seq=3（flush连续序列）
         sender.send_sequenced(2, "middle").unwrap();
         assert_eq!(channel.try_recv_ordered().unwrap(), "middle");
         assert_eq!(channel.try_recv_ordered().unwrap(), "third"); // flush出来的
@@ -776,19 +776,19 @@ mod tests {
         let channel = SequencedChannel::new();
         let sender = channel.sender();
 
-        // 🎯 测试连续序列号的自动flush：先发送2、3、4，再发送0、1
+        // 测试连续序列号的自动flush：先发送2、3、4，再发送0、1
         sender.send_sequenced(2, "data2").unwrap();
         sender.send_sequenced(3, "data3").unwrap();
         sender.send_sequenced(4, "data4").unwrap();
 
-        // ✅ 此时应该收不到数据
+        // 此时应该收不到数据
         assert!(channel.try_recv_ordered().is_err());
 
-        // 🎯 发送seq=0，立即收到
+        // 发送seq=0，立即收到
         sender.send_sequenced(0, "data0").unwrap();
         assert_eq!(channel.try_recv_ordered().unwrap(), "data0");
 
-        // 🎯 发送seq=1，应该触发flush连续序列2、3、4
+        // 发送seq=1，应该触发flush连续序列2、3、4
         sender.send_sequenced(1, "data1").unwrap();
         assert_eq!(channel.try_recv_ordered().unwrap(), "data1");
         assert_eq!(channel.try_recv_ordered().unwrap(), "data2");
@@ -806,14 +806,14 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 初始状态应该是Decoding
+        // 初始状态应该是Decoding
         assert_eq!(decoder.get_state(), DecodingState::Decoding);
 
-        // 🎯 调用flush_remaining应该转换到Flushing
+        // 调用flush_remaining应该转换到Flushing
         decoder.flush_remaining().unwrap();
         assert_eq!(decoder.get_state(), DecodingState::Flushing);
 
-        // 🎯 可以手动设置状态到Completed
+        // 可以手动设置状态到Completed
         decoder.set_state(DecodingState::Completed);
         assert_eq!(decoder.get_state(), DecodingState::Completed);
     }
@@ -828,13 +828,13 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 初始状态：eof_encountered应该是false
+        // 初始状态：eof_encountered应该是false
         assert!(!decoder.eof_encountered);
 
-        // 🎯 flush后会发送EOF标记
+        // flush后会发送EOF标记
         decoder.flush_remaining().unwrap();
 
-        // 🎯 调用next_samples应该遇到EOF并设置标志
+        // 调用next_samples应该遇到EOF并设置标志
         // 注意：由于没有真实数据，channel是空的，但我们可以测试EOF标志的初始状态
         assert_eq!(decoder.get_state(), DecodingState::Flushing);
     }
@@ -849,12 +849,12 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 第一次flush应该成功
+        // 第一次flush应该成功
         assert!(!decoder.flushed);
         decoder.flush_remaining().unwrap();
         assert!(decoder.flushed);
 
-        // 🎯 第二次flush应该直接返回（防止重复）
+        // 第二次flush应该直接返回（防止重复）
         let result = decoder.flush_remaining();
         assert!(result.is_ok()); // 应该成功返回，而不是错误
         assert!(decoder.flushed); // 标志保持为true
@@ -872,7 +872,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let decoder = OrderedParallelDecoder::new(codec_params, sample_converter).with_config(4, 2);
 
-        // 🎯 批次大小为4，添加3个包不应该触发处理
+        // 批次大小为4，添加3个包不应该触发处理
         assert_eq!(decoder.current_batch.len(), 0);
 
         // 注意：实际添加packet需要真实的packet数据，这里测试批次满的逻辑
@@ -891,7 +891,7 @@ mod tests {
         let mut decoder =
             OrderedParallelDecoder::new(codec_params, sample_converter).with_config(64, 4);
 
-        // 🎯 flush空批次应该成功
+        // flush空批次应该成功
         let result = decoder.flush_remaining();
         assert!(result.is_ok());
         assert_eq!(decoder.get_state(), DecodingState::Flushing);
@@ -907,7 +907,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 没有数据时next_samples应该返回None
+        // 没有数据时next_samples应该返回None
         assert!(decoder.next_samples().is_none());
     }
 
@@ -921,13 +921,13 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 flush后next_samples应该最终遇到EOF
+        // flush后next_samples应该最终遇到EOF
         decoder.flush_remaining().unwrap();
 
         // 等待EOF通过channel
         std::thread::sleep(std::time::Duration::from_millis(10));
 
-        // 🎯 调用next_samples直到遇到EOF
+        // 调用next_samples直到遇到EOF
         while !decoder.eof_encountered {
             if decoder.next_samples().is_none() && decoder.eof_encountered {
                 break;
@@ -935,7 +935,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
 
-        // ✅ 验证EOF标志被设置
+        // 验证EOF标志被设置
         assert!(decoder.eof_encountered);
     }
 
@@ -949,7 +949,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let mut decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 flush后drain应该返回空vec
+        // flush后drain应该返回空vec
         decoder.flush_remaining().unwrap();
 
         // 等待EOF到达
@@ -970,22 +970,22 @@ mod tests {
 
         let sample_converter = SampleConverter::new();
 
-        // 🎯 测试batch_size上限限制（256）
+        // 测试batch_size上限限制（256）
         let decoder1 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
             .with_config(1000, 4);
         assert_eq!(decoder1.batch_size, 256); // 应该被限制到256
 
-        // 🎯 测试batch_size下限限制（1）
+        // 测试batch_size下限限制（1）
         let decoder2 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
             .with_config(0, 4);
         assert_eq!(decoder2.batch_size, 1); // 应该被限制到1
 
-        // 🎯 测试thread_pool_size上限限制（16）
+        // 测试thread_pool_size上限限制（16）
         let decoder3 = OrderedParallelDecoder::new(codec_params.clone(), sample_converter.clone())
             .with_config(64, 100);
         assert_eq!(decoder3.thread_pool_size, 16); // 应该被限制到16
 
-        // 🎯 测试thread_pool_size下限限制（1）
+        // 测试thread_pool_size下限限制（1）
         let decoder4 =
             OrderedParallelDecoder::new(codec_params, sample_converter).with_config(64, 0);
         assert_eq!(decoder4.thread_pool_size, 1); // 应该被限制到1
@@ -1001,7 +1001,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 初始统计应该为0
+        // 初始统计应该为0
         assert_eq!(decoder.stats.packets_added, 0);
         assert_eq!(decoder.stats.batches_processed, 0);
         assert_eq!(decoder.stats.samples_decoded, 0);
@@ -1018,7 +1018,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 序列号计数器初始值应该是0
+        // 序列号计数器初始值应该是0
         assert_eq!(decoder.sequence_counter, 0);
     }
 
@@ -1031,7 +1031,7 @@ mod tests {
 
         let factory = DecoderFactory::new(codec_params, sample_converter);
 
-        // 🎯 获取样本转换器克隆
+        // 获取样本转换器克隆
         let converter = factory.get_sample_converter();
         assert!(std::mem::size_of_val(&converter) > 0); // 验证转换器存在
     }
@@ -1046,7 +1046,7 @@ mod tests {
         let sample_converter = SampleConverter::new();
         let decoder = OrderedParallelDecoder::new(codec_params, sample_converter);
 
-        // 🎯 初始跳过包数应该是0
+        // 初始跳过包数应该是0
         assert_eq!(decoder.get_skipped_packets(), 0);
     }
 }

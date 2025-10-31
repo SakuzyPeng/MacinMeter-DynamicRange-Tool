@@ -23,50 +23,61 @@ const DEFAULT_TRIM_MIN_RUN_MS_STR: &str = "60";
 
 /// 自定义范围校验函数
 fn parse_parallel_degree(s: &str) -> Result<usize, String> {
-    let value: usize = s.parse().map_err(|_| format!("'{s}' 不是有效的数字"))?;
+    let value: usize = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number / 不是有效的数字"))?;
     let min = constants::parallel_limits::MIN_PARALLEL_DEGREE;
     let max = constants::parallel_limits::MAX_PARALLEL_DEGREE;
     if value < min {
-        return Err(format!("值必须至少为 {min}"));
+        return Err(format!("value must be at least {min} / 值必须至少为 {min}"));
     }
     if value > max {
-        return Err(format!("值不能超过 {max}"));
+        return Err(format!("value cannot exceed {max} / 值不能超过 {max}"));
     }
     Ok(value)
 }
 
 /// 批大小范围校验（1-256）
 fn parse_batch_size(s: &str) -> Result<usize, String> {
-    let value: usize = s.parse().map_err(|_| format!("'{s}' 不是有效的数字"))?;
+    let value: usize = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number / 不是有效的数字"))?;
     let min = constants::parallel_limits::MIN_PARALLEL_BATCH_SIZE;
     let max = constants::parallel_limits::MAX_PARALLEL_BATCH_SIZE;
     if value < min {
-        return Err(format!("批大小必须至少为 {min}"));
+        return Err(format!(
+            "batch size must be at least {min} / 批大小必须至少为 {min}"
+        ));
     }
     if value > max {
-        return Err(format!("批大小不能超过 {max}"));
+        return Err(format!(
+            "batch size cannot exceed {max} / 批大小不能超过 {max}"
+        ));
     }
     Ok(value)
 }
 
 /// 静音阈值范围校验（-120dB ~ 0dB）
 fn parse_silence_threshold(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' 不是有效的浮点数字（示例：-70）"))?;
+    let value: f64 = s.parse().map_err(|_| {
+        format!("'{s}' is not a valid float (example: -70) / 不是有效的浮点数字（示例：-70）")
+    })?;
     if !(-120.0..=0.0).contains(&value) {
-        return Err("静音阈值必须在 -120 到 0 dB 之间".to_string());
+        return Err(
+            "silence threshold must be between -120 and 0 dB / 静音阈值必须在 -120 到 0 dB 之间"
+                .to_string(),
+        );
     }
     Ok(value)
 }
 
 /// 裁切最小持续时间校验（50ms ~ 2000ms）
 fn parse_trim_min_run(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' 不是有效的浮点数字（示例：300）"))?;
+    let value: f64 = s.parse().map_err(|_| {
+        format!("'{s}' is not a valid float (example: 300) / 不是有效的浮点数字（示例：300）")
+    })?;
     if !(50.0..=2000.0).contains(&value) {
-        return Err("最小持续时间必须在 50 到 2000 毫秒之间".to_string());
+        return Err("minimum duration must be between 50 and 2000 milliseconds / 最小持续时间必须在 50 到 2000 毫秒之间".to_string());
     }
     Ok(value)
 }
@@ -83,7 +94,7 @@ pub struct AppConfig {
     /// 输出文件路径（可选，批量模式时自动生成）
     pub output_path: Option<PathBuf>,
 
-    /// 🚀 并行解码配置 - 攻击解码瓶颈的核心优化
+    /// 并行解码配置 - 攻击解码瓶颈的核心优化
     /// 是否启用并行解码（默认：true）
     pub parallel_decoding: bool,
 
@@ -93,18 +104,18 @@ pub struct AppConfig {
     /// 并行解码线程数（默认：4线程）
     pub parallel_threads: usize,
 
-    /// 🚀 多文件并行配置
+    /// 多文件并行配置
     /// - None: 禁用多文件并行（串行处理）
     /// - Some(n): 并发度n（默认：4）
     pub parallel_files: Option<usize>,
 
-    /// 🧪 实验性：静音过滤阈值（存在即启用；单位 dBFS）
+    /// 实验性：静音过滤阈值（存在即启用；单位 dBFS）
     pub silence_filter_threshold_db: Option<f64>,
 
-    /// 🧪 实验性：首尾边缘裁切阈值（存在即启用；单位 dBFS）
+    /// 实验性：首尾边缘裁切阈值（存在即启用；单位 dBFS）
     pub edge_trim_threshold_db: Option<f64>,
 
-    /// 🧪 实验性：裁切最小持续时间（毫秒）
+    /// 实验性：裁切最小持续时间（毫秒）
     pub edge_trim_min_run_ms: Option<f64>,
 }
 
@@ -130,7 +141,7 @@ pub fn parse_args() -> AppConfig {
         .author(AUTHORS)
         .arg(
             Arg::new("INPUT")
-                .help("音频文件或目录路径 (支持WAV, FLAC, MP3, AAC, OGG)。如果不指定，将扫描可执行文件所在目录")
+                .help("Audio file or directory path (supports WAV, FLAC, MP3, AAC, OGG). If not specified, scans current directory / 音频文件或目录路径 (支持WAV, FLAC, MP3, AAC, OGG)。如果不指定，将扫描可执行文件所在目录")
                 .required(false)
                 .index(1)
                 .value_parser(clap::value_parser!(PathBuf))
@@ -140,14 +151,14 @@ pub fn parse_args() -> AppConfig {
             Arg::new("verbose")
                 .long("verbose")
                 .short('v')
-                .help("显示详细处理信息")
+                .help("Show detailed processing information / 显示详细处理信息")
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("output")
                 .long("output")
                 .short('o')
-                .help("输出结果到文件")
+                .help("Output results to file / 输出结果到文件")
                 .value_name("FILE")
                 .value_parser(clap::value_parser!(PathBuf))
                 .value_hint(clap::ValueHint::FilePath),
@@ -156,14 +167,14 @@ pub fn parse_args() -> AppConfig {
             Arg::new("serial")
                 .long("serial")
                 .short('s')
-                .help("禁用并行解码，使用串行模式（仅影响单文件解码，与多文件并行无关）")
+                .help("Disable parallel decoding, use serial mode (only affects single-file decoding, not multi-file parallelism) / 禁用并行解码，使用串行模式（仅影响单文件解码，与多文件并行无关）")
                 .action(clap::ArgAction::SetTrue)
                 .conflicts_with_all(["parallel-batch", "parallel-threads"]),
         )
         .arg(
             Arg::new("parallel-batch")
                 .long("parallel-batch")
-                .help("并行解码批大小 (范围: 1-256)")
+                .help("Parallel decoding batch size (range: 1-256) / 并行解码批大小 (范围: 1-256)")
                 .value_name("SIZE")
                 .value_parser(parse_batch_size)
                 .default_value(DEFAULT_PARALLEL_BATCH),
@@ -171,7 +182,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("parallel-threads")
                 .long("parallel-threads")
-                .help("并行解码线程数 (范围: 1-16)")
+                .help("Parallel decoding thread count (range: 1-16) / 并行解码线程数 (范围: 1-16)")
                 .value_name("COUNT")
                 .value_parser(parse_parallel_degree)
                 .default_value(DEFAULT_PARALLEL_THREADS),
@@ -179,7 +190,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("parallel-files")
                 .long("parallel-files")
-                .help("并行处理文件数 (范围: 1-16)")
+                .help("Parallel file processing count (range: 1-16) / 并行处理文件数 (范围: 1-16)")
                 .value_name("COUNT")
                 .value_parser(parse_parallel_degree)
                 .default_value(DEFAULT_PARALLEL_FILES),
@@ -187,14 +198,14 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("no-parallel-files")
                 .long("no-parallel-files")
-                .help("禁用多文件并行处理（使用串行模式）")
+                .help("Disable multi-file parallel processing (use serial mode) / 禁用多文件并行处理（使用串行模式）")
                 .action(clap::ArgAction::SetTrue)
                 .conflicts_with("parallel-files"),
         )
         .arg(
             Arg::new("filter-silence")
                 .long("filter-silence")
-                .help("🧪 启用窗口静音过滤；可选指定阈值（dBFS，范围 -120~0，默认 -70）")
+                .help("[EXPERIMENTAL] Enable window silence filtering; optional threshold (dBFS, range -120~0, default -70) / 启用窗口静音过滤；可选指定阈值（dBFS，范围 -120~0，默认 -70）")
                 .value_name("DB")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -204,7 +215,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
-                .help("🧪 P0: 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
+                .help("[EXPERIMENTAL] Enable edge-level silence trimming; optional threshold (dBFS, range -120~0, default -60) / 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
                 .value_name("DB")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -214,7 +225,7 @@ pub fn parse_args() -> AppConfig {
         .arg(
             Arg::new("trim-min-run")
                 .long("trim-min-run")
-                .help("🧪 P0: 裁切最小持续时间（毫秒，范围 50-2000，默认 60；若未指定则自动使用默认）")
+                .help("[EXPERIMENTAL] Trimming minimum duration (milliseconds, range 50-2000, default 60) / 裁切最小持续时间（毫秒，范围 50-2000，默认 60；若未指定则自动使用默认）")
                 .value_name("MS")
                 .requires("trim-edges")
                 .value_parser(parse_trim_min_run)
@@ -232,10 +243,10 @@ pub fn parse_args() -> AppConfig {
         }
     };
 
-    // 🚀 并行解码配置逻辑（性能优先策略）
-    // ✅ 已验证：SequencedChannel保证样本顺序，DR精度无损
-    // 📊 性能提升：3.71倍 (57.47 → 213.19 MB/s, 10次平均测试)
-    // 🔥 默认启用并行解码（性能优先，精度保证）
+    // 并行解码配置逻辑（性能优先策略）
+    // 已验证：SequencedChannel保证样本顺序，DR精度无损
+    // 性能提升：3.71倍 (57.47 → 213.19 MB/s, 10次平均测试)
+    // 默认启用并行解码（性能优先，精度保证）
     let parallel_decoding = !matches.get_flag("serial");
 
     // clap 保证默认值存在，直接 unwrap
@@ -249,7 +260,7 @@ pub fn parse_args() -> AppConfig {
         .copied()
         .expect("parallel-threads has default value");
 
-    // 🚀 多文件并行配置逻辑
+    // 多文件并行配置逻辑
     let parallel_files = if matches.get_flag("no-parallel-files") {
         None // 明确禁用多文件并行
     } else {
@@ -265,7 +276,7 @@ pub fn parse_args() -> AppConfig {
         Some(effective_parallel_degree(degree, None))
     };
 
-    // 🧪 P0阶段：首尾边缘裁切配置
+    // 实验性：首尾边缘裁切配置
     let edge_trim_threshold_db = matches.get_one::<f64>("trim-edges").copied();
     let edge_trim_min_run_ms = if edge_trim_threshold_db.is_some() {
         // trim-edges启用时，解析trim-min-run（有默认值）
@@ -291,27 +302,32 @@ pub fn parse_args() -> AppConfig {
 /// 显示程序启动信息
 pub fn show_startup_info(config: &AppConfig) {
     println!(
-        "🚀 {} {} v{VERSION} 启动",
+        "{} {} v{VERSION}",
         constants::app_info::APP_NAME,
         constants::app_info::VERSION_SUFFIX
     );
-    println!("📝 {DESCRIPTION}");
+    println!("{DESCRIPTION}");
     if config.verbose {
-        println!("🌿 当前分支: {}", constants::app_info::BRANCH_INFO);
+        println!(
+            "当前分支 / Current branch: {}",
+            constants::app_info::BRANCH_INFO
+        );
         if config.parallel_decoding {
             println!(
-                "⚡ 并行解码: 启用 ({}线程, {}包批量) - 预期3-5倍性能提升",
+                "并行解码 / Parallel decoding: 启用 / enabled ({}threads, {}batch) - 预期 / expected 3-5x speedup",
                 config.parallel_threads, config.parallel_batch_size
             );
         } else {
-            println!("⚡ 并行解码: 禁用 (串行模式)");
+            println!("并行解码 / Parallel decoding: 禁用 / disabled (serial mode)");
         }
 
         // 多文件并行配置
         if let Some(degree) = config.parallel_files {
-            println!("🔥 多文件并行: 启用 ({degree}并发度) - 预期2-16倍加速");
+            println!(
+                "多文件并行 / Multi-file parallel: 启用 / enabled ({degree} parallelism) - 预期 / expected 2-16x speedup"
+            );
         } else {
-            println!("🔥 多文件并行: 禁用 (串行处理)");
+            println!("多文件并行 / Multi-file parallel: 禁用 / disabled (serial processing)");
         }
     }
     println!();
@@ -320,7 +336,7 @@ pub fn show_startup_info(config: &AppConfig) {
 /// 显示程序完成信息
 pub fn show_completion_info(config: &AppConfig) {
     if config.verbose {
-        println!("✅ 所有任务处理完成！");
+        println!("所有任务处理完成 / All tasks completed!");
     }
 }
 

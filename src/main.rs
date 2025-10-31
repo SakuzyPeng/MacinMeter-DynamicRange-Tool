@@ -28,29 +28,43 @@ mod exit_codes {
 fn get_error_suggestion(error: &AudioError) -> &'static str {
     // 优先通过具体错误类型匹配，提供更精确的建议
     match error {
-        AudioError::InvalidInput(_) => "检查命令行参数是否正确，使用 --help 查看完整用法",
-        AudioError::ResourceError(_) => "资源不可用，请检查系统资源或重试；若持续失败请降低并发度",
+        AudioError::InvalidInput(_) => {
+            "检查命令行参数是否正确，使用 --help 查看完整用法 / Check if command-line arguments are correct, use --help to see full usage"
+        }
+        AudioError::ResourceError(_) => {
+            "资源不可用，请检查系统资源或重试；若持续失败请降低并发度 / Resource unavailable, check system resources or retry; if it continues to fail, reduce parallelism"
+        }
         AudioError::OutOfMemory => {
-            "内存不足，尝试 --serial 串行模式或降低并发度（--parallel-files 1）"
+            "内存不足，尝试 --serial 串行模式或降低并发度（--parallel-files 1） / Out of memory, try --serial mode or reduce parallelism (--parallel-files 1)"
         }
         // 对于其他错误，使用分类建议
         _ => match ErrorCategory::from_audio_error(error) {
-            ErrorCategory::Io => "检查文件路径是否正确，文件是否存在且可读",
-            ErrorCategory::Format => "确保输入文件为支持的格式",
-            ErrorCategory::Decoding => "文件可能损坏或使用不支持的音频编码",
-            ErrorCategory::Calculation => "计算过程出现异常，请检查音频文件是否包含有效数据",
-            ErrorCategory::Other => "请检查输入文件和参数设置",
+            ErrorCategory::Io => {
+                "检查文件路径是否正确，文件是否存在且可读 / Check if file path is correct, file exists and is readable"
+            }
+            ErrorCategory::Format => {
+                "确保输入文件为支持的格式 / Ensure input file is in a supported format"
+            }
+            ErrorCategory::Decoding => {
+                "文件可能损坏或使用不支持的音频编码 / File may be corrupted or use unsupported audio encoding"
+            }
+            ErrorCategory::Calculation => {
+                "计算过程出现异常，请检查音频文件是否包含有效数据 / Calculation error occurred, check if audio file contains valid data"
+            }
+            ErrorCategory::Other => {
+                "请检查输入文件和参数设置 / Please check input file and parameter settings"
+            }
         },
     }
 }
 
 /// 错误处理和建议
 fn handle_error(error: AudioError) -> ! {
-    eprintln!("❌ 错误: {error}");
+    eprintln!("[ERROR] 错误 / Error: {error}");
 
     // 获取错误分类和建议
     let category = ErrorCategory::from_audio_error(&error);
-    eprintln!("💡 建议: {}", get_error_suggestion(&error));
+    eprintln!("[INFO] 建议 / Suggestion: {}", get_error_suggestion(&error));
 
     // 对于格式错误，额外显示支持的格式列表（大写，与scanner一致）
     if matches!(category, ErrorCategory::Format) {
@@ -61,7 +75,10 @@ fn handle_error(error: AudioError) -> ! {
             .iter()
             .map(|s| s.to_uppercase())
             .collect();
-        eprintln!("   支持的格式: {}", uppercase_formats.join(", "));
+        eprintln!(
+            "   Supported formats / 支持的格式: {}",
+            uppercase_formats.join(", ")
+        );
     }
 
     // 根据错误类型使用不同的退出码（更精确的映射）
@@ -94,7 +111,7 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
         return Ok(());
     }
 
-    // 🎯 根据parallel_files配置选择处理模式
+    // 根据parallel_files配置选择处理模式
     match config.parallel_files {
         None => {
             // 串行模式（明确禁用）
@@ -108,13 +125,13 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
             if actual_degree == 1 {
                 // 并发度为1，使用串行模式避免开销（仅verbose时提示）
                 if config.verbose {
-                    println!("💡 并发度为1，使用串行模式");
+                    println!("[INFO] 并发度为1，使用串行模式 / Parallelism=1, using serial mode");
                 }
                 process_batch_serial(config, &audio_files)
             } else {
                 // 尝试并行处理，失败则降级串行
                 tools::process_batch_parallel(&audio_files, config, actual_degree).or_else(|e| {
-                    eprintln!("⚠️  并行处理失败: {e}，回退到串行模式");
+                    eprintln!("[WARNING] 并行处理失败 / Parallel processing failed: {e}，回退到串行模式 / fallback to serial");
                     process_batch_serial(config, &audio_files)
                 })
             }
@@ -124,7 +141,7 @@ fn process_batch_mode(config: &AppConfig) -> Result<(), AudioError> {
 
 /// 串行批量处理音频文件（原有逻辑）
 fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(), AudioError> {
-    // 🎯 根据文件数量选择输出策略
+    // 根据文件数量选择输出策略
     let is_single_file = audio_files.len() == 1;
     let mut batch_output = if !is_single_file {
         tools::create_batch_output_header(config, audio_files)
@@ -132,7 +149,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         String::new()
     };
 
-    // 🎯 使用统一的批处理统计管理（串行版本）
+    // 使用统一的批处理统计管理（串行版本）
     let mut stats = tools::SerialBatchStats::new();
 
     // 收集边界风险预警
@@ -140,10 +157,10 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
 
     // 逐个处理音频文件
     for (index, audio_file) in audio_files.iter().enumerate() {
-        // 🎯 进度提示：verbose模式显示详细信息，静默模式仅显示基本进度
+        // 进度提示：verbose模式显示详细信息，静默模式仅显示基本进度
         if config.verbose {
             println!(
-                "🔄 [{}/{}] 处理: {}",
+                "[PROCESSING] [{}/{}] 处理 / Processing: {}",
                 index + 1,
                 audio_files.len(),
                 tools::utils::extract_filename_lossy(audio_file)
@@ -155,7 +172,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 stats.inc_processed();
 
                 if is_single_file {
-                    // 🎯 单文件模式：只生成单独的DR结果文件
+                    // 单文件模式：只生成单独的DR结果文件
                     let _ = tools::save_individual_result(
                         &results,
                         &format,
@@ -165,7 +182,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                         silence_report,
                     );
                 } else {
-                    // 🎯 多文件模式：添加到批量输出并收集预警信息
+                    // 多文件模式：添加到批量输出并收集预警信息
                     if let Some(warning) =
                         tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file)
                     {
@@ -174,27 +191,27 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                 }
 
                 if config.verbose {
-                    println!("   ✅ 处理成功");
+                    println!("   [OK] 处理成功 / Processing succeeded");
                 }
             }
             Err(e) => {
-                // 🎯 错误分类统计（使用统一的 BatchStats）
+                // 错误分类统计（使用统一的 BatchStats）
                 let category = ErrorCategory::from_audio_error(&e);
                 let filename = tools::utils::extract_filename_lossy(audio_file);
 
-                // 🎯 详细错误输出（verbose模式）
+                // 详细错误输出（verbose模式）
                 if config.verbose {
-                    println!("   ❌ 处理失败");
-                    println!("      文件: {}", audio_file.display());
-                    println!("      类别: {}", category.display_name());
-                    println!("      错误: {e}");
+                    println!("   [FAIL] 处理失败 / Processing failed");
+                    println!("      文件 / File: {}", audio_file.display());
+                    println!("      类别 / Category: {}", category.display_name());
+                    println!("      错误 / Error: {e}");
                     if let Some(source) = std::error::Error::source(&e) {
-                        println!("      原因: {source}");
+                        println!("      原因 / Cause: {source}");
                     }
                 } else {
                     // 静默模式：至少显示失败的文件
                     println!(
-                        "❌ [{}/{}] {} - [{}] {e}",
+                        "[FAIL] [{}/{}] {} - [{}] {e} / 处理失败",
                         index + 1,
                         audio_files.len(),
                         filename,
@@ -212,7 +229,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         }
     }
 
-    // 🎯 统一处理批量输出收尾工作（使用统计快照）
+    // 统一处理批量输出收尾工作（使用统计快照）
     let snapshot = stats.snapshot();
     tools::finalize_and_write_batch_output(
         config,
@@ -268,7 +285,7 @@ fn run() -> Result<(), AudioError> {
 }
 
 fn main() {
-    // 🚀 性能优化：提升线程优先级以提高Intel混合架构P-core命中率
+    // 性能优化：提升线程优先级以提高Intel混合架构P-core命中率
     // 静默失败：优化失败不影响程序功能，仅可能影响性能
     let _ = macinmeter_dr_tool::tools::utils::optimize_for_performance();
 
@@ -283,7 +300,9 @@ fn main() {
             match pprof::ProfilerGuard::new(250) {
                 Ok(g) => Some(g),
                 Err(e) => {
-                    eprintln!("⚠️  启用火焰图采样失败: {e}");
+                    eprintln!(
+                        "[WARNING] 启用火焰图采样失败 / Failed to enable flame graph sampling: {e}"
+                    );
                     None
                 }
             }
@@ -308,7 +327,7 @@ fn main() {
         if let Ok(file) = File::create(&out_path)
             && report.flamegraph_with_options(file, &mut options).is_ok()
         {
-            eprintln!("✅ FlameGraph 生成成功: {out_path}");
+            eprintln!("FlameGraph generated successfully / 生成成功: {out_path}");
         }
         // 如需生成 pprof 二进制，可在启用 protobuf 特性后再输出
     }

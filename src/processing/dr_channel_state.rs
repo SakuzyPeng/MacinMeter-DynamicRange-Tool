@@ -16,7 +16,7 @@ use std::fmt;
 use std::arch::x86_64::{_mm_cvtsd_f64, _mm_set_pd, _mm_sqrt_pd};
 
 /// foobar2000兼容的SSE平方根计算
-/// 🔥 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
+/// 关键精度修复：使用与foobar2000相同的SSE2 _mm_sqrt_pd指令
 ///
 /// 注意：在非x86_64架构上自动回退到标准sqrt()
 #[cfg(target_arch = "x86_64")]
@@ -176,7 +176,7 @@ impl ChannelData {
 
     /// 获取有效峰值（返回备选峰值，不做最终选择）
     ///
-    /// ⚠️ **重要**：此方法仅返回"次峰（如果可用）或主峰"的组合，
+    /// **重要**：此方法仅返回"次峰（如果可用）或主峰"的组合，
     /// **不应直接用于 DR 计算**。DR 计算应通过 `PeakSelectionStrategy::select_peak()` 进行。
     ///
     /// # 实现说明
@@ -196,12 +196,12 @@ impl ChannelData {
     /// data.process_sample(1.0);   // 主Peak
     /// data.process_sample(0.8);   // 次Peak
     ///
-    /// // ✅ 正确：通过策略选择
+    /// // 正确：通过策略选择
     /// let strategy = PeakSelectionStrategy::default();
     /// let peak = strategy.select_peak(data.peak_primary, data.peak_secondary);
     /// assert!((peak - 0.8).abs() < 1e-5);
     ///
-    /// // ❌ 不推荐：直接调用 get_effective_peak()
+    /// // 不推荐：直接调用 get_effective_peak()
     /// // let peak = data.get_effective_peak();  // 避免使用
     /// ```
     ///

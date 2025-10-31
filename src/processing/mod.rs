@@ -35,7 +35,7 @@ pub use performance_metrics::{
     PerformanceEvaluator, PerformanceResult, PerformanceStats, SimdUsageStats,
 };
 
-// 边缘裁切类型（P0阶段实验性功能）
+// 边缘裁切类型（实验性功能）
 pub use edge_trimmer::{EdgeTrimConfig, EdgeTrimReport, EdgeTrimmer, TrimStats};
 
 /// 静音窗口过滤报告（供输出模块使用）

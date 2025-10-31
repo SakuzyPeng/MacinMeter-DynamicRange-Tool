@@ -13,7 +13,7 @@ pub struct ChunkSizeStats {
     pub max_size: usize,
     pub mean_size: f64,
     sizes_sum: usize,
-    // 🔍 包大小分布统计（仅在 debug 模式收集，避免 Release 开销）
+    // 包大小分布统计（仅在 debug 模式收集，避免 Release 开销）
     #[cfg(debug_assertions)]
     size_distribution: std::collections::HashMap<usize, usize>,
 }
@@ -50,15 +50,16 @@ impl ChunkSizeStats {
         self.min_size = self.min_size.min(size);
         self.max_size = self.max_size.max(size);
 
-        // 🔍 调试模式：收集包大小分布并输出进度
+        // 调试模式：收集包大小分布并输出进度
         #[cfg(debug_assertions)]
         {
             *self.size_distribution.entry(size).or_insert(0) += 1;
 
             if self.total_chunks <= 5 || (self.total_chunks % 500 == 0) {
                 eprintln!(
-                    "🎵 处理包#{}: {}样本/声道 (总计{}包)",
-                    self.total_chunks, size, self.total_chunks
+                    "Processed packet #{count}: {size} samples/channel (total {total}) / 处理包#{count}: {size}样本/声道 (总计{total}包)",
+                    count = self.total_chunks,
+                    total = self.total_chunks
                 );
             }
         }
@@ -73,11 +74,11 @@ impl ChunkSizeStats {
             self.min_size = 0;
         }
 
-        // 🔍 调试模式：输出包大小分布统计
+        // 调试模式：输出包大小分布统计
         #[cfg(debug_assertions)]
         {
             if self.total_chunks > 0 {
-                eprintln!("\n📊 包大小分布统计:");
+                eprintln!("\nPacket size distribution / 包大小分布统计:");
 
                 // 按包大小排序
                 let mut distribution: Vec<_> = self.size_distribution.iter().collect();
@@ -86,34 +87,53 @@ impl ChunkSizeStats {
                 // 显示分布详情
                 for (size, count) in &distribution {
                     let percentage = (**count as f64 / self.total_chunks as f64) * 100.0;
-                    eprintln!("   {size}样本/声道: {count}个包 ({percentage:.1}%)");
+                    eprintln!(
+                        "   {size} samples/channel: {count} packets ({percentage:.1}%) / {size}样本/声道: {count}个包 ({percentage:.1}%)"
+                    );
                 }
 
                 // 找出最常见的包大小
                 if let Some((most_common_size, most_count)) =
                     distribution.iter().max_by_key(|&(_, count)| count)
                 {
-                    eprintln!("   🎯 最常见: {most_common_size}样本/声道 ({most_count}个包)");
+                    eprintln!(
+                        "   Most frequent: {most_common_size} samples/channel ({most_count} packets) / 最常见: {most_common_size}样本/声道 ({most_count}个包)"
+                    );
                 }
 
-                eprintln!("\n📋 统计摘要:");
-                eprintln!("   总包数: {}", self.total_chunks);
+                eprintln!("\nStatistics summary / 统计摘要:");
                 eprintln!(
-                    "   包大小范围: {} ~ {} 样本/声道",
-                    self.min_size, self.max_size
+                    "   Total packets: {count} / 总包数: {count}",
+                    count = self.total_chunks
                 );
-                eprintln!("   平均大小: {:.1} 样本/声道", self.mean_size);
-                eprintln!("   总样本: {} 样本/声道", self.sizes_sum);
+                eprintln!(
+                    "   Packet size range: {} ~ {} samples/channel / 包大小范围: {} ~ {} 样本/声道",
+                    self.min_size, self.max_size, self.min_size, self.max_size
+                );
+                eprintln!(
+                    "   Average size: {:.1} samples/channel / 平均大小: {:.1} 样本/声道",
+                    self.mean_size, self.mean_size
+                );
+                eprintln!(
+                    "   Total samples: {} samples/channel / 总样本: {} 样本/声道",
+                    self.sizes_sum, self.sizes_sum
+                );
 
                 // 计算包大小变化系数（启发式判断）
                 if self.max_size > 0 && self.min_size > 0 {
                     let variation_ratio = self.max_size as f64 / self.min_size as f64;
-                    eprintln!("   变化系数: {variation_ratio:.2}x");
+                    eprintln!(
+                        "   Variation ratio: {variation_ratio:.2}x / 变化系数: {variation_ratio:.2}x"
+                    );
 
                     if variation_ratio > 2.0 {
-                        eprintln!("   📈 可能是可变包大小格式 (如 FLAC/OGG)");
+                        eprintln!(
+                            "   Likely variable-size packets (e.g., FLAC/OGG) / 可能是可变包大小格式 (如 FLAC/OGG)"
+                        );
                     } else {
-                        eprintln!("   📊 可能是固定包大小格式 (如 MP3/AAC)");
+                        eprintln!(
+                            "   Likely fixed-size packets (e.g., MP3/AAC) / 可能是固定包大小格式 (如 MP3/AAC)"
+                        );
                     }
                 }
                 eprintln!();

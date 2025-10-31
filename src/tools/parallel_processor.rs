@@ -27,7 +27,7 @@ struct OrderedResult {
     result: Result<AnalysisOutput, AudioError>,
 }
 
-/// 🚀 多文件并行处理（优雅实现）
+/// 多文件并行处理（优雅实现）
 ///
 /// 核心特性：
 /// - 使用rayon线程池精确控制并发度
@@ -39,26 +39,28 @@ pub fn process_batch_parallel(
     config: &AppConfig,
     parallel_degree: usize,
 ) -> Result<(), AudioError> {
-    println!("⚡ 启用多文件并行处理：{parallel_degree} 并发度");
+    println!(
+        "启用多文件并行处理 / Enabling multi-file parallel processing: {parallel_degree} parallelism degree"
+    );
 
-    // 1️⃣ 创建统一的批处理统计管理（并行版本）
+    // 创建统一的批处理统计管理（并行版本）
     let stats = ParallelBatchStats::new();
 
     // 进度输出节流计数器（每 50 个文件打印一次）
     let progress_counter = AtomicUsize::new(0);
 
-    // 2️⃣ 创建自定义rayon线程池（精确控制并发度）
+    // 创建自定义rayon线程池（精确控制并发度）
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(parallel_degree)
-        .stack_size(4 * 1024 * 1024) // 🔧 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
+        .stack_size(4 * 1024 * 1024) // 4MB栈空间：支持96kHz高采样率解码（默认1MB不足）
         .thread_name(|i| format!("dr-worker-{i}"))
         .panic_handler(|_| {
-            eprintln!("⚠️  工作线程 panic，但批处理将继续");
+            eprintln!("[WARNING] 工作线程 panic，但批处理将继续 / Worker thread panicked, but batch processing continues");
         })
         .build()
-        .map_err(|e| AudioError::ResourceError(format!("线程池创建失败: {e}")))?;
+        .map_err(|e| AudioError::ResourceError(format!("Thread pool creation failed / 线程池创建失败: {e}")))?;
 
-    // 3️⃣ 并行处理并收集结果（保留索引用于排序）
+    // 并行处理并收集结果（保留索引用于排序）
     let results: Vec<OrderedResult> = pool.install(|| {
         audio_files
             .par_iter()
@@ -86,7 +88,7 @@ pub fn process_batch_parallel(
                 }))
                 .unwrap_or_else(|_| {
                     Err(AudioError::ResourceError(
-                        "文件处理过程中发生内部错误（panic）".to_string(),
+                        "Internal error during file processing (panic) / 文件处理过程中发生内部错误（panic）".to_string(),
                     ))
                 });
 
@@ -96,7 +98,7 @@ pub fn process_batch_parallel(
                         let count = stats.inc_processed();
                         if config.verbose {
                             println!(
-                                "✅ [{}/{}] {}",
+                                "[OK] [{}/{}] {}",
                                 count,
                                 audio_files.len(),
                                 utils::extract_filename_lossy(audio_file)
@@ -110,7 +112,13 @@ pub fn process_batch_parallel(
                         if config.verbose {
                             // verbose 模式需要准确的 count，显式传递 &str（会产生一次 clone）
                             let count = stats.inc_failed(category, filename.as_str());
-                            println!("❌ [{}/{}] {} - {}", count, audio_files.len(), filename, e);
+                            println!(
+                                "[FAIL] [{}/{}] {} - {}",
+                                count,
+                                audio_files.len(),
+                                filename,
+                                e
+                            );
                         } else {
                             // 非 verbose 模式直接 move filename，零开销
                             stats.inc_failed(category, filename);
@@ -128,14 +136,14 @@ pub fn process_batch_parallel(
     });
 
     if !config.verbose {
-        println!(); // 进度点换行
+        println!(); // Progress indicator newline
     }
 
-    // 4️⃣ 按原始顺序排序结果（关键：保证输出顺序）
+    // 按原始顺序排序结果（关键：保证输出顺序）
     let mut sorted_results = results;
     sorted_results.sort_by_key(|r| r.index);
 
-    // 5️⃣ 按序输出到批量文件（与串行模式输出格式完全一致）
+    // 按序输出到批量文件（与串行模式输出格式完全一致）
     let is_single_file = audio_files.len() == 1;
     let mut batch_output = if !is_single_file {
         // 预估容量：header(~500字节) + 每个文件(~250字节)
@@ -182,7 +190,7 @@ pub fn process_batch_parallel(
         }
     }
 
-    // 6️⃣ 统一处理批量输出收尾工作（使用统计快照）
+    // 统一处理批量输出收尾工作（使用统计快照）
     let snapshot = stats.snapshot();
     finalize_and_write_batch_output(
         config,
