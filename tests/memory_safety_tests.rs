@@ -1,17 +1,17 @@
-//! 🛡️ 内存安全和泄露检测测试
+//! 内存安全和泄露检测测试
 //!
 //! **优先级2：内存管理验证**
 //!
 //! 验证项目承诺："零内存累积，~45MB恒定内存"
 //!
-//! ## 🎯 检测策略（安全第一）
+//! ## 检测策略（安全第一）
 //!
 //! 1. **HashMap清理验证** - SequencedChannel的reorder_buffer正确清空
 //! 2. **引用计数验证** - Arc引用正确释放，无循环引用
 //! 3. **重复创建销毁** - decoder对象正确回收
 //! 4. **流式处理模拟** - 验证内存不随数据量增长
 //!
-//! ## ⚠️ 安全约束
+//! ## 安全约束
 //!
 //! - 所有测试标记#[ignore]，避免CI运行
 //! - 使用小数据集（KB级），避免OOM
@@ -20,6 +20,10 @@
 
 use macinmeter_dr_tool::audio::parallel_decoder::SequencedChannel;
 use std::sync::Arc;
+
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
 
 // ========== SequencedChannel HashMap清理测试 ==========
 
@@ -34,7 +38,10 @@ fn test_sequenced_channel_buffer_cleanup() {
     let channel: SequencedChannel<Arc<Vec<u8>>> = SequencedChannel::new();
     let sender = channel.sender();
 
-    println!("📊 测试SequencedChannel缓冲区清理");
+    log(
+        "测试SequencedChannel缓冲区清理",
+        "Validating SequencedChannel buffer cleanup",
+    );
 
     // 创建100个1KB数据块，用Arc包装以便跟踪引用
     let mut data_refs = Vec::new();
@@ -46,7 +53,10 @@ fn test_sequenced_channel_buffer_cleanup() {
         sender.send_sequenced(i, data).unwrap();
     }
 
-    println!("  发送完成，开始接收...");
+    log(
+        "  发送完成，开始接收...",
+        "  All data sent; start consuming...",
+    );
 
     // 接收前50个数据
     for i in 0..50 {
@@ -65,7 +75,10 @@ fn test_sequenced_channel_buffer_cleanup() {
     }
 
     // 显式drop received，现在只剩data_refs持有引用
-    println!("  前50个已接收，验证引用计数...");
+    log(
+        "  前50个已接收，验证引用计数...",
+        "  First 50 items consumed; verifying reference counts...",
+    );
 
     // 再次验证前50个的引用计数
     for i in 0..50 {
@@ -77,7 +90,10 @@ fn test_sequenced_channel_buffer_cleanup() {
     }
 
     // 后50个还未接收，但如果是乱序发送可能在HashMap中
-    println!("  ✓ 前50个引用正确释放");
+    log(
+        "  前50个引用正确释放",
+        "  Reference counts for first 50 items are correct",
+    );
 
     // 接收剩余50个
     for _i in 50..100 {
@@ -93,7 +109,10 @@ fn test_sequenced_channel_buffer_cleanup() {
         );
     }
 
-    println!("✅ HashMap清理验证通过：100个数据块全部正确释放");
+    log(
+        "HashMap清理验证通过：100个数据块全部正确释放",
+        "HashMap cleanup verified: 100 blocks released",
+    );
 }
 
 /// 测试SequencedChannel在大量乱序数据下的内存管理
@@ -109,7 +128,10 @@ fn test_sequenced_channel_large_scale_cleanup() {
 
     const COUNT: usize = 10_000;
 
-    println!("📊 大规模HashMap清理测试：{COUNT} 个数据逆序发送");
+    log(
+        format!("大规模HashMap清理测试：{COUNT} 个数据逆序发送"),
+        format!("Large-scale HashMap cleanup test: {COUNT} entries sent in reverse"),
+    );
 
     // 创建并逆序发送
     let mut data_refs = Vec::new();
@@ -119,7 +141,10 @@ fn test_sequenced_channel_large_scale_cleanup() {
         sender.send_sequenced(i, data).unwrap();
     }
 
-    println!("  发送完成，开始顺序接收...");
+    log(
+        "  发送完成，开始顺序接收...",
+        "  All entries sent; receiving in order...",
+    );
 
     // 边接收边验证引用计数
     for i in 0..COUNT {
@@ -136,7 +161,10 @@ fn test_sequenced_channel_large_scale_cleanup() {
                     "序列{j} 应该已释放"
                 );
             }
-            println!("  已验证前{i}个数据引用正确释放");
+            log(
+                format!("  已验证前{i}个数据引用正确释放"),
+                format!("  Verified first {i} entries have correct ref-count"),
+            );
         }
     }
 
@@ -145,16 +173,22 @@ fn test_sequenced_channel_large_scale_cleanup() {
         assert_eq!(Arc::strong_count(&data_refs[i]), 1);
     }
 
-    println!("✅ 大规模测试通过：{COUNT} 个数据全部正确释放");
+    log(
+        format!("大规模测试通过：{COUNT} 个数据全部正确释放"),
+        format!("Large-scale test passed: {COUNT} entries released"),
+    );
 }
 
 /// 验证SequencedChannel完全消费后，所有对象被drop
 ///
 /// 检测方法：使用Arc引用计数验证对象释放（避免全局状态）
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（1000个对象 × 1KB），运行超过60秒，仅在Release内存验证时运行
+#[ignore] // Debug模式下极慢（1000个对象 × 1KB），运行超过60秒，仅在Release内存验证时运行
 fn test_complete_object_cleanup() {
-    println!("📊 对象Drop验证测试（使用Arc引用计数）");
+    log(
+        "对象Drop验证测试（使用Arc引用计数）",
+        "Object drop validation (Arc reference counting)",
+    );
 
     let channel: SequencedChannel<Arc<Vec<u8>>> = SequencedChannel::new();
     let sender = channel.sender();
@@ -169,7 +203,10 @@ fn test_complete_object_cleanup() {
         sender.send_sequenced(i, data).unwrap();
     }
 
-    println!("  创建了 {COUNT} 个对象");
+    log(
+        format!("  创建了 {COUNT} 个对象"),
+        format!("  Created {COUNT} objects"),
+    );
 
     // 接收所有对象
     for _i in 0..COUNT {
@@ -178,7 +215,7 @@ fn test_complete_object_cleanup() {
         drop(data);
     }
 
-    println!("  接收完成");
+    log("  接收完成", "  Consumption finished");
 
     // 显式drop channel和sender
     drop(sender);
@@ -194,7 +231,10 @@ fn test_complete_object_cleanup() {
         );
     }
 
-    println!("✅ 对象Drop验证通过：{COUNT} 个对象全部正确销毁（引用计数=1）");
+    log(
+        format!("对象Drop验证通过：{COUNT} 个对象全部正确销毁（引用计数=1）"),
+        format!("Object drop test passed: {COUNT} objects released (refcount=1)"),
+    );
 }
 
 // ========== 流式处理内存恒定验证 ==========
@@ -207,7 +247,7 @@ fn test_complete_object_cleanup() {
 #[ignore = "流式处理模拟，可能需要数秒，仅本地运行"]
 #[allow(clippy::needless_range_loop)] // 需要索引来验证引用计数
 fn test_streaming_memory_stability() {
-    println!("📊 流式处理内存稳定性测试");
+    log("流式处理内存稳定性测试", "Streaming memory stability test");
 
     const ROUNDS: usize = 100;
     const PER_ROUND: usize = 1000;
@@ -239,13 +279,19 @@ fn test_streaming_memory_stability() {
         }
 
         if round % 10 == 0 && round > 0 {
-            println!("  完成第{round}轮，内存稳定");
+            log(
+                format!("  完成第{round}轮，内存稳定"),
+                format!("  Completed round {round}, memory stable"),
+            );
         }
 
         // data_refs和channel在这里drop
     }
 
-    println!("✅ 流式处理稳定性验证通过：{ROUNDS} 轮处理，内存无累积");
+    log(
+        format!("流式处理稳定性验证通过：{ROUNDS} 轮处理，内存无累积"),
+        format!("Streaming stability test passed: {ROUNDS} rounds with no growth"),
+    );
 }
 
 // ========== 重复创建销毁decoder验证 ==========
@@ -257,7 +303,10 @@ fn test_streaming_memory_stability() {
 #[test]
 #[ignore = "大量创建销毁测试(1000次×10数据)，可能需要数秒，仅本地运行"]
 fn test_channel_creation_destruction() {
-    println!("📊 Channel重复创建销毁测试（使用Arc引用计数）");
+    log(
+        "Channel重复创建销毁测试（使用Arc引用计数）",
+        "Channel create/destroy stress test (Arc reference counting)",
+    );
 
     const ITERATIONS: usize = 1000;
     const ITEMS_PER_CHANNEL: usize = 10;
@@ -295,12 +344,20 @@ fn test_channel_creation_destruction() {
         }
 
         if i % 100 == 0 && i > 0 {
-            println!("  第{i}次迭代完成，所有对象正确释放");
+            log(
+                format!("  第{i}次迭代完成，所有对象正确释放"),
+                format!("  Iteration {i} complete, all objects released"),
+            );
         }
     }
 
-    println!(
-        "✅ Channel创建销毁测试通过：{ITERATIONS} 次迭代，每次{ITEMS_PER_CHANNEL}个对象全部正确销毁"
+    log(
+        format!(
+            "Channel创建销毁测试通过：{ITERATIONS} 次迭代，每次{ITEMS_PER_CHANNEL}个对象全部正确销毁"
+        ),
+        format!(
+            "Channel create/destroy test passed: {ITERATIONS} iterations × {ITEMS_PER_CHANNEL} objects released"
+        ),
     );
 }
 
@@ -311,7 +368,7 @@ fn test_channel_creation_destruction() {
 /// 关键检查：sender和channel之间的Arc引用是否正确释放
 #[test]
 fn test_no_circular_arc_references() {
-    println!("📊 Arc循环引用检测");
+    log("Arc循环引用检测", "Arc cycle detection");
 
     let channel: SequencedChannel<u32> = SequencedChannel::new();
     let sender1 = channel.sender();
@@ -332,9 +389,12 @@ fn test_no_circular_arc_references() {
     // 如果存在循环引用，channel会保持sender的Arc引用
     // 这里我们通过try_recv来验证channel仍然可用
     match channel.try_recv_ordered() {
-        Err(_) => println!("  ✓ Channel正常工作，无循环引用"),
+        Err(_) => log(
+            "  Channel正常工作，无循环引用",
+            "  Channel operates without cycles",
+        ),
         Ok(_) => panic!("不应该还有数据"),
     }
 
-    println!("✅ Arc循环引用检测通过");
+    log("Arc循环引用检测通过", "Arc cycle detection passed");
 }

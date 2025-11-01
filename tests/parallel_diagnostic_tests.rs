@@ -5,6 +5,14 @@
 use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
+fn log_err(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    eprintln!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 /// 测试串行和并行模式的样本一致性
 #[test]
 fn test_serial_vs_parallel_samples() {
@@ -15,17 +23,26 @@ fn test_serial_vs_parallel_samples() {
         .unwrap_or_else(|| PathBuf::from("tests/fixtures/high_sample_rate.wav"));
 
     if !test_file.exists() {
-        eprintln!("警告: 测试文件不存在: {test_file:?}");
-        eprintln!("可以通过环境变量指定: TEST_AUDIO_FILE=/path/to/audio.flac cargo test");
+        log_err(
+            format!("警告: 测试文件不存在: {test_file:?}"),
+            format!("Warning: test file not found: {test_file:?}"),
+        );
+        log_err(
+            "可以通过环境变量指定: TEST_AUDIO_FILE=/path/to/audio.flac cargo test",
+            "Set TEST_AUDIO_FILE=/path/to/audio.flac to specify a test asset",
+        );
         return;
     }
 
-    println!("使用测试文件: {test_file:?}");
+    log(
+        format!("使用测试文件: {test_file:?}"),
+        format!("Using test file: {test_file:?}"),
+    );
 
     let decoder = UniversalDecoder;
 
     // 1. 串行模式解码
-    println!("=== 串行模式解码 ===");
+    log("=== 串行模式解码 ===", "=== Serial decoding ===");
     let mut serial_decoder = decoder
         .create_streaming(&test_file)
         .expect("串行解码器创建失败");
@@ -38,14 +55,21 @@ fn test_serial_vs_parallel_samples() {
         serial_samples.extend_from_slice(&chunk);
     }
 
-    println!(
-        "串行模式: {} 个chunk, {} 个样本",
-        serial_chunks,
-        serial_samples.len()
+    log(
+        format!(
+            "串行模式: {} 个chunk, {} 个样本",
+            serial_chunks,
+            serial_samples.len()
+        ),
+        format!(
+            "Serial mode: {} chunks, {} samples",
+            serial_chunks,
+            serial_samples.len()
+        ),
     );
 
     // 2. 并行模式解码
-    println!("\n=== 并行模式解码 ===");
+    log("\n=== 并行模式解码 ===", "\n=== Parallel decoding ===");
     let mut parallel_decoder = decoder
         .create_streaming_parallel(
             &test_file,
@@ -63,23 +87,39 @@ fn test_serial_vs_parallel_samples() {
         parallel_samples.extend_from_slice(&chunk);
     }
 
-    println!(
-        "并行模式: {} 个chunk, {} 个样本",
-        parallel_chunks,
-        parallel_samples.len()
+    log(
+        format!(
+            "并行模式: {} 个chunk, {} 个样本",
+            parallel_chunks,
+            parallel_samples.len()
+        ),
+        format!(
+            "Parallel mode: {} chunks, {} samples",
+            parallel_chunks,
+            parallel_samples.len()
+        ),
     );
 
     // 3. 对比样本数量
-    println!("\n=== 样本数量对比 ===");
+    log(
+        "\n=== 样本数量对比 ===",
+        "\n=== Sample count comparison ===",
+    );
     assert_eq!(
         serial_samples.len(),
         parallel_samples.len(),
         "样本数量不一致"
     );
-    println!("✅ 样本数量一致: {}", serial_samples.len());
+    log(
+        format!("样本数量一致: {}", serial_samples.len()),
+        format!("Sample count matches: {}", serial_samples.len()),
+    );
 
     // 4. 对比前1000个样本的值
-    println!("\n=== 样本值对比（前1000个） ===");
+    log(
+        "\n=== 样本值对比（前1000个） ===",
+        "\n=== Sample value comparison (first 1000) ===",
+    );
     let compare_count = 1000.min(serial_samples.len());
     let mut diff_count = 0;
     let mut max_diff = 0.0f32;
@@ -94,27 +134,44 @@ fn test_serial_vs_parallel_samples() {
             max_diff = max_diff.max(diff);
 
             if diff_count <= 10 {
-                println!("  [{i}] 串行={serial_val:.6}, 并行={parallel_val:.6}, 差值={diff:.6}");
+                log(
+                    format!("  [{i}] 串行={serial_val:.6}, 并行={parallel_val:.6}, 差值={diff:.6}"),
+                    format!(
+                        "  [{i}] serial={serial_val:.6}, parallel={parallel_val:.6}, diff={diff:.6}"
+                    ),
+                );
             }
         }
     }
 
     if diff_count > 0 {
-        println!("❌ 发现 {diff_count} 处差异，最大差值: {max_diff:.6}");
-        println!("\n=== 前20个样本详细对比 ===");
+        log(
+            format!("发现 {diff_count} 处差异，最大差值: {max_diff:.6}"),
+            format!("Found {diff_count} differences, max delta: {max_diff:.6}"),
+        );
+        log(
+            "\n=== 前20个样本详细对比 ===",
+            "\n=== Detailed comparison of first 20 samples ===",
+        );
         for i in 0..20.min(serial_samples.len()) {
             let serial = serial_samples[i];
             let parallel = parallel_samples[i];
             let diff = (serial - parallel).abs();
-            println!("  [{i}] 串行={serial:.8}, 并行={parallel:.8}, 差值={diff:.8}");
+            log(
+                format!("  [{i}] 串行={serial:.8}, 并行={parallel:.8}, 差值={diff:.8}"),
+                format!("  [{i}] serial={serial:.8}, parallel={parallel:.8}, diff={diff:.8}"),
+            );
         }
         panic!("样本值不一致");
     } else {
-        println!("✅ 前{compare_count}个样本值完全一致");
+        log(
+            format!("前{compare_count}个样本值完全一致"),
+            format!("First {compare_count} samples match exactly"),
+        );
     }
 
     // 5. 对比全部样本（使用更宽松的精度）
-    println!("\n=== 全部样本对比 ===");
+    log("\n=== 全部样本对比 ===", "\n=== Full sample comparison ===");
     let epsilon = 1e-6;
     for (i, (&serial_val, &parallel_val)) in serial_samples
         .iter()
@@ -123,23 +180,30 @@ fn test_serial_vs_parallel_samples() {
     {
         let diff = (serial_val - parallel_val).abs();
         if diff > epsilon {
-            println!(
-                "❌ 样本[{i}] 不一致: 串行={serial_val:.8}, 并行={parallel_val:.8}, 差值={diff:.8}"
+            log(
+                format!(
+                    "样本[{i}] 不一致: 串行={serial_val:.8}, 并行={parallel_val:.8}, 差值={diff:.8}"
+                ),
+                format!(
+                    "Sample [{i}] mismatch: serial={serial_val:.8}, parallel={parallel_val:.8}, diff={diff:.8}"
+                ),
             );
 
-            // 打印附近的样本
-            println!("\n附近样本:");
+            log("\n附近样本:", "\nNeighbour samples:");
             for j in i.saturating_sub(5)..=(i + 5).min(serial_samples.len() - 1) {
                 let s = serial_samples[j];
                 let p = parallel_samples[j];
-                println!("  [{j}] 串行={s:.8}, 并行={p:.8}");
+                log(
+                    format!("  [{j}] 串行={s:.8}, 并行={p:.8}"),
+                    format!("  [{j}] serial={s:.8}, parallel={p:.8}"),
+                );
             }
 
             panic!("在样本[{i}]处发现不一致");
         }
     }
 
-    println!("✅ 全部样本值一致");
+    log("全部样本值一致", "All sample values match");
 }
 
 /// 测试并行解码器的chunk顺序
@@ -148,7 +212,10 @@ fn test_parallel_chunk_order() {
     let test_file = PathBuf::from("tests/fixtures/beethoven_9th_2_Scherzo_snippet.flac");
 
     if !test_file.exists() {
-        eprintln!("警告: 测试文件不存在，跳过测试");
+        log_err(
+            "警告: 测试文件不存在，跳过测试",
+            "Warning: test file missing, skipping test",
+        );
         return;
     }
 
@@ -164,7 +231,7 @@ fn test_parallel_chunk_order() {
         )
         .expect("并行解码器创建失败");
 
-    println!("=== 检查chunk顺序 ===");
+    log("=== 检查chunk顺序 ===", "=== Checking chunk order ===");
 
     let mut chunk_count = 0;
     let mut total_samples = 0;
@@ -179,14 +246,22 @@ fn test_parallel_chunk_order() {
             let last_sample = chunk[chunk.len() - 1];
 
             let len = chunk.len();
-            println!(
-                "Chunk {chunk_count}: {len} 样本, 首样本={first_sample:.6}, 尾样本={last_sample:.6}"
+            log(
+                format!(
+                    "Chunk {chunk_count}: {len} 样本, 首样本={first_sample:.6}, 尾样本={last_sample:.6}"
+                ),
+                format!(
+                    "Chunk {chunk_count}: {len} samples, first={first_sample:.6}, last={last_sample:.6}"
+                ),
             );
 
             // 检查是否有重复的首样本（可能表示顺序错误）
             match prev_first_sample {
                 Some(prev) if (prev - first_sample).abs() < 1e-9 && chunk_count > 1 => {
-                    println!("⚠️ 警告: Chunk {chunk_count} 的首样本与前一个chunk相同");
+                    log(
+                        format!("警告: Chunk {chunk_count} 的首样本与前一个chunk相同"),
+                        format!("Warning: chunk {chunk_count} first sample matches previous chunk"),
+                    );
                 }
                 _ => {}
             }
@@ -195,5 +270,8 @@ fn test_parallel_chunk_order() {
         }
     }
 
-    println!("\n总计: {chunk_count} 个chunk, {total_samples} 个样本");
+    log(
+        format!("\n总计: {chunk_count} 个chunk, {total_samples} 个样本"),
+        format!("\nTotal: {chunk_count} chunks, {total_samples} samples"),
+    );
 }

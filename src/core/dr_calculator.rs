@@ -28,9 +28,6 @@ const DEFAULT_SUM_DOUBLING: bool = true;
 /// 支持的最大声道数（架构限制）
 const MAX_SUPPORTED_CHANNELS: usize = 32;
 
-/// 当前实现支持的声道数（SIMD优化限制）
-const CURRENT_MAX_CHANNELS: usize = 2;
-
 // foobar2000专属模式：使用累加器级别Sum Doubling，移除了+3dB RMS补偿机制
 
 /// DR计算结果
@@ -350,14 +347,8 @@ impl DrCalculator {
             ));
         }
 
-        // 声道数检查：支持单声道和立体声，拒绝多声道
-        if channel_count > CURRENT_MAX_CHANNELS {
-            return Err(AudioError::InvalidInput(format!(
-                "目前仅支持单声道和立体声文件 (1-{CURRENT_MAX_CHANNELS}声道)，当前文件为{channel_count}声道。\n\
-                多声道支持正在开发中，敬请期待未来版本。\n\
-                原因：暂未找到多声道DR计算的业界标准实现。"
-            )));
-        }
+        // 多声道支持：基于foobar2000 DR Meter实测行为
+        // 每个声道独立计算DR，最终Official DR为算术平均值
 
         // [TRACE] 使用ProcessingCoordinator享受SIMD优化的声道分离服务
         #[cfg(debug_assertions)]

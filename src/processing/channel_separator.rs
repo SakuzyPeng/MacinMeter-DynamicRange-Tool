@@ -91,15 +91,21 @@ impl ChannelSeparator {
         // 清空输出缓冲区，保留容量
         output.clear();
 
-        // 智能优化（单声道和立体声自适应）
-        debug_assert!(channel_count <= 2, "ChannelSeparator只应处理1-2声道文件");
-
+        // 智能优化（单声道、立体声、多声道自适应）
         if channel_count == 1 {
             // 单声道：直接复制所有样本
             output.extend_from_slice(samples);
-        } else {
+        } else if channel_count == 2 {
             // 立体声：使用SIMD优化
             self.extract_stereo_samples_into(samples, channel_idx, output);
+        } else {
+            // 多声道（3+）：通用分离逻辑
+            let samples_per_channel = samples.len() / channel_count;
+            output.reserve(samples_per_channel);
+
+            for i in 0..samples_per_channel {
+                output.push(samples[i * channel_count + channel_idx]);
+            }
         }
     }
 

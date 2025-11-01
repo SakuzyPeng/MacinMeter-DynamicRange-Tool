@@ -7,6 +7,10 @@ use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 /// 测试固件生成器
 pub struct AudioTestFixtures {
     fixtures_dir: PathBuf,
@@ -35,7 +39,10 @@ impl AudioTestFixtures {
 
     /// 生成所有测试固件
     pub fn generate_all(&self) {
-        println!("🎵 开始生成音频测试固件...");
+        log(
+            "开始生成音频测试固件...",
+            "Generating audio test fixtures...",
+        );
 
         self.create_zero_length();
         self.create_single_sample();
@@ -49,7 +56,10 @@ impl AudioTestFixtures {
         self.create_tiny_duration();
         self.create_nan_like_edge_cases();
 
-        println!("✅ 所有测试固件已生成到: {:?}", self.fixtures_dir);
+        log(
+            format!("所有测试固件已生成到: {:?}", self.fixtures_dir),
+            format!("All fixtures generated at: {:?}", self.fixtures_dir),
+        );
     }
 
     // ========== 边界条件测试文件 ==========
@@ -68,7 +78,10 @@ impl AudioTestFixtures {
             let writer = WavWriter::create(&path, spec).expect("无法创建零长度文件");
             drop(writer); // 显式关闭，确保文件被刷新到磁盘
         }
-        println!("  ✓ zero_length.wav (0 samples)");
+        log(
+            "  生成 zero_length.wav (0 样本)",
+            "  Generated zero_length.wav (0 samples)",
+        );
         path
     }
 
@@ -86,7 +99,10 @@ impl AudioTestFixtures {
             writer.write_sample(16384i16).expect("无法写入样本"); // 半幅度样本
             writer.finalize().expect("无法完成写入");
         }
-        println!("  ✓ single_sample.wav (1 sample)");
+        log(
+            "  生成 single_sample.wav (1 个样本)",
+            "  Generated single_sample.wav (1 sample)",
+        );
         path
     }
 
@@ -109,7 +125,10 @@ impl AudioTestFixtures {
             }
             writer.finalize().expect("无法完成写入");
         }
-        println!("  ✓ tiny_duration.wav (10ms)");
+        log(
+            "  生成 tiny_duration.wav (10 毫秒)",
+            "  Generated tiny_duration.wav (10 ms)",
+        );
         path
     }
 
@@ -133,7 +152,10 @@ impl AudioTestFixtures {
             }
             writer.finalize().expect("无法完成写入");
         } // writer 在这里被 drop，确保文件被完全写入磁盘
-        println!("  ✓ silence.wav (1s silence)");
+        log(
+            "  生成 silence.wav (1 秒静音)",
+            "  Generated silence.wav (1 s silence)",
+        );
         path
     }
 
@@ -156,7 +178,10 @@ impl AudioTestFixtures {
             }
             writer.finalize().expect("无法完成写入");
         }
-        println!("  ✓ full_scale_clipping.wav (full scale square wave)");
+        log(
+            "  生成 full_scale_clipping.wav (满幅方波)",
+            "  Generated full_scale_clipping.wav (full-scale square wave)",
+        );
         path
     }
 
@@ -192,7 +217,10 @@ impl AudioTestFixtures {
             }
             writer.finalize().expect("无法完成写入");
         }
-        println!("  ✓ edge_cases.wav (edge value patterns)");
+        log(
+            "  生成 edge_cases.wav (边缘值组合)",
+            "  Generated edge_cases.wav (edge value patterns)",
+        );
         path
     }
 
@@ -221,7 +249,10 @@ impl AudioTestFixtures {
             }
             writer.finalize().expect("无法完成写入");
         }
-        println!("  ✓ high_sample_rate.wav (192kHz, 24bit)");
+        log(
+            "  生成 high_sample_rate.wav (192kHz, 24bit)",
+            "  Generated high_sample_rate.wav (192 kHz, 24-bit)",
+        );
         path
     }
 
@@ -272,7 +303,10 @@ impl AudioTestFixtures {
             }
         }
 
-        println!("  ✓ 3_channels.wav (3 channels, should be rejected)");
+        log(
+            "  生成 3_channels.wav (3 声道，应被拒绝)",
+            "  Generated 3_channels.wav (3 channels, should be rejected)",
+        );
         path
     }
 
@@ -282,7 +316,10 @@ impl AudioTestFixtures {
     pub fn create_empty_file(&self) -> PathBuf {
         let path = self.get_path("empty.wav");
         File::create(&path).expect("无法创建空文件");
-        println!("  ✓ empty.wav (0 bytes)");
+        log(
+            "  生成 empty.wav (0 字节)",
+            "  Generated empty.wav (0 bytes)",
+        );
         path
     }
 
@@ -294,7 +331,10 @@ impl AudioTestFixtures {
             .expect("写入失败");
         file.write_all(b"Just some text pretending to be audio.\n")
             .expect("写入失败");
-        println!("  ✓ fake_audio.wav (text file disguised as WAV)");
+        log(
+            "  生成 fake_audio.wav (文本伪装为WAV)",
+            "  Generated fake_audio.wav (text file disguised as WAV)",
+        );
         path
     }
 
@@ -328,7 +368,10 @@ impl AudioTestFixtures {
             .expect("无法打开文件");
         file.set_len(200).expect("无法截断文件");
 
-        println!("  ✓ truncated.wav (incomplete data)");
+        log(
+            "  生成 truncated.wav (截断数据)",
+            "  Generated truncated.wav (incomplete data)",
+        );
         path
     }
 
@@ -337,7 +380,7 @@ impl AudioTestFixtures {
     pub fn cleanup(&self) {
         if self.fixtures_dir.exists() {
             std::fs::remove_dir_all(&self.fixtures_dir).expect("无法删除测试固件目录");
-            println!("🗑️  已清理测试固件目录");
+            log("已清理测试固件目录", "Fixture directory cleaned");
         }
     }
 }

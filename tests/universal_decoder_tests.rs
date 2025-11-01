@@ -6,6 +6,10 @@ use macinmeter_dr_tool::AudioError;
 use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 // ========== 基础功能测试 ==========
 
 #[test]
@@ -16,7 +20,10 @@ fn test_universal_decoder_new() {
     let formats = decoder.supported_formats();
     assert!(!formats.extensions.is_empty());
 
-    println!("✓ UniversalDecoder::new() 创建成功");
+    log(
+        "UniversalDecoder::new() 创建成功",
+        "UniversalDecoder::new() constructed successfully",
+    );
 }
 
 #[test]
@@ -27,7 +34,10 @@ fn test_universal_decoder_default() {
     let formats = decoder.supported_formats();
     assert!(!formats.extensions.is_empty());
 
-    println!("✓ UniversalDecoder Default trait工作正常");
+    log(
+        "UniversalDecoder Default trait工作正常",
+        "UniversalDecoder Default trait behaves correctly",
+    );
 }
 
 // ========== 格式支持查询测试 ==========
@@ -51,7 +61,10 @@ fn test_supported_formats_completeness() {
         );
     }
 
-    println!("✓ 支持的格式列表完整：{:?}", formats.extensions);
+    log(
+        format!("支持的格式列表完整：{:?}", formats.extensions),
+        format!("Supported format list complete: {:?}", formats.extensions),
+    );
 }
 
 #[test]
@@ -65,7 +78,10 @@ fn test_supported_formats_immutable() {
     // 应该返回相同的静态数据
     assert_eq!(formats1.extensions.len(), formats2.extensions.len());
 
-    println!("✓ supported_formats() 返回不可变静态数据");
+    log(
+        "supported_formats() 返回不可变静态数据",
+        "supported_formats() returns immutable static data",
+    );
 }
 
 // ========== can_decode() 文件扩展名检测测试 ==========
@@ -89,7 +105,10 @@ fn test_can_decode_supported_formats() {
         assert!(decoder.can_decode(&path), "{} 应该可以解码", path.display());
     }
 
-    println!("✓ can_decode() 正确识别支持的格式");
+    log(
+        "can_decode() 正确识别支持的格式",
+        "can_decode() accepts supported formats",
+    );
 }
 
 #[test]
@@ -113,7 +132,10 @@ fn test_can_decode_unsupported_formats() {
         );
     }
 
-    println!("✓ can_decode() 正确拒绝不支持的格式");
+    log(
+        "can_decode() 正确拒绝不支持的格式",
+        "can_decode() rejects unsupported formats",
+    );
 }
 
 #[test]
@@ -126,7 +148,10 @@ fn test_can_decode_case_insensitive() {
     assert!(decoder.can_decode(&PathBuf::from_iter(["test.MP3"])));
     assert!(decoder.can_decode(&PathBuf::from_iter(["test.OpUs"])));
 
-    println!("✓ can_decode() 大小写不敏感");
+    log(
+        "can_decode() 大小写不敏感",
+        "can_decode() is case-insensitive",
+    );
 }
 
 #[test]
@@ -137,7 +162,10 @@ fn test_can_decode_no_extension() {
     assert!(!decoder.can_decode(&PathBuf::from_iter(["test"])));
     assert!(!decoder.can_decode(&PathBuf::from_iter(["no_extension"])));
 
-    println!("✓ can_decode() 正确处理无扩展名文件");
+    log(
+        "can_decode() 正确处理无扩展名文件",
+        "can_decode() handles missing extensions",
+    );
 }
 
 #[test]
@@ -149,7 +177,10 @@ fn test_can_decode_complex_paths() {
     assert!(decoder.can_decode(&PathBuf::from_iter(["..", "audio", "test.mp3"])));
     assert!(decoder.can_decode(&PathBuf::from_iter([".", "files", "track.opus"])));
 
-    println!("✓ can_decode() 正确处理复杂路径");
+    log(
+        "can_decode() 正确处理复杂路径",
+        "can_decode() handles complex paths",
+    );
 }
 
 // ========== probe_format() 格式探测测试 ==========
@@ -162,7 +193,10 @@ fn test_probe_format_wav_file() {
     let path = PathBuf::from("tests/fixtures/silence.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：WAV测试文件不存在");
+        log(
+            "跳过测试：WAV测试文件不存在",
+            "Skipping test: WAV fixture missing",
+        );
         return;
     }
 
@@ -173,9 +207,15 @@ fn test_probe_format_wav_file() {
             assert_eq!(format.sample_rate, 44100);
             assert_eq!(format.channels, 2);
             assert_eq!(format.bits_per_sample, 16);
-            println!(
-                "✓ WAV格式探测成功：{}Hz, {}ch, {}bit",
-                format.sample_rate, format.channels, format.bits_per_sample
+            log(
+                format!(
+                    "WAV格式探测成功：{}Hz, {}ch, {}bit",
+                    format.sample_rate, format.channels, format.bits_per_sample
+                ),
+                format!(
+                    "WAV probe success: {} Hz, {} ch, {} bit",
+                    format.sample_rate, format.channels, format.bits_per_sample
+                ),
             );
         }
         Err(e) => {
@@ -191,7 +231,10 @@ fn test_probe_format_high_sample_rate() {
     let path = PathBuf::from("tests/fixtures/high_sample_rate.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：高采样率测试文件不存在");
+        log(
+            "跳过测试：高采样率测试文件不存在",
+            "Skipping test: high sample-rate fixture missing",
+        );
         return;
     }
 
@@ -201,9 +244,15 @@ fn test_probe_format_high_sample_rate() {
         Ok(format) => {
             assert_eq!(format.sample_rate, 192000);
             assert_eq!(format.bits_per_sample, 24);
-            println!(
-                "✓ 高采样率格式探测成功：{}Hz, {}bit",
-                format.sample_rate, format.bits_per_sample
+            log(
+                format!(
+                    "高采样率格式探测成功：{}Hz, {}bit",
+                    format.sample_rate, format.bits_per_sample
+                ),
+                format!(
+                    "High sample-rate probe success: {} Hz, {} bit",
+                    format.sample_rate, format.bits_per_sample
+                ),
             );
         }
         Err(e) => {
@@ -223,10 +272,16 @@ fn test_probe_format_nonexistent_file() {
 
     match result {
         Err(AudioError::IoError(_)) => {
-            println!("✓ 正确处理不存在的文件（IoError）");
+            log(
+                "正确处理不存在的文件（IoError）",
+                "Handled missing file correctly (IoError)",
+            );
         }
         Err(e) => {
-            println!("✓ 正确处理不存在的文件: {e:?}");
+            log(
+                format!("正确处理不存在的文件: {e:?}"),
+                format!("Handled missing file correctly: {e:?}"),
+            );
         }
         Ok(_) => unreachable!(),
     }
@@ -240,7 +295,10 @@ fn test_probe_format_invalid_file() {
     let path = PathBuf::from("tests/fixtures/fake_audio.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：伪装文件不存在");
+        log(
+            "跳过测试：伪装文件不存在",
+            "Skipping test: fake audio fixture missing",
+        );
         return;
     }
 
@@ -250,10 +308,16 @@ fn test_probe_format_invalid_file() {
 
     match result {
         Err(AudioError::FormatError(_)) => {
-            println!("✓ 正确拒绝无效音频文件（FormatError）");
+            log(
+                "正确拒绝无效音频文件（FormatError）",
+                "Invalid audio file correctly rejected (FormatError)",
+            );
         }
         Err(e) => {
-            println!("✓ 正确拒绝无效音频文件: {e:?}");
+            log(
+                format!("正确拒绝无效音频文件: {e:?}"),
+                format!("Invalid audio file correctly rejected: {e:?}"),
+            );
         }
         Ok(_) => panic!("伪装文件不应该被接受"),
     }
@@ -268,7 +332,10 @@ fn test_create_streaming_wav() {
     let path = PathBuf::from("tests/fixtures/silence.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：WAV测试文件不存在");
+        log(
+            "跳过测试：WAV测试文件不存在",
+            "Skipping test: WAV fixture missing",
+        );
         return;
     }
 
@@ -278,7 +345,7 @@ fn test_create_streaming_wav() {
         Ok(stream_decoder) => {
             let format = stream_decoder.format();
             assert_eq!(format.sample_rate, 44100);
-            println!("✓ 串行WAV解码器创建成功");
+            log("串行WAV解码器创建成功", "Serial WAV decoder created");
         }
         Err(e) => {
             panic!("串行解码器创建失败: {e:?}");
@@ -293,7 +360,10 @@ fn test_create_streaming_opus() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：Opus测试文件不存在");
+        log(
+            "跳过测试：Opus测试文件不存在",
+            "Skipping test: Opus fixture missing",
+        );
         return;
     }
 
@@ -304,7 +374,7 @@ fn test_create_streaming_opus() {
             let format = stream_decoder.format();
             // Opus默认48kHz
             assert_eq!(format.sample_rate, 48000);
-            println!("✓ Opus专用解码器创建成功");
+            log("Opus专用解码器创建成功", "Opus dedicated decoder created");
         }
         Err(e) => {
             panic!("Opus解码器创建失败: {e:?}");
@@ -321,7 +391,10 @@ fn test_create_streaming_nonexistent() {
 
     assert!(result.is_err(), "不存在的文件应该返回错误");
 
-    println!("✓ 串行解码器正确处理不存在的文件");
+    log(
+        "串行解码器正确处理不存在的文件",
+        "Serial decoder handled missing file correctly",
+    );
 }
 
 // ========== create_streaming_parallel() 并行解码器创建测试 ==========
@@ -333,7 +406,10 @@ fn test_create_streaming_parallel_disabled() {
     let path = PathBuf::from("tests/fixtures/silence.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：WAV测试文件不存在");
+        log(
+            "跳过测试：WAV测试文件不存在",
+            "Skipping test: WAV fixture missing",
+        );
         return;
     }
 
@@ -344,7 +420,10 @@ fn test_create_streaming_parallel_disabled() {
         Ok(stream_decoder) => {
             let format = stream_decoder.format();
             assert_eq!(format.sample_rate, 44100);
-            println!("✓ 并行解码器创建成功（禁用模式）");
+            log(
+                "并行解码器创建成功（禁用模式）",
+                "Parallel decoder created (mode disabled)",
+            );
         }
         Err(e) => {
             panic!("并行解码器创建失败: {e:?}");
@@ -359,7 +438,10 @@ fn test_create_streaming_parallel_enabled() {
     let path = PathBuf::from("tests/fixtures/silence.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：WAV测试文件不存在");
+        log(
+            "跳过测试：WAV测试文件不存在",
+            "Skipping test: WAV fixture missing",
+        );
         return;
     }
 
@@ -370,7 +452,10 @@ fn test_create_streaming_parallel_enabled() {
         Ok(stream_decoder) => {
             let format = stream_decoder.format();
             assert_eq!(format.sample_rate, 44100);
-            println!("✓ 并行解码器创建成功（启用模式，batch=32, threads=2）");
+            log(
+                "并行解码器创建成功（启用模式，batch=32, threads=2）",
+                "Parallel decoder created (enabled, batch=32, threads=2)",
+            );
         }
         Err(e) => {
             panic!("并行解码器创建失败: {e:?}");
@@ -396,10 +481,16 @@ fn test_create_streaming_parallel_mp3_fallback() {
             panic!("MP3文件不存在应该返回错误");
         }
         Err(AudioError::IoError(_)) => {
-            println!("✓ MP3格式检测逻辑正确执行（文件不存在前已检测）");
+            log(
+                "MP3格式检测逻辑正确执行（文件不存在前已检测）",
+                "MP3 detection logic executed before file access",
+            );
         }
         Err(e) => {
-            println!("✓ MP3格式处理: {e:?}");
+            log(
+                format!("MP3格式处理: {e:?}"),
+                format!("MP3 handling result: {e:?}"),
+            );
         }
     }
 }
@@ -411,7 +502,10 @@ fn test_create_streaming_parallel_opus_uses_dedicated_decoder() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：Opus测试文件不存在");
+        log(
+            "跳过测试：Opus测试文件不存在",
+            "Skipping test: Opus fixture missing",
+        );
         return;
     }
 
@@ -422,7 +516,10 @@ fn test_create_streaming_parallel_opus_uses_dedicated_decoder() {
         Ok(stream_decoder) => {
             let format = stream_decoder.format();
             assert_eq!(format.sample_rate, 48000); // Opus特征
-            println!("✓ Opus并行请求正确回退到专用解码器");
+            log(
+                "Opus并行请求正确回退到专用解码器",
+                "Opus parallel request fell back to dedicated decoder",
+            );
         }
         Err(e) => {
             panic!("Opus并行解码器创建失败: {e:?}");
@@ -439,7 +536,10 @@ fn test_decoder_workflow_complete() {
     let path = PathBuf::from("tests/fixtures/silence.wav");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：WAV测试文件不存在");
+        log(
+            "跳过测试：WAV测试文件不存在",
+            "Skipping test: WAV fixture missing",
+        );
         return;
     }
 
@@ -460,7 +560,10 @@ fn test_decoder_workflow_complete() {
         .expect("并行解码器创建失败");
     assert_eq!(parallel_decoder.format().sample_rate, 44100);
 
-    println!("✓ 完整解码器工作流测试通过");
+    log(
+        "完整解码器工作流测试通过",
+        "Decoder end-to-end workflow passed",
+    );
 }
 
 #[test]
@@ -480,5 +583,8 @@ fn test_multiple_decoders_independence() {
 
     assert_eq!(formats1.extensions.len(), formats2.extensions.len());
 
-    println!("✓ 多个解码器实例互相独立");
+    log(
+        "多个解码器实例互相独立",
+        "Multiple decoder instances remain independent",
+    );
 }

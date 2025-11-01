@@ -6,6 +6,10 @@ use macinmeter_dr_tool::audio::{SongbirdOpusDecoder, StreamingDecoder};
 use macinmeter_dr_tool::tools::{AppConfig, processor::process_audio_file_streaming};
 use std::path::PathBuf;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 /// 创建默认测试配置
 fn default_test_config() -> AppConfig {
     AppConfig {
@@ -29,7 +33,10 @@ fn test_opus_decoder_creation() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -38,11 +45,23 @@ fn test_opus_decoder_creation() {
     match decoder {
         Ok(decoder) => {
             let format = decoder.format();
-            println!("✓ Opus解码器创建成功");
-            println!("  采样率: {}Hz", format.sample_rate);
-            println!("  声道数: {}", format.channels);
-            println!("  位深: {}bit", format.bits_per_sample);
-            println!("  总样本数: {}", format.sample_count);
+            log("Opus解码器创建成功", "Opus decoder created successfully");
+            log(
+                format!("  采样率: {}Hz", format.sample_rate),
+                format!("  Sample rate: {} Hz", format.sample_rate),
+            );
+            log(
+                format!("  声道数: {}", format.channels),
+                format!("  Channels: {}", format.channels),
+            );
+            log(
+                format!("  位深: {}bit", format.bits_per_sample),
+                format!("  Bit depth: {} bit", format.bits_per_sample),
+            );
+            log(
+                format!("  总样本数: {}", format.sample_count),
+                format!("  Total samples: {}", format.sample_count),
+            );
 
             // Opus默认采样率应该是48kHz
             assert_eq!(format.sample_rate, 48000, "Opus采样率应该是48kHz");
@@ -62,7 +81,10 @@ fn test_opus_decoding_streaming() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -101,9 +123,15 @@ fn test_opus_decoding_streaming() {
         }
     }
 
-    println!("✓ Opus流式解码成功");
-    println!("  解码chunk数: {chunk_count}");
-    println!("  总样本数: {total_samples}");
+    log("Opus流式解码成功", "Opus streaming decode succeeded");
+    log(
+        format!("  解码chunk数: {chunk_count}"),
+        format!("  Chunks decoded: {chunk_count}"),
+    );
+    log(
+        format!("  总样本数: {total_samples}"),
+        format!("  Total samples: {total_samples}"),
+    );
 
     assert!(total_samples > 0, "应该至少解码出一些样本");
     assert!(chunk_count > 0, "应该至少有一个chunk");
@@ -114,7 +142,10 @@ fn test_opus_progress_tracking() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -146,8 +177,14 @@ fn test_opus_progress_tracking() {
         last_progress = progress;
     }
 
-    println!("✓ Opus进度跟踪正确");
-    println!("  最终进度: {:.2}%", last_progress * 100.0);
+    log(
+        "Opus进度跟踪正确",
+        "Opus progress tracking behaves correctly",
+    );
+    log(
+        format!("  最终进度: {:.2}%", last_progress * 100.0),
+        format!("  Final progress: {:.2}%", last_progress * 100.0),
+    );
 }
 
 #[test]
@@ -155,7 +192,10 @@ fn test_opus_reset() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -197,7 +237,10 @@ fn test_opus_reset() {
         "重置后解码的样本数应该一致"
     );
 
-    println!("✓ Opus解码器重置功能正常");
+    log(
+        "Opus解码器重置功能正常",
+        "Opus decoder reset works correctly",
+    );
 }
 
 // ========== 集成测试 ==========
@@ -207,7 +250,10 @@ fn test_opus_dr_calculation() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -216,16 +262,31 @@ fn test_opus_dr_calculation() {
 
     match result {
         Ok((dr_results, format, _, _)) => {
-            println!("✓ Opus文件DR计算成功");
-            println!(
-                "  格式: {}Hz, {}bit, {}ch",
-                format.sample_rate, format.bits_per_sample, format.channels
+            log("Opus文件DR计算成功", "Opus DR calculation succeeded");
+            log(
+                format!(
+                    "  格式: {}Hz, {}bit, {}ch",
+                    format.sample_rate, format.bits_per_sample, format.channels
+                ),
+                format!(
+                    "  Format: {} Hz, {} bit, {} ch",
+                    format.sample_rate, format.bits_per_sample, format.channels
+                ),
             );
 
             if let Some(dr) = dr_results.first() {
-                println!("  DR值: {:.2}dB", dr.dr_value);
-                println!("  Peak: {:.6}", dr.peak);
-                println!("  RMS: {:.6}", dr.rms);
+                log(
+                    format!("  DR值: {:.2}dB", dr.dr_value),
+                    format!("  DR value: {:.2} dB", dr.dr_value),
+                );
+                log(
+                    format!("  Peak: {:.6}", dr.peak),
+                    format!("  Peak: {:.6}", dr.peak),
+                );
+                log(
+                    format!("  RMS: {:.6}", dr.rms),
+                    format!("  RMS: {:.6}", dr.rms),
+                );
 
                 // DR值应该在合理范围内
                 assert!(
@@ -260,7 +321,10 @@ fn test_ogg_opus_compatibility() {
     let path = PathBuf::from("audio/test_compatibility.ogg");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：ogg测试文件不存在");
+        log(
+            "跳过测试：ogg测试文件不存在",
+            "Skipping test: OGG sample file missing",
+        );
         return;
     }
 
@@ -271,18 +335,30 @@ fn test_ogg_opus_compatibility() {
 
     match result {
         Ok((dr_results, format, _, _)) => {
-            println!("✓ OGG文件处理成功");
-            println!(
-                "  格式: {}Hz, {}bit, {}ch",
-                format.sample_rate, format.bits_per_sample, format.channels
+            log("OGG文件处理成功", "OGG file processed successfully");
+            log(
+                format!(
+                    "  格式: {}Hz, {}bit, {}ch",
+                    format.sample_rate, format.bits_per_sample, format.channels
+                ),
+                format!(
+                    "  Format: {} Hz, {} bit, {} ch",
+                    format.sample_rate, format.bits_per_sample, format.channels
+                ),
             );
 
             if let Some(dr) = dr_results.first() {
-                println!("  DR值: {:.2}dB", dr.dr_value);
+                log(
+                    format!("  DR值: {:.2}dB", dr.dr_value),
+                    format!("  DR value: {:.2} dB", dr.dr_value),
+                );
             }
         }
         Err(e) => {
-            println!("⚠️  OGG文件处理失败: {e:?}");
+            log(
+                format!("OGG文件处理失败: {e:?}"),
+                format!("Failed to process OGG file: {e:?}"),
+            );
             // OGG可能不是Opus编码，允许失败
         }
     }
@@ -299,10 +375,13 @@ fn test_invalid_opus_file() {
 
     match result {
         Err(_) => {
-            println!("✓ 正确拒绝非Opus文件");
+            log("正确拒绝非Opus文件", "Non-Opus file correctly rejected");
         }
         Ok(_) => {
-            println!("⚠️  非Opus文件被错误接受（可能是解码器过于宽容）");
+            log(
+                "非Opus文件被错误接受（可能是解码器过于宽容）",
+                "Non-Opus file was accepted (decoder may be too permissive)",
+            );
         }
     }
 }
@@ -317,7 +396,10 @@ fn test_nonexistent_opus_file() {
 
     match result {
         Err(e) => {
-            println!("✓ 正确处理不存在的文件: {e:?}");
+            log(
+                format!("正确处理不存在的文件: {e:?}"),
+                format!("Handled missing file correctly: {e:?}"),
+            );
         }
         Ok(_) => unreachable!(),
     }
@@ -331,7 +413,10 @@ fn test_opus_decoding_performance() {
     let path = PathBuf::from("audio/test_real_opus.opus");
 
     if !path.exists() {
-        println!("⚠️  跳过测试：opus测试文件不存在");
+        log(
+            "跳过测试：opus测试文件不存在",
+            "Skipping test: Opus sample file missing",
+        );
         return;
     }
 
@@ -349,13 +434,25 @@ fn test_opus_decoding_performance() {
             let file_size = std::fs::metadata(&path).unwrap().len();
             let throughput_mbps = (file_size as f64 / 1_048_576.0) / elapsed.as_secs_f64();
 
-            println!("✓ Opus解码性能测试");
-            println!("  文件大小: {:.2} MB", file_size as f64 / 1_048_576.0);
-            println!("  解码时间: {:.3}s", elapsed.as_secs_f64());
-            println!("  吞吐量: {throughput_mbps:.2} MB/s");
+            log("Opus解码性能测试", "Opus decoding performance test");
+            log(
+                format!("  文件大小: {:.2} MB", file_size as f64 / 1_048_576.0),
+                format!("  File size: {:.2} MB", file_size as f64 / 1_048_576.0),
+            );
+            log(
+                format!("  解码时间: {:.3}s", elapsed.as_secs_f64()),
+                format!("  Decode time: {:.3}s", elapsed.as_secs_f64()),
+            );
+            log(
+                format!("  吞吐量: {throughput_mbps:.2} MB/s"),
+                format!("  Throughput: {throughput_mbps:.2} MB/s"),
+            );
 
             if let Some(dr) = dr_results.first() {
-                println!("  DR值: {:.2}dB", dr.dr_value);
+                log(
+                    format!("  DR值: {:.2}dB", dr.dr_value),
+                    format!("  DR value: {:.2} dB", dr.dr_value),
+                );
             }
 
             // 性能基准：至少应该达到10 MB/s

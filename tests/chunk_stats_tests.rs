@@ -4,6 +4,10 @@
 
 use macinmeter_dr_tool::audio::ChunkSizeStats;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 // ========== 基础创建测试 ==========
 
 #[test]
@@ -15,7 +19,10 @@ fn test_chunk_stats_creation() {
     assert_eq!(stats.max_size, 0);
     assert_eq!(stats.mean_size, 0.0);
 
-    println!("✓ ChunkSizeStats::new() 创建成功");
+    log(
+        "ChunkSizeStats::new() 创建成功",
+        "ChunkSizeStats::new() constructed successfully",
+    );
 }
 
 #[test]
@@ -26,7 +33,10 @@ fn test_chunk_stats_default() {
     assert_eq!(stats.min_size, usize::MAX);
     assert_eq!(stats.max_size, 0);
 
-    println!("✓ ChunkSizeStats Default trait工作正常");
+    log(
+        "ChunkSizeStats Default trait工作正常",
+        "ChunkSizeStats Default trait works correctly",
+    );
 }
 
 // ========== 空统计测试 ==========
@@ -43,7 +53,10 @@ fn test_chunk_stats_empty_finalize() {
     assert_eq!(stats.max_size, 0);
     assert_eq!(stats.mean_size, 0.0);
 
-    println!("✓ 空统计finalize后min_size修复为0");
+    log(
+        "空统计finalize后min_size修复为0",
+        "Empty stats finalize sets min_size to 0",
+    );
 }
 
 // ========== 单个chunk测试 ==========
@@ -62,7 +75,10 @@ fn test_chunk_stats_single_chunk() {
 
     assert_eq!(stats.mean_size, 1024.0);
 
-    println!("✓ 单个chunk统计：min=max=mean=1024");
+    log(
+        "单个chunk统计：min=max=mean=1024",
+        "Single chunk stats: min=max=mean=1024",
+    );
 }
 
 // ========== 多个chunk测试 ==========
@@ -82,7 +98,10 @@ fn test_chunk_stats_multiple_chunks_same_size() {
     assert_eq!(stats.max_size, 512);
     assert_eq!(stats.mean_size, 512.0);
 
-    println!("✓ 100个相同大小chunk：统计正确");
+    log(
+        "100个相同大小chunk：统计正确",
+        "100 identical chunks: stats correct",
+    );
 }
 
 #[test]
@@ -106,9 +125,15 @@ fn test_chunk_stats_multiple_chunks_varying_sizes() {
     let expected_mean = (256.0 + 512.0 + 1024.0 + 2048.0 + 4096.0) / 5.0;
     assert!((stats.mean_size - expected_mean).abs() < 1e-6);
 
-    println!(
-        "✓ 5个不同大小chunk：min={}, max={}, mean={:.1}",
-        stats.min_size, stats.max_size, stats.mean_size
+    log(
+        format!(
+            "5个不同大小chunk：min={}, max={}, mean={:.1}",
+            stats.min_size, stats.max_size, stats.mean_size
+        ),
+        format!(
+            "Five varied chunks: min={}, max={}, mean={:.1}",
+            stats.min_size, stats.max_size, stats.mean_size
+        ),
     );
 }
 
@@ -128,7 +153,7 @@ fn test_chunk_stats_zero_size_chunk() {
     assert_eq!(stats.max_size, 100);
     assert_eq!(stats.mean_size, 50.0);
 
-    println!("✓ 零大小chunk处理正确");
+    log("零大小chunk处理正确", "Zero-size chunk handled correctly");
 }
 
 #[test]
@@ -146,7 +171,10 @@ fn test_chunk_stats_large_chunk_sizes() {
     assert_eq!(stats.max_size, large_size * 2);
     assert_eq!(stats.mean_size, large_size as f64 * 1.5);
 
-    println!("✓ 大chunk size处理正确（{large_size} samples）");
+    log(
+        format!("大chunk size处理正确（{large_size} samples）"),
+        format!("Large chunk sizes handled correctly ({large_size} samples)"),
+    );
 }
 
 // ========== min/max更新测试 ==========
@@ -175,7 +203,7 @@ fn test_chunk_stats_min_max_updates() {
     assert_eq!(stats.min_size, 500);
     assert_eq!(stats.max_size, 2000);
 
-    println!("✓ min/max动态更新正确");
+    log("min/max动态更新正确", "min/max updates behave correctly");
 }
 
 // ========== 平均值计算测试 ==========
@@ -196,7 +224,10 @@ fn test_chunk_stats_mean_calculation() {
     // finalize后计算平均值
     assert_eq!(stats.mean_size, 200.0);
 
-    println!("✓ finalize触发平均值计算：{}", stats.mean_size);
+    log(
+        format!("finalize触发平均值计算：{}", stats.mean_size),
+        format!("Mean computed after finalize: {}", stats.mean_size),
+    );
 }
 
 #[test]
@@ -213,7 +244,10 @@ fn test_chunk_stats_mean_precision() {
     let expected = (333.0 + 333.0 + 334.0) / 3.0;
     assert!((stats.mean_size - expected).abs() < 1e-9);
 
-    println!("✓ 平均值计算精度正确：{:.9}", stats.mean_size);
+    log(
+        format!("平均值计算精度正确：{:.9}", stats.mean_size),
+        format!("Mean precision verified: {:.9}", stats.mean_size),
+    );
 }
 
 // ========== 实际场景模拟测试 ==========
@@ -238,7 +272,10 @@ fn test_chunk_stats_fixed_size_format() {
     let variation_ratio = stats.max_size as f64 / stats.min_size as f64;
     assert_eq!(variation_ratio, 1.0);
 
-    println!("✓ 固定包大小格式模拟（MP3）：变化系数={variation_ratio:.2}x");
+    log(
+        format!("固定包大小格式模拟（MP3）：变化系数={variation_ratio:.2}x"),
+        format!("Fixed-size frames (MP3) variation ratio = {variation_ratio:.2}x"),
+    );
 }
 
 #[test]
@@ -263,7 +300,10 @@ fn test_chunk_stats_variable_size_format() {
     let variation_ratio = stats.max_size as f64 / stats.min_size as f64;
     assert!(variation_ratio > 2.0);
 
-    println!("✓ 可变包大小格式模拟（FLAC）：变化系数={variation_ratio:.2}x");
+    log(
+        format!("可变包大小格式模拟（FLAC）：变化系数={variation_ratio:.2}x"),
+        format!("Variable-size frames (FLAC) variation ratio = {variation_ratio:.2}x"),
+    );
 }
 
 #[test]
@@ -292,9 +332,15 @@ fn test_chunk_stats_real_world_distribution() {
     let expected = (90.0 * 1024.0 + 5.0 * 512.0 + 5.0 * 2048.0) / 100.0;
     assert!((stats.mean_size - expected).abs() < 1e-6);
 
-    println!(
-        "✓ 真实分布模拟：mean={:.1} (期望{:.1})",
-        stats.mean_size, expected
+    log(
+        format!(
+            "真实分布模拟：mean={:.1} (期望{:.1})",
+            stats.mean_size, expected
+        ),
+        format!(
+            "Real-world distribution: mean={:.1} (expected {:.1})",
+            stats.mean_size, expected
+        ),
     );
 }
 
@@ -315,7 +361,10 @@ fn test_chunk_stats_clone() {
     assert_eq!(stats1.max_size, stats2.max_size);
     assert_eq!(stats1.mean_size, stats2.mean_size);
 
-    println!("✓ ChunkSizeStats Clone trait工作正常");
+    log(
+        "ChunkSizeStats Clone trait工作正常",
+        "ChunkSizeStats Clone trait behaves correctly",
+    );
 }
 
 #[test]
@@ -330,7 +379,10 @@ fn test_chunk_stats_clone_independence() {
     assert_eq!(stats1.total_chunks, 1);
     assert_eq!(stats2.total_chunks, 2);
 
-    println!("✓ Clone后的统计对象互相独立");
+    log(
+        "Clone后的统计对象互相独立",
+        "Cloned stats remain independent",
+    );
 }
 
 // ========== Debug trait测试 ==========
@@ -346,7 +398,10 @@ fn test_chunk_stats_debug() {
     assert!(debug_str.contains("1024"));
     assert!(debug_str.contains("total_chunks"));
 
-    println!("✓ ChunkSizeStats Debug trait工作正常");
+    log(
+        "ChunkSizeStats Debug trait工作正常",
+        "ChunkSizeStats Debug trait works",
+    );
 }
 
 // ========== 多次finalize测试 ==========
@@ -367,7 +422,10 @@ fn test_chunk_stats_multiple_finalize() {
 
     assert_eq!(mean1, mean2);
 
-    println!("✓ 多次finalize不改变结果：mean={mean1}");
+    log(
+        format!("多次finalize不改变结果：mean={mean1}"),
+        format!("Repeated finalize calls leave mean unchanged: {mean1}"),
+    );
 }
 
 // ========== 压力测试 ==========
@@ -389,9 +447,15 @@ fn test_chunk_stats_large_number_of_chunks() {
     assert!(stats.max_size <= 2048);
     assert!(stats.mean_size > 0.0);
 
-    println!(
-        "✓ 大量chunk处理：total={}, min={}, max={}, mean={:.1}",
-        stats.total_chunks, stats.min_size, stats.max_size, stats.mean_size
+    log(
+        format!(
+            "大量chunk处理：total={}, min={}, max={}, mean={:.1}",
+            stats.total_chunks, stats.min_size, stats.max_size, stats.mean_size
+        ),
+        format!(
+            "Large-volume chunks: total={}, min={}, max={}, mean={:.1}",
+            stats.total_chunks, stats.min_size, stats.max_size, stats.mean_size
+        ),
     );
 }
 
@@ -421,5 +485,5 @@ fn test_chunk_stats_typical_workflow() {
     assert_eq!(stats.mean_size, 1024.0);
     assert!(stats.min_size <= stats.max_size);
 
-    println!("✓ 典型工作流测试通过");
+    log("典型工作流测试通过", "Typical workflow test passed");
 }

@@ -106,13 +106,13 @@ impl AudioFormat {
                 ),
             ));
         }
-        // 声道数限制检查（架构约束：仅支持1-2声道）
+        // 声道数限制检查（架构限制：最多32声道）
         if self.channels > MAX_CHANNELS {
             return Err(error::format_error(
                 "Unsupported channel count / 不支持的声道数",
                 format!(
-                    "{} channels (only mono or stereo supported) / {}声道（仅支持单声道或立体声）",
-                    self.channels, self.channels
+                    "{} channels (maximum {} channels supported) / {}声道（最多支持{}声道）",
+                    self.channels, MAX_CHANNELS, self.channels, MAX_CHANNELS
                 ),
             ));
         }

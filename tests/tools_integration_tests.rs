@@ -5,6 +5,10 @@
 use macinmeter_dr_tool::tools::{self, AppConfig};
 use std::path::{Path, PathBuf};
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 fn base_config() -> AppConfig {
     AppConfig {
         input_path: PathBuf::from("."),
@@ -33,7 +37,10 @@ fn test_batch_mode_detection_directory() {
     };
 
     assert!(config.is_batch_mode(), "目录路径应该被识别为批量模式");
-    println!("  ✓ 目录路径正确识别为批量模式");
+    log(
+        "  目录路径正确识别为批量模式",
+        "  Directory path correctly recognized as batch mode",
+    );
 }
 
 /// 验证单文件模式检测（文件路径）
@@ -45,7 +52,10 @@ fn test_single_file_mode_detection() {
     };
 
     assert!(!config.is_batch_mode(), "文件路径应该被识别为单文件模式");
-    println!("  ✓ 文件路径正确识别为单文件模式");
+    log(
+        "  文件路径正确识别为单文件模式",
+        "  File path correctly recognized as single-file mode",
+    );
 }
 
 /// 验证Sum Doubling固定启用（foobar2000兼容）
@@ -60,7 +70,10 @@ fn test_sum_doubling_always_enabled() {
         config.sum_doubling_enabled(),
         "Sum Doubling应该始终启用（foobar2000兼容）"
     );
-    println!("  ✓ Sum Doubling正确固定启用");
+    log(
+        "  Sum Doubling正确固定启用",
+        "  Sum Doubling is permanently enabled",
+    );
 }
 
 // ============================================================================
@@ -78,7 +91,10 @@ fn test_cli_parallel_threads_range() {
 
     for (threads, desc) in valid_threads {
         assert!(threads >= 1, "{desc}: 线程数应该至少为1");
-        println!("  ✓ 线程数参数有效: {threads} ({desc})");
+        log(
+            format!("  线程数参数有效: {threads} ({desc})"),
+            format!("  Thread count valid: {threads} ({desc})"),
+        );
     }
 }
 
@@ -93,7 +109,10 @@ fn test_cli_batch_size_range() {
 
     for (batch_size, desc) in valid_batch_sizes {
         assert!(batch_size >= 16, "{desc}: 批大小应该至少为16");
-        println!("  ✓ 批大小参数有效: {batch_size} ({desc})");
+        log(
+            format!("  批大小参数有效: {batch_size} ({desc})"),
+            format!("  Batch size valid: {batch_size} ({desc})"),
+        );
     }
 }
 
@@ -116,7 +135,10 @@ fn test_cli_parallel_files_range() {
             assert!(files > 0, "{desc}: 并行文件数应该是正数");
         }
 
-        println!("  ✓ 并行文件参数有效: {parallel_files:?} ({desc})");
+        log(
+            format!("  并行文件参数有效: {parallel_files:?} ({desc})"),
+            format!("  Parallel file config valid: {parallel_files:?} ({desc})"),
+        );
     }
 }
 
@@ -134,13 +156,16 @@ fn test_scan_fixtures_directory() {
     let audio_files = result.unwrap();
     assert!(!audio_files.is_empty(), "应该找到至少一个WAV文件");
 
-    println!("  ✓ 扫描到 {} 个音频文件", audio_files.len());
+    log(
+        format!("  扫描到 {} 个音频文件", audio_files.len()),
+        format!("  Discovered {} audio files", audio_files.len()),
+    );
 
     // 验证文件按名称排序
     for i in 1..audio_files.len() {
         assert!(audio_files[i - 1] <= audio_files[i], "文件应该按名称排序");
     }
-    println!("  ✓ 文件列表正确排序");
+    log("  文件列表正确排序", "  File list sorted correctly");
 }
 
 /// 验证空目录处理
@@ -157,7 +182,10 @@ fn test_scan_empty_directory() {
     assert!(audio_files.is_empty(), "空目录应该返回空列表");
 
     let _ = fs::remove_dir(&temp_dir);
-    println!("  ✓ 空目录正确返回空列表");
+    log(
+        "  空目录正确返回空列表",
+        "  Empty directory returns an empty list",
+    );
 }
 
 /// 验证不存在的路径返回错误
@@ -181,7 +209,10 @@ fn test_scan_nonexistent_path() {
     assert!(result.is_err(), "不存在的路径应该返回错误");
 
     if let Err(e) = result {
-        println!("  ✓ 不存在路径正确返回错误: {e}");
+        log(
+            format!("  不存在路径正确返回错误: {e}"),
+            format!("  Missing path correctly produced error: {e}"),
+        );
     }
 }
 
@@ -193,7 +224,10 @@ fn test_scan_file_instead_of_directory() {
     assert!(result.is_err(), "文件路径应该返回错误（需要目录）");
 
     if let Err(e) = result {
-        println!("  ✓ 文件路径正确返回错误: {e}");
+        log(
+            format!("  文件路径正确返回错误: {e}"),
+            format!("  File path correctly produced error: {e}"),
+        );
     }
 }
 
@@ -234,8 +268,11 @@ fn test_official_dr_formatting() {
 
     // 验证输出包含关键信息
     assert!(output.contains("Official DR Value: DR"));
-    println!("  ✓ Official DR格式化输出正确");
-    println!("{output}");
+    log(
+        "  Official DR格式化输出正确",
+        "  Official DR formatting is correct",
+    );
+    log(output.clone(), output.clone());
 }
 
 /// 验证批量输出头部生成
@@ -257,8 +294,11 @@ fn test_batch_output_header_generation() {
     assert!(header.contains("Precise DR"));
     assert!(header.contains(&format!("{}", audio_files.len())));
 
-    println!("  ✓ 批量输出头部生成正确");
-    println!("{header}");
+    log(
+        "  批量输出头部生成正确",
+        "  Batch output header generated correctly",
+    );
+    log(header.clone(), header.clone());
 }
 
 /// 验证批量输出底部生成（带错误分类）
@@ -298,7 +338,10 @@ fn test_batch_output_footer_with_errors() {
     assert!(footer.contains("格式错误"));
     assert!(footer.contains("test3.mp3"));
 
-    println!("  ✓ 批量输出底部（含错误分类）生成正确");
+    log(
+        "  批量输出底部（含错误分类）生成正确",
+        "  Batch output footer (with error summary) generated correctly",
+    );
 }
 
 /// 验证批量输出路径生成（默认自动命名）
@@ -318,7 +361,13 @@ fn test_batch_output_path_generation() {
     assert!(path_str.contains("BatchDR")); // 批量标识
     assert!(path_str.ends_with(".txt")); // 文本格式
 
-    println!("  ✓ 批量输出路径自动生成正确: {}", output_path.display());
+    log(
+        format!("  批量输出路径自动生成正确: {}", output_path.display()),
+        format!(
+            "  Auto-generated batch output path is correct: {}",
+            output_path.display()
+        ),
+    );
 }
 
 /// 验证用户指定输出路径优先
@@ -336,7 +385,10 @@ fn test_batch_output_path_user_specified() {
     let output_path = tools::generate_batch_output_path(&config);
 
     assert_eq!(output_path, user_path, "应该使用用户指定的路径");
-    println!("  ✓ 用户指定路径优先级正确");
+    log(
+        "  用户指定路径优先级正确",
+        "  User-specified path takes precedence",
+    );
 }
 
 // ============================================================================
@@ -357,7 +409,10 @@ fn test_filename_extraction() {
     let ext = tools::path::extract_extension_uppercase(path);
     assert_eq!(ext, "FLAC");
 
-    println!("  ✓ 文件名提取工具正确");
+    log(
+        "  文件名提取工具正确",
+        "  Filename extraction utility works correctly",
+    );
 }
 
 /// 验证音频值转换工具
@@ -376,14 +431,17 @@ fn test_audio_value_conversion() {
     let db_string = tools::audio::linear_to_db_string(0.5);
     assert!(db_string.contains("-6."));
 
-    println!("  ✓ 音频值转换工具正确");
+    log(
+        "  音频值转换工具正确",
+        "  Audio value conversion utility works correctly",
+    );
 }
 
 // ============================================================================
 // 批量/单文件DR值一致性测试 (Phase 2.6 集成测试验证)
 // ============================================================================
 
-/// 🎯 核心一致性测试：验证批量模式和单文件模式计算相同的DR值
+/// 核心一致性测试：验证批量模式和单文件模式计算相同的DR值
 ///
 /// 测试目标：确保同一个音频文件在两种处理模式下产生完全一致的DR值
 ///
@@ -407,12 +465,21 @@ fn test_batch_vs_single_dr_consistency_wav() {
 
     // 跳过如果文件不存在
     if !test_file.exists() {
-        println!("  ⏭️  跳过测试：音频文件不存在");
+        log(
+            "  跳过测试：音频文件不存在",
+            "  Skipping test: audio file not found",
+        );
         return;
     }
 
-    println!("\n🎯 测试批量/单文件DR值一致性（WAV格式）");
-    println!("测试文件: {}", test_file.display());
+    log(
+        "\n测试批量/单文件DR值一致性（WAV格式）",
+        "\nBatch vs single DR consistency test (WAV)",
+    );
+    log(
+        format!("测试文件: {}", test_file.display()),
+        format!("Test file: {}", test_file.display()),
+    );
 
     // 1️⃣ 单文件模式处理
     let mut single_config = base_config();
@@ -429,7 +496,10 @@ fn test_batch_vs_single_dr_consistency_wav() {
     assert!(single_official_dr.is_some(), "单文件模式应该计算出DR值");
     let (single_official, single_precise, _) = single_official_dr.unwrap();
 
-    println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
+    log(
+        format!("  单文件模式: DR{single_official} ({single_precise:.2} dB)"),
+        format!("  Single-file mode: DR{single_official} ({single_precise:.2} dB)"),
+    );
 
     // 2️⃣ 批量模式处理（仅包含同一个文件）
     let mut batch_config = base_config();
@@ -446,18 +516,21 @@ fn test_batch_vs_single_dr_consistency_wav() {
     assert!(batch_official_dr.is_some(), "批量模式应该计算出DR值");
     let (batch_official, batch_precise, _) = batch_official_dr.unwrap();
 
-    println!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)");
+    log(
+        format!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)"),
+        format!("  Batch mode: DR{batch_official} ({batch_precise:.2} dB)"),
+    );
 
     // 3️⃣ 验证一致性
     assert_eq!(
         single_official, batch_official,
-        "❌ Official DR值不一致！单文件={single_official}, 批量={batch_official}"
+        "Official DR值不一致！单文件={single_official}, 批量={batch_official} / Official DR mismatch"
     );
 
     let precise_diff = (single_precise - batch_precise).abs();
     assert!(
         precise_diff < 0.0001,
-        "❌ Precise DR值差异过大！单文件={single_precise:.6}, 批量={batch_precise:.6}, 差异={precise_diff:.8} (极端严格容差0.0001dB)"
+        "Precise DR值差异过大！单文件={single_precise:.6}, 批量={batch_precise:.6}, 差异={precise_diff:.8} (容差0.0001dB) / Precise DR mismatch"
     );
 
     // 4️⃣ 验证各声道DR值一致（极端严格）
@@ -483,10 +556,13 @@ fn test_batch_vs_single_dr_consistency_wav() {
         );
     }
 
-    println!("  ✅ 批量/单文件DR值完全一致（WAV）");
+    log(
+        "  批量/单文件DR值完全一致（WAV）",
+        "  Batch vs single DR values match (WAV)",
+    );
 }
 
-/// 🎯 MP3格式一致性测试（串行解码路径）
+/// MP3格式一致性测试（串行解码路径）
 #[test]
 #[ignore] // 需要真实音频文件
 fn test_batch_vs_single_dr_consistency_mp3() {
@@ -497,11 +573,17 @@ fn test_batch_vs_single_dr_consistency_mp3() {
     );
 
     if !test_file.exists() {
-        println!("  ⏭️  跳过测试：MP3文件不存在");
+        log(
+            "  跳过测试：MP3文件不存在",
+            "  Skipping test: MP3 file not found",
+        );
         return;
     }
 
-    println!("\n🎯 测试批量/单文件DR值一致性（MP3格式 - 串行解码）");
+    log(
+        "\n测试批量/单文件DR值一致性（MP3格式 - 串行解码）",
+        "\nBatch vs single DR consistency test (MP3, serial decoding)",
+    );
 
     // 单文件模式
     let mut single_config = base_config();
@@ -517,7 +599,10 @@ fn test_batch_vs_single_dr_consistency_mp3() {
         tools::compute_official_precise_dr(&single_dr_results, &single_format)
             .expect("应该计算出DR值");
 
-    println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
+    log(
+        format!("  单文件模式: DR{single_official} ({single_precise:.2} dB)"),
+        format!("  Single-file mode: DR{single_official} ({single_precise:.2} dB)"),
+    );
 
     // 批量模式
     let mut batch_config = base_config();
@@ -533,7 +618,10 @@ fn test_batch_vs_single_dr_consistency_mp3() {
         tools::compute_official_precise_dr(&batch_dr_results, &batch_format)
             .expect("应该计算出DR值");
 
-    println!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)");
+    log(
+        format!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)"),
+        format!("  Batch mode: DR{batch_official} ({batch_precise:.2} dB)"),
+    );
 
     // 验证一致性（极端严格）
     assert_eq!(
@@ -546,10 +634,13 @@ fn test_batch_vs_single_dr_consistency_mp3() {
         "MP3: Precise DR值差异过大！单文件={single_precise:.6}, 批量={batch_precise:.6}, 差异={mp3_diff:.8} (极端严格容差0.0001dB)"
     );
 
-    println!("  ✅ 批量/单文件DR值完全一致（MP3 - 串行解码）");
+    log(
+        "  批量/单文件DR值完全一致（MP3 - 串行解码）",
+        "  Batch vs single DR values match (MP3, serial)",
+    );
 }
 
-/// 🎯 FLAC格式一致性测试（并行解码路径）
+/// FLAC格式一致性测试（并行解码路径）
 #[test]
 #[ignore] // 需要真实音频文件
 fn test_batch_vs_single_dr_consistency_flac() {
@@ -560,11 +651,17 @@ fn test_batch_vs_single_dr_consistency_flac() {
     );
 
     if !test_file.exists() {
-        println!("  ⏭️  跳过测试：FLAC文件不存在");
+        log(
+            "  跳过测试：FLAC文件不存在",
+            "  Skipping test: FLAC file not found",
+        );
         return;
     }
 
-    println!("\n🎯 测试批量/单文件DR值一致性（FLAC格式 - 并行解码）");
+    log(
+        "\n测试批量/单文件DR值一致性（FLAC格式 - 并行解码）",
+        "\nBatch vs single DR consistency test (FLAC, parallel decoding)",
+    );
 
     // 单文件模式（并行解码）
     let mut single_config = base_config();
@@ -580,7 +677,10 @@ fn test_batch_vs_single_dr_consistency_flac() {
         tools::compute_official_precise_dr(&single_dr_results, &single_format)
             .expect("应该计算出DR值");
 
-    println!("  单文件模式: DR{single_official} ({single_precise:.2} dB)");
+    log(
+        format!("  单文件模式: DR{single_official} ({single_precise:.2} dB)"),
+        format!("  Single-file mode: DR{single_official} ({single_precise:.2} dB)"),
+    );
 
     // 批量模式（并行解码）
     let mut batch_config = base_config();
@@ -596,7 +696,10 @@ fn test_batch_vs_single_dr_consistency_flac() {
         tools::compute_official_precise_dr(&batch_dr_results, &batch_format)
             .expect("应该计算出DR值");
 
-    println!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)");
+    log(
+        format!("  批量模式: DR{batch_official} ({batch_precise:.2} dB)"),
+        format!("  Batch mode: DR{batch_official} ({batch_precise:.2} dB)"),
+    );
 
     // 验证一致性（极端严格）
     assert_eq!(
@@ -609,10 +712,13 @@ fn test_batch_vs_single_dr_consistency_flac() {
         "FLAC: Precise DR值差异过大！单文件={single_precise:.6}, 批量={batch_precise:.6}, 差异={flac_diff:.8} (极端严格容差0.0001dB)"
     );
 
-    println!("  ✅ 批量/单文件DR值完全一致（FLAC - 并行解码）");
+    log(
+        "  批量/单文件DR值完全一致（FLAC - 并行解码）",
+        "  Batch vs single DR values match (FLAC, parallel)",
+    );
 }
 
-/// 🎯 多格式综合一致性测试
+/// 多格式综合一致性测试
 #[test]
 #[ignore] // 需要真实音频文件
 fn test_batch_vs_single_dr_consistency_multiple_formats() {
@@ -637,8 +743,12 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         ),
     ];
 
-    println!("\n🎯 多格式批量/单文件DR值一致性测试");
-    println!("{}", "=".repeat(60));
+    log(
+        "\n多格式批量/单文件DR值一致性测试",
+        "\nMulti-format batch vs single DR consistency test",
+    );
+    let divider = "=".repeat(60);
+    log(divider.clone(), divider.clone());
 
     let mut tested_count = 0;
     let mut passed_count = 0;
@@ -647,12 +757,18 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         let test_file = PathBuf::from(file_path);
 
         if !test_file.exists() {
-            println!("  ⏭️  跳过 {format_name}: 文件不存在");
+            log(
+                format!("  跳过 {format_name}: 文件不存在"),
+                format!("  Skipping {format_name}: file not found"),
+            );
             continue;
         }
 
         tested_count += 1;
-        println!("\n  📊 测试格式: {format_name}");
+        log(
+            format!("\n  测试格式: {format_name}"),
+            format!("\n  Testing format: {format_name}"),
+        );
 
         // 单文件模式
         // 有状态编码格式（MP3/AAC/OGG）必须串行解码
@@ -665,7 +781,10 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
 
         let single_result = tools::process_single_audio_file(&test_file, &single_config);
         if single_result.is_err() {
-            println!("     ⚠️  单文件处理失败，跳过");
+            log(
+                "     单文件处理失败，跳过",
+                "     Single-file processing failed; skipping",
+            );
             continue;
         }
 
@@ -673,7 +792,10 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
         let single_official_dr =
             tools::compute_official_precise_dr(&single_dr_results, &single_format);
         if single_official_dr.is_none() {
-            println!("     ⚠️  无法计算DR值，跳过");
+            log(
+                "     无法计算DR值，跳过",
+                "     Unable to compute DR; skipping",
+            );
             continue;
         }
 
@@ -700,23 +822,44 @@ fn test_batch_vs_single_dr_consistency_multiple_formats() {
 
         if official_match && precise_match {
             passed_count += 1;
-            println!("     ✅ 一致性验证通过");
-            println!("        单文件: DR{single_official} ({single_precise:.6} dB)");
-            println!("        批量:   DR{batch_official} ({batch_precise:.6} dB)");
-            println!("        差异:   {diff:.8} dB (极端严格: <0.0001dB)");
+            log("     一致性验证通过", "     Consistency check passed");
+            log(
+                format!("        单文件: DR{single_official} ({single_precise:.6} dB)"),
+                format!("        Single: DR{single_official} ({single_precise:.6} dB)"),
+            );
+            log(
+                format!("        批量:   DR{batch_official} ({batch_precise:.6} dB)"),
+                format!("        Batch:   DR{batch_official} ({batch_precise:.6} dB)"),
+            );
+            log(
+                format!("        差异:   {diff:.8} dB (极端严格: <0.0001dB)"),
+                format!("        Delta:   {diff:.8} dB (strict limit <0.0001 dB)"),
+            );
         } else {
-            println!("     ❌ 一致性验证失败");
-            println!("        单文件: DR{single_official} ({single_precise:.6} dB)");
-            println!("        批量:   DR{batch_official} ({batch_precise:.6} dB)");
-            println!("        差异:   {diff:.8} dB (要求: <0.0001dB)");
+            log("     一致性验证失败", "     Consistency check failed");
+            log(
+                format!("        单文件: DR{single_official} ({single_precise:.6} dB)"),
+                format!("        Single: DR{single_official} ({single_precise:.6} dB)"),
+            );
+            log(
+                format!("        批量:   DR{batch_official} ({batch_precise:.6} dB)"),
+                format!("        Batch:   DR{batch_official} ({batch_precise:.6} dB)"),
+            );
+            log(
+                format!("        差异:   {diff:.8} dB (要求: <0.0001dB)"),
+                format!("        Delta:   {diff:.8} dB (limit <0.0001 dB)"),
+            );
             panic!("{format_name} 格式的批量/单文件DR值不一致");
         }
     }
 
     println!();
-    println!("{}", "=".repeat(60));
-    println!("  📈 测试总结: {passed_count}/{tested_count} 格式通过一致性验证");
-    println!("{}", "=".repeat(60));
+    log(divider.clone(), divider.clone());
+    log(
+        format!("  测试总结: {passed_count}/{tested_count} 格式通过一致性验证"),
+        format!("  Summary: {passed_count}/{tested_count} formats passed consistency"),
+    );
+    log(divider.clone(), divider);
 
     assert!(tested_count > 0, "至少应该测试一个格式");
     assert_eq!(passed_count, tested_count, "所有测试格式都应该通过");

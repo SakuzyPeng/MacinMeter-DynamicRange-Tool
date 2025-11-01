@@ -6,6 +6,10 @@ use macinmeter_dr_tool::AudioError;
 use macinmeter_dr_tool::audio::AudioFormat;
 use symphonia::core::codecs::CODEC_TYPE_FLAC;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 // ========== 基础创建测试 ==========
 
 #[test]
@@ -20,7 +24,10 @@ fn test_audio_format_new() {
     assert!(!format.is_partial());
     assert_eq!(format.skipped_packets(), 0);
 
-    println!("✓ AudioFormat::new() 创建成功");
+    log(
+        "AudioFormat::new() 创建成功",
+        "AudioFormat::new() constructed successfully",
+    );
 }
 
 #[test]
@@ -35,7 +42,10 @@ fn test_audio_format_with_codec() {
     assert!(!format.is_partial());
     assert_eq!(format.skipped_packets(), 0);
 
-    println!("✓ AudioFormat::with_codec() 创建成功，codec_type已设置");
+    log(
+        "AudioFormat::with_codec() 创建成功，codec_type已设置",
+        "AudioFormat::with_codec() constructed; codec_type set",
+    );
 }
 
 #[test]
@@ -48,7 +58,10 @@ fn test_audio_format_various_sample_rates() {
         assert!(format.validate().is_ok(), "采样率{rate}应该有效");
     }
 
-    println!("✓ 各种常见采样率验证通过");
+    log(
+        "各种常见采样率验证通过",
+        "Common sample rates validated successfully",
+    );
 }
 
 #[test]
@@ -61,7 +74,10 @@ fn test_audio_format_various_bit_depths() {
         assert!(format.validate().is_ok(), "位深{bits}应该有效");
     }
 
-    println!("✓ 支持的位深度（16/24/32）验证通过");
+    log(
+        "支持的位深度（16/24/32）验证通过",
+        "Supported bit depths (16/24/32) validated",
+    );
 }
 
 // ========== 验证测试 ==========
@@ -76,7 +92,10 @@ fn test_validate_zero_sample_rate() {
     match result {
         Err(AudioError::FormatError(msg)) => {
             assert!(msg.contains("采样率") || msg.contains("0"));
-            println!("✓ 正确拒绝采样率为0: {msg}");
+            log(
+                format!("正确拒绝采样率为0: {msg}"),
+                format!("Correctly rejected zero sample rate: {msg}"),
+            );
         }
         _ => panic!("期望FormatError"),
     }
@@ -92,7 +111,10 @@ fn test_validate_zero_channels() {
     match result {
         Err(AudioError::FormatError(msg)) => {
             assert!(msg.contains("声道") || msg.contains("0"));
-            println!("✓ 正确拒绝声道数为0: {msg}");
+            log(
+                format!("正确拒绝声道数为0: {msg}"),
+                format!("Correctly rejected zero channels: {msg}"),
+            );
         }
         _ => panic!("期望FormatError"),
     }
@@ -112,7 +134,10 @@ fn test_validate_invalid_bit_depth() {
         match result {
             Err(AudioError::FormatError(msg)) => {
                 assert!(msg.contains("位深") || msg.contains(&bits.to_string()));
-                println!("✓ 正确拒绝位深{bits}: {msg}");
+                log(
+                    format!("正确拒绝位深{bits}: {msg}"),
+                    format!("Correctly rejected bit depth {bits}: {msg}"),
+                );
             }
             _ => panic!("期望FormatError"),
         }
@@ -135,7 +160,10 @@ fn test_validate_valid_formats() {
         );
     }
 
-    println!("✓ 所有有效格式验证通过");
+    log(
+        "所有有效格式验证通过",
+        "All valid formats passed validation",
+    );
 }
 
 // ========== 部分分析标记测试 ==========
@@ -152,7 +180,10 @@ fn test_mark_as_partial_no_skipped() {
     assert!(format.is_partial());
     assert_eq!(format.skipped_packets(), 0);
 
-    println!("✓ 标记为部分分析（0个跳过包）");
+    log(
+        "标记为部分分析（0个跳过包）",
+        "Marked as partial analysis (0 skipped packets)",
+    );
 }
 
 #[test]
@@ -164,7 +195,10 @@ fn test_mark_as_partial_with_skipped() {
     assert!(format.is_partial());
     assert_eq!(format.skipped_packets(), 42);
 
-    println!("✓ 标记为部分分析（42个跳过包）");
+    log(
+        "标记为部分分析（42个跳过包）",
+        "Marked as partial analysis (42 skipped packets)",
+    );
 }
 
 #[test]
@@ -179,7 +213,10 @@ fn test_mark_as_partial_multiple_times() {
     assert_eq!(format.skipped_packets(), 20);
     assert!(format.is_partial());
 
-    println!("✓ 多次标记部分分析（最后一次覆盖）");
+    log(
+        "多次标记部分分析（最后一次覆盖）",
+        "Repeated partial mark updates (last one wins)",
+    );
 }
 
 // ========== 文件大小估算测试 ==========
@@ -192,7 +229,10 @@ fn test_estimated_file_size_16bit_stereo() {
     let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
-    println!("✓ 16bit立体声文件大小估算: {actual} bytes");
+    log(
+        format!("16bit立体声文件大小估算: {actual} bytes"),
+        format!("16-bit stereo size estimate: {actual} bytes"),
+    );
 }
 
 #[test]
@@ -203,7 +243,10 @@ fn test_estimated_file_size_24bit_mono() {
     let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
-    println!("✓ 24bit单声道文件大小估算: {actual} bytes");
+    log(
+        format!("24bit单声道文件大小估算: {actual} bytes"),
+        format!("24-bit mono size estimate: {actual} bytes"),
+    );
 }
 
 #[test]
@@ -214,7 +257,10 @@ fn test_estimated_file_size_32bit_stereo() {
     let actual = format.estimated_pcm_size_bytes();
 
     assert_eq!(actual, expected);
-    println!("✓ 32bit立体声文件大小估算: {actual} bytes");
+    log(
+        format!("32bit立体声文件大小估算: {actual} bytes"),
+        format!("32-bit stereo size estimate: {actual} bytes"),
+    );
 }
 
 #[test]
@@ -232,7 +278,10 @@ fn test_estimated_file_size_edge_cases() {
     let size = format_large.estimated_pcm_size_bytes();
     assert!(size > 0);
 
-    println!("✓ 文件大小估算边界情况通过");
+    log(
+        "文件大小估算边界情况通过",
+        "File size edge cases handled correctly",
+    );
 }
 
 // ========== 时长计算测试 ==========
@@ -243,7 +292,10 @@ fn test_duration_seconds_one_second() {
     let duration = format.duration_seconds();
 
     assert!((duration - 1.0).abs() < 1e-6, "1秒音频时长应该是1.0");
-    println!("✓ 1秒音频时长计算: {duration:.6}s");
+    log(
+        format!("1秒音频时长计算: {duration:.6}s"),
+        format!("1-second duration computed as {duration:.6}s"),
+    );
 }
 
 #[test]
@@ -268,7 +320,7 @@ fn test_duration_seconds_various_lengths() {
         );
     }
 
-    println!("✓ 各种时长计算验证通过");
+    log("各种时长计算验证通过", "Duration calculations validated");
 }
 
 #[test]
@@ -280,7 +332,10 @@ fn test_duration_seconds_precision() {
     let expected = 44101.0 / 44100.0;
     assert!((duration - expected).abs() < 1e-9);
 
-    println!("✓ 时长计算高精度验证: {duration:.9}s");
+    log(
+        format!("时长计算高精度验证: {duration:.9}s"),
+        format!("High-precision duration validated: {duration:.9}s"),
+    );
 }
 
 #[test]
@@ -294,7 +349,10 @@ fn test_duration_seconds_edge_cases() {
     let duration = format_one.duration_seconds();
     assert!((duration - 1.0 / 44100.0).abs() < 1e-9);
 
-    println!("✓ 时长计算边界情况通过");
+    log(
+        "时长计算边界情况通过",
+        "Duration edge cases handled correctly",
+    );
 }
 
 // ========== 更新样本数测试 ==========
@@ -308,7 +366,10 @@ fn test_update_sample_count() {
     format.update_sample_count(2000000);
     assert_eq!(format.sample_count, 2000000);
 
-    println!("✓ 更新样本数: 1000000 -> 2000000");
+    log(
+        "更新样本数: 1000000 -> 2000000",
+        "Sample count updated: 1000000 -> 2000000",
+    );
 }
 
 #[test]
@@ -320,7 +381,10 @@ fn test_update_sample_count_affects_duration() {
     format.update_sample_count(88200); // 更新为2秒
     assert!((format.duration_seconds() - 2.0).abs() < 1e-6);
 
-    println!("✓ 更新样本数影响时长计算");
+    log(
+        "更新样本数影响时长计算",
+        "Sample count update affects duration",
+    );
 }
 
 #[test]
@@ -334,7 +398,10 @@ fn test_update_sample_count_affects_file_size() {
 
     assert_eq!(size_after, size_before * 2);
 
-    println!("✓ 更新样本数影响文件大小估算");
+    log(
+        "更新样本数影响文件大小估算",
+        "Sample count update affects file size estimate",
+    );
 }
 
 // ========== Clone和PartialEq测试 ==========
@@ -349,7 +416,10 @@ fn test_audio_format_clone() {
     assert_eq!(format1.bits_per_sample, format2.bits_per_sample);
     assert_eq!(format1.sample_count, format2.sample_count);
 
-    println!("✓ AudioFormat Clone trait工作正常");
+    log(
+        "AudioFormat Clone trait工作正常",
+        "AudioFormat Clone trait behaves correctly",
+    );
 }
 
 #[test]
@@ -361,7 +431,10 @@ fn test_audio_format_partial_eq() {
     assert_eq!(format1, format2, "相同参数应该相等");
     assert_ne!(format1, format3, "不同采样率应该不相等");
 
-    println!("✓ AudioFormat PartialEq trait工作正常");
+    log(
+        "AudioFormat PartialEq trait工作正常",
+        "AudioFormat PartialEq trait behaves correctly",
+    );
 }
 
 #[test]
@@ -373,7 +446,10 @@ fn test_audio_format_debug() {
     assert!(debug_str.contains("2"));
     assert!(debug_str.contains("16"));
 
-    println!("✓ AudioFormat Debug trait工作正常: {debug_str}");
+    log(
+        format!("AudioFormat Debug trait工作正常: {debug_str}"),
+        format!("AudioFormat Debug trait works: {debug_str}"),
+    );
 }
 
 // ========== 综合场景测试 ==========
@@ -386,7 +462,10 @@ fn test_typical_flac_format() {
     assert!((format.duration_seconds() - 241.678).abs() < 0.1); // 约4分钟
     assert_eq!(format.estimated_pcm_size_bytes(), 10662000 * 2 * 3);
 
-    println!("✓ 典型FLAC格式场景测试通过");
+    log(
+        "典型FLAC格式场景测试通过",
+        "Typical FLAC format scenario validated",
+    );
 }
 
 #[test]
@@ -407,5 +486,8 @@ fn test_partial_analysis_workflow() {
     assert!(format.is_partial());
     assert_eq!(format.skipped_packets(), 15);
 
-    println!("✓ 部分分析工作流测试通过");
+    log(
+        "部分分析工作流测试通过",
+        "Partial analysis workflow validated",
+    );
 }

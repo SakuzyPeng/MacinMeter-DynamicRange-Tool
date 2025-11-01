@@ -301,57 +301,21 @@ pub fn format_stereo_results(results: &[DrResult]) -> String {
     output
 }
 
-/// 格式化中等多声道DR结果（3-8声道）
+/// 格式化中等多声道DR结果（3+声道）
+/// 单文件模式使用列表格式便于查看，多文件模式使用简化格式
 pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
     let mut output = String::new();
 
-    // 生成声道标题行
-    let mut header = String::new();
-    for i in 0..results.len() {
-        header.push_str(&format!("          通道 Channel {}", i + 1));
-    }
-    output.push_str(&header);
-    output.push_str("\n\n");
+    // 使用列表格式显示每个声道的DR值
+    output.push_str(&format!(
+        "Channel breakdown ({} channels):\n",
+        results.len()
+    ));
 
-    // 暂时隐藏Peak Value行
-    // output.push_str("Peak Value:");
-    // for (i, result) in results.iter().enumerate() {
-    //     let peak_db_str = format!("{} dB", utils::linear_to_db_string(result.peak));
-    //     if i < results.len() - 1 {
-    //         output.push_str(&format!("     {peak_db_str:>8}   ---"));
-    //     } else {
-    //         output.push_str(&format!("     {peak_db_str:>8}   "));
-    //     }
-    // }
-    // output.push('\n');
-
-    // 暂时隐藏Avg RMS行
-    // output.push_str("Avg RMS:");
-    // for (i, result) in results.iter().enumerate() {
-    //     let rms_db_str = format!("{} dB", utils::linear_to_db_string(result.rms));
-    //     if i < results.len() - 1 {
-    //         output.push_str(&format!("       {rms_db_str:>8}   ---"));
-    //     } else {
-    //         output.push_str(&format!("       {rms_db_str:>8}   "));
-    //     }
-    // }
-    // output.push('\n');
-
-    // DR channel行
-    output.push_str("DR通道 / DR Channel:");
     for (i, result) in results.iter().enumerate() {
-        let dr_value_str = if result.peak > 0.0 && result.rms > 0.0 {
-            format!("{:.2} dB", result.dr_value)
-        } else {
-            "0.00 dB".to_string()
-        };
-        if i < results.len() - 1 {
-            output.push_str(&format!("     {dr_value_str:>8}   ---"));
-        } else {
-            output.push_str(&format!("     {dr_value_str:>8}   "));
-        }
+        let dr_rounded = result.dr_value_rounded();
+        output.push_str(&format!("  Channel {}: DR{}\n", i + 1, dr_rounded));
     }
-    output.push('\n');
 
     output
 }
@@ -445,14 +409,16 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 
 /// 统一的DR聚合计算（核心函数）
 ///
-/// 排除LFE声道和静音声道，确保批量模式与单文件模式口径一致
+/// 基于foobar2000 DR Meter实测行为：所有非静音声道参与计算（不排除LFE）
 ///
 /// # 计算口径说明
 ///
 /// **Official DR 算法**（foobar2000 兼容实现）：
-/// 1. 筛选有效声道：排除 LFE（低频效果）声道和静音声道
+/// 1. 筛选有效声道：仅排除静音声道（peak=0且rms=0）
 /// 2. 计算平均 DR：对所有有效声道的 DR 值求算术平均
 /// 3. 四舍五入：将平均 DR 值四舍五入为整数
+///
+/// **重要**: 根据foobar2000实测，LFE声道不会被排除，所有非静音声道都参与DR计算
 ///
 /// **与其他定义的区别**：
 /// - 本实现采用 **通道级平均** 方式，与 foobar2000 DR Meter 完全一致
@@ -463,7 +429,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 /// - `Some((official_dr, precise_dr, excluded_count))`: 成功计算
 ///   - `official_dr`: 官方DR值（四舍五入整数）
 ///   - `precise_dr`: 精确DR值（保留完整小数）
-///   - `excluded_count`: 被排除的声道数（LFE + 静音）
+///   - `excluded_count`: 被排除的声道数（仅静音声道）
 /// - `None`: 无有效声道
 ///
 /// # 示例
@@ -473,19 +439,16 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 /// ```
 pub fn compute_official_precise_dr(
     results: &[DrResult],
-    format: &AudioFormat,
+    _format: &AudioFormat,
 ) -> Option<(i32, f64, usize)> {
     if results.is_empty() {
         return None;
     }
 
-    // 筛选有效声道：排除LFE声道和静音声道
-    let lfe_channels = identify_lfe_channels(format.channels);
+    // 筛选有效声道：仅排除静音声道（根据foobar2000实测，不排除LFE）
     let valid_results: Vec<&DrResult> = results
         .iter()
-        .enumerate()
-        .filter(|(i, result)| !lfe_channels.contains(i) && result.peak > 0.0 && result.rms > 0.0)
-        .map(|(_, result)| result)
+        .filter(|result| result.peak > 0.0 && result.rms > 0.0)
         .collect();
 
     if valid_results.is_empty() {
@@ -660,7 +623,7 @@ pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> Stri
             if excluded_count > 0 {
                 let valid_count = results.len() - excluded_count;
                 output.push_str(&format!(
-                    "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个LFE/静音声道)\n\n"
+                    "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个静音声道)\n\n"
                 ));
             }
         }

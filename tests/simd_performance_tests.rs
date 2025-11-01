@@ -25,6 +25,10 @@
 use macinmeter_dr_tool::{SampleConversion, SampleConverter};
 use std::time::Instant;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 /// 创建大规模i16测试数据
 fn create_large_i16_data(count: usize) -> Vec<i16> {
     (0..count).map(|i| (i as i16).wrapping_mul(327)).collect()
@@ -65,12 +69,18 @@ where
 fn test_simd_efficiency_stats() {
     let converter = SampleConverter::new();
 
-    println!("\n📊 SIMD效率统计:");
-    println!(
-        "{:<10} {:<15} {:<15} {:<10}",
-        "长度", "SIMD样本", "标量样本", "SIMD%"
+    log("\nSIMD效率统计:", "\nSIMD efficiency stats:");
+    log(
+        format!(
+            "{:<10} {:<15} {:<15} {:<10}",
+            "长度", "SIMD样本", "标量样本", "SIMD%"
+        ),
+        format!(
+            "{:<10} {:<15} {:<15} {:<10}",
+            "Length", "SIMD samples", "Scalar samples", "SIMD%"
+        ),
     );
-    println!("{:-<55}", "");
+    log(format!("{:-<55}", ""), format!("{:-<55}", ""));
 
     // 测试不同长度的SIMD利用率
     for &len in &[5, 10, 15, 20, 32, 50, 100, 500, 1000, 10000] {
@@ -79,12 +89,21 @@ fn test_simd_efficiency_stats() {
 
         let stats = converter.convert_i16_to_f32(&input, &mut output).unwrap();
 
-        println!(
-            "{:<10} {:<15} {:<15} {:<10.1}%",
-            len,
-            stats.simd_samples,
-            stats.scalar_samples,
-            stats.simd_efficiency()
+        log(
+            format!(
+                "{:<10} {:<15} {:<15} {:<10.1}%",
+                len,
+                stats.simd_samples,
+                stats.scalar_samples,
+                stats.simd_efficiency()
+            ),
+            format!(
+                "{:<10} {:<15} {:<15} {:<10.1}%",
+                len,
+                stats.simd_samples,
+                stats.scalar_samples,
+                stats.simd_efficiency()
+            ),
         );
 
         // 验证样本数一致
@@ -111,7 +130,7 @@ fn test_simd_efficiency_stats() {
 // ============================================================================
 
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（10M样本 × 10次迭代），仅在Release性能验证时运行
+#[ignore] // Debug模式下极慢（10M样本 × 10次迭代），仅在Release性能验证时运行
 fn test_throughput() {
     let converter = SampleConverter::new();
 
@@ -130,11 +149,26 @@ fn test_throughput() {
     let samples_per_sec = total_samples as f64 / elapsed.as_secs_f64();
     let mb_per_sec = (total_samples * 2) as f64 / elapsed.as_secs_f64() / 1_000_000.0; // i16=2字节
 
-    println!("\n📊 吞吐量测试:");
-    println!("   总样本: {total_samples} (x{iterations})");
-    println!("   耗时: {:.2} 秒", elapsed.as_secs_f64());
-    println!("   吞吐量: {:.2} M样本/秒", samples_per_sec / 1_000_000.0);
-    println!("   带宽: {mb_per_sec:.2} MB/秒");
+    log("\n吞吐量测试:", "\nThroughput test:");
+    log(
+        format!("   总样本: {total_samples} (x{iterations})"),
+        format!("   Total samples: {total_samples} (x{iterations})"),
+    );
+    log(
+        format!("   耗时: {:.2} 秒", elapsed.as_secs_f64()),
+        format!("   Elapsed: {:.2} s", elapsed.as_secs_f64()),
+    );
+    log(
+        format!("   吞吐量: {:.2} M样本/秒", samples_per_sec / 1_000_000.0),
+        format!(
+            "   Throughput: {:.2} M samples/s",
+            samples_per_sec / 1_000_000.0
+        ),
+    );
+    log(
+        format!("   带宽: {mb_per_sec:.2} MB/秒"),
+        format!("   Bandwidth: {mb_per_sec:.2} MB/s"),
+    );
 
     // 期望吞吐量 >= 40M样本/秒（保守估计，考虑Docker虚拟环境开销）
     // 本地环境可达700-800M/s，Docker环境约40-45M/s
@@ -150,16 +184,25 @@ fn test_throughput() {
 // ============================================================================
 
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（包含1M样本规模测试），仅在Release性能验证时运行
+#[ignore] // Debug模式下极慢（包含1M样本规模测试），仅在Release性能验证时运行
 fn test_varying_data_sizes() {
     let converter = SampleConverter::new();
 
-    println!("\n📊 不同数据规模性能测试:");
-    println!(
-        "{:<12} {:<15} {:<15} {:<10}",
-        "样本数", "耗时(ms)", "吞吐(M/s)", "SIMD%"
+    log(
+        "\n不同数据规模性能测试:",
+        "\nPerformance across input sizes:",
     );
-    println!("{:-<60}", "");
+    log(
+        format!(
+            "{:<12} {:<15} {:<15} {:<10}",
+            "样本数", "耗时(ms)", "吞吐(M/s)", "SIMD%"
+        ),
+        format!(
+            "{:<12} {:<15} {:<15} {:<10}",
+            "Samples", "Time (ms)", "Throughput (M/s)", "SIMD%"
+        ),
+    );
+    log(format!("{:-<60}", ""), format!("{:-<60}", ""));
 
     let sizes = vec![
         100,       // 极小数据集
@@ -183,12 +226,21 @@ fn test_varying_data_sizes() {
         let mut output = Vec::new();
         let stats = converter.convert_i16_to_f32(&input, &mut output).unwrap();
 
-        println!(
-            "{:<12} {:<15.3} {:<15.2} {:<10.1}%",
-            size,
-            time_ns as f64 / 1_000_000.0,
-            throughput,
-            stats.simd_efficiency()
+        log(
+            format!(
+                "{:<12} {:<15.3} {:<15.2} {:<10.1}%",
+                size,
+                time_ns as f64 / 1_000_000.0,
+                throughput,
+                stats.simd_efficiency()
+            ),
+            format!(
+                "{:<12} {:<15.3} {:<15.2} {:<10.1}%",
+                size,
+                time_ns as f64 / 1_000_000.0,
+                throughput,
+                stats.simd_efficiency()
+            ),
         );
     }
 }
@@ -201,20 +253,53 @@ fn test_varying_data_sizes() {
 fn test_simd_capabilities() {
     let converter = SampleConverter::new();
 
-    println!("\n🔍 SIMD能力检测:");
-    println!("   SIMD支持: {}", converter.has_simd_support());
+    log("\nSIMD能力检测:", "\nSIMD capability detection:");
+    log(
+        format!("   SIMD支持: {}", converter.has_simd_support()),
+        format!("   SIMD supported: {}", converter.has_simd_support()),
+    );
 
     let caps = converter.simd_capabilities();
-    println!("   SSE2: {}", caps.sse2);
-    println!("   SSE3: {}", caps.sse3);
-    println!("   SSSE3: {}", caps.ssse3);
-    println!("   SSE4.1: {}", caps.sse4_1);
-    println!("   AVX: {}", caps.avx);
-    println!("   AVX2: {}", caps.avx2);
-    println!("   FMA: {}", caps.fma);
-    println!("   NEON: {}", caps.neon);
-    println!("   NEON_FP16: {}", caps.neon_fp16);
-    println!("   SVE: {}", caps.sve);
+    log(
+        format!("   SSE2: {}", caps.sse2),
+        format!("   SSE2: {}", caps.sse2),
+    );
+    log(
+        format!("   SSE3: {}", caps.sse3),
+        format!("   SSE3: {}", caps.sse3),
+    );
+    log(
+        format!("   SSSE3: {}", caps.ssse3),
+        format!("   SSSE3: {}", caps.ssse3),
+    );
+    log(
+        format!("   SSE4.1: {}", caps.sse4_1),
+        format!("   SSE4.1: {}", caps.sse4_1),
+    );
+    log(
+        format!("   AVX: {}", caps.avx),
+        format!("   AVX: {}", caps.avx),
+    );
+    log(
+        format!("   AVX2: {}", caps.avx2),
+        format!("   AVX2: {}", caps.avx2),
+    );
+    log(
+        format!("   FMA: {}", caps.fma),
+        format!("   FMA: {}", caps.fma),
+    );
+    log(
+        format!("   NEON: {}", caps.neon),
+        format!("   NEON: {}", caps.neon),
+    );
+    log(
+        format!("   NEON_FP16: {}", caps.neon_fp16),
+        format!("   NEON_FP16: {}", caps.neon_fp16),
+    );
+    log(
+        format!("   SVE: {}", caps.sve),
+        format!("   SVE: {}", caps.sve),
+    );
 
     // 至少应该有一种SIMD支持（x86_64的SSE2或ARM的NEON）
     #[cfg(target_arch = "x86_64")]
@@ -229,7 +314,7 @@ fn test_simd_capabilities() {
 // ============================================================================
 
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（500k样本 × 20次迭代），仅在Release性能验证时运行
+#[ignore] // Debug模式下极慢（500k样本 × 20次迭代），仅在Release性能验证时运行
 fn test_i32_conversion_performance() {
     let converter = SampleConverter::new();
 
@@ -246,10 +331,22 @@ fn test_i32_conversion_performance() {
     let mut output = Vec::new();
     let stats = converter.convert_i32_to_f32(&input, &mut output).unwrap();
 
-    println!("\n📊 i32性能测试 [500k样本]:");
-    println!("   耗时: {:.2} ms", time_ns as f64 / 1_000_000.0);
-    println!("   吞吐量: {throughput:.2} M样本/秒");
-    println!("   SIMD效率: {:.1}%", stats.simd_efficiency());
+    log(
+        "\ni32性能测试 [500k样本]:",
+        "\ni32 throughput test [500k samples]:",
+    );
+    log(
+        format!("   耗时: {:.2} ms", time_ns as f64 / 1_000_000.0),
+        format!("   Time: {:.2} ms", time_ns as f64 / 1_000_000.0),
+    );
+    log(
+        format!("   吞吐量: {throughput:.2} M样本/秒"),
+        format!("   Throughput: {throughput:.2} M samples/s"),
+    );
+    log(
+        format!("   SIMD效率: {:.1}%", stats.simd_efficiency()),
+        format!("   SIMD efficiency: {:.1}%", stats.simd_efficiency()),
+    );
 
     // 大数据集应该有高效率
     assert!(
@@ -264,7 +361,7 @@ fn test_i32_conversion_performance() {
 // ============================================================================
 
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（100k样本 × 50次迭代 × 2组测试），仅在Release性能验证时运行
+#[ignore] // Debug模式下极慢（100k样本 × 50次迭代 × 2组测试），仅在Release性能验证时运行
 fn test_aligned_vs_unaligned_performance() {
     let converter = SampleConverter::new();
 
@@ -292,13 +389,28 @@ fn test_aligned_vs_unaligned_performance() {
 
     let overhead = (unaligned_time as f64 / aligned_time as f64 - 1.0) * 100.0;
 
-    println!("\n📊 对齐vs非对齐性能:");
-    println!("   对齐耗时: {:.2} ms", aligned_time as f64 / 1_000_000.0);
-    println!(
-        "   非对齐耗时: {:.2} ms",
-        unaligned_time as f64 / 1_000_000.0
+    log("\n对齐vs非对齐性能:", "\nAligned vs unaligned performance:");
+    log(
+        format!("   对齐耗时: {:.2} ms", aligned_time as f64 / 1_000_000.0),
+        format!(
+            "   Aligned time: {:.2} ms",
+            aligned_time as f64 / 1_000_000.0
+        ),
     );
-    println!("   Overhead: {overhead:.1}%");
+    log(
+        format!(
+            "   非对齐耗时: {:.2} ms",
+            unaligned_time as f64 / 1_000_000.0
+        ),
+        format!(
+            "   Unaligned time: {:.2} ms",
+            unaligned_time as f64 / 1_000_000.0
+        ),
+    );
+    log(
+        format!("   Overhead: {overhead:.1}%"),
+        format!("   Overhead: {overhead:.1}%"),
+    );
 
     // 非对齐overhead应该 < 15%
     assert!(
@@ -315,9 +427,12 @@ fn test_aligned_vs_unaligned_performance() {
 fn test_small_data_performance() {
     let converter = SampleConverter::new();
 
-    println!("\n📊 小数据集性能测试:");
-    println!("{:<10} {:<15} {:<10}", "长度", "耗时(ns)", "SIMD%");
-    println!("{:-<40}", "");
+    log("\n小数据集性能测试:", "\nSmall dataset performance:");
+    log(
+        format!("{:<10} {:<15} {:<10}", "长度", "耗时(ns)", "SIMD%"),
+        format!("{:<10} {:<15} {:<10}", "Length", "Time (ns)", "SIMD%"),
+    );
+    log(format!("{:-<40}", ""), format!("{:-<40}", ""));
 
     // 测试极小数据集
     let small_sizes = vec![1, 2, 3, 4, 5, 8, 10, 16, 32, 64];
@@ -333,11 +448,19 @@ fn test_small_data_performance() {
         let mut output = Vec::new();
         let stats = converter.convert_i16_to_f32(&input, &mut output).unwrap();
 
-        println!(
-            "{:<10} {:<15} {:<10.1}%",
-            size,
-            time_ns,
-            stats.simd_efficiency()
+        log(
+            format!(
+                "{:<10} {:<15} {:<10.1}%",
+                size,
+                time_ns,
+                stats.simd_efficiency()
+            ),
+            format!(
+                "{:<10} {:<15} {:<10.1}%",
+                size,
+                time_ns,
+                stats.simd_efficiency()
+            ),
         );
     }
 }
@@ -362,10 +485,19 @@ fn test_memory_bandwidth() {
     let mb_processed = (input.len() * 4) as f64 / 1_000_000.0; // i32=4字节
     let bandwidth = mb_processed / elapsed.as_secs_f64();
 
-    println!("\n📊 内存带宽测试:");
-    println!("   数据量: {mb_processed:.2} MB");
-    println!("   耗时: {:.2} 秒", elapsed.as_secs_f64());
-    println!("   带宽: {bandwidth:.2} MB/秒");
+    log("\n内存带宽测试:", "\nMemory bandwidth test:");
+    log(
+        format!("   数据量: {mb_processed:.2} MB"),
+        format!("   Data size: {mb_processed:.2} MB"),
+    );
+    log(
+        format!("   耗时: {:.2} 秒", elapsed.as_secs_f64()),
+        format!("   Elapsed: {:.2} s", elapsed.as_secs_f64()),
+    );
+    log(
+        format!("   带宽: {bandwidth:.2} MB/秒"),
+        format!("   Bandwidth: {bandwidth:.2} MB/s"),
+    );
 
     // 现代系统应该能达到 >= 300 MB/秒
     assert!(
@@ -388,14 +520,35 @@ fn test_conversion_stats_accuracy() {
 
     let stats = converter.convert_i16_to_f32(&input, &mut output).unwrap();
 
-    println!("\n📊 ConversionStats验证:");
-    println!("   输入样本: {}", stats.input_samples);
-    println!("   输出样本: {}", stats.output_samples);
-    println!("   SIMD样本: {}", stats.simd_samples);
-    println!("   标量样本: {}", stats.scalar_samples);
-    println!("   SIMD效率: {:.1}%", stats.simd_efficiency());
-    println!("   使用SIMD: {}", stats.used_simd);
-    println!("   耗时: {} ns", stats.duration_ns);
+    log("\nConversionStats验证:", "\nConversionStats validation:");
+    log(
+        format!("   输入样本: {}", stats.input_samples),
+        format!("   Input samples: {}", stats.input_samples),
+    );
+    log(
+        format!("   输出样本: {}", stats.output_samples),
+        format!("   Output samples: {}", stats.output_samples),
+    );
+    log(
+        format!("   SIMD样本: {}", stats.simd_samples),
+        format!("   SIMD samples: {}", stats.simd_samples),
+    );
+    log(
+        format!("   标量样本: {}", stats.scalar_samples),
+        format!("   Scalar samples: {}", stats.scalar_samples),
+    );
+    log(
+        format!("   SIMD效率: {:.1}%", stats.simd_efficiency()),
+        format!("   SIMD efficiency: {:.1}%", stats.simd_efficiency()),
+    );
+    log(
+        format!("   使用SIMD: {}", stats.used_simd),
+        format!("   Used SIMD: {}", stats.used_simd),
+    );
+    log(
+        format!("   耗时: {} ns", stats.duration_ns),
+        format!("   Duration: {} ns", stats.duration_ns),
+    );
 
     // 基本一致性检查
     assert_eq!(stats.input_samples, 100);

@@ -60,13 +60,11 @@ pub mod dr_analysis {
 
 /// 音频格式约束常量
 pub mod format_constraints {
-    /// 支持的最大声道数（当前实现约束）
+    /// 支持的最大声道数（架构限制）
     ///
-    /// 当前仅支持单声道(1)和立体声(2)，3+声道友好拒绝。
-    ///
-    /// **注意**：foobar2000 DR Meter原版支持多声道测量，此限制仅为当前实现的简化约束。
-    /// 未来可扩展多声道支持，考虑不同声道在DR计算中的重要性权重算法。
-    pub const MAX_CHANNELS: u16 = 2;
+    /// 基于foobar2000 DR Meter实测行为：支持任意声道数，通过算术平均计算Official DR。
+    /// 每个声道独立计算DR值，最终Official DR为所有声道DR的算术平均（四舍五入到整数）。
+    pub const MAX_CHANNELS: u16 = 32;
 }
 
 /// 解码器性能优化常量

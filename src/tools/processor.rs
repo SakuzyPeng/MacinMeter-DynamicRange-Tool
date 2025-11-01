@@ -132,12 +132,7 @@ fn process_window_with_simd_separation(
     left_buffer: &mut Vec<f32>,
     right_buffer: &mut Vec<f32>,
 ) {
-    // 安全检查：确保analyzers数量与声道数一致（防止多声道扩展时误用）
-    debug_assert!(
-        !analyzers.is_empty() && analyzers.len() <= 2,
-        "当前仅支持1-2声道，实际analyzers数量: {}",
-        analyzers.len()
-    );
+    // 安全检查：确保analyzers数量与声道数一致
     debug_assert_eq!(
         analyzers.len(),
         channel_count as usize,
@@ -151,8 +146,6 @@ fn process_window_with_simd_separation(
         analyzers[0].process_samples(window_samples);
     } else if channel_count == 2 {
         // 立体声：使用SIMD优化分离左右声道（复用缓冲区）
-
-        // SIMD优化提取左声道（写入预分配缓冲区）
         channel_separator.extract_channel_into(
             window_samples,
             0, // 左声道索引
@@ -160,7 +153,6 @@ fn process_window_with_simd_separation(
             left_buffer,
         );
 
-        // SIMD优化提取右声道（写入预分配缓冲区）
         channel_separator.extract_channel_into(
             window_samples,
             1, // 右声道索引
@@ -168,9 +160,26 @@ fn process_window_with_simd_separation(
             right_buffer,
         );
 
-        // 分别送入各声道的WindowRmsAnalyzer（保持窗口完整性）
         analyzers[0].process_samples(left_buffer);
         analyzers[1].process_samples(right_buffer);
+    } else {
+        // 多声道（3+）：逐声道提取和处理
+        let samples_per_channel = window_samples.len() / channel_count as usize;
+
+        for (channel_idx, analyzer) in analyzers.iter_mut().enumerate() {
+            // 为每个声道提取样本（复用left_buffer以避免额外分配）
+            left_buffer.clear();
+            left_buffer.reserve(samples_per_channel);
+
+            channel_separator.extract_channel_into(
+                window_samples,
+                channel_idx,
+                channel_count as usize,
+                left_buffer,
+            );
+
+            analyzer.process_samples(left_buffer);
+        }
     }
 }
 
@@ -223,17 +232,10 @@ fn analyze_streaming_decoder(
     };
     let format = streaming_decoder.format();
 
-    // 声道数检查：支持单声道和立体声，拒绝多声道
-    if format.channels > 2 {
-        return Err(AudioError::InvalidInput(format!(
-            "目前仅支持单声道和立体声文件 (1-2声道)，当前为{}声道。\n\
-            多声道支持正在开发中，敬请期待未来版本。\n\
-            原因：暂未找到多声道SIMD优化的业界标准实现。",
-            format.channels
-        )));
-    }
+    // 多声道支持：基于foobar2000 DR Meter实测行为
+    // 每个声道独立计算DR，最终Official DR为算术平均值（四舍五入到整数）
 
-    // 样本数最小值在流式解码结束后基于“实际解码帧数”再校验，
+    // 样本数最小值在流式解码结束后基于"实际解码帧数"再校验，
     // 以兼容未知总长度（如部分 Opus 流）场景，避免误判。
 
     // 为每个声道创建独立的WindowRmsAnalyzer（流式处理核心）

@@ -8,6 +8,10 @@ use macinmeter_dr_tool::audio::parallel_decoder::{DecodedChunk, DecodingState, S
 use std::thread;
 use std::time::Duration;
 
+fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
+    println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
 // ========== DecodedChunk枚举测试 ==========
 
 #[test]
@@ -233,7 +237,7 @@ fn test_decoded_chunk_empty_samples() {
 // ========== 性能和压力测试 ==========
 
 #[test]
-#[ignore] // 🐌 Debug模式下极慢（1000个数据完全逆序处理），运行超过60秒，仅在Release性能验证时运行
+#[ignore] // Debug模式下极慢（1000个数据完全逆序处理），运行超过60秒，仅在Release性能验证时运行
 fn test_sequenced_channel_high_volume() {
     let channel = SequencedChannel::new();
     let sender = channel.sender();
@@ -290,14 +294,20 @@ fn test_large_scale_sequence_ordering() {
 
     const LARGE_COUNT: usize = 10_000;
 
-    println!("开始大批量测试：{LARGE_COUNT} 个样本完全逆序发送");
+    log(
+        format!("开始大批量测试：{LARGE_COUNT} 个样本完全逆序发送"),
+        format!("Starting large-scale test: {LARGE_COUNT} samples sent in reverse order"),
+    );
 
     // 完全逆序发送：从9999到0
     for i in (0..LARGE_COUNT).rev() {
         sender.send_sequenced(i, i as u32).expect("发送失败");
     }
 
-    println!("✓ 发送完成，开始验证顺序接收...");
+    log(
+        "发送完成，开始验证顺序接收...",
+        "All chunks sent; verifying ordered reception...",
+    );
 
     // 验证全部按正确顺序接收
     for expected_seq in 0..LARGE_COUNT {
@@ -310,11 +320,17 @@ fn test_large_scale_sequence_ordering() {
 
         // 每1000个打印进度
         if expected_seq % 1000 == 0 && expected_seq > 0 {
-            println!("  已验证 {expected_seq}/{LARGE_COUNT}");
+            log(
+                format!("  已验证 {expected_seq}/{LARGE_COUNT}"),
+                format!("  Verified {expected_seq}/{LARGE_COUNT} received in order"),
+            );
         }
     }
 
-    println!("✅ 大批量测试通过：{LARGE_COUNT} 个样本全部按序接收");
+    log(
+        format!("大批量测试通过：{LARGE_COUNT} 个样本全部按序接收"),
+        format!("Large-scale test passed: {LARGE_COUNT} samples received in order"),
+    );
 }
 
 /// 极端序列号跳跃场景测试
@@ -327,7 +343,10 @@ fn test_extreme_sequence_gaps() {
     let channel: SequencedChannel<String> = SequencedChannel::new();
     let sender = channel.sender();
 
-    println!("测试极端序列号跳跃：0 → 5000 → 10000");
+    log(
+        "测试极端序列号跳跃：0 → 5000 → 10000",
+        "Testing extreme sequence jumps: 0 → 5000 → 10000",
+    );
 
     // 乱序发送：先发10000，再发0，最后发5000
     sender.send_sequenced(10_000, "last".to_string()).unwrap();
@@ -336,19 +355,25 @@ fn test_extreme_sequence_gaps() {
 
     // 先收到序列号0
     assert_eq!(channel.recv_ordered().unwrap(), "first");
-    println!("✓ 收到序列号0");
+    log("收到序列号0", "Received sequence 0");
 
     // 序列号5000和10000仍在缓冲区等待
     match channel.try_recv_ordered() {
         Err(TryRecvError::Empty) => {
-            println!("✓ 序列号5000和10000正确缓冲等待");
+            log(
+                "序列号5000和10000正确缓冲等待",
+                "Sequences 5000 and 10000 buffered correctly",
+            );
         }
         Ok(v) => panic!("不应收到数据，实际收到: {v:?}"),
         Err(e) => panic!("意外错误: {e:?}"),
     }
 
     // 填充gap：发送1到4999
-    println!("填充gap：发送序列号1-4999");
+    log(
+        "填补缺口：发送序列号1-4999",
+        "Filling gap: sending sequences 1-4999",
+    );
     for i in 1..5_000 {
         sender.send_sequenced(i, format!("seq_{i}")).unwrap();
     }
@@ -363,11 +388,17 @@ fn test_extreme_sequence_gaps() {
         assert_eq!(channel.recv_ordered().unwrap(), expected);
 
         if i % 1000 == 0 {
-            println!("  已接收到序列号{i}");
+            log(
+                format!("  已接收到序列号{i}"),
+                format!("  Received sequence {i}"),
+            );
         }
     }
 
-    println!("✅ 极端序列号跳跃测试通过");
+    log(
+        "极端序列号跳跃测试通过",
+        "Extreme sequence jump test passed",
+    );
 }
 
 /// 批处理边界条件测试（63/64/65包场景）
@@ -377,7 +408,10 @@ fn test_extreme_sequence_gaps() {
 #[test]
 #[ignore = "Debug模式下运行超过60秒，仅本地运行"]
 fn test_batch_boundary_conditions() {
-    println!("测试批处理边界：63、64、65包");
+    log(
+        "测试批处理边界：63、64、65包",
+        "Testing batch boundaries: 63, 64, 65 packets",
+    );
 
     // 测试1：恰好63包（少于批大小64）
     {
@@ -392,7 +426,7 @@ fn test_batch_boundary_conditions() {
         for i in 0..BATCH_SIZE_MINUS_1 {
             assert_eq!(channel.recv_ordered().unwrap(), i as u32);
         }
-        println!("  ✓ 63包测试通过");
+        log("  63包测试通过", "  63-packet test passed");
     }
 
     // 测试2：恰好64包（等于批大小）
@@ -408,7 +442,7 @@ fn test_batch_boundary_conditions() {
         for i in 0..BATCH_SIZE {
             assert_eq!(channel.recv_ordered().unwrap(), i as u32);
         }
-        println!("  ✓ 64包测试通过");
+        log("  64包测试通过", "  64-packet test passed");
     }
 
     // 测试3：65包（超过批大小1个）
@@ -424,10 +458,13 @@ fn test_batch_boundary_conditions() {
         for i in 0..BATCH_SIZE_PLUS_1 {
             assert_eq!(channel.recv_ordered().unwrap(), i as u32);
         }
-        println!("  ✓ 65包测试通过");
+        log("  65包测试通过", "  65-packet test passed");
     }
 
-    println!("✅ 批处理边界条件测试全部通过");
+    log(
+        "批处理边界条件测试全部通过",
+        "Batch boundary tests all passed",
+    );
 }
 
 /// 多线程高并发压力测试（4线程×2500包=10000包）
@@ -443,7 +480,12 @@ fn test_high_concurrency_stress() {
     const PER_THREAD: usize = 2500;
     const TOTAL_COUNT: usize = THREAD_COUNT * PER_THREAD;
 
-    println!("开始高并发测试：{THREAD_COUNT} 线程 × {PER_THREAD} 包 = {TOTAL_COUNT} 总包");
+    log(
+        format!("开始高并发测试：{THREAD_COUNT} 线程 × {PER_THREAD} 包 = {TOTAL_COUNT} 总包"),
+        format!(
+            "Starting high-concurrency test: {THREAD_COUNT} threads × {PER_THREAD} packets = {TOTAL_COUNT} total"
+        ),
+    );
 
     // 启动4个线程并发发送
     let mut handles = Vec::new();
@@ -458,7 +500,10 @@ fn test_high_concurrency_stress() {
                 sender.send_sequenced(i, i as u32).expect("发送失败");
             }
 
-            println!("  线程{thread_id} 完成发送");
+            log(
+                format!("  线程{thread_id} 完成发送"),
+                format!("  Thread {thread_id} finished sending"),
+            );
         });
         handles.push(handle);
     }
@@ -468,7 +513,10 @@ fn test_high_concurrency_stress() {
         handle.join().expect("线程panic");
     }
 
-    println!("✓ 所有线程发送完成，开始验证顺序...");
+    log(
+        "所有线程发送完成，开始验证顺序...",
+        "All threads finished sending; verifying order...",
+    );
 
     // 验证全部按正确顺序接收
     for expected_seq in 0..TOTAL_COUNT {
@@ -480,23 +528,32 @@ fn test_high_concurrency_stress() {
         );
 
         if expected_seq % 1000 == 0 && expected_seq > 0 {
-            println!("  已验证 {expected_seq}/{TOTAL_COUNT}");
+            log(
+                format!("  已验证 {expected_seq}/{TOTAL_COUNT}"),
+                format!("  Verified {expected_seq}/{TOTAL_COUNT} in order"),
+            );
         }
     }
 
-    println!("✅ 高并发压力测试通过：{TOTAL_COUNT} 个样本全部按序接收");
+    log(
+        format!("高并发压力测试通过：{TOTAL_COUNT} 个样本全部按序接收"),
+        format!("High-concurrency stress test passed: {TOTAL_COUNT} samples received in order"),
+    );
 }
 
 /// 序列号连续性验证测试
 ///
 /// 验证SequencedChannel要求序列号从0开始连续递增
-/// ⚠️ 重要发现：SequencedChannel会等待所有中间序列号，不支持任意起始序列号
+/// 重要发现：SequencedChannel会等待所有中间序列号，不支持任意起始序列号
 #[test]
 fn test_sequence_continuity_requirement() {
     let channel = SequencedChannel::new();
     let sender = channel.sender();
 
-    println!("验证序列号必须从0开始连续");
+    log(
+        "验证序列号必须从0开始连续",
+        "Verifying sequences must start at 0 and be contiguous",
+    );
 
     // 测试：从序列号0开始的10个连续序列号
     for i in (0..10).rev() {
@@ -509,16 +566,16 @@ fn test_sequence_continuity_requirement() {
         assert_eq!(received, i as u32);
     }
 
-    println!("✅ 序列号连续性测试通过");
+    log("序列号连续性测试通过", "Sequence continuity test passed");
 }
 
 /// 序列号非零起始测试（预期死锁，仅用于文档记录）
 ///
-/// ⚠️ **警告**：此测试会死锁！仅用于记录SequencedChannel的设计约束
+/// **警告**：此测试会死锁！仅用于记录SequencedChannel的设计约束
 /// 发现：SequencedChannel期望序列号从0开始，如果从其他值开始会无限等待序列号0
 /// 风险：实际使用中必须确保第一个packet的序列号为0
 #[test]
-#[ignore = "⚠️ 会死锁！用于记录设计约束，不要运行"]
+#[ignore = "会死锁！用于记录设计约束，不要运行"]
 fn test_nonzero_start_sequence_deadlock() {
     let channel = SequencedChannel::new();
     let sender = channel.sender();
