@@ -9,8 +9,9 @@ use crate::core::histogram::WindowRmsAnalyzer;
 use crate::core::peak_selection::{PeakSelectionStrategy, PeakSelector};
 use crate::error::{AudioError, AudioResult};
 use crate::processing::ProcessingCoordinator;
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::tools::constants::dr_analysis;
+use crate::tools::constants::format_constraints;
 
 // 配置常量：集中管理默认值，提高可维护性
 /// 标准音频采样率（CD质量）
@@ -24,9 +25,6 @@ const DEFAULT_PEAK_STRATEGY: PeakSelectionStrategy = PeakSelectionStrategy::Pref
 
 /// 默认启用Sum Doubling确保foobar2000兼容性
 const DEFAULT_SUM_DOUBLING: bool = true;
-
-/// 支持的最大声道数（架构限制）
-const MAX_SUPPORTED_CHANNELS: usize = 32;
 
 // foobar2000专属模式：使用累加器级别Sum Doubling，移除了+3dB RMS补偿机制
 
@@ -278,9 +276,11 @@ impl DrCalculator {
             ));
         }
 
-        if channel_count > MAX_SUPPORTED_CHANNELS {
+        if channel_count > format_constraints::MAX_CHANNELS as usize {
             return Err(AudioError::InvalidInput(format!(
-                "Channel count cannot exceed {MAX_SUPPORTED_CHANNELS} / 声道数量不能超过{MAX_SUPPORTED_CHANNELS}"
+                "Channel count cannot exceed {} / 声道数量不能超过{}",
+                format_constraints::MAX_CHANNELS,
+                format_constraints::MAX_CHANNELS
             )));
         }
 

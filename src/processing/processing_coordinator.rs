@@ -61,12 +61,10 @@ impl ProcessingCoordinator {
     /// 纯粹的服务协调器，专注于编排各种高性能服务，保持算法中立性。
     /// 通过回调方式让调用者保持算法控制权，专注于性能优化服务编排。
     ///
-    /// **注意**：仅处理1-2声道文件，多声道文件已在DrCalculator层被拒绝。
-    ///
     /// # 参数
     ///
-    /// * `samples` - 交错的音频样本数据（单声道或立体声）
-    /// * `channel_count` - 声道数量（1或2）
+    /// * `samples` - 交错的音频样本数据
+    /// * `channel_count` - 声道数量（1-32声道）
     /// * `channel_processor` - 单声道处理回调函数，参数为(声道样本, 声道索引)
     ///
     /// # 返回值
@@ -133,20 +131,34 @@ impl ProcessingCoordinator {
 
         // 委托SIMD使用统计服务
         //
-        // 注意：当前假设所有样本都走SIMD路径（Processing层默认行为）。
-        // 实际的SIMD覆盖情况在ChannelSeparator和SampleConverter层有更准确的统计。
-        // 如果上游存在标量回退路径（如某些边界条件），应从实际转换器传入真实计数。
+        // 根据实际执行路径准确统计SIMD使用情况：
+        // - 2声道且SIMD可用：立体声SIMD分离（SSE2/NEON）→ 所有样本走SIMD
+        // - 3+声道或SIMD不可用：标量路径 → 所有样本走标量
         //
-        // used_simd 现在由 create_simd_usage_stats 内部自动推导（simd_samples > 0）
-        let simd_usage = self.performance_evaluator.create_simd_usage_stats(
-            samples.len(), // 假设：所有样本都通过SIMD路径
-            0,             // 假设：无标量回退
-        );
+        // used_simd 由 create_simd_usage_stats 内部自动推导（simd_samples > 0）
+        let (simd_samples, scalar_samples) =
+            if channel_count == 2 && self.channel_separator.has_simd_support() {
+                (samples.len(), 0) // 2声道SIMD路径
+            } else {
+                (0, samples.len()) // 3+声道或无SIMD，走标量路径
+            };
+
+        let simd_usage = self
+            .performance_evaluator
+            .create_simd_usage_stats(simd_samples, scalar_samples);
 
         debug_coordinator!(
-            "Coordination finished: SIMD always on, speedup={:.1}x, samples/sec={:.0} / 协调完成: SIMD=始终启用, speedup={:.1}x, samples/sec={:.0}",
+            "Coordination finished: SIMD={} ({} channels), speedup={:.1}x, samples/sec={:.0} / 协调完成: SIMD={} ({}声道), speedup={:.1}x, samples/sec={:.0}",
+            if simd_samples > 0 {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            channel_count,
             performance_stats.simd_speedup,
             performance_stats.samples_per_second,
+            if simd_samples > 0 { "启用" } else { "禁用" },
+            channel_count,
             performance_stats.simd_speedup,
             performance_stats.samples_per_second
         );

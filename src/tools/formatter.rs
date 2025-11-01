@@ -348,7 +348,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 
         // 检查是否为LFE声道或静音声道
         let note = if lfe_channels.contains(&i) {
-            "LFE removed / LFE声道已排除"
+            "LFE channel / LFE声道"
         } else if result.peak == 0.0 && result.rms == 0.0 {
             "Silent channel / 静音声道"
         } else {
@@ -392,7 +392,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
             _ => "多声道",
         };
         output.push_str(&format!(
-            "注 / Note: 检测为 {format_name} 格式，LFE (低频效果) 声道已从 DR 计算中排除，符合音频分析标准。\n"
+            "注 / Note: 检测为 {format_name} 格式，包含 LFE (低频效果) 声道，所有非静音声道参与 DR 计算（符合foobar2000行为）。\n"
         ));
         output.push_str(&format!(
             "    LFE声道位置 / LFE channels: Channel {}\n",

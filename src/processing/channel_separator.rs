@@ -142,8 +142,8 @@ impl ChannelSeparator {
             channel_count
         );
 
-        // 优化：复用into版本的实现，避免代码重复
-        let mut result = Vec::new();
+        // 优化：预分配容量，避免re-alloc开销；复用into版本的实现，避免代码重复
+        let mut result = Vec::with_capacity(samples.len() / channel_count);
         self.extract_channel_into(samples, channel_idx, channel_count, &mut result);
         result
     }
@@ -378,14 +378,16 @@ impl ChannelSeparator {
             output.reserve(estimated_capacity - output.capacity());
         }
 
-        // 使用 extend 将分离的样本添加到输出缓冲区
-        output.extend(
-            samples
-                .iter()
-                .skip(channel_idx)
-                .step_by(channel_count)
-                .copied(),
-        );
+        // 使用 chunks_exact 提取指定声道样本，减少边界检查开销
+        for frame in samples.chunks_exact(channel_count) {
+            output.push(frame[channel_idx]);
+        }
+
+        // 处理不完整的尾帧（如果存在）
+        let remainder = samples.chunks_exact(channel_count).remainder();
+        if channel_idx < remainder.len() {
+            output.push(remainder[channel_idx]);
+        }
     }
 
     /// 标量声道样本分离（通用回退实现）
@@ -408,8 +410,8 @@ impl ChannelSeparator {
             channel_count
         );
 
-        // 优化：复用into版本的实现，避免代码重复
-        let mut result = Vec::new();
+        // 优化：预分配容量，避免re-alloc开销；复用into版本的实现，避免代码重复
+        let mut result = Vec::with_capacity(samples.len().div_ceil(channel_count));
         Self::extract_channel_samples_scalar_into(samples, channel_idx, channel_count, &mut result);
         result
     }
