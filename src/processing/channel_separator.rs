@@ -82,7 +82,10 @@ impl ChannelSeparator {
         output: &mut Vec<f32>,
     ) {
         debug_performance!(
-            "智能提取声道{} (into): 总样本={}, 声道数={}",
+            "Smart extract channel {} (into): total samples={}, channels={} / 智能提取声道{} (into): 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count,
             channel_idx,
             samples.len(),
             channel_count
@@ -136,7 +139,10 @@ impl ChannelSeparator {
         channel_count: usize,
     ) -> Vec<f32> {
         debug_performance!(
-            "智能提取声道{} (包裹器): 总样本={}, 声道数={}",
+            "Smart extract channel {} (wrapper): total samples={}, channels={} / 智能提取声道{} (包裹器): 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count,
             channel_idx,
             samples.len(),
             channel_count
@@ -350,7 +356,8 @@ impl ChannelSeparator {
         output: &mut Vec<f32>,
     ) {
         debug_performance!(
-            "未支持架构回退到标量实现 (into): arch={}",
+            "Unsupported arch: fallback to scalar (into): arch={} / 未支持架构回退到标量实现 (into): arch={}",
+            std::env::consts::ARCH,
             std::env::consts::ARCH
         );
         Self::extract_channel_samples_scalar_into(samples, channel_idx, 2, output);
@@ -379,12 +386,14 @@ impl ChannelSeparator {
         }
 
         // 使用 chunks_exact 提取指定声道样本，减少边界检查开销
-        for frame in samples.chunks_exact(channel_count) {
+        // 持有迭代器变量避免重复构造
+        let mut chunks = samples.chunks_exact(channel_count);
+        for frame in &mut chunks {
             output.push(frame[channel_idx]);
         }
 
         // 处理不完整的尾帧（如果存在）
-        let remainder = samples.chunks_exact(channel_count).remainder();
+        let remainder = chunks.remainder();
         if channel_idx < remainder.len() {
             output.push(remainder[channel_idx]);
         }
@@ -404,7 +413,10 @@ impl ChannelSeparator {
         channel_count: usize,
     ) -> Vec<f32> {
         debug_performance!(
-            "标量提取声道{} (包裹器): 总样本={}, 声道数={}",
+            "Scalar extract channel {} (wrapper): total samples={}, channels={} / 标量提取声道{} (包裹器): 总样本={}, 声道数={}",
+            channel_idx,
+            samples.len(),
+            channel_count,
             channel_idx,
             samples.len(),
             channel_count
