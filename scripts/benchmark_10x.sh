@@ -6,18 +6,23 @@ show_usage() {
     echo ""
     echo "选项:"
     echo "  --exe PATH        指定可执行文件路径（默认：target/release/MacinMeter-DynamicRange-Tool-foo_dr）"
+    echo "  --path DIR        指定测试数据集目录（默认：脚本所在目录）"
     echo "  --serial          使用串行解码（默认：并行）"
     echo "  --help, -h        显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                                    # 并行模式基准测试（默认可执行文件）"
+    echo "  $0                                    # 并行模式基准测试（默认可执行文件和路径）"
     echo "  $0 --serial                           # 串行模式基准测试"
     echo "  $0 --exe ./old-version/binary         # 测试指定的旧版本"
-    echo "  $0 --exe baseline.exe --serial        # 组合选项"
+    echo "  $0 --path /path/to/audio/dataset      # 指定测试数据集目录"
+    echo "  $0 --exe baseline.exe --serial --path ./audio  # 组合选项"
 }
 
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # 默认值
-BENCHMARK_SCRIPT="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/audio/large audio/未命名文件夹/benchmark.sh"
+DATASET_DIR="$SCRIPT_DIR"
 RELEASE_EXECUTABLE="/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr"
 MODE_FLAG=""
 
@@ -41,6 +46,15 @@ while [[ $# -gt 0 ]]; do
             RELEASE_EXECUTABLE="$2"
             shift 2
             ;;
+        --path)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo "❌ 错误：--path 需要指定数据集目录路径"
+                show_usage
+                exit 1
+            fi
+            DATASET_DIR="$2"
+            shift 2
+            ;;
         *)
             echo "❌ 未知选项: $1"
             show_usage
@@ -55,6 +69,22 @@ if [ ! -f "$RELEASE_EXECUTABLE" ]; then
     exit 1
 fi
 
+# 检查数据集目录是否存在
+if [ ! -d "$DATASET_DIR" ]; then
+    echo "❌ 错误：数据集目录不存在: $DATASET_DIR"
+    exit 1
+fi
+
+# 构建 benchmark.sh 路径
+BENCHMARK_SCRIPT="$DATASET_DIR/benchmark.sh"
+
+# 检查 benchmark.sh 是否存在
+if [ ! -f "$BENCHMARK_SCRIPT" ]; then
+    echo "❌ 错误：benchmark.sh 不存在于数据集目录: $BENCHMARK_SCRIPT"
+    echo "💡 提示：请确保在数据集目录中有 benchmark.sh 脚本"
+    exit 1
+fi
+
 # 显示测试信息
 echo "========================================================"
 if [ -n "$MODE_FLAG" ]; then
@@ -64,6 +94,7 @@ else
 fi
 echo "📦 可执行文件: $(basename "$RELEASE_EXECUTABLE")"
 echo "📁 完整路径: $RELEASE_EXECUTABLE"
+echo "📂 数据集目录: $DATASET_DIR"
 TOTAL_TIME=0
 TOTAL_MEMORY=0
 TOTAL_SPEED=0

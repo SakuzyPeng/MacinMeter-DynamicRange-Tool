@@ -212,13 +212,13 @@ DR16         15.51 dB     高风险 / High     下边界 / Lower   Δ0.01 dB    
 
 | 数据集 / Dataset | 模式 / Mode | 平均时间 Avg Time (s) | 中位数 Median (s) | 标准差 StdDev (s) | 平均吞吐 Avg Throughput (MB/s) | 中位数 Median (MB/s) | 标准差 StdDev (MB/s) |
 | --- | --- | ---:| ---:| ---:| ---:| ---:| ---:|
-| 69 首 FLAC | 默认并行 / Default parallel | 2.959 | 2.764 | 0.503 | 697.99 | 732.11 | 83.94 |
+| 69 首 FLAC | 默认并行 / Default parallel | 1.178 | 1.025 | 0.457 | 1113.84 | 1167.73 | 159.40 |
 | 106 首 FLAC | 默认并行 / Default parallel | 9.462 | 9.018 | 0.796 | 1241.84 | 1294.15 | 101.56 |
 | 106 首 FLAC | 禁用文件并行 / `--no-parallel-files` | 26.997 | 26.035 | 2.591 | 435.34 | 447.81 | 33.43 |
 
 | 数据集 / Dataset | 模式 / Mode | 峰值内存 平均 Avg Peak Memory (MB) | 峰值内存 中位 Median (MB) | 峰值内存 标准差 StdDev (MB) | CPU 峰值 平均 Avg Peak CPU (%) | CPU 平均 Avg CPU (%) |
 | --- | --- | ---:| ---:| ---:| ---:| ---:|
-| 69 首 FLAC | 默认并行 / Default parallel | 44.27 | 43.12 | 3.47 | 31.58 | 31.05 |
+| 69 首 FLAC | 默认并行 / Default parallel | 97.65 | 94.22 | 11.72 | 64.62 | 61.99 |
 | 106 首 FLAC | 默认并行 / Default parallel | 1743.26 | 1679.38 | 183.64 | 80.54 | 78.69 |
 | 106 首 FLAC | 禁用文件并行 / `--no-parallel-files` | 87.41 | 87.71 | 2.73 | 21.69 | 20.02 |
 
@@ -240,9 +240,22 @@ DR16         15.51 dB     高风险 / High     下边界 / Lower   Δ0.01 dB    
 | 69 首 FLAC / 69 FLAC tracks | 40.17 | 40.21 | 1.05 | 26.84 | 26.75 | 0.55 |
 | 106 首 FLAC / 106 FLAC tracks | 178.67 | 175.07 | 23.57 | 98.82 | 99.24 | 10.97 |
 
-**性能警告（Intel 13 代 i9-13900H + Windows 11）**：69 首 FLAC 集在默认 4 并发下耗时约 54.18 秒，吞吐仅 ~21.5 MB/s；较 macOS 同数据集（中位 2.76 秒、732 MB/s）退化显著，推测与混合 P/E 核调度有关，建议暂时降低并发或等待驱动更新。为对照，Windows 10 · i7-11800H 同数据集耗时约 3.061 秒（吞吐 ~732 MB/s）。后续版本会继续针对异构 Intel 平台优化调度策略。
+**Intel 13 代 i9-13900H + Windows 11 性能数据**：69 首 FLAC 集在默认 4 并发下，通过线程优先级优化后性能表现稳定，测试数据如下（10 次运行统计）：
 
-**Performance warning (Intel 13th Gen i9-13900H + Windows 11)**: the 69-track set takes ~54.18 s at default 4-way parallelism (only ~21.5 MB/s), versus macOS’s 2.76 s / 732 MB/s. Hybrid P/E scheduling is the likely culprit; reduce parallelism or await driver fixes. For comparison, Windows 10 on an i7-11800H finishes the same batch in ~3.061 s (~732 MB/s). Future releases will keep iterating on heterogenous Intel scheduling.
+**Intel 13th Gen i9-13900H + Windows 11 Performance**: the 69-track FLAC set at default 4-way parallelism, with thread priority optimization, shows stable performance. 10-run statistics:
+
+| 指标 / Metric | 中位数 Median | 平均值 Average | 标准差 StdDev |
+| --- | ---:| ---:| ---:|
+| 运行时间 / Time | 2.052 s | 2.056 s | 0.016 s |
+| 处理速度 / Throughput | 568.18 MB/s | 567.23 MB/s | 4.28 MB/s |
+| 峰值内存 / Peak Memory | 41.43 MB | 40.09 MB | 4.49 MB |
+| 平均内存 / Avg Memory | 21.98 MB | 21.31 MB | 2.25 MB |
+| CPU 平均占用 / Avg CPU | 36.57% | 36.30% | 1.32% |
+| CPU 峰值占用 / Peak CPU | 43.19% | 43.54% | 2.09% |
+
+相比 macOS M4 Pro（中位 1.025 秒、1167.73 MB/s），i9-13900H 在相同 69 首 FLAC 数据集（1.17GB）上的表现为中位 2.05 秒、568 MB/s，整体性能约为 M4 Pro 的 49%。混合 P/E 核调度已通过线程优先级优化得到改善。
+
+Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves median 2.05 s / 568 MB/s on the same 69-track FLAC set (1.17GB), reaching approximately 49% of M4 Pro's performance. Hybrid P/E core scheduling has been improved through thread priority optimization.
 
 | 平台 / Platform | 模式 / Mode | 106 首 FLAC 时间 Time (s) | 吞吐 Throughput (MB/s) | 峰值内存 Peak (MB) | 平均内存 Avg (MB) | 平均 CPU Avg CPU (%) |
 | --- | --- | ---:| ---:| ---:| ---:| ---:|
