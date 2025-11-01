@@ -308,13 +308,13 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
 
     // 使用列表格式显示每个声道的DR值
     output.push_str(&format!(
-        "Channel breakdown ({} channels):\n",
+        "声道明细 / Channel breakdown ({} channels):\n",
         results.len()
     ));
 
     for (i, result) in results.iter().enumerate() {
         let dr_rounded = result.dr_value_rounded();
-        output.push_str(&format!("  Channel {}: DR{}\n", i + 1, dr_rounded));
+        output.push_str(&format!("  通道 Channel {}: DR{}\n", i + 1, dr_rounded));
     }
 
     output
@@ -340,7 +340,9 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
         // let peak_db_str = utils::linear_to_db_string(result.peak);
         // let rms_db_str = utils::linear_to_db_string(result.rms);
 
-        let dr_value_str = if result.peak > 0.0 && result.rms > 0.0 {
+        let dr_value_str = if result.peak > constants::dr_analysis::DR_ZERO_EPS
+            && result.rms > constants::dr_analysis::DR_ZERO_EPS
+        {
             format!("{:.2}", result.dr_value)
         } else {
             "0.00".to_string()
@@ -349,7 +351,9 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
         // 检查是否为LFE声道或静音声道
         let note = if lfe_channels.contains(&i) {
             "LFE channel / LFE声道"
-        } else if result.peak == 0.0 && result.rms == 0.0 {
+        } else if result.peak <= constants::dr_analysis::DR_ZERO_EPS
+            && result.rms <= constants::dr_analysis::DR_ZERO_EPS
+        {
             "Silent channel / 静音声道"
         } else {
             ""
@@ -446,9 +450,13 @@ pub fn compute_official_precise_dr(
     }
 
     // 筛选有效声道：仅排除静音声道（根据foobar2000实测，不排除LFE）
+    // 使用DR_ZERO_EPS阈值兼容解码器产生的近零噪声
     let valid_results: Vec<&DrResult> = results
         .iter()
-        .filter(|result| result.peak > 0.0 && result.rms > 0.0)
+        .filter(|result| {
+            result.peak > constants::dr_analysis::DR_ZERO_EPS
+                && result.rms > constants::dr_analysis::DR_ZERO_EPS
+        })
         .collect();
 
     if valid_results.is_empty() {
