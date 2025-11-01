@@ -66,6 +66,7 @@ wheels/
 # 备份文件
 *.bak
 *.orig
+*.backup
 
 # 分支备份文件夹
 master-branch/

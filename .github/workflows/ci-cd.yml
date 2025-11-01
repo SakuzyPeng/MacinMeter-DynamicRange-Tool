@@ -94,7 +94,14 @@ jobs:
       RUSTFLAGS: '-C opt-level=3'  # 简化编译标志避免特性冲突
     
     steps:
-    - name: 🧹 Disk usage (preflight)
+    - name: 🧹 Disk usage (preflight - Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Write-Host "Filesystem usage before build (Windows):"
+        Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+    - name: 🧹 Disk usage (preflight - Unix)
+      if: matrix.os != 'windows-latest'
+      shell: bash
       run: |
         echo "Filesystem usage before build:"
         df -h || true
@@ -503,8 +510,17 @@ jobs:
         retention-days: 14  # 私有仓库优化：减少存储成本
         compression-level: ${{ matrix.os == 'windows-latest' && '9' || '0' }}  # Windows压缩，Unix已压缩
     
-    - name: 🧹 Cleanup workspace (free disk)
-      if: always()
+    - name: 🧹 Cleanup workspace (Windows)
+      if: always() && matrix.os == 'windows-latest'
+      run: |
+        Write-Host "Cleaning target/ and cargo registries to free disk (Windows)..."
+        Remove-Item -Path target -Recurse -Force -ErrorAction SilentlyContinue
+        $cargoSrc = Join-Path $env:USERPROFILE ".cargo\registry\src"
+        if (Test-Path $cargoSrc) { Remove-Item -Path $cargoSrc -Recurse -Force -ErrorAction SilentlyContinue }
+        Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+    - name: 🧹 Cleanup workspace (Unix)
+      if: always() && matrix.os != 'windows-latest'
+      shell: bash
       run: |
         echo "Cleaning target/ and cargo registries to free disk..."
         rm -rf target || true

@@ -5,7 +5,7 @@
 try {
     # --- 配置 ---
     $executablePrefix = "MacinMeter"
-    $sampleInterval = 1 # 内存采样间隔（秒）
+    $sampleInterval = 1 # 采样间隔（秒）用于内存/CPU统计
 
     # --- 脚本主体 ---
     Write-Host "正在当前目录查找以 '$executablePrefix' 开头的程序 (.exe)..." -ForegroundColor Yellow
@@ -44,12 +44,39 @@ try {
     Write-Host "="*65
 
     $memorySamples = [System.Collections.Generic.List[double]]::new()
+    $cpuSamples    = [System.Collections.Generic.List[double]]::new()
+    $processorCount = [System.Environment]::ProcessorCount
+
+    # 初始化CPU采样参考点
+    $prevCpuTime  = [TimeSpan]::Zero
+    $prevWallTime = [DateTime]::UtcNow
+    try {
+        $prevCpuTime = $process.TotalProcessorTime
+    } catch { }
 
     while (-not $process.HasExited) {
         try {
             $process.Refresh()
             # WorkingSet64 是进程当前使用的物理内存
             $memorySamples.Add($process.WorkingSet64 / 1024) # 转换为 KB
+
+            # 计算CPU占用率（基于采样区间）
+            $nowWall = [DateTime]::UtcNow
+            $nowCpu  = $process.TotalProcessorTime
+            # 注意：Windows PowerShell 5.1 不支持数字分隔符 '_'，因此不要写 0.000_001
+            $deltaWallSec = [Math]::Max(0.000001, ($nowWall - $prevWallTime).TotalSeconds)
+            $deltaCpuSec  = [Math]::Max(0.0, ($nowCpu - $prevCpuTime).TotalSeconds)
+            # 归一化到总CPU（所有逻辑处理器），确保不超过100%
+            $cpuPct = ($deltaCpuSec / $deltaWallSec) * 100.0
+            if ($processorCount -gt 0) { $cpuPct = $cpuPct / $processorCount }
+            # 轻微抖动保护与边界限制
+            if ($cpuPct -lt 0) { $cpuPct = 0 }
+            if ($cpuPct -gt 100) { $cpuPct = [Math]::Min(100, $cpuPct) }
+            $cpuSamples.Add([Math]::Round($cpuPct, 2))
+
+            # 更新采样基线
+            $prevWallTime = $nowWall
+            $prevCpuTime  = $nowCpu
         } catch {
             # 进程可能在我们检查 HasExited 和 Refresh 之间退出，导致 Refresh 失败
             # 这种情况是正常的，直接跳出循环
@@ -82,6 +109,32 @@ try {
         Write-Host ("  - 内存使用平均值: {0:N2} MB ({1:N0} KB)" -f $averageMemoryMb, $stats.Average)
     } else {
         Write-Host "  - 内存使用情况: 程序运行时间不足 $sampleInterval 秒，未采集到有效内存数据。"
+    }
+
+    # CPU 统计（平均与峰值）
+    try {
+        $finalCpuTime = $process.TotalProcessorTime
+    } catch {
+        $finalCpuTime = [TimeSpan]::Zero
+    }
+
+    $overallCpuPct = 0.0
+    if ($elapsedTimeSpan.TotalMilliseconds -gt 0) {
+        $overallCpuPct = ($finalCpuTime.TotalMilliseconds / $elapsedTimeSpan.TotalMilliseconds) * 100.0
+        if ($processorCount -gt 0) { $overallCpuPct = $overallCpuPct / $processorCount }
+        if ($overallCpuPct -lt 0) { $overallCpuPct = 0 }
+        if ($overallCpuPct -gt 100) { $overallCpuPct = [Math]::Min(100, $overallCpuPct) }
+    }
+
+    if ($cpuSamples.Count -gt 0) {
+        $cpuStats = $cpuSamples | Measure-Object -Average -Maximum
+        Write-Host ("  - CPU逻辑核心数: {0}" -f $processorCount)
+        Write-Host ("  - CPU使用平均值(全程): {0:N2}%" -f $overallCpuPct)
+        Write-Host ("  - CPU使用峰值(采样): {0:N2}%" -f $cpuStats.Maximum)
+    } else {
+        Write-Host ("  - CPU逻辑核心数: {0}" -f $processorCount)
+        Write-Host ("  - CPU使用平均值(全程): {0:N2}%" -f $overallCpuPct)
+        Write-Host ("  - CPU使用峰值(采样): 无（采样数为 0）")
     }
 
     Write-Host "="*65
