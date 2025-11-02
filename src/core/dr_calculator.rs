@@ -9,6 +9,7 @@ use crate::core::histogram::WindowRmsAnalyzer;
 use crate::core::peak_selection::{PeakSelectionStrategy, PeakSelector};
 use crate::error::{AudioError, AudioResult};
 use crate::processing::ProcessingCoordinator;
+use crate::processing::simd_core::SimdProcessor;
 #[cfg(test)]
 use crate::tools::constants::dr_analysis;
 use crate::tools::constants::format_constraints;
@@ -447,11 +448,104 @@ impl DrCalculator {
     /// 零拷贝跨步多声道DR计算（3+声道专用）
     ///
     /// 单次遍历交错样本，直接为每个声道计算DR，消除中间Vec分配。
+    ///
+    /// 性能优化策略：
+    /// - 4的倍数声道（8/12/16）：使用SIMD 4×4块级转置提升缓存局部性
+    /// - 其他声道（3/5/7等）：使用跨步访问方法
     fn calculate_dr_strided(
         &self,
         samples: &[f32],
         channel_count: usize,
     ) -> AudioResult<Vec<DrResult>> {
+        // 4的倍数声道（8/12/16）：使用4×4块级转置路径
+        if channel_count >= 8 && channel_count.is_multiple_of(4) {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Using 4×4 block transpose for {channel_count} channels / 使用4×4块级转置处理{channel_count}声道"
+            );
+
+            return self.calculate_dr_transpose_4x4(samples, channel_count);
+        }
+
+        // 6声道（5.1）：前4通道使用4×4块级转置 + 后2通道使用跨步处理
+        if channel_count == 6 {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Using mixed 4×4 transpose (ch0-3) + strided (ch4-5) for 6 channels / 6声道采用混合：前4通道4×4转置 + 后2通道跨步"
+            );
+
+            use crate::processing::simd_core::SimdProcessor;
+            let simd_processor = SimdProcessor::new();
+
+            // 为6个声道创建analyzer
+            let mut analyzers: Vec<WindowRmsAnalyzer> = (0..channel_count)
+                .map(|_| {
+                    WindowRmsAnalyzer::with_silence_filter(
+                        self.sample_rate,
+                        self.sum_doubling_enabled,
+                        self.silence_filter,
+                    )
+                })
+                .collect();
+
+            let total_frames = samples.len() / channel_count;
+            let num_blocks = total_frames / 4; // 每块4帧
+
+            // 使用4×4转置处理通道0..3
+            for block_idx in 0..num_blocks {
+                let frame_offset = block_idx * 4;
+                let channel_offset = 0; // 前4通道
+                let t = simd_processor.transpose_4x4_block(
+                    samples,
+                    frame_offset,
+                    channel_offset,
+                    channel_count,
+                );
+
+                // 将4帧样本直接投喂到analyzer，避免构建大缓冲
+                analyzers[0].process_samples(&t.ch0);
+                analyzers[1].process_samples(&t.ch1);
+                analyzers[2].process_samples(&t.ch2);
+                analyzers[3].process_samples(&t.ch3);
+            }
+
+            // 处理不足4帧的尾部（对通道0..3逐帧追加）
+            let remaining_frames = total_frames % 4;
+            if remaining_frames > 0 {
+                let base_frame = num_blocks * 4;
+                for f in 0..remaining_frames {
+                    let frame = base_frame + f;
+                    let base = frame * channel_count;
+                    analyzers[0].process_samples(&samples[base..base + 1]);
+                    analyzers[1].process_samples(&samples[base + 1..base + 2]);
+                    analyzers[2].process_samples(&samples[base + 2..base + 3]);
+                    analyzers[3].process_samples(&samples[base + 3..base + 4]);
+                }
+            }
+
+            // 通道4、5整段使用跨步直投（一次遍历）
+            analyzers[4].process_samples_strided(samples, 4, channel_count);
+            analyzers[5].process_samples_strided(samples, 5, channel_count);
+
+            // 汇总结果
+            let samples_per_channel = samples.len() / channel_count;
+            let dr_results: Vec<DrResult> = analyzers
+                .into_iter()
+                .enumerate()
+                .map(|(channel_idx, analyzer)| {
+                    self.build_dr_result_from_analyzer(analyzer, channel_idx, samples_per_channel)
+                })
+                .collect();
+
+            return Ok(dr_results);
+        }
+
+        // 其他声道：使用跨步访问方法
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[DRCALC] Using strided access for {channel_count} channels / 使用跨步访问处理{channel_count}声道"
+        );
+
         // 创建每个声道的analyzer
         let mut analyzers: Vec<WindowRmsAnalyzer> = (0..channel_count)
             .map(|_| {
@@ -469,6 +563,91 @@ impl DrCalculator {
         }
 
         // 从analyzers派生DR结果
+        let samples_per_channel = samples.len() / channel_count;
+        let dr_results: Vec<DrResult> = analyzers
+            .into_iter()
+            .enumerate()
+            .map(|(channel_idx, analyzer)| {
+                self.build_dr_result_from_analyzer(analyzer, channel_idx, samples_per_channel)
+            })
+            .collect();
+
+        Ok(dr_results)
+    }
+
+    /// 4×4块级转置多声道DR计算（4的倍数声道专用）
+    ///
+    /// 使用SIMD 4×4块级转置提升缓存局部性，适用于8/12/16声道等场景。
+    /// 相比跨步访问，块级转置将连续的4帧×4声道转换为4声道×4样本，
+    /// 减少内存遍历次数，提升CPU缓存命中率。
+    ///
+    /// # 性能收益
+    ///
+    /// - **缓存局部性**: 转置后的声道数据在内存中连续，减少cache miss
+    /// - **SIMD优化**: 使用SSE2/NEON硬件加速转置操作
+    /// - **内存遍历**: 单次遍历完成所有声道转置（vs 跨步的N次遍历）
+    fn calculate_dr_transpose_4x4(
+        &self,
+        samples: &[f32],
+        channel_count: usize,
+    ) -> AudioResult<Vec<DrResult>> {
+        debug_assert!(
+            channel_count.is_multiple_of(4),
+            "channel_count must be multiple of 4"
+        );
+
+        // 创建SIMD处理器
+        let simd_processor = SimdProcessor::new();
+
+        // 创建每个声道的analyzer
+        let mut analyzers: Vec<WindowRmsAnalyzer> = (0..channel_count)
+            .map(|_| {
+                WindowRmsAnalyzer::with_silence_filter(
+                    self.sample_rate,
+                    self.sum_doubling_enabled,
+                    self.silence_filter,
+                )
+            })
+            .collect();
+
+        let total_frames = samples.len() / channel_count;
+        let num_blocks = total_frames / 4;
+
+        // 按4×4块处理所有帧：直接把4帧样本投喂到对应analyzer，避免中间大缓冲
+        for block_idx in 0..num_blocks {
+            let frame_offset = block_idx * 4;
+
+            // 处理每组4个声道（0..4..8..）
+            for group_idx in 0..(channel_count / 4) {
+                let channel_offset = group_idx * 4;
+                let t = simd_processor.transpose_4x4_block(
+                    samples,
+                    frame_offset,
+                    channel_offset,
+                    channel_count,
+                );
+
+                analyzers[channel_offset].process_samples(&t.ch0);
+                analyzers[channel_offset + 1].process_samples(&t.ch1);
+                analyzers[channel_offset + 2].process_samples(&t.ch2);
+                analyzers[channel_offset + 3].process_samples(&t.ch3);
+            }
+        }
+
+        // 处理不足4帧的尾块（如果有）：逐帧追加到各通道
+        let remaining_frames = total_frames % 4;
+        if remaining_frames > 0 {
+            let base_frame = num_blocks * 4;
+            for f in 0..remaining_frames {
+                let frame = base_frame + f;
+                let base = frame * channel_count;
+                for ch_idx in 0..channel_count {
+                    analyzers[ch_idx].process_samples(&samples[base + ch_idx..base + ch_idx + 1]);
+                }
+            }
+        }
+
+        // 汇总结果
         let samples_per_channel = samples.len() / channel_count;
         let dr_results: Vec<DrResult> = analyzers
             .into_iter()
