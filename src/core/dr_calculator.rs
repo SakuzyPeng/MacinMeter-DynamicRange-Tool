@@ -398,6 +398,52 @@ impl DrCalculator {
         }
     }
 
+    /// 从WindowRmsAnalyzer构造DrResult
+    ///
+    /// 将analyzer的分析结果（RMS、峰值）按照DR标准公式计算并封装为DrResult。
+    /// 消除calculate_dr_strided和calculate_single_channel_dr之间的代码重复。
+    fn build_dr_result_from_analyzer(
+        &self,
+        analyzer: WindowRmsAnalyzer,
+        channel_idx: usize,
+        sample_count: usize,
+    ) -> DrResult {
+        use crate::tools::constants::dr_analysis::DR_ZERO_EPS;
+
+        // 使用WindowRmsAnalyzer的20%采样算法
+        let rms_20_percent = analyzer.calculate_20_percent_rms();
+
+        // 使用配置的峰值选择策略
+        let window_primary_peak = analyzer.get_largest_peak();
+        let window_secondary_peak = analyzer.get_second_largest_peak();
+
+        let peak_for_dr = self
+            .peak_selection_strategy
+            .select_peak(window_primary_peak, window_secondary_peak);
+
+        // 计算DR值（官方标准公式）
+        let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
+            let ratio = rms_20_percent / peak_for_dr;
+            -20.0 * ratio.log10()
+        } else {
+            0.0
+        };
+
+        // 使用20%RMS保持算法一致性
+        let display_rms = rms_20_percent;
+
+        // 创建DR结果
+        DrResult::new_with_peaks(
+            channel_idx,
+            dr_value,
+            display_rms,
+            peak_for_dr,
+            window_primary_peak,
+            window_secondary_peak,
+            sample_count,
+        )
+    }
+
     /// 零拷贝跨步多声道DR计算（3+声道专用）
     ///
     /// 单次遍历交错样本，直接为每个声道计算DR，消除中间Vec分配。
@@ -406,8 +452,6 @@ impl DrCalculator {
         samples: &[f32],
         channel_count: usize,
     ) -> AudioResult<Vec<DrResult>> {
-        use crate::tools::constants::dr_analysis::DR_ZERO_EPS;
-
         // 创建每个声道的analyzer
         let mut analyzers: Vec<WindowRmsAnalyzer> = (0..channel_count)
             .map(|_| {
@@ -425,42 +469,12 @@ impl DrCalculator {
         }
 
         // 从analyzers派生DR结果
+        let samples_per_channel = samples.len() / channel_count;
         let dr_results: Vec<DrResult> = analyzers
             .into_iter()
             .enumerate()
             .map(|(channel_idx, analyzer)| {
-                // 使用WindowRmsAnalyzer的20%采样算法
-                let rms_20_percent = analyzer.calculate_20_percent_rms();
-
-                // 使用配置的峰值选择策略
-                let window_primary_peak = analyzer.get_largest_peak();
-                let window_secondary_peak = analyzer.get_second_largest_peak();
-
-                let peak_for_dr = self
-                    .peak_selection_strategy
-                    .select_peak(window_primary_peak, window_secondary_peak);
-
-                // 计算DR值（官方标准公式）
-                let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
-                    let ratio = rms_20_percent / peak_for_dr;
-                    -20.0 * ratio.log10()
-                } else {
-                    0.0
-                };
-
-                // 使用20%RMS保持算法一致性
-                let display_rms = rms_20_percent;
-
-                // 创建DR结果
-                DrResult::new_with_peaks(
-                    channel_idx,
-                    dr_value,
-                    display_rms,
-                    peak_for_dr,
-                    window_primary_peak,
-                    window_secondary_peak,
-                    samples.len() / channel_count, // 每个声道的样本数
-                )
+                self.build_dr_result_from_analyzer(analyzer, channel_idx, samples_per_channel)
             })
             .collect();
 
@@ -473,8 +487,6 @@ impl DrCalculator {
         channel_samples: &[f32],
         channel_idx: usize,
     ) -> AudioResult<DrResult> {
-        use crate::tools::constants::dr_analysis::DR_ZERO_EPS;
-
         // [TRACE] 创建WindowRmsAnalyzer进行DR分析
         #[cfg(debug_assertions)]
         eprintln!(
@@ -496,40 +508,9 @@ impl DrCalculator {
         // 关键：一次性处理所有样本，让WindowRmsAnalyzer内部创建正确的3秒窗口
         analyzer.process_samples(channel_samples);
 
-        // 使用WindowRmsAnalyzer的20%采样算法
-        let rms_20_percent = analyzer.calculate_20_percent_rms();
-
-        // 使用配置的峰值选择策略
-        let window_primary_peak = analyzer.get_largest_peak();
-        let window_secondary_peak = analyzer.get_second_largest_peak();
-
-        let peak_for_dr = self
-            .peak_selection_strategy
-            .select_peak(window_primary_peak, window_secondary_peak);
-
-        // 计算DR值（官方标准公式）
-        // 为了跨平台稳定性，对接近0的RMS/Peak做阈值归零处理，避免极小浮点噪声导致非零DR
-        let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
-            let ratio = rms_20_percent / peak_for_dr;
-            -20.0 * ratio.log10()
-        } else {
-            0.0
-        };
-
-        // 使用WindowRmsAnalyzer计算的20%RMS作为显示RMS
-        // 这保持了算法的一致性，避免在DrCalculator中重复实现RMS计算
-        let display_rms = rms_20_percent;
-
-        // 创建DR结果
-        let result = DrResult::new_with_peaks(
-            channel_idx,
-            dr_value,
-            display_rms, // 使用20%RMS保持算法一致性
-            peak_for_dr,
-            window_primary_peak,   // 使用窗口级主峰
-            window_secondary_peak, // 使用窗口级次峰
-            channel_samples.len(),
-        );
+        // 使用统一的辅助函数构造DR结果
+        let result =
+            self.build_dr_result_from_analyzer(analyzer, channel_idx, channel_samples.len());
 
         Ok(result)
     }
