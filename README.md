@@ -61,6 +61,8 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
 - Edge trimming (disabled by default): `--trim-edges[=<DB>]`, default threshold −60 dBFS, with `--trim-min-run <MS>` (default 60 ms) to require sustained silence before trimming.
 - 窗口静音过滤（默认关闭）：`--filter-silence[=<DB>]`，默认阈值 -70 dBFS；目录模式建议写作 `--filter-silence -- /path/to/dir`（示例 `./tool --filter-silence -- ./album`），避免路径被解析为阈值。
 - Window silence filter (disabled by default): `--filter-silence[=<DB>]`, default −70 dBFS; when scanning a directory use `--filter-silence -- /path/to/dir` to prevent the path from being parsed as the threshold.
+ - LFE 剔除（默认关闭）：`--exclude-lfe`，在容器提供声道布局元数据（WAV WAVEFORMATEXTENSIBLE 掩码或解码器通道位图）时，将 LFE 声道从最终聚合中剔除；单声道明细仍保留。
+ - LFE exclusion (off by default): `--exclude-lfe`; when the container exposes channel layout metadata (e.g., WAV WAVEFORMATEXTENSIBLE mask or a decoder channel bitset), LFE channels are excluded from final aggregation; per‑channel DR entries remain.
 - 输出文件：`--output <file>` 指定单文件结果路径；批量模式默认写入目标目录。
 - Output control: use `--output <file>` for single-file reports; batch mode writes to the target directory by default.
 
