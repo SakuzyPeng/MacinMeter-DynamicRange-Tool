@@ -734,7 +734,10 @@ pub fn calculate_official_dr(
             // 若启用了 LFE 排除但无法识别布局，友好提示
             if exclude_lfe && !format.has_channel_layout_metadata && format.channels > 2 {
                 output.push_str(
-                    "注 / Note: 请求排除 LFE，但未检测到声道布局元数据；未执行 LFE 剔除。\n\n",
+                    "注 / Note: 请求排除 LFE，但未检测到声道布局元数据；未执行 LFE 剔除。\n",
+                );
+                output.push_str(
+                    "Note: LFE exclusion requested but no channel layout metadata detected; LFE exclusion not performed.\n\n",
                 );
             }
         }

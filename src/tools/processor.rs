@@ -784,9 +784,9 @@ pub fn add_to_batch_output(
             let col1 = format!("DR{official_dr}");
             let col2 = format!("{precise_dr:.2} dB");
             let tail = if excluded_lfe > 0 {
-                format!("{file_name} [LFE excluded]")
+                format!("{file_name} [LFE excluded / 已剔除LFE]")
             } else if exclude_lfe && !format.has_channel_layout_metadata && format.channels > 2 {
-                format!("{file_name} [LFE requested, layout missing]")
+                format!("{file_name} [LFE requested, layout missing / 请求LFE剔除，未检测布局]")
             } else {
                 file_name.clone()
             };
