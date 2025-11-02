@@ -24,6 +24,8 @@ use symphonia::core::codecs::{
 /// 应用程序版本信息
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// 两列定宽工具已抽到 utils::table
+
 /// 将 CodecType 映射为人类可读的编解码器名称
 ///
 /// 优先使用真实的解码器类型信息，比文件扩展名更准确
@@ -165,17 +167,14 @@ pub fn create_output_header(
     let mut output = String::new();
 
     // 使用统一的头部标识常量（避免跨模块文案漂移）
-    output.push_str(&format!(
-        "{}\n",
-        constants::app_info::format_output_header(VERSION)
-    ));
+    let header_line = constants::app_info::format_output_header(VERSION);
+    output.push_str(&format!("{header_line}\n"));
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     output.push_str(&format!("日志时间 / Log date: {now}\n\n"));
 
-    // 分隔线
-    output.push_str(
-        "--------------------------------------------------------------------------------\n",
-    );
+    // 分隔线（长度与标题一致）
+    let sep_dash = utils::table::separator_for_lines_with_char(&[&header_line], '-');
+    output.push_str(&sep_dash);
 
     // 文件统计信息
     let file_name = utils::extract_filename(&config.input_path);
@@ -249,9 +248,9 @@ pub fn create_output_header(
         }
     }
 
-    output.push_str(
-        "--------------------------------------------------------------------------------\n\n",
-    );
+    let sep_dash2 = utils::table::separator_for_lines_with_char(&[&header_line], '-');
+    output.push_str(&sep_dash2);
+    output.push('\n');
 
     output
 }
@@ -303,18 +302,58 @@ pub fn format_stereo_results(results: &[DrResult]) -> String {
 
 /// 格式化中等多声道DR结果（3+声道）
 /// 单文件模式使用列表格式便于查看，多文件模式使用简化格式
-pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
+pub fn format_medium_multichannel_results(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // 使用列表格式显示每个声道的DR值
+    // 表头采用与批量列表风格一致的两列固定宽度
     output.push_str(&format!(
         "声道明细 / Channel breakdown ({} channels):\n",
         results.len()
     ));
+    // 头部也使用统一对齐逻辑，确保列首字符对齐
+    let header_line =
+        utils::table::format_two_cols_line("Official DR", "Precise DR", "通道 / Channel");
+    output.push_str(&header_line);
+    // 下方补一条等宽'='分割线，匹配表头宽度
+    let header_sep = utils::table::separator_from(&header_line);
+    output.push_str(&header_sep);
+
+    // 识别 LFE 位置（优先容器元数据，其次标准布局）
+    let lfe_channels: Vec<usize> =
+        if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
+            format
+                .lfe_indices
+                .iter()
+                .copied()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        } else {
+            identify_lfe_channels(format.channels)
+                .into_iter()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        };
 
     for (i, result) in results.iter().enumerate() {
         let dr_rounded = result.dr_value_rounded();
-        output.push_str(&format!("  通道 Channel {}: DR{}\n", i + 1, dr_rounded));
+        let col_official = format!("DR{dr_rounded}");
+        let col_precise = format!("{:.2} dB", result.dr_value);
+
+        let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
+            || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
+        let is_lfe = lfe_channels.contains(&i);
+        // 通道编号宽度2，右对齐，避免 1 位与 2 位编号导致轻微视觉跳动
+        let mut label = format!("通道 / Channel {:>2}", i + 1);
+        if is_lfe {
+            label.push_str("  [LFE]");
+        } else if is_silent {
+            label.push_str("  [Silent]");
+        }
+        output.push_str(&utils::table::format_two_cols_line(
+            &col_official,
+            &col_precise,
+            &label,
+        ));
     }
 
     output
@@ -324,55 +363,58 @@ pub fn format_medium_multichannel_results(results: &[DrResult]) -> String {
 pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    // 提前计算LFE声道映射，避免在循环内重复计算
-    let lfe_channels = identify_lfe_channels(format.channels);
+    // 与批量风格一致：两列固定宽度 + 尾字段
+    output.push_str(&format!(
+        "声道明细 / Channel breakdown ({} channels):\n",
+        results.len()
+    ));
+    let header_line =
+        utils::table::format_two_cols_line("Official DR", "Precise DR", "通道 / Channel");
+    output.push_str(&header_line);
+    let header_sep = utils::table::separator_from(&header_line);
+    output.push_str(&header_sep);
 
-    // 暂时隐藏Peak和RMS列的表头
-    // output.push_str(
-    //     "              声道             Peak dB        RMS dB         DR值        备注\n\n",
-    // );
-    output.push_str(
-        "              声道                                            DR值        备注\n\n",
-    );
+    // 识别 LFE（优先容器元数据）
+    let lfe_channels: Vec<usize> =
+        if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
+            format
+                .lfe_indices
+                .iter()
+                .copied()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        } else {
+            identify_lfe_channels(format.channels)
+                .into_iter()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        };
 
     for (i, result) in results.iter().enumerate() {
-        // 保留用于将来可能的显示需求
-        // let peak_db_str = utils::linear_to_db_string(result.peak);
-        // let rms_db_str = utils::linear_to_db_string(result.rms);
-
-        let dr_value_str = if result.peak > constants::dr_analysis::DR_ZERO_EPS
+        let dr_rounded = result.dr_value_rounded();
+        let col_official = format!("DR{dr_rounded}");
+        let col_precise = if result.peak > constants::dr_analysis::DR_ZERO_EPS
             && result.rms > constants::dr_analysis::DR_ZERO_EPS
         {
-            format!("{:.2}", result.dr_value)
+            format!("{:.2} dB", result.dr_value)
         } else {
-            "0.00".to_string()
+            "0.00 dB".to_string()
         };
 
-        // 检查是否为LFE声道或静音声道
-        let note = if lfe_channels.contains(&i) {
-            "LFE channel / LFE声道"
-        } else if result.peak <= constants::dr_analysis::DR_ZERO_EPS
-            && result.rms <= constants::dr_analysis::DR_ZERO_EPS
-        {
-            "Silent channel / 静音声道"
-        } else {
-            ""
-        };
+        let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
+            || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
+        let is_lfe = lfe_channels.contains(&i);
+        let mut label = format!("通道 / Channel {:>2}", i + 1);
+        if is_lfe {
+            label.push_str("  [LFE]");
+        } else if is_silent {
+            label.push_str("  [Silent]");
+        }
 
-        // 暂时隐藏Peak和RMS的显示
-        // output.push_str(&format!(
-        //     "            Channel {:2}:     {:>8} dB     {:>8} dB      {:>6} dB    {}\n",
-        //     i + 1,
-        //     peak_db_str,
-        //     rms_db_str,
-        //     dr_value_str,
-        //     note
-        // ));
-        output.push_str(&format!(
-            "            通道 Channel {:2}:                                     {:>6} dB    {}\n",
-            i + 1,
-            dr_value_str,
-            note
+        output.push_str(&utils::table::format_two_cols_line(
+            &col_official,
+            &col_precise,
+            &label,
         ));
     }
 
@@ -443,19 +485,52 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
 /// ```
 pub fn compute_official_precise_dr(
     results: &[DrResult],
-    _format: &AudioFormat,
-) -> Option<(i32, f64, usize)> {
+    format: &AudioFormat,
+    exclude_lfe: bool,
+) -> Option<(i32, f64, usize, usize)> {
     if results.is_empty() {
         return None;
     }
 
-    // 筛选有效声道：仅排除静音声道（根据foobar2000实测，不排除LFE）
+    // 识别应排除的 LFE 声道（仅当显式存在声道布局元数据时生效）
+    let lfe_indices: Vec<usize> = if exclude_lfe && format.has_channel_layout_metadata {
+        if !format.lfe_indices.is_empty() {
+            format
+                .lfe_indices
+                .iter()
+                .copied()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        } else {
+            identify_lfe_channels(format.channels)
+                .into_iter()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // 筛选有效声道：排除静音声道 + （可选）LFE 声道
     // 使用DR_ZERO_EPS阈值兼容解码器产生的近零噪声
+    let mut excluded_silent = 0usize;
+    let mut excluded_lfe = 0usize;
     let valid_results: Vec<&DrResult> = results
         .iter()
-        .filter(|result| {
-            result.peak > constants::dr_analysis::DR_ZERO_EPS
-                && result.rms > constants::dr_analysis::DR_ZERO_EPS
+        .enumerate()
+        .filter_map(|(i, result)| {
+            let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
+                || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
+            let is_lfe = lfe_indices.contains(&i);
+            if is_silent {
+                excluded_silent += 1;
+                None
+            } else if is_lfe {
+                excluded_lfe += 1;
+                None
+            } else {
+                Some(result)
+            }
         })
         .collect();
 
@@ -469,7 +544,7 @@ pub fn compute_official_precise_dr(
     let official_dr = avg_dr.round() as i32;
     let excluded_count = results.len() - valid_results.len();
 
-    Some((official_dr, avg_dr, excluded_count))
+    Some((official_dr, avg_dr, excluded_count, excluded_lfe))
 }
 
 /// DR边界风险阈值常量（避免浮点精度问题）
@@ -610,12 +685,16 @@ pub fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<S
     )
 }
 /// 计算并格式化Official DR Value
-pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> String {
+pub fn calculate_official_dr(
+    results: &[DrResult],
+    format: &AudioFormat,
+    exclude_lfe: bool,
+) -> String {
     let mut output = String::new();
 
     // 使用统一的DR聚合函数
-    match compute_official_precise_dr(results, format) {
-        Some((official_dr, precise_dr, excluded_count)) => {
+    match compute_official_precise_dr(results, format, exclude_lfe) {
+        Some((official_dr, precise_dr, excluded_count, excluded_lfe)) => {
             output.push_str(&format!("Official DR Value: DR{official_dr}\n"));
             output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n"));
 
@@ -630,9 +709,24 @@ pub fn calculate_official_dr(results: &[DrResult], format: &AudioFormat) -> Stri
             // 显示计算说明（仅当有排除声道时）
             if excluded_count > 0 {
                 let valid_count = results.len() - excluded_count;
-                output.push_str(&format!(
-                    "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个静音声道)\n\n"
-                ));
+                if excluded_lfe > 0 {
+                    output.push_str(&format!(
+                        "DR计算基于 {valid_count} 个有效声道 (已排除 {silent} 个静音声道, {lfe} 个LFE声道)\n\n",
+                        silent = excluded_count - excluded_lfe,
+                        lfe = excluded_lfe
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个静音声道)\n\n"
+                    ));
+                }
+            }
+
+            // 若启用了 LFE 排除但无法识别布局，友好提示
+            if exclude_lfe && !format.has_channel_layout_metadata && format.channels > 2 {
+                output.push_str(
+                    "注 / Note: 请求排除 LFE，但未检测到声道布局元数据；未执行 LFE 剔除。\n\n",
+                );
             }
         }
         None => {
@@ -677,9 +771,10 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     };
     output.push_str(&format!("{:<22}{codec_display}\n", "编码 / Codec:"));
 
-    output.push_str(
-        "================================================================================\n",
-    );
+    // 结尾分隔线（长度与标题一致）
+    let sep_eq =
+        utils::table::separator_for_lines(&[&constants::app_info::format_output_header(VERSION)]);
+    output.push_str(&sep_eq);
 
     output
 }
@@ -702,7 +797,7 @@ pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFo
         0 => "ERROR: 无音频数据\n".to_string(),
         1 => format_mono_results(&results[0]),
         2 => format_stereo_results(results),
-        3..=8 => format_medium_multichannel_results(results),
+        3..=8 => format_medium_multichannel_results(results, format),
         _ => format_large_multichannel_results(results, format),
     });
 

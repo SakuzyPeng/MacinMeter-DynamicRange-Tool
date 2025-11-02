@@ -117,6 +117,9 @@ pub struct AppConfig {
 
     /// 实验性：裁切最小持续时间（毫秒）
     pub edge_trim_min_run_ms: Option<f64>,
+
+    /// 是否在官方DR聚合中剔除LFE声道（仅当存在可靠的声道布局元数据时生效）
+    pub exclude_lfe: bool,
 }
 
 impl AppConfig {
@@ -213,6 +216,12 @@ pub fn parse_args() -> AppConfig {
                 .value_parser(parse_silence_threshold),
         )
         .arg(
+            Arg::new("exclude-lfe")
+                .long("exclude-lfe")
+                .help("Exclude LFE channel(s) from Official DR aggregation when channel layout metadata is available / 在存在声道布局元数据时，从官方DR聚合中剔除LFE声道")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
                 .help("[EXPERIMENTAL] Enable edge-level silence trimming; optional threshold (dBFS, range -120~0, default -60) / 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
@@ -296,6 +305,7 @@ pub fn parse_args() -> AppConfig {
         silence_filter_threshold_db: matches.get_one::<f64>("filter-silence").copied(),
         edge_trim_threshold_db,
         edge_trim_min_run_ms,
+        exclude_lfe: matches.get_flag("exclude-lfe"),
     }
 }
 

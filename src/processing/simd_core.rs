@@ -694,7 +694,7 @@ impl SimdProcessor {
         channel_count: usize,
     ) -> Transpose4x4 {
         debug_assert!(
-            channel_offset % 4 == 0,
+            channel_offset.is_multiple_of(4),
             "channel_offset must be multiple of 4"
         );
 
@@ -753,13 +753,11 @@ impl SimdProcessor {
         // 加载4帧，每帧取channel_offset开始的4个通道
         // 帧i的样本起始位置 = (frame_offset + i) * channel_count + channel_offset
         let mut rows = [_mm_setzero_ps(); 4];
-        for i in 0..4 {
+        for (i, row) in rows.iter_mut().enumerate() {
             let pos = (frame_offset + i) * channel_count + channel_offset;
             // SAFETY: pos在[0, interleaved.len()-4)范围内（已由debug_assert验证）
             // _mm_loadu_ps加载4个连续f32，对应当前帧的4个通道
-            unsafe {
-                rows[i] = _mm_loadu_ps(interleaved.as_ptr().add(pos));
-            }
+            *row = _mm_loadu_ps(interleaved.as_ptr().add(pos));
         }
 
         // SSE2 4×4转置标准算法

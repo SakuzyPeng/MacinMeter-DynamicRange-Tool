@@ -177,6 +177,7 @@ pub fn process_batch_parallel(
                         &results,
                         &format,
                         &ordered_result.file_path,
+                        config.exclude_lfe,
                     ) {
                         batch_warnings.push(warning);
                     }

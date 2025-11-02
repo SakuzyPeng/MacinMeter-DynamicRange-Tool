@@ -735,13 +735,19 @@ pub fn output_results(
         results, format,
     ));
 
-    // 3. 添加foobar2000标准分隔线
-    output.push_str(
-        "--------------------------------------------------------------------------------\n\n",
-    );
+    // 3. 添加标准分隔线（长度与单文件标题一致）
+    let header_line =
+        crate::tools::constants::app_info::format_output_header(env!("CARGO_PKG_VERSION"));
+    let sep_dash = crate::tools::utils::table::separator_for_lines_with_char(&[&header_line], '-');
+    output.push_str(&sep_dash);
+    output.push('\n');
 
     // 4. 计算并添加Official DR Value
-    output.push_str(&formatter::calculate_official_dr(results, format));
+    output.push_str(&formatter::calculate_official_dr(
+        results,
+        format,
+        config.exclude_lfe,
+    ));
 
     // 5. 添加音频技术信息
     output.push_str(&formatter::format_audio_info(config, format));
@@ -767,19 +773,24 @@ pub fn add_to_batch_output(
     results: &[DrResult],
     format: &AudioFormat,
     file_path: &std::path::Path,
+    exclude_lfe: bool,
 ) -> Option<BatchWarningInfo> {
     let file_name = utils::extract_filename_lossy(file_path);
 
     // 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
-    match formatter::compute_official_precise_dr(results, format) {
-        Some((official_dr, precise_dr, _excluded_count)) => {
-            // 使用固定宽度对齐（左对齐17字符），确保列对齐美观
-            batch_output.push_str(&format!(
-                "{:<17}{:<17}{}\n",
-                format!("DR{}", official_dr),
-                format!("{:.2} dB", precise_dr),
-                file_name
-            ));
+    match formatter::compute_official_precise_dr(results, format, exclude_lfe) {
+        Some((official_dr, precise_dr, _excluded_count, excluded_lfe)) => {
+            // 使用统一两列对齐风格，尾字段包含文件名与注记
+            let col1 = format!("DR{official_dr}");
+            let col2 = format!("{precise_dr:.2} dB");
+            let tail = if excluded_lfe > 0 {
+                format!("{file_name} [LFE excluded]")
+            } else if exclude_lfe && !format.has_channel_layout_metadata && format.channels > 2 {
+                format!("{file_name} [LFE requested, layout missing]")
+            } else {
+                file_name.clone()
+            };
+            batch_output.push_str(&utils::table::format_two_cols_line(&col1, &col2, &tail));
 
             // 检测边界风险
             formatter::detect_boundary_risk_level(official_dr, precise_dr).map(
@@ -827,6 +838,7 @@ pub fn save_individual_result(
         silence_filter_threshold_db: None,
         edge_trim_threshold_db: None,
         edge_trim_min_run_ms: None,
+        exclude_lfe: false,
     };
 
     if let Err(e) = output_results(

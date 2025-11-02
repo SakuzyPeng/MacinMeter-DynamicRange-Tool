@@ -20,6 +20,10 @@ pub struct AudioFormat {
     pub sample_count: u64,
     /// 真实的编解码器类型（从解码器获取，比文件扩展名更准确）
     pub codec_type: Option<CodecType>,
+    /// 是否存在声道布局元数据（如容器提供的 channel_layout），用于可靠识别 LFE 等通道
+    pub has_channel_layout_metadata: bool,
+    /// 由通道掩码/映射推导的 LFE 声道索引（交错顺序中的下标）。若无可用元数据则为空
+    pub lfe_indices: Vec<usize>,
     /// 是否为部分分析（解码过程中跳过了损坏的音频包）
     is_partial: bool,
     /// 跳过的损坏包数量（累积统计）
@@ -35,6 +39,8 @@ impl AudioFormat {
             bits_per_sample,
             sample_count,
             codec_type: None,
+            has_channel_layout_metadata: false,
+            lfe_indices: Vec::new(),
             is_partial: false,
             skipped_packets: 0,
         }
@@ -160,6 +166,19 @@ impl AudioFormat {
     /// 辅助方法，用于数组索引和循环边界，避免重复的类型转换
     pub fn channels_usize(&self) -> usize {
         self.channels as usize
+    }
+
+    /// 标记存在声道布局元数据
+    pub fn mark_has_channel_layout(&mut self) {
+        self.has_channel_layout_metadata = true;
+    }
+
+    /// 设置 LFE 索引（基于掩码/映射推导）。调用该方法也将标记存在布局元数据
+    pub fn set_lfe_indices(&mut self, indices: Vec<usize>) {
+        if !indices.is_empty() {
+            self.lfe_indices = indices;
+            self.has_channel_layout_metadata = true;
+        }
     }
 }
 

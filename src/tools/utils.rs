@@ -290,6 +290,123 @@ pub mod performance {
     }
 }
 
+/// 文本表格对齐辅助
+pub mod table {
+    use unicode_width::UnicodeWidthStr;
+
+    /// 以“显示宽度”对齐的填充函数（考虑中英文混排宽度差异）。
+    #[inline]
+    fn pad_display_width(out: &mut String, s: &str, width: usize) {
+        out.push_str(s);
+        let w = UnicodeWidthStr::width(s);
+        if w < width {
+            let pad = width - w;
+            out.push_str(&" ".repeat(pad));
+        }
+    }
+
+    /// 两列定宽 + 尾字段（末列不定宽）。用于与批量列表、单文件明细保持一致风格。
+    #[inline]
+    pub fn format_two_cols_line(col1: &str, col2: &str, tail: &str) -> String {
+        format_cols_line(&[col1, col2], &[17, 17], tail)
+    }
+
+    /// 多列定宽 + 尾字段的通用格式化（按“显示宽度”对齐）。
+    /// widths 指定每一列的宽度（左对齐）。tail 作为尾字段直接追加。
+    #[inline]
+    pub fn format_cols_line(cols: &[&str], widths: &[usize], tail: &str) -> String {
+        let mut out = String::new();
+        let n = cols.len().min(widths.len());
+        for i in 0..n {
+            pad_display_width(&mut out, cols[i], widths[i]);
+            if i + 1 < n {
+                out.push(' '); // 列间固定加入一个空格，提升可读性并保持一致
+            }
+        }
+        if !tail.is_empty() {
+            out.push(' ');
+            out.push_str(tail);
+        }
+        out.push('\n');
+        out
+    }
+
+    /// 基于表头文本，返回每列的“有效宽度”（max(给定宽度, 表头显示宽度)）。
+    #[inline]
+    pub fn effective_widths(cols: &[&str], widths: &[usize]) -> Vec<usize> {
+        let n = cols.len().min(widths.len());
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            let w = widths[i];
+            let head_w = UnicodeWidthStr::width(cols[i]);
+            out.push(w.max(head_w));
+        }
+        out
+    }
+
+    /// 根据已格式化的表头行，生成同宽度的分割线（使用 '=' 填充）。
+    #[inline]
+    pub fn separator_from(formatted_header_line: &str) -> String {
+        let first_line = formatted_header_line
+            .split_once('\n')
+            .map(|(h, _)| h)
+            .unwrap_or(formatted_header_line);
+        let width = UnicodeWidthStr::width(first_line);
+        let mut out = String::with_capacity(width + 1);
+        for _ in 0..width {
+            out.push('=');
+        }
+        out.push('\n');
+        out
+    }
+
+    /// 根据若干行文本计算最大显示宽度，并生成等宽分割线（'=')。
+    #[inline]
+    pub fn separator_for_lines(lines: &[&str]) -> String {
+        let width = lines
+            .iter()
+            .map(|s| UnicodeWidthStr::width(*s))
+            .max()
+            .unwrap_or(0);
+        let mut out = String::with_capacity(width + 1);
+        for _ in 0..width {
+            out.push('=');
+        }
+        out.push('\n');
+        out
+    }
+
+    /// 根据若干行文本计算最大显示宽度，并生成等宽分割线（自定义填充字符）。
+    #[inline]
+    pub fn separator_for_lines_with_char(lines: &[&str], ch: char) -> String {
+        let width = lines
+            .iter()
+            .map(|s| UnicodeWidthStr::width(*s))
+            .max()
+            .unwrap_or(0);
+        let mut out = String::with_capacity(width + 1);
+        for _ in 0..width {
+            out.push(ch);
+        }
+        out.push('\n');
+        out
+    }
+
+    /// 用空格在左右两侧包裹标题文本，便于配置左右留白宽度。
+    #[inline]
+    pub fn pad_title_spaces(title: &str, left: usize, right: usize) -> String {
+        let mut out = String::with_capacity(left + title.len() + right);
+        for _ in 0..left {
+            out.push(' ');
+        }
+        out.push_str(title);
+        for _ in 0..right {
+            out.push(' ');
+        }
+        out
+    }
+}
+
 // 重新导出为平级函数，保持向后兼容
 pub use audio::{linear_to_db, linear_to_db_string};
 pub use parallel::effective_parallel_degree;

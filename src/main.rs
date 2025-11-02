@@ -183,9 +183,13 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                     );
                 } else {
                     // 多文件模式：添加到批量输出并收集预警信息
-                    if let Some(warning) =
-                        tools::add_to_batch_output(&mut batch_output, &results, &format, audio_file)
-                    {
+                    if let Some(warning) = tools::add_to_batch_output(
+                        &mut batch_output,
+                        &results,
+                        &format,
+                        audio_file,
+                        config.exclude_lfe,
+                    ) {
                         batch_warnings.push(warning);
                     }
                 }

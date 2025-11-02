@@ -155,16 +155,31 @@ DR16         15.51 dB     高风险 / High     下边界 / Lower   Δ0.01 dB    
 - File-level parallelism: processes up to four files concurrently (default on macOS); adjust via `--parallel-files` or disable with `--no-parallel-files` to reduce memory footprint.
 
 ## 准确性与兼容性（Accuracy & Compatibility）
-- 仅支持 1–2 声道输入；多声道音频会被拒绝，并计划后续推出兼容流程（DR 仍排除 LFE）。
-- Only mono/stereo sources are accepted—multichannel files are rejected; multichannel support (still excluding LFE) is planned.
-- AAC 从 WAV 转码常使 Precise DR 稍微升高（≈0.01–0.05 dB）；其他有损格式通常略降或持平，无损基本不变。
+- 支持多声道（≥3）分析；官方聚合口径与 foobar2000 一致：对所有“非静音”声道的单声道 DR 做算术平均并四舍五入得到 Official DR。
+- Multichannel (≥3 ch) is supported; aggregation matches foobar2000: arithmetic mean of per‑channel DR over all non‑silent channels, rounded to the nearest integer for Official DR.
+- 可选 LFE 剔除（`--exclude-lfe`）：当容器提供声道布局元数据（如 WAV WAVEFORMATEXTENSIBLE 掩码或解码器的通道位图）时，从“聚合计算”中剔除 LFE；单声道明细仍保留 LFE 的 DR 以供查看。
+- Optional LFE exclusion (`--exclude-lfe`): when the container exposes channel layout metadata (e.g. WAV WAVEFORMATEXTENSIBLE mask or a decoder channel bitset), LFE channels are excluded from the final aggregation; per‑channel DRs are still listed for inspection.
+- 无元数据时，为避免误判，将不会执行 LFE 剔除（报告会提示“请求剔除 LFE，但未检测到声道布局元数据”）；FLAC 5.1/7.1 在缺少元数据时按规范回退将 LFE 视作 index=3。
+- If no layout metadata is available, LFE exclusion is not performed (a note is emitted); for FLAC 5.1/7.1 a spec fallback maps LFE to index=3 when metadata is missing.
+- AAC 从 WAV 转码常使 Precise DR 略有升高（≈0.01–0.05 dB）；其他有损格式通常略降或持平，无损基本不变。
 - AAC converted from WAV often raises Precise DR by ≈0.01–0.05 dB; other lossy codecs generally decrease or match, while lossless conversions stay aligned.
 
 ## 已知限制（Known Limitations）
-- 多声道文件会被拒绝；未来会引入兼容模式。
-- Multichannel input is currently rejected; a compatible mode is planned.
+- 若容器未提供可用的声道布局元数据，`--exclude-lfe` 将不会生效（会在报告中提示）。
+- If the container does not expose a usable channel layout, `--exclude-lfe` will not take effect (a note is printed in the report).
+- 对于部分容器/变体（如 ADM/RF64、部分 MP4/MKV），布局位图解析仍在完善中；WAV/PCM 的非常规变体可能需要先“重新封装”为标准 WAV/PCM 再分析。
+- For certain containers/variants (e.g. ADM/RF64, some MP4/MKV), layout parsing is still in progress; uncommon WAV/PCM variants may require “rewrapping” into standard WAV/PCM first.
 - 部分容器的真实比特率可能无法获取，将显示 N/A。
 - Some containers may not expose a reliable bitrate, resulting in N/A.
+
+## 多声道与 LFE 剔除简述（Multichannel & LFE Exclusion）
+- 聚合口径：所有“非静音”声道参与；静音声道（峰值与 RMS 近 0）自动排除，不计入平均。
+- Aggregation: all non‑silent channels participate; silent channels (near‑zero peak and RMS) are dropped.
+- LFE 剔除：使用 `--exclude-lfe` 开启，仅在存在可信布局元数据时生效；剔除仅作用于最终聚合，单声道 DR 明细保留。
+- LFE exclusion: enable with `--exclude-lfe`; effective only with reliable layout metadata. Exclusion affects only the aggregate, per‑channel DR rows remain.
+- FLAC 回退：5.1/7.1 若缺少元数据，按规范将 LFE 视作 index=3（0‑based）。7.1.4/9.1.6 等更高阶布局须依赖容器提供的布局或位图。
+- FLAC fallback: for 5.1/7.1 without metadata, LFE is mapped to index=3 (0‑based). Higher layouts like 7.1.4/9.1.6 require container metadata.
+- 示例 / Example：`./target/release/MacinMeter-DynamicRange-Tool-foo_dr --exclude-lfe -- /path/to/file-or-dir`
 
 ## 测量方法（Measurement Method）
 - macOS 脚本：`scripts/benchmark.sh`（单次）、`scripts/benchmark_10x.sh`（10 次统计）。

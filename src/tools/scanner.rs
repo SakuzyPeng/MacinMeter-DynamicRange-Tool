@@ -107,18 +107,36 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
     use super::constants::app_info;
     let mut batch_output = String::new();
 
-    batch_output.push_str(
-        "====================================================================================\n",
-    );
-    // 与测试用例保持兼容：该行需保持固定文案（保留英文关键词）
-    batch_output.push_str("   MacinMeter DR Analysis Report / MacinMeter DR分析报告\n");
-    batch_output.push_str(&format!(
-        "   批量分析结果 {} / Batch Analysis Results (foobar2000 Compatible)\n",
-        app_info::VERSION_SUFFIX
-    ));
-    batch_output.push_str(
-        "====================================================================================\n\n",
-    );
+    // 动态标题与分割线（按显示宽度自适配），并应用可配置左右留白
+    let title_main = {
+        use crate::tools::constants::formatting::{HEADER_TITLE_LEFT_PAD, HEADER_TITLE_RIGHT_PAD};
+        let base = "MacinMeter DR Analysis Report / MacinMeter DR分析报告";
+        crate::tools::utils::table::pad_title_spaces(
+            base,
+            HEADER_TITLE_LEFT_PAD,
+            HEADER_TITLE_RIGHT_PAD,
+        )
+    };
+    let title_sub = {
+        use crate::tools::constants::formatting::{SUBTITLE_LEFT_PAD, SUBTITLE_RIGHT_PAD};
+        let base = format!(
+            "批量分析结果 {} / Batch Analysis Results (foobar2000 Compatible)",
+            app_info::VERSION_SUFFIX
+        );
+        crate::tools::utils::table::pad_title_spaces(&base, SUBTITLE_LEFT_PAD, SUBTITLE_RIGHT_PAD)
+    };
+    let top_sep = crate::tools::utils::table::separator_for_lines(&[&title_main, &title_sub]);
+    batch_output.push_str(&top_sep);
+    batch_output.push_str(&title_main);
+    batch_output.push('\n');
+    batch_output.push_str(&title_sub);
+    batch_output.push('\n');
+    let bottom_sep = crate::tools::utils::table::separator_for_lines(&[&title_main, &title_sub]);
+    batch_output.push_str(&bottom_sep);
+
+    // 在头部下方添加日志时间（与单文件报告保持一致位置）
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    batch_output.push_str(&format!("日志时间 / Log date: {now}\n\n"));
 
     // 添加标准信息到输出（使用共享常量）
     batch_output.push_str(&format!(
@@ -137,10 +155,14 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
     ));
 
     // 添加结果表头（使用固定宽度确保对齐）
-    batch_output.push_str("Official DR      Precise DR        文件名 / File Name\n");
-    batch_output.push_str(
-        "================================================================================\n",
+    let header_line = crate::tools::utils::table::format_two_cols_line(
+        "Official DR",
+        "Precise DR",
+        "文件名 / File Name",
     );
+    batch_output.push_str(&header_line);
+    let sep = crate::tools::utils::table::separator_from(&header_line);
+    batch_output.push_str(&sep);
 
     batch_output
 }
@@ -158,8 +180,11 @@ pub fn create_batch_output_footer(
 
     // 添加统计信息
     output.push('\n');
-    output.push_str("=====================================\n");
-    output.push_str("批量处理统计 / Batch Processing Statistics:\n");
+    let stats_title = "批量处理统计 / Batch Processing Statistics:";
+    let stats_sep = crate::tools::utils::table::separator_for_lines(&[stats_title]);
+    output.push_str(&stats_sep);
+    output.push_str(stats_title);
+    output.push('\n');
     output.push_str(&format!(
         "   总文件数 / Total Files: {}\n",
         audio_files.len()
@@ -292,17 +317,53 @@ pub fn finalize_and_write_batch_output(
             });
 
             batch_output.push('\n');
-            batch_output.push_str("=====================================\n");
-            batch_output.push_str("   边界风险警告 / Boundary Risk Warnings\n");
-            batch_output.push_str("=====================================\n\n");
+            let warnings_title = {
+                use crate::tools::constants::formatting::{
+                    WARNINGS_TITLE_LEFT_PAD, WARNINGS_TITLE_RIGHT_PAD,
+                };
+                let base = "边界风险警告 / Boundary Risk Warnings";
+                crate::tools::utils::table::pad_title_spaces(
+                    base,
+                    WARNINGS_TITLE_LEFT_PAD,
+                    WARNINGS_TITLE_RIGHT_PAD,
+                )
+            };
+            let warnings_sep = crate::tools::utils::table::separator_for_lines(&[&warnings_title]);
+            batch_output.push_str(&warnings_sep);
+            batch_output.push_str(&warnings_title);
+            batch_output.push('\n');
+            batch_output.push_str(&warnings_sep);
+            batch_output.push('\n');
             batch_output
                 .push_str("以下文件的DR值接近四舍五入边界，可能与foobar2000结果相差±1级：\n");
             batch_output.push_str("The following files have DR values near rounding boundaries and may differ from foobar2000 by ±1 level:\n\n");
 
-            batch_output.push_str(
-                "Official DR  Precise DR   风险等级 / Risk           边界方向 / Boundary       Δ距离 / ΔDistance   foobar2000 可能值 / May Report   文件名 / File Name\n\
-                 ==========================================================================================================================================================\n",
+            // 使用统一列对齐：6列定宽 + 文件名尾字段
+            let header_cols = [
+                "Official DR",
+                "Precise DR",
+                "风险等级 / Risk",
+                "边界方向 / Boundary",
+                "Δ距离 / ΔDistance",
+                "foobar2000 可能值 / May Report",
+            ];
+            let base_widths = [13usize, 13, 23, 23, 21, 25];
+            let eff_widths =
+                crate::tools::utils::table::effective_widths(&header_cols, &base_widths);
+
+            // 为特定列增加视觉右移1字符（仅影响表头，不改变列宽），解决个别终端下表头与数据行相差1字符的问题。
+            let mut shifted_header_cols = header_cols;
+            // Δ距离 / ΔDistance 列（索引4）与 foobar2000 可能值 / May Report 列（索引5）
+            shifted_header_cols[4] = " Δ距离 / ΔDistance";
+            shifted_header_cols[5] = " foobar2000 可能值 / May Report";
+            let header = crate::tools::utils::table::format_cols_line(
+                &shifted_header_cols,
+                &eff_widths,
+                " 文件名 / File Name",
             );
+            batch_output.push_str(&header);
+            let warn_sep = crate::tools::utils::table::separator_from(&header);
+            batch_output.push_str(&warn_sep);
 
             for warning in &batch_warnings {
                 let risk_label = match warning.risk_level {
@@ -320,16 +381,19 @@ pub fn finalize_and_write_batch_output(
                     }
                 };
 
-                batch_output.push_str(&format!(
-                    "{:<13}{:<13}{:<23}{:<23}{:<21}{:<25}      {}\n",
-                    format!("DR{}", warning.official_dr),
-                    format!("{:.2} dB", warning.precise_dr),
-                    risk_label,
-                    direction_label,
-                    format!("Δ{:.2} dB", warning.distance),
-                    format!("DR{}", potential_dr),
-                    warning.file_name
-                ));
+                let line = crate::tools::utils::table::format_cols_line(
+                    &[
+                        &format!("DR{}", warning.official_dr),
+                        &format!("{:.2} dB", warning.precise_dr),
+                        risk_label,
+                        direction_label,
+                        &format!("Δ{:.2} dB", warning.distance),
+                        &format!("DR{potential_dr}"),
+                    ],
+                    &eff_widths,
+                    &warning.file_name,
+                );
+                batch_output.push_str(&line);
             }
 
             batch_output.push('\n');

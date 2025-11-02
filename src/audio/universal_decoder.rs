@@ -6,6 +6,10 @@
 use crate::error::{self, AudioError, AudioResult};
 use crate::processing::SampleConverter;
 use std::path::Path;
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+};
 
 // 重新导出公共接口
 pub use super::format::{AudioFormat, FormatSupport};
@@ -210,13 +214,79 @@ impl UniversalDecoder {
         let sample_count = self.detect_sample_count(codec_params);
 
         // 获取真实的编解码器类型
-        let format = AudioFormat::with_codec(
+        let mut format = AudioFormat::with_codec(
             sample_rate,
             channels,
             bits_per_sample,
             sample_count,
             codec_params.codec,
         );
+        // 如果容器提供了布局或通道掩码信息，记录用于后续 LFE 识别
+        if codec_params.channel_layout.is_some() {
+            format.mark_has_channel_layout();
+        }
+        if let Some(ch_mask) = codec_params.channels {
+            use symphonia::core::audio::Channels as Ch;
+            let raw = ch_mask.bits();
+            let mut lfe_indices = Vec::new();
+
+            let push_index = |indices: &mut Vec<usize>, flag: Ch, raw_bits: u64, mask: Ch| {
+                if ch_mask.contains(flag) {
+                    let bit = mask.bits() as u64;
+                    if bit > 0u64 {
+                        let lower = raw_bits & (bit - 1u64);
+                        indices.push(lower.count_ones() as usize);
+                    }
+                }
+            };
+
+            push_index(&mut lfe_indices, Ch::LFE1, raw as u64, Ch::LFE1);
+            // 支持第二路 LFE（若存在）
+            push_index(&mut lfe_indices, Ch::LFE2, raw as u64, Ch::LFE2);
+
+            if !lfe_indices.is_empty() {
+                format.set_lfe_indices(lfe_indices);
+            } else {
+                // 至少有通道掩码，仍标记存在布局线索
+                format.mark_has_channel_layout();
+            }
+        }
+
+        // 若仍未获得 LFE 信息，做两种兼容型回退：
+        // 1) WAV: 直接解析 WAVEFORMATEXTENSIBLE 的 dwChannelMask（避免依赖外部工具）
+        // 2) FLAC: 按 FLAC 规范的通道分配，在 5.1/7.1 中 LFE 位于 index=3（0-based）
+        if format.lfe_indices.is_empty() && format.channels as usize >= 3 {
+            // 回退 1：WAV 容器解析
+            if path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.eq_ignore_ascii_case("wav"))
+                .unwrap_or(false)
+            {
+                if let Ok(Some(mask)) = parse_wav_channel_mask(path) {
+                    // WAVEFORMATEXTENSIBLE 规定交错顺序按掩码从低位到高位排列
+                    const SPEAKER_LOW_FREQUENCY: u32 = 0x0008;
+                    if (mask & SPEAKER_LOW_FREQUENCY) != 0 {
+                        let bit = SPEAKER_LOW_FREQUENCY as u64;
+                        let raw_bits = mask as u64;
+                        let lower = raw_bits & (bit - 1);
+                        let idx = lower.count_ones() as usize;
+                        format.set_lfe_indices(vec![idx]);
+                    }
+                }
+            }
+
+            // 回退 2：FLAC 规范的固定分配（仅当仍无 LFE 索引时）
+            if format.lfe_indices.is_empty()
+                && codec_params.codec == symphonia::core::codecs::CODEC_TYPE_FLAC
+            {
+                let ch = format.channels as usize;
+                if ch == 6 || ch == 8 {
+                    // FLAC 5.1/7.1 的标准分配：L, R, C, LFE, ... => LFE 在 index 3
+                    format.set_lfe_indices(vec![3]);
+                }
+            }
+        }
         format.validate()?;
 
         Ok(format)
@@ -297,6 +367,66 @@ impl UniversalDecoder {
         // 对于无法确定样本数的格式，返回一个合理的占位值
         // 这将在实际处理时被正确的样本计数覆盖
         0
+    }
+}
+
+/// 解析 WAV (RIFF/WAVE) 的 WAVEFORMATEXTENSIBLE，提取 dwChannelMask。
+/// 返回 Ok(Some(mask)) 表示成功解析；Ok(None) 表示不是 extensible 或未找到；Err 表示 I/O 错误。
+fn parse_wav_channel_mask(path: &Path) -> std::io::Result<Option<u32>> {
+    let mut f = File::open(path)?;
+
+    // 读取 RIFF 头 (12 字节)
+    let mut header = [0u8; 12];
+    if f.read_exact(&mut header).is_err() {
+        return Ok(None);
+    }
+    if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+        return Ok(None);
+    }
+
+    // 遍历 chunk，直到找到 "fmt "
+    loop {
+        let mut chunk_hdr = [0u8; 8];
+        if f.read_exact(&mut chunk_hdr).is_err() {
+            return Ok(None);
+        }
+        let chunk_id = &chunk_hdr[0..4];
+        let chunk_size =
+            u32::from_le_bytes([chunk_hdr[4], chunk_hdr[5], chunk_hdr[6], chunk_hdr[7]]);
+
+        if chunk_id == b"fmt " {
+            // 读取 fmt chunk 内容
+            let mut buf = vec![0u8; chunk_size as usize];
+            f.read_exact(&mut buf)?;
+
+            // WAVEFORMATEX 基本长度 16；WAVEFORMATEXTENSIBLE: wFormatTag=0xFFFE 且 cbSize>=22
+            if buf.len() < 18 {
+                return Ok(None);
+            }
+            let w_format_tag = u16::from_le_bytes([buf[0], buf[1]]);
+            // nChannels(2) @2, nSamplesPerSec(4) @4, nAvgBytesPerSec(4) @8, nBlockAlign(2) @12,
+            // wBitsPerSample(2) @14, cbSize(2) @16
+            let cb_size = u16::from_le_bytes([buf[16], buf[17]]);
+            if w_format_tag != 0xFFFE || cb_size < 22 {
+                return Ok(None);
+            }
+            // 有效位深(2) @18, dwChannelMask(4) @20, SubFormat(16) @24
+            if buf.len() < 20 + 2 + 4 {
+                return Ok(None);
+            }
+            let mask_off = 20;
+            let mask = u32::from_le_bytes([
+                buf[mask_off],
+                buf[mask_off + 1],
+                buf[mask_off + 2],
+                buf[mask_off + 3],
+            ]);
+            return Ok(Some(mask));
+        } else {
+            // 跳过该 chunk（对齐到偶数字节）
+            let skip = chunk_size as u64 + (chunk_size as u64 % 2);
+            f.seek(SeekFrom::Current(skip as i64))?;
+        }
     }
 }
 

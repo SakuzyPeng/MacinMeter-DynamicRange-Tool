@@ -33,6 +33,7 @@ fn default_test_config() -> AppConfig {
         silence_filter_threshold_db: None,
         edge_trim_threshold_db: None,
         edge_trim_min_run_ms: None,
+        exclude_lfe: false,
     }
 }
 

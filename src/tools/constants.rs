@@ -281,3 +281,18 @@ pub mod app_info {
         format!("{APP_NAME} v{version} / {OUTPUT_COMPATIBILITY}")
     }
 }
+
+/// 文本与表格格式相关的可配置常量
+pub mod formatting {
+    /// 边界风险警告标题左右空格（可根据视觉需求调整）
+    pub const WARNINGS_TITLE_LEFT_PAD: usize = 3;
+    pub const WARNINGS_TITLE_RIGHT_PAD: usize = 3;
+
+    /// 顶部主标题左右空格（可根据视觉需求调整）
+    pub const HEADER_TITLE_LEFT_PAD: usize = 3;
+    pub const HEADER_TITLE_RIGHT_PAD: usize = 3;
+
+    /// 顶部副标题左右空格（可根据视觉需求调整）
+    pub const SUBTITLE_LEFT_PAD: usize = 3;
+    pub const SUBTITLE_RIGHT_PAD: usize = 3;
+}
