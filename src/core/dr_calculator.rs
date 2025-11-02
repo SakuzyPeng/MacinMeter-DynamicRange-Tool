@@ -457,8 +457,14 @@ impl DrCalculator {
         samples: &[f32],
         channel_count: usize,
     ) -> AudioResult<Vec<DrResult>> {
-        // 4的倍数声道（8/12/16）：使用4×4块级转置路径
-        if channel_count >= 8 && channel_count.is_multiple_of(4) {
+        const MIN_FRAMES_FOR_TRANSPOSE: usize = 64;
+
+        let total_frames = samples.len() / channel_count;
+
+        if channel_count >= 8
+            && channel_count.is_multiple_of(4)
+            && total_frames >= MIN_FRAMES_FOR_TRANSPOSE
+        {
             #[cfg(debug_assertions)]
             eprintln!(
                 "[DRCALC] Using 4×4 block transpose for {channel_count} channels / 使用4×4块级转置处理{channel_count}声道"
@@ -467,8 +473,15 @@ impl DrCalculator {
             return self.calculate_dr_transpose_4x4(samples, channel_count);
         }
 
+        if channel_count >= 8 && channel_count.is_multiple_of(4) {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Falling back to strided access (frames={total_frames}) / 数据量较小，回退至跨步处理"
+            );
+        }
+
         // 6声道（5.1）：前4通道使用4×4块级转置 + 后2通道使用跨步处理
-        if channel_count == 6 {
+        if channel_count == 6 && total_frames >= 4 {
             #[cfg(debug_assertions)]
             eprintln!(
                 "[DRCALC] Using mixed 4×4 transpose (ch0-3) + strided (ch4-5) for 6 channels / 6声道采用混合：前4通道4×4转置 + 后2通道跨步"
@@ -488,7 +501,6 @@ impl DrCalculator {
                 })
                 .collect();
 
-            let total_frames = samples.len() / channel_count;
             let num_blocks = total_frames / 4; // 每块4帧
 
             // 使用4×4转置处理通道0..3
@@ -502,11 +514,10 @@ impl DrCalculator {
                     channel_count,
                 );
 
-                // 将4帧样本直接投喂到analyzer，避免构建大缓冲
-                analyzers[0].process_samples(&t.ch0);
-                analyzers[1].process_samples(&t.ch1);
-                analyzers[2].process_samples(&t.ch2);
-                analyzers[3].process_samples(&t.ch3);
+                analyzers[0].process_block4(&t.ch0);
+                analyzers[1].process_block4(&t.ch1);
+                analyzers[2].process_block4(&t.ch2);
+                analyzers[3].process_block4(&t.ch3);
             }
 
             // 处理不足4帧的尾部（对通道0..3逐帧追加）
@@ -516,10 +527,10 @@ impl DrCalculator {
                 for f in 0..remaining_frames {
                     let frame = base_frame + f;
                     let base = frame * channel_count;
-                    analyzers[0].process_samples(&samples[base..base + 1]);
-                    analyzers[1].process_samples(&samples[base + 1..base + 2]);
-                    analyzers[2].process_samples(&samples[base + 2..base + 3]);
-                    analyzers[3].process_samples(&samples[base + 3..base + 4]);
+                    analyzers[0].process_single_sample(samples[base]);
+                    analyzers[1].process_single_sample(samples[base + 1]);
+                    analyzers[2].process_single_sample(samples[base + 2]);
+                    analyzers[3].process_single_sample(samples[base + 3]);
                 }
             }
 
@@ -627,10 +638,10 @@ impl DrCalculator {
                     channel_count,
                 );
 
-                analyzers[channel_offset].process_samples(&t.ch0);
-                analyzers[channel_offset + 1].process_samples(&t.ch1);
-                analyzers[channel_offset + 2].process_samples(&t.ch2);
-                analyzers[channel_offset + 3].process_samples(&t.ch3);
+                analyzers[channel_offset].process_block4(&t.ch0);
+                analyzers[channel_offset + 1].process_block4(&t.ch1);
+                analyzers[channel_offset + 2].process_block4(&t.ch2);
+                analyzers[channel_offset + 3].process_block4(&t.ch3);
             }
         }
 
@@ -642,7 +653,7 @@ impl DrCalculator {
                 let frame = base_frame + f;
                 let base = frame * channel_count;
                 for ch_idx in 0..channel_count {
-                    analyzers[ch_idx].process_samples(&samples[base + ch_idx..base + ch_idx + 1]);
+                    analyzers[ch_idx].process_single_sample(samples[base + ch_idx]);
                 }
             }
         }

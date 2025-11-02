@@ -207,6 +207,77 @@ impl WindowRmsAnalyzer {
     }
 
     /// 处理单声道样本，按3秒窗口计算RMS并填入直方图
+    #[inline(always)]
+    fn process_one_sample(&mut self, sample_f64: f64) {
+        let abs_sample = sample_f64.abs();
+
+        // **dr14兼容性**: 保存当前样本作为潜在的"最后样本"。当前已不以dr14为兼容目标。
+        self.last_sample = sample_f64;
+
+        // 记录总样本数
+        self.total_samples_processed += 1;
+
+        // **流式双峰跟踪**: 更新Peak和次Peak
+        if abs_sample > self.current_peak {
+            // 新样本是新最大值
+            self.current_second_peak = self.current_peak; // 旧最大值变成次大值
+            self.current_peak = abs_sample;
+            self.current_peak_count = 1;
+        } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
+            // 新样本等于最大值（使用浮点数容差比较）
+            self.current_peak_count += 1;
+        } else if abs_sample > self.current_second_peak {
+            // 新样本大于次大值但小于最大值
+            self.current_second_peak = abs_sample;
+        }
+
+        // 更新当前窗口的平方和
+        self.current_sum_sq += sample_f64 * sample_f64;
+        self.current_count += 1;
+
+        // 窗口满了，计算窗口RMS和Peak并添加到直方图
+        if self.current_count >= self.window_len {
+            // 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
+            // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
+            // 这是foobar2000的固定行为，不受new()参数控制
+            let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
+
+            // 实验性功能：应用静音过滤
+            if self.silence_filter.should_filter(window_rms) {
+                // 窗口RMS低于阈值，过滤此窗口
+                self.filtered_windows_count += 1;
+            } else {
+                // 窗口RMS高于阈值，正常处理
+                self.histogram.add_window_rms(window_rms);
+
+                // 记录窗口Peak值用于后续排序
+                self.window_peaks.push(self.current_peak);
+
+                // **关键修复**: 直接存储RMS值避免量化损失
+                self.window_rms_values.push(window_rms);
+            }
+
+            // 重置窗口
+            self.current_sum_sq = 0.0;
+            self.current_peak = 0.0;
+            self.current_peak_count = 0;
+            self.current_second_peak = 0.0;
+            self.current_count = 0;
+        }
+    }
+
+    #[inline(always)]
+    pub fn process_block4(&mut self, block: &[f32; 4]) {
+        for &sample in block {
+            self.process_one_sample(sample as f64);
+        }
+    }
+
+    #[inline(always)]
+    pub fn process_single_sample(&mut self, sample: f32) {
+        self.process_one_sample(sample as f64);
+    }
+
     pub fn process_samples(&mut self, samples: &[f32]) {
         // **长曲目优化**: 首次调用时预估窗口数，减少realloc
         if self.total_samples_processed == 0 && !samples.is_empty() {
@@ -215,63 +286,8 @@ impl WindowRmsAnalyzer {
             self.window_peaks.reserve(estimated_windows);
         }
 
-        // 记录总样本数
-        self.total_samples_processed += samples.len();
-
         for &sample in samples {
-            let sample_f64 = sample as f64;
-            let abs_sample = sample_f64.abs();
-
-            // **dr14兼容性**: 保存当前样本作为潜在的"最后样本"。当前已不以dr14为兼容目标。
-            self.last_sample = sample_f64;
-
-            // **流式双峰跟踪**: 更新Peak和次Peak
-            if abs_sample > self.current_peak {
-                // 新样本是新最大值
-                self.current_second_peak = self.current_peak; // 旧最大值变成次大值
-                self.current_peak = abs_sample;
-                self.current_peak_count = 1;
-            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
-                // 新样本等于最大值（使用浮点数容差比较）
-                self.current_peak_count += 1;
-            } else if abs_sample > self.current_second_peak {
-                // 新样本大于次大值但小于最大值
-                self.current_second_peak = abs_sample;
-            }
-
-            // 更新当前窗口的平方和
-            self.current_sum_sq += sample_f64 * sample_f64;
-            self.current_count += 1;
-
-            // 窗口满了，计算窗口RMS和Peak并添加到直方图
-            if self.current_count >= self.window_len {
-                // 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
-                // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
-                // 这是foobar2000的固定行为，不受new()参数控制
-                let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
-
-                // 实验性功能：应用静音过滤
-                if self.silence_filter.should_filter(window_rms) {
-                    // 窗口RMS低于阈值，过滤此窗口
-                    self.filtered_windows_count += 1;
-                } else {
-                    // 窗口RMS高于阈值，正常处理
-                    self.histogram.add_window_rms(window_rms);
-
-                    // 记录窗口Peak值用于后续排序
-                    self.window_peaks.push(self.current_peak);
-
-                    // **关键修复**: 直接存储RMS值避免量化损失
-                    self.window_rms_values.push(window_rms);
-                }
-
-                // 重置窗口
-                self.current_sum_sq = 0.0;
-                self.current_peak = 0.0;
-                self.current_peak_count = 0;
-                self.current_second_peak = 0.0;
-                self.current_count = 0;
-            }
+            self.process_one_sample(sample as f64);
         }
 
         // 处理不足一个窗口的剩余样本
@@ -386,71 +402,14 @@ impl WindowRmsAnalyzer {
 
         for frame in &mut chunks {
             let sample = frame[channel_idx];
-            let sample_f64 = sample as f64;
-            let abs_sample = sample_f64.abs();
-
-            self.last_sample = sample_f64;
-            self.total_samples_processed += 1;
-
-            // 流式双峰跟踪
-            if abs_sample > self.current_peak {
-                self.current_second_peak = self.current_peak;
-                self.current_peak = abs_sample;
-                self.current_peak_count = 1;
-            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
-                self.current_peak_count += 1;
-            } else if abs_sample > self.current_second_peak {
-                self.current_second_peak = abs_sample;
-            }
-
-            // 更新窗口平方和
-            self.current_sum_sq += sample_f64 * sample_f64;
-            self.current_count += 1;
-
-            // 窗口满了，计算RMS并记录
-            if self.current_count >= self.window_len {
-                let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
-
-                if self.silence_filter.should_filter(window_rms) {
-                    self.filtered_windows_count += 1;
-                } else {
-                    self.histogram.add_window_rms(window_rms);
-                    self.window_peaks.push(self.current_peak);
-                    self.window_rms_values.push(window_rms);
-                }
-
-                // 重置窗口状态
-                self.current_sum_sq = 0.0;
-                self.current_peak = 0.0;
-                self.current_peak_count = 0;
-                self.current_second_peak = 0.0;
-                self.current_count = 0;
-            }
+            self.process_one_sample(sample as f64);
         }
 
         // 处理不完整的尾帧
         let remainder = chunks.remainder();
         if channel_idx < remainder.len() {
             let sample = remainder[channel_idx];
-            let sample_f64 = sample as f64;
-            let abs_sample = sample_f64.abs();
-
-            self.last_sample = sample_f64;
-            self.total_samples_processed += 1;
-
-            // 流式双峰跟踪
-            if abs_sample > self.current_peak {
-                self.current_second_peak = self.current_peak;
-                self.current_peak = abs_sample;
-                self.current_peak_count = 1;
-            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
-                self.current_peak_count += 1;
-            } else if abs_sample > self.current_second_peak {
-                self.current_second_peak = abs_sample;
-            }
-
-            self.current_sum_sq += sample_f64 * sample_f64;
-            self.current_count += 1;
+            self.process_one_sample(sample as f64);
         }
 
         // 处理尾窗（与 process_samples 相同逻辑）
