@@ -350,41 +350,121 @@ impl DrCalculator {
         // 多声道支持：基于foobar2000 DR Meter实测行为
         // 每个声道独立计算DR，最终Official DR为算术平均值
 
-        // [TRACE] 使用ProcessingCoordinator享受SIMD优化的声道分离服务
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[DRCALC] Calling ProcessingCoordinator::process_channels / 调用ProcessingCoordinator::process_channels"
-        );
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[DRCALC] Input: samples={samples}, channels={channels} / 输入: samples={samples}, channels={channels}",
-            samples = samples.len(),
-            channels = channel_count
-        );
+        // 混合策略：3+声道使用零拷贝strided，1-2声道保持SIMD优势
+        if channel_count >= 3 {
+            // 3+声道：零拷贝单次遍历跨步处理
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Using zero-copy strided processing for {channel_count} channels / 使用零拷贝跨步处理{channel_count}声道"
+            );
 
-        let performance_result = self.processing_coordinator.process_channels(
-            samples,
-            channel_count,
-            |channel_samples, channel_idx| {
-                // [TRACE] 回调：使用core层的DR算法计算单声道结果
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "[DRCALC] Callback processing channel {channel_idx}: {samples} samples / 回调处理声道{channel_idx}: {samples} 个样本",
-                    channel_idx = channel_idx,
-                    samples = channel_samples.len()
-                );
+            self.calculate_dr_strided(samples, channel_count)
+        } else {
+            // 1-2声道：使用ProcessingCoordinator享受SIMD优化的声道分离服务
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Calling ProcessingCoordinator::process_channels / 调用ProcessingCoordinator::process_channels"
+            );
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] Input: samples={samples}, channels={channels} / 输入: samples={samples}, channels={channels}",
+                samples = samples.len(),
+                channels = channel_count
+            );
 
-                self.calculate_single_channel_dr(channel_samples, channel_idx)
-            },
-        )?;
+            let performance_result = self.processing_coordinator.process_channels(
+                samples,
+                channel_count,
+                |channel_samples, channel_idx| {
+                    // [TRACE] 回调：使用core层的DR算法计算单声道结果
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[DRCALC] Callback processing channel {channel_idx}: {samples} samples / 回调处理声道{channel_idx}: {samples} 个样本",
+                        channel_idx = channel_idx,
+                        samples = channel_samples.len()
+                    );
 
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[DRCALC] ProcessingCoordinator returned {count} DR results / ProcessingCoordinator返回: {count} 个DR结果",
-            count = performance_result.dr_results.len()
-        );
+                    self.calculate_single_channel_dr(channel_samples, channel_idx)
+                },
+            )?;
 
-        Ok(performance_result.dr_results)
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[DRCALC] ProcessingCoordinator returned {count} DR results / ProcessingCoordinator返回: {count} 个DR结果",
+                count = performance_result.dr_results.len()
+            );
+
+            Ok(performance_result.dr_results)
+        }
+    }
+
+    /// 零拷贝跨步多声道DR计算（3+声道专用）
+    ///
+    /// 单次遍历交错样本，直接为每个声道计算DR，消除中间Vec分配。
+    fn calculate_dr_strided(
+        &self,
+        samples: &[f32],
+        channel_count: usize,
+    ) -> AudioResult<Vec<DrResult>> {
+        use crate::tools::constants::dr_analysis::DR_ZERO_EPS;
+
+        // 创建每个声道的analyzer
+        let mut analyzers: Vec<WindowRmsAnalyzer> = (0..channel_count)
+            .map(|_| {
+                WindowRmsAnalyzer::with_silence_filter(
+                    self.sample_rate,
+                    self.sum_doubling_enabled,
+                    self.silence_filter,
+                )
+            })
+            .collect();
+
+        // 零拷贝跨步处理：每个analyzer直接从交错样本提取目标声道
+        for (channel_idx, analyzer) in analyzers.iter_mut().enumerate() {
+            analyzer.process_samples_strided(samples, channel_idx, channel_count);
+        }
+
+        // 从analyzers派生DR结果
+        let dr_results: Vec<DrResult> = analyzers
+            .into_iter()
+            .enumerate()
+            .map(|(channel_idx, analyzer)| {
+                // 使用WindowRmsAnalyzer的20%采样算法
+                let rms_20_percent = analyzer.calculate_20_percent_rms();
+
+                // 使用配置的峰值选择策略
+                let window_primary_peak = analyzer.get_largest_peak();
+                let window_secondary_peak = analyzer.get_second_largest_peak();
+
+                let peak_for_dr = self
+                    .peak_selection_strategy
+                    .select_peak(window_primary_peak, window_secondary_peak);
+
+                // 计算DR值（官方标准公式）
+                let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
+                    let ratio = rms_20_percent / peak_for_dr;
+                    -20.0 * ratio.log10()
+                } else {
+                    0.0
+                };
+
+                // 使用20%RMS保持算法一致性
+                let display_rms = rms_20_percent;
+
+                // 创建DR结果
+                DrResult::new_with_peaks(
+                    channel_idx,
+                    dr_value,
+                    display_rms,
+                    peak_for_dr,
+                    window_primary_peak,
+                    window_secondary_peak,
+                    samples.len() / channel_count, // 每个声道的样本数
+                )
+            })
+            .collect();
+
+        Ok(dr_results)
     }
 
     /// 单声道DR计算算法（纯算法逻辑）
@@ -393,6 +473,8 @@ impl DrCalculator {
         channel_samples: &[f32],
         channel_idx: usize,
     ) -> AudioResult<DrResult> {
+        use crate::tools::constants::dr_analysis::DR_ZERO_EPS;
+
         // [TRACE] 创建WindowRmsAnalyzer进行DR分析
         #[cfg(debug_assertions)]
         eprintln!(
@@ -426,8 +508,7 @@ impl DrCalculator {
             .select_peak(window_primary_peak, window_secondary_peak);
 
         // 计算DR值（官方标准公式）
-        // 为了跨平台稳定性，对接近0的RMS/Peak做阈值归零处理，避免极小浮点噪声导致非零DR。
-        const DR_ZERO_EPS: f64 = 1e-12;
+        // 为了跨平台稳定性，对接近0的RMS/Peak做阈值归零处理，避免极小浮点噪声导致非零DR
         let dr_value = if rms_20_percent > DR_ZERO_EPS && peak_for_dr > DR_ZERO_EPS {
             let ratio = rms_20_percent / peak_for_dr;
             -20.0 * ratio.log10()
