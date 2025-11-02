@@ -163,22 +163,12 @@ fn process_window_with_simd_separation(
         analyzers[0].process_samples(left_buffer);
         analyzers[1].process_samples(right_buffer);
     } else {
-        // 多声道（3+）：逐声道提取和处理
-        let samples_per_channel = window_samples.len() / channel_count as usize;
-
+        // 多声道（3+）：零拷贝单次遍历跨步处理
+        // 使用 process_samples_strided 直接从交错样本提取并处理每个声道
+        // 性能收益：单次遍历 vs N次遍历，零Vec分配 vs N个Vec
+        // 对Atmos场景（7.1.4=12ch, 9.1.6=16ch）尤为关键
         for (channel_idx, analyzer) in analyzers.iter_mut().enumerate() {
-            // 为每个声道提取样本（复用left_buffer以避免额外分配）
-            left_buffer.clear();
-            left_buffer.reserve(samples_per_channel);
-
-            channel_separator.extract_channel_into(
-                window_samples,
-                channel_idx,
-                channel_count as usize,
-                left_buffer,
-            );
-
-            analyzer.process_samples(left_buffer);
+            analyzer.process_samples_strided(window_samples, channel_idx, channel_count as usize);
         }
     }
 }

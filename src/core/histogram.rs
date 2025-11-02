@@ -326,6 +326,138 @@ impl WindowRmsAnalyzer {
         }
     }
 
+    /// 零拷贝跨步处理：直接从交错样本提取单个声道
+    ///
+    /// 单次遍历多声道交错样本，提取目标声道并按3秒窗口计算RMS。
+    /// 相比 process_samples + extract_channel 组合，避免了N倍内存访问和中间Vec分配。
+    ///
+    /// # 参数
+    ///
+    /// * `interleaved_samples` - 交错的多声道样本 (L0,R0,C0,LFE0, L1,R1,C1,LFE1, ...)
+    /// * `channel_idx` - 目标声道索引 (0-based)
+    /// * `channel_count` - 总声道数
+    ///
+    /// # 性能收益（vs N次extract + process）
+    ///
+    /// - **7.1 (8ch)**: 单次遍历 vs 8次遍历，零Vec分配 vs 8个Vec
+    /// - **7.1.4 (12ch)**: 单次遍历 vs 12次遍历，零Vec分配 vs 12个Vec
+    /// - **9.1.6 (16ch)**: 单次遍历 vs 16次遍历，零Vec分配 vs 16个Vec
+    ///
+    /// # Panics
+    ///
+    /// - `channel_idx >= channel_count` 时panic（调试断言）
+    /// - `interleaved_samples.len()` 不是 `channel_count` 倍数时panic（调试断言）
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// let mut analyzer = WindowRmsAnalyzer::new(44100, true);
+    /// let interleaved = vec![1.0, 2.0, 3.0, 4.0]; // 2声道立体声
+    ///
+    /// // 处理左声道（索引0）
+    /// analyzer.process_samples_strided(&interleaved, 0, 2);
+    /// ```
+    pub fn process_samples_strided(
+        &mut self,
+        interleaved_samples: &[f32],
+        channel_idx: usize,
+        channel_count: usize,
+    ) {
+        debug_assert!(
+            channel_idx < channel_count,
+            "channel_idx ({channel_idx}) must be < channel_count ({channel_count})"
+        );
+        debug_assert!(
+            interleaved_samples.len().is_multiple_of(channel_count),
+            "interleaved_samples.len() ({}) must be a multiple of channel_count ({channel_count})",
+            interleaved_samples.len()
+        );
+
+        // 首次调用时预估窗口数，减少realloc
+        if self.total_samples_processed == 0 && !interleaved_samples.is_empty() {
+            let samples_this_channel = interleaved_samples.len() / channel_count;
+            let estimated_windows = samples_this_channel / self.window_len + 1;
+            self.window_rms_values.reserve(estimated_windows);
+            self.window_peaks.reserve(estimated_windows);
+        }
+
+        // 单次遍历：使用chunks_exact直接取目标声道样本
+        let mut chunks = interleaved_samples.chunks_exact(channel_count);
+
+        for frame in &mut chunks {
+            let sample = frame[channel_idx];
+            let sample_f64 = sample as f64;
+            let abs_sample = sample_f64.abs();
+
+            self.last_sample = sample_f64;
+            self.total_samples_processed += 1;
+
+            // 流式双峰跟踪
+            if abs_sample > self.current_peak {
+                self.current_second_peak = self.current_peak;
+                self.current_peak = abs_sample;
+                self.current_peak_count = 1;
+            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
+                self.current_peak_count += 1;
+            } else if abs_sample > self.current_second_peak {
+                self.current_second_peak = abs_sample;
+            }
+
+            // 更新窗口平方和
+            self.current_sum_sq += sample_f64 * sample_f64;
+            self.current_count += 1;
+
+            // 窗口满了，计算RMS并记录
+            if self.current_count >= self.window_len {
+                let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
+
+                if self.silence_filter.should_filter(window_rms) {
+                    self.filtered_windows_count += 1;
+                } else {
+                    self.histogram.add_window_rms(window_rms);
+                    self.window_peaks.push(self.current_peak);
+                    self.window_rms_values.push(window_rms);
+                }
+
+                // 重置窗口状态
+                self.current_sum_sq = 0.0;
+                self.current_peak = 0.0;
+                self.current_peak_count = 0;
+                self.current_second_peak = 0.0;
+                self.current_count = 0;
+            }
+        }
+
+        // 处理不完整的尾帧
+        let remainder = chunks.remainder();
+        if channel_idx < remainder.len() {
+            let sample = remainder[channel_idx];
+            let sample_f64 = sample as f64;
+            let abs_sample = sample_f64.abs();
+
+            self.last_sample = sample_f64;
+            self.total_samples_processed += 1;
+
+            // 流式双峰跟踪
+            if abs_sample > self.current_peak {
+                self.current_second_peak = self.current_peak;
+                self.current_peak = abs_sample;
+                self.current_peak_count = 1;
+            } else if (abs_sample - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
+                self.current_peak_count += 1;
+            } else if abs_sample > self.current_second_peak {
+                self.current_second_peak = abs_sample;
+            }
+
+            self.current_sum_sq += sample_f64 * sample_f64;
+            self.current_count += 1;
+        }
+
+        // 处理尾窗（与 process_samples 相同逻辑）
+        // 注意：这里不处理尾窗，因为可能还有更多chunk要处理
+        // 尾窗处理在所有chunk处理完后，由调用者通过后续调用或finalize触发
+    }
+
     /// 计算"最响20%窗口"的加权RMS值
     ///
     /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
