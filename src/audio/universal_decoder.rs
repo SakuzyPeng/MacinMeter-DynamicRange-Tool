@@ -262,17 +262,16 @@ impl UniversalDecoder {
                 .and_then(|s| s.to_str())
                 .map(|s| s.eq_ignore_ascii_case("wav"))
                 .unwrap_or(false)
+                && let Ok(Some(mask)) = parse_wav_channel_mask(path)
             {
-                if let Ok(Some(mask)) = parse_wav_channel_mask(path) {
-                    // WAVEFORMATEXTENSIBLE 规定交错顺序按掩码从低位到高位排列
-                    const SPEAKER_LOW_FREQUENCY: u32 = 0x0008;
-                    if (mask & SPEAKER_LOW_FREQUENCY) != 0 {
-                        let bit = SPEAKER_LOW_FREQUENCY as u64;
-                        let raw_bits = mask as u64;
-                        let lower = raw_bits & (bit - 1);
-                        let idx = lower.count_ones() as usize;
-                        format.set_lfe_indices(vec![idx]);
-                    }
+                // WAVEFORMATEXTENSIBLE 规定交错顺序按掩码从低位到高位排列
+                const SPEAKER_LOW_FREQUENCY: u32 = 0x0008;
+                if (mask & SPEAKER_LOW_FREQUENCY) != 0 {
+                    let bit = SPEAKER_LOW_FREQUENCY as u64;
+                    let raw_bits = mask as u64;
+                    let lower = raw_bits & (bit - 1);
+                    let idx = lower.count_ones() as usize;
+                    format.set_lfe_indices(vec![idx]);
                 }
             }
 

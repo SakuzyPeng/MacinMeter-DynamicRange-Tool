@@ -755,9 +755,10 @@ impl SimdProcessor {
         let mut rows = [_mm_setzero_ps(); 4];
         for (i, row) in rows.iter_mut().enumerate() {
             let pos = (frame_offset + i) * channel_count + channel_offset;
-            // SAFETY: pos在[0, interleaved.len()-4)范围内（已由debug_assert验证）
-            // _mm_loadu_ps加载4个连续f32，对应当前帧的4个通道
-            *row = _mm_loadu_ps(interleaved.as_ptr().add(pos));
+            // SAFETY: pos 在 [0, interleaved.len()-4) 范围内（已由 debug_assert 验证）。
+            // 需要在 unsafe 块中调用指针算术与 SIMD 加载。
+            let ptr = unsafe { interleaved.as_ptr().add(pos) };
+            *row = unsafe { _mm_loadu_ps(ptr) };
         }
 
         // SSE2 4×4转置标准算法

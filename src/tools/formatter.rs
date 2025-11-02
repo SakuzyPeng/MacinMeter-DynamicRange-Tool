@@ -438,7 +438,10 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
             _ => "多声道",
         };
         output.push_str(&format!(
-            "注 / Note: 检测为 {format_name} 格式，包含 LFE (低频效果) 声道，所有非静音声道参与 DR 计算（符合foobar2000行为）。\n"
+            "注 / Note: 检测为 {format_name} 格式，包含 LFE (低频效果) 声道；所有非静音声道参与 DR 聚合（与 foobar2000 口径一致）。\n"
+        ));
+        output.push_str(&format!(
+            "Note: detected as {format_name} layout, includes LFE channel(s); all non‑silent channels participate in DR aggregation (foobar2000‑compatible).\n"
         ));
         output.push_str(&format!(
             "    LFE声道位置 / LFE channels: Channel {}\n",
@@ -710,14 +713,20 @@ pub fn calculate_official_dr(
             if excluded_count > 0 {
                 let valid_count = results.len() - excluded_count;
                 if excluded_lfe > 0 {
+                    let silent = excluded_count - excluded_lfe;
+                    let lfe = excluded_lfe;
                     output.push_str(&format!(
-                        "DR计算基于 {valid_count} 个有效声道 (已排除 {silent} 个静音声道, {lfe} 个LFE声道)\n\n",
-                        silent = excluded_count - excluded_lfe,
-                        lfe = excluded_lfe
+                        "DR计算基于 {valid_count} 个有效声道 (已排除 {silent} 个静音声道, {lfe} 个LFE声道)\n",
+                    ));
+                    output.push_str(&format!(
+                        "Aggregation based on {valid_count} valid channels (excluded {silent} silent, {lfe} LFE).\n\n"
                     ));
                 } else {
                     output.push_str(&format!(
-                        "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个静音声道)\n\n"
+                        "DR计算基于 {valid_count} 个有效声道 (已排除 {excluded_count} 个静音声道)\n"
+                    ));
+                    output.push_str(&format!(
+                        "Aggregation based on {valid_count} valid channels (excluded {excluded_count} silent).\n\n"
                     ));
                 }
             }
