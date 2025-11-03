@@ -371,6 +371,12 @@ MP3 uses serial decoding (stateful format); other formats support parallel accel
 - 基于数学公式的原创实现 / Original implementation based on mathematical formulas
 - 通过输入/输出对比验证算法正确性 / Algorithm verified through input/output comparison
 
+### 智能助力 / AI Collaboration
+- 感谢 Anthropic Claude 4.5 系列模型（Sonnet / Haiku）完成了项目的大部分代码编写  
+  Thanks to Anthropic Claude 4.5 models (Sonnet / Haiku) for implementing the majority of the codebase
+- 感谢 OpenAI GPT-5 与 Codex 模型协助补充部分代码并负责大部分审阅与改进建议  
+  Thanks to OpenAI GPT-5 and Codex models for contributing additional code and providing the bulk of reviews & refinements
+
 ### 逆向工程合法性 / Reverse Engineering Legality
 根据相关法律判例，以下行为通常被认为是合法的 / Based on legal precedents, the following are generally legal:
 - 为了互操作性目的的逆向分析 / Reverse analysis for interoperability
