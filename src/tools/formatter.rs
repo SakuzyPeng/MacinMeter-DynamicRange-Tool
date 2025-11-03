@@ -347,7 +347,7 @@ pub fn format_medium_multichannel_results(results: &[DrResult], format: &AudioFo
         if is_lfe {
             label.push_str("  [LFE]");
         } else if is_silent {
-            label.push_str("  [Silent]");
+            label.push_str("  [Silent / 静音]");
         }
         output.push_str(&utils::table::format_two_cols_line(
             &col_official,
@@ -408,7 +408,7 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
         if is_lfe {
             label.push_str("  [LFE]");
         } else if is_silent {
-            label.push_str("  [Silent]");
+            label.push_str("  [Silent / 静音]");
         }
 
         output.push_str(&utils::table::format_two_cols_line(
@@ -653,8 +653,8 @@ pub fn detect_dr_boundary_warning(official_dr: i32, precise_dr: f64) -> Option<S
                     "建议 / Recommendation: 使用 foobar2000 DR Meter 交叉验证 / Cross-validate with foobar2000",
                 ),
                 BoundaryRiskLevel::Medium => (
-                    "接近边界",
-                    "Near Boundary",
+                    "边界风险（中）",
+                    "Boundary Risk (Medium)",
                     "建议 / Recommendation: 留意与 foobar2000 的对比结果 / Compare with foobar2000 results",
                 ),
                 BoundaryRiskLevel::None => ("", "", ""),

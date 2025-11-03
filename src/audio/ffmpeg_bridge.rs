@@ -45,6 +45,8 @@ pub struct FFmpegDecoder {
     chunk_stats: ChunkSizeStats,
     /// 是否已到达流末尾
     eof_reached: bool,
+    /// 是否使用32位样本（DSD格式）
+    use_s32: bool,
 }
 
 impl FFmpegDecoder {
@@ -188,24 +190,24 @@ impl FFmpegDecoder {
             path.to_str().unwrap().to_string(),
         ];
 
+        let use_s32 = is_dsd; // DSD使用32位输出以避免精度损失
+
         if is_dsd {
-            // DSD专用优化：高质量转换参数
+            // DSD专用优化：高质量转换参数（输出32位PCM）
             args.extend(vec![
                 "-af".to_string(),
                 "lowpass=20000,volume=6dB".to_string(), // 低通滤波 + 增益补偿
-                "-sample_fmt".to_string(),
-                "s32".to_string(), // 32位避免精度损失
                 "-ar".to_string(),
                 format.sample_rate.to_string(), // 保持探测到的采样率
             ]);
         }
 
-        // 输出PCM格式
+        // 输出PCM格式（DSD使用32位，其他格式使用16位）
         args.extend(vec![
             "-f".to_string(),
-            "s16le".to_string(),
+            if use_s32 { "s32le".to_string() } else { "s16le".to_string() },
             "-acodec".to_string(),
-            "pcm_s16le".to_string(),
+            if use_s32 { "pcm_s32le".to_string() } else { "pcm_s16le".to_string() },
             "-".to_string(), // 输出到stdout
         ]);
 
@@ -222,8 +224,10 @@ impl FFmpegDecoder {
         let total_samples = format.sample_count; // 提前保存，避免move后使用
 
         eprintln!(
-            "[INFO] FFmpeg decoder initialized / FFmpeg解码器已初始化: {} channels, {}Hz",
-            format.channels, format.sample_rate
+            "[INFO] FFmpeg decoder initialized / FFmpeg解码器已初始化: {} channels, {}Hz, format={}",
+            format.channels,
+            format.sample_rate,
+            if use_s32 { "S32LE" } else { "S16LE" }
         );
 
         Ok(Self {
@@ -233,6 +237,7 @@ impl FFmpegDecoder {
             total_samples,
             chunk_stats: ChunkSizeStats::new(),
             eof_reached: false,
+            use_s32,
         })
     }
 
@@ -246,6 +251,17 @@ impl FFmpegDecoder {
             })
             .collect()
     }
+
+    /// S32LE字节转f32样本（小端序，DSD专用）
+    fn convert_s32le_to_f32(bytes: &[u8]) -> Vec<f32> {
+        bytes
+            .chunks_exact(4)
+            .map(|chunk| {
+                let sample = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                sample as f32 / 2147483648.0 // 归一化到[-1.0, 1.0]
+            })
+            .collect()
+    }
 }
 
 impl StreamingDecoder for FFmpegDecoder {
@@ -254,14 +270,23 @@ impl StreamingDecoder for FFmpegDecoder {
             return Ok(None);
         }
 
-        // 每次读取3秒的音频数据（可调整）
-        const CHUNK_DURATION_SECONDS: usize = 3;
-        let samples_per_chunk = self.format.sample_rate as usize
-            * self.format.channels as usize
-            * CHUNK_DURATION_SECONDS;
-        let bytes_per_chunk = samples_per_chunk * 2; // S16LE = 2字节/样本
+        // 计算自适应分块大小（按字节上限而非固定时长）
+        // 约束：8-16MB每块，适应不同声道数和采样率
+        const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024; // 16MB上限
+        let channels = self.format.channels as usize;
+        let bytes_per_sample = 2; // S16LE = 2字节/样本
+        let bytes_per_chunk = std::cmp::min(
+            MAX_CHUNK_BYTES,
+            std::cmp::max(
+                64 * 1024, // 64KB下限
+                self.format.sample_rate as usize * channels * bytes_per_sample * 3 // 默认3秒
+            ),
+        );
+        // 向下对齐到整帧（channels样本边界）
+        let bytes_per_chunk = (bytes_per_chunk / (channels * bytes_per_sample)) * (channels * bytes_per_sample);
 
         let mut buffer = vec![0u8; bytes_per_chunk];
+        let mut accumulated = Vec::new(); // 积累不足一帧的数据
 
         let stdout = self.child.stdout.as_mut().ok_or_else(|| {
             AudioError::DecodingError(
@@ -269,28 +294,61 @@ impl StreamingDecoder for FFmpegDecoder {
             )
         })?;
 
-        match stdout.read(&mut buffer) {
-            Ok(0) => {
-                // EOF
-                self.eof_reached = true;
-                Ok(None)
+        // 填满式读取循环，直到获得完整帧数或EOF
+        loop {
+            match stdout.read(&mut buffer) {
+                Ok(0) => {
+                    // EOF
+                    self.eof_reached = true;
+                    if accumulated.is_empty() {
+                        return Ok(None);
+                    }
+                    break; // 处理积累的不足一帧的数据
+                }
+                Ok(bytes_read) => {
+                    accumulated.extend_from_slice(&buffer[..bytes_read]);
+                    // 计算字节大小（S16LE=2字节，S32LE=4字节）
+                    let bytes_per_s16_sample = 2;
+                    let bytes_per_s32_sample = 4;
+                    let bytes_per_complete_sample = if self.use_s32 { bytes_per_s32_sample } else { bytes_per_s16_sample };
+                    // 检查是否有完整帧
+                    let complete_frames = (accumulated.len() / (channels * bytes_per_complete_sample)) * (channels * bytes_per_complete_sample);
+                    if complete_frames > 0 {
+                        // 有完整帧，返回
+                        let data = accumulated.drain(..complete_frames).collect::<Vec<_>>();
+                        let samples = if self.use_s32 {
+                            Self::convert_s32le_to_f32(&data)
+                        } else {
+                            Self::convert_s16le_to_f32(&data)
+                        };
+                        let samples_per_channel = samples.len() / channels;
+                        self.current_position += samples_per_channel as u64;
+                        self.chunk_stats.add_chunk(samples.len());
+                        return Ok(Some(samples));
+                    }
+                    // 否则继续读取以积累完整帧
+                }
+                Err(e) => {
+                    return Err(AudioError::DecodingError(format!(
+                        "Failed to read from FFmpeg / FFmpeg读取失败: {e}"
+                    )));
+                }
             }
-            Ok(bytes_read) => {
-                // 转换S16LE → F32
-                let samples = Self::convert_s16le_to_f32(&buffer[..bytes_read]);
+        }
 
-                // 更新位置
-                let samples_per_channel = samples.len() / self.format.channels as usize;
-                self.current_position += samples_per_channel as u64;
-
-                // 记录chunk统计
-                self.chunk_stats.add_chunk(samples.len());
-
-                Ok(Some(samples))
-            }
-            Err(e) => Err(AudioError::DecodingError(format!(
-                "Failed to read from FFmpeg / FFmpeg读取失败: {e}"
-            ))),
+        // 处理EOF时积累的不足一帧的数据（符合P0实现：尾块直接参与计算）
+        if !accumulated.is_empty() {
+            let samples = if self.use_s32 {
+                Self::convert_s32le_to_f32(&accumulated)
+            } else {
+                Self::convert_s16le_to_f32(&accumulated)
+            };
+            let samples_per_channel = samples.len() / channels;
+            self.current_position += samples_per_channel as u64;
+            self.chunk_stats.add_chunk(samples.len());
+            Ok(Some(samples))
+        } else {
+            Ok(None)
         }
     }
 
