@@ -19,8 +19,8 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
 - The tool follows the foobar2000 DR Meter specification, returning both Official DR (rounded) and Precise DR values with SIMD and parallel optimisations.
 - 支持 12+ 种常见音频格式（FLAC、WAV、AAC、MP3、Opus 等），并在必要时自动切换至 FFmpeg 解码。详见"支持的音频格式"章节。
 - Supports 12+ mainstream audio formats (FLAC, WAV, AAC, MP3, Opus, etc.) with automatic fallback to FFmpeg when needed. See "Supported Audio Formats" section for details.
-- Precise DR 相比 foobar2000 通常在 ±0.02–0.05 dB 内波动（窗口抽样及舍入口径差异）；预警功能将在 Precise DR 接近四舍五入边界时提醒交叉验证。
-- Precise DR typically differs from foobar2000 by ±0.02–0.05 dB (window selection & rounding); a rounding-boundary warning highlights potential discrepancies.
+- Precise DR 相比 foobar2000 通常在 ±0.02–0.05 dB 内波动（窗口抽样及舍入口径差异）；个别曲目会出现约 0.1 dB 的偏差（常见原因是尾窗是否纳入 20% 窗口或不同母带的首尾采样差异）。预警功能会在 Precise DR 接近四舍五入边界时提醒交叉验证。
+- Precise DR typically differs from foobar2000 by ±0.02–0.05 dB (window selection & rounding). A few tracks may drift by ~0.1 dB (e.g., tail-window participation in the top-20% selection or masters with different leading/trailing samples). The tool surfaces boundary warnings so you can cross-check with foobar2000 when results matter.
 
 ## 构建与运行（Build & Run）
 - Release 构建：`cargo build --release`
