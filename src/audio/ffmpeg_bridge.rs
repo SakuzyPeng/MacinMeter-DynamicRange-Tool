@@ -12,6 +12,19 @@ use super::format::AudioFormat;
 use super::stats::ChunkSizeStats;
 use super::streaming::StreamingDecoder;
 
+/// 基于常见布局推断 LFE 在交错顺序中的索引（0-based）
+/// 说明：
+/// - 2.1 (3ch) -> index 2
+/// - 3.1/5.1/7.1/7.1.4/… (>=4ch) -> index 3（FL,FR,FC,LFE,...）
+/// - 其他未知布局返回空向量
+fn default_lfe_indices_for_channel_count(channel_count: u16) -> Vec<usize> {
+    match channel_count {
+        0..=2 => Vec::new(),
+        3 => vec![2],
+        _ => vec![3],
+    }
+}
+
 /// FFmpeg安装指南（跨平台）
 const FFMPEG_INSTALL_GUIDE: &str = r#"
 FFmpeg is required for AC-3/E-AC-3/DTS/DSD support / 需要安装FFmpeg以支持AC-3/E-AC-3/DTS/DSD格式
@@ -35,6 +48,13 @@ Official site / 官方网站: https://ffmpeg.org/download.html
 pub struct FFmpegDecoder {
     /// FFmpeg子进程
     child: Child,
+    /// FFmpeg可执行路径（用于reset重启）
+    ffmpeg_path: PathBuf,
+    /// 启动参数（用于reset重启）
+    spawn_args: Vec<String>,
+    /// 输入文件路径（诊断/重启）
+    #[allow(dead_code)]
+    input_path: PathBuf,
     /// 音频格式信息
     format: AudioFormat,
     /// 当前读取位置（样本数）
@@ -47,6 +67,10 @@ pub struct FFmpegDecoder {
     eof_reached: bool,
     /// 是否使用32位样本（DSD格式）
     use_s32: bool,
+    /// FFmpeg错误输出摘要（最近的错误）
+    /// 注：当前未直接使用，保留用于后续错误诊断和I/O鲁棒性增强
+    #[allow(dead_code)]
+    last_stderr: String,
 }
 
 impl FFmpegDecoder {
@@ -95,22 +119,58 @@ impl FFmpegDecoder {
         }
     }
 
+    /// 查找ffprobe可执行文件路径，优先使用ffmpeg同目录的ffprobe
+    fn find_ffprobe_path() -> Option<PathBuf> {
+        // 首先尝试找到ffmpeg路径，然后从同一目录查找ffprobe
+        if let Some(ffmpeg_path) = Self::find_ffmpeg_path()
+            && let Some(bin_dir) = ffmpeg_path.parent()
+        {
+            #[cfg(target_os = "windows")]
+            let ffprobe_name = "ffprobe.exe";
+            #[cfg(not(target_os = "windows"))]
+            let ffprobe_name = "ffprobe";
+
+            let ffprobe_in_bin = bin_dir.join(ffprobe_name);
+            if ffprobe_in_bin.exists() {
+                return Some(ffprobe_in_bin);
+            }
+        }
+
+        // 回退：直接在PATH中查找ffprobe
+        #[cfg(target_os = "windows")]
+        let ffprobe_cmd = "ffprobe.exe";
+        #[cfg(not(target_os = "windows"))]
+        let ffprobe_cmd = "ffprobe";
+
+        if Command::new(ffprobe_cmd)
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            Some(PathBuf::from(ffprobe_cmd))
+        } else {
+            None
+        }
+    }
+
     /// 使用ffprobe探测音频格式信息
     fn probe_format(path: &Path) -> AudioResult<AudioFormat> {
-        let ffprobe_path = if cfg!(target_os = "windows") {
-            "ffprobe.exe"
-        } else {
-            "ffprobe"
-        };
+        let ffprobe_path = Self::find_ffprobe_path().ok_or_else(|| {
+            AudioError::FormatError(format!(
+                "ffprobe not found / ffprobe未找到，无法探测音频格式\n{FFMPEG_INSTALL_GUIDE}"
+            ))
+        })?;
 
-        let output = Command::new(ffprobe_path)
+        let output = Command::new(&ffprobe_path)
             .args([
                 "-v",
                 "error",
                 "-select_streams",
                 "a:0",
                 "-show_entries",
-                "stream=sample_rate,channels,duration,codec_name",
+                // 追加布局字段，按声明顺序输出，便于解析
+                "stream=codec_name,sample_rate,channels,duration,channel_layout,ch_layout",
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
                 path.to_str().unwrap(),
@@ -123,9 +183,21 @@ impl FFmpegDecoder {
             })?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // 针对常见场景进行错误类型细化：不存在文件 → IoError(NotFound)
+            let lower = stderr.to_ascii_lowercase();
+            if lower.contains("no such file or directory")
+                || lower.contains("not found")
+                || lower.contains("the system cannot find the file specified")
+            {
+                use std::io::{Error, ErrorKind};
+                return Err(AudioError::IoError(Error::new(
+                    ErrorKind::NotFound,
+                    stderr.to_string(),
+                )));
+            }
             return Err(AudioError::FormatError(format!(
-                "ffprobe failed / ffprobe失败: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "ffprobe failed / ffprobe失败: {stderr}"
             )));
         }
 
@@ -138,7 +210,7 @@ impl FFmpegDecoder {
             ));
         }
 
-        // ffprobe输出顺序：codec_name, sample_rate, channels, duration
+        // ffprobe输出顺序：codec_name, sample_rate, channels, duration, channel_layout, ch_layout
         let codec_name = Some(lines[0].to_string());
 
         let sample_rate = lines[1].parse::<u32>().map_err(|e| {
@@ -155,9 +227,148 @@ impl FFmpegDecoder {
         } else {
             0
         };
-        let bits_per_sample = 16; // FFmpeg输出为S16LE
+        // 进一步校验元数据的合理性，防止非音频文件被错误识别
+        if channels == 0 || sample_rate < 8_000 {
+            return Err(AudioError::FormatError(
+                "Invalid stream parameters from ffprobe / ffprobe返回的流参数无效".to_string(),
+            ));
+        }
 
-        let format = AudioFormat::new(sample_rate, channels, bits_per_sample, sample_count);
+        let bits_per_sample = 16; // 默认按S16LE，若为DSD将在new()中切换为S32路径
+
+        let mut format = AudioFormat::new(sample_rate, channels, bits_per_sample, sample_count);
+
+        // 解析布局字符串：用于标记布局元数据与推导LFE索引
+        let layout_str_raw = lines.get(4).map(|s| s.trim()).unwrap_or("");
+        let ch_layout_str_raw = lines.get(5).map(|s| s.trim()).unwrap_or("");
+        let layout_joined = if !layout_str_raw.is_empty() {
+            layout_str_raw.to_string()
+        } else if !ch_layout_str_raw.is_empty() {
+            ch_layout_str_raw.to_string()
+        } else {
+            String::new()
+        };
+
+        if !layout_joined.is_empty() {
+            format.mark_has_channel_layout();
+            // 基于布局字符串粗略判断是否存在LFE（*.1 / 5.1 / 7.1 / 7.1.4 / 9.1.6等）
+            let lower = layout_joined.to_ascii_lowercase();
+            let looks_like_has_lfe = lower.contains(".1")
+                || lower.contains("5.1")
+                || lower.contains("6.1")
+                || lower.contains("7.1")
+                || lower.contains("9.1");
+
+            if looks_like_has_lfe {
+                let idxs = default_lfe_indices_for_channel_count(format.channels);
+                if !idxs.is_empty() {
+                    format.set_lfe_indices(idxs);
+                }
+            }
+        }
+
+        // 进一步：尝试用 JSON 精确解析通道标签顺序（如 FL+FR+FC+LFE+...），直接定位 LFE/LFE2 的下标
+        // 仅在尚未获得精确 lfe_indices 时尝试
+        #[allow(clippy::collapsible_if)]
+        {
+            if format.lfe_indices.is_empty() {
+                if let Some(path_str) = path.to_str() {
+                    let json_output = Command::new(&ffprobe_path)
+                        .args([
+                            "-v",
+                            "error",
+                            "-select_streams",
+                            "a:0",
+                            "-show_entries",
+                            "stream=channel_layout,side_data_list",
+                            "-of",
+                            "json",
+                            path_str,
+                        ])
+                        .output()
+                        .ok();
+
+                    if let Some(json_out) = json_output {
+                        if json_out.status.success() {
+                            if let Ok(text) = String::from_utf8(json_out.stdout) {
+                                // 解析最常见的两种形态：
+                                // 1) side_data_list 内存在 { side_data_type: "ch_layout", ch_layout: "FL+FR+FC+LFE+..." }
+                                // 2) 直接的 channel_layout 为 "FL+FR+FC+LFE+..."（较少见）
+                                #[allow(clippy::collapsible_if, clippy::get_first)]
+                                {
+                                    #[derive(serde::Deserialize)]
+                                    struct SideDataItem {
+                                        #[serde(default)]
+                                        side_data_type: String,
+                                        #[serde(default)]
+                                        ch_layout: Option<String>,
+                                    }
+                                    #[derive(serde::Deserialize)]
+                                    struct StreamObj {
+                                        #[serde(default)]
+                                        channel_layout: Option<String>,
+                                        #[serde(default)]
+                                        side_data_list: Option<Vec<SideDataItem>>,
+                                    }
+                                    #[derive(serde::Deserialize)]
+                                    struct StreamsRoot {
+                                        #[serde(default)]
+                                        streams: Vec<StreamObj>,
+                                    }
+
+                                    if let Ok(parsed) = serde_json::from_str::<StreamsRoot>(&text) {
+                                        if let Some(stream) = parsed.streams.first() {
+                                            // 优先从 side_data_list 中解析 ch_layout 标签序列
+                                            let mut labels: Option<String> = None;
+                                            if let Some(list) = &stream.side_data_list {
+                                                for item in list {
+                                                    if item
+                                                        .side_data_type
+                                                        .eq_ignore_ascii_case("ch_layout")
+                                                    {
+                                                        if let Some(s) = &item.ch_layout {
+                                                            labels = Some(s.clone());
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            // 其次尝试直接从 channel_layout 获取标签序列（若包含 '+')
+                                            if labels.is_none() {
+                                                if let Some(cl) = &stream.channel_layout {
+                                                    if cl.contains('+') {
+                                                        labels = Some(cl.clone());
+                                                    }
+                                                }
+                                            }
+
+                                            if let Some(label_seq) = labels {
+                                                let tokens: Vec<&str> =
+                                                    label_seq.split('+').collect();
+                                                if !tokens.is_empty() {
+                                                    let mut lfe_idxs = Vec::new();
+                                                    for (i, t) in tokens.iter().enumerate() {
+                                                        let tt = t.trim().to_ascii_uppercase();
+                                                        if (tt == "LFE" || tt == "LFE2")
+                                                            && i < format.channels as usize
+                                                        {
+                                                            lfe_idxs.push(i);
+                                                        }
+                                                    }
+                                                    if !lfe_idxs.is_empty() {
+                                                        format.set_lfe_indices(lfe_idxs);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // 标记为FFmpeg解码（用于诊断）
         // 注：codec_name信息已通过ffprobe获取（{codec_name:?}），保留供调试使用
@@ -205,9 +416,17 @@ impl FFmpegDecoder {
         // 输出PCM格式（DSD使用32位，其他格式使用16位）
         args.extend(vec![
             "-f".to_string(),
-            if use_s32 { "s32le".to_string() } else { "s16le".to_string() },
+            if use_s32 {
+                "s32le".to_string()
+            } else {
+                "s16le".to_string()
+            },
             "-acodec".to_string(),
-            if use_s32 { "pcm_s32le".to_string() } else { "pcm_s16le".to_string() },
+            if use_s32 {
+                "pcm_s32le".to_string()
+            } else {
+                "pcm_s16le".to_string()
+            },
             "-".to_string(), // 输出到stdout
         ]);
 
@@ -215,7 +434,7 @@ impl FFmpegDecoder {
         let child = Command::new(&ffmpeg_path)
             .args(&args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| {
                 AudioError::DecodingError(format!("Failed to spawn FFmpeg / 无法启动FFmpeg: {e}"))
@@ -232,12 +451,16 @@ impl FFmpegDecoder {
 
         Ok(Self {
             child,
+            ffmpeg_path,
+            spawn_args: args.clone(),
+            input_path: path.to_path_buf(),
             format,
             current_position: 0,
             total_samples,
             chunk_stats: ChunkSizeStats::new(),
             eof_reached: false,
             use_s32,
+            last_stderr: String::new(),
         })
     }
 
@@ -273,17 +496,16 @@ impl StreamingDecoder for FFmpegDecoder {
         // 计算自适应分块大小（按字节上限而非固定时长）
         // 约束：8-16MB每块，适应不同声道数和采样率
         const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024; // 16MB上限
+        const MIN_CHUNK_BYTES: usize = 64 * 1024; // 64KB下限
         let channels = self.format.channels as usize;
-        let bytes_per_sample = 2; // S16LE = 2字节/样本
-        let bytes_per_chunk = std::cmp::min(
-            MAX_CHUNK_BYTES,
-            std::cmp::max(
-                64 * 1024, // 64KB下限
-                self.format.sample_rate as usize * channels * bytes_per_sample * 3 // 默认3秒
-            ),
-        );
+        // 按实际输出位宽选择样本字节数
+        let bytes_per_sample = if self.use_s32 { 4 } else { 2 };
+        let default_chunk_bytes =
+            self.format.sample_rate as usize * channels * bytes_per_sample * 3; // 目标≈3秒
+        let bytes_per_chunk = default_chunk_bytes.clamp(MIN_CHUNK_BYTES, MAX_CHUNK_BYTES);
         // 向下对齐到整帧（channels样本边界）
-        let bytes_per_chunk = (bytes_per_chunk / (channels * bytes_per_sample)) * (channels * bytes_per_sample);
+        let bytes_per_chunk =
+            (bytes_per_chunk / (channels * bytes_per_sample)) * (channels * bytes_per_sample);
 
         let mut buffer = vec![0u8; bytes_per_chunk];
         let mut accumulated = Vec::new(); // 积累不足一帧的数据
@@ -310,9 +532,15 @@ impl StreamingDecoder for FFmpegDecoder {
                     // 计算字节大小（S16LE=2字节，S32LE=4字节）
                     let bytes_per_s16_sample = 2;
                     let bytes_per_s32_sample = 4;
-                    let bytes_per_complete_sample = if self.use_s32 { bytes_per_s32_sample } else { bytes_per_s16_sample };
+                    let bytes_per_complete_sample = if self.use_s32 {
+                        bytes_per_s32_sample
+                    } else {
+                        bytes_per_s16_sample
+                    };
                     // 检查是否有完整帧
-                    let complete_frames = (accumulated.len() / (channels * bytes_per_complete_sample)) * (channels * bytes_per_complete_sample);
+                    let complete_frames = (accumulated.len()
+                        / (channels * bytes_per_complete_sample))
+                        * (channels * bytes_per_complete_sample);
                     if complete_frames > 0 {
                         // 有完整帧，返回
                         let data = accumulated.drain(..complete_frames).collect::<Vec<_>>();
@@ -367,10 +595,24 @@ impl StreamingDecoder for FFmpegDecoder {
     }
 
     fn reset(&mut self) -> AudioResult<()> {
-        // 终止FFmpeg进程
+        // 终止现有FFmpeg进程
         let _ = self.child.kill();
+        let _ = self.child.wait();
+
+        // 按相同参数重启FFmpeg子进程
+        self.child = Command::new(&self.ffmpeg_path)
+            .args(&self.spawn_args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                AudioError::DecodingError(format!("Failed to respawn FFmpeg / 无法重启FFmpeg: {e}"))
+            })?;
+
+        // 重置内部状态
         self.current_position = 0;
         self.eof_reached = false;
+        self.chunk_stats = ChunkSizeStats::new();
         Ok(())
     }
 

@@ -51,15 +51,41 @@ pub fn process_single_audio_file(
     let (dr_results, format, trim_report, silence_report) = process_audio_file(file_path, config)?;
 
     if config.verbose {
+        use crate::tools::utils;
+        // 统一对齐：按“显示宽度”对齐左列标签，避免中英混排产生的偏移
         println!("音频格式信息 / Audio format information:");
-        println!("   采样率 / Sample rate: {} Hz", format.sample_rate);
-        println!("   声道数 / Channels: {}", format.channels);
-        println!("   位深度 / Bit depth: {} bits", format.bits_per_sample);
-        println!("   样本数 / Sample count: {}", format.sample_count);
-        println!(
-            "   时长 / Duration: {:.2} seconds",
-            format.duration_seconds()
-        );
+
+        let labels = [
+            "采样率 / Sample rate:",
+            "声道数 / Channels:",
+            "位深度 / Bit depth:",
+            "样本数 / Sample count:",
+            "时长 / Duration:",
+        ];
+        let widths = vec![0usize; labels.len()];
+        let label_col_width = utils::table::effective_widths(&labels, &widths)
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+
+        let sr = format!("{} Hz", format.sample_rate);
+        let ch = format!("{}", format.channels);
+        let bits = format!("{} bits", format.bits_per_sample);
+        let samples = format!("{}", format.sample_count);
+        let dur = format!("{:.2} seconds", format.duration_seconds());
+
+        // 使用与文件输出相同的列对齐策略，但在行首增加3个空格缩进
+        let line1 = utils::table::format_cols_line(&[labels[0], &sr], &[label_col_width, 0], "");
+        print!("   {line1}");
+        let line2 = utils::table::format_cols_line(&[labels[1], &ch], &[label_col_width, 0], "");
+        print!("   {line2}");
+        let line3 = utils::table::format_cols_line(&[labels[2], &bits], &[label_col_width, 0], "");
+        print!("   {line3}");
+        let line4 =
+            utils::table::format_cols_line(&[labels[3], &samples], &[label_col_width, 0], "");
+        print!("   {line4}");
+        let line5 = utils::table::format_cols_line(&[labels[4], &dur], &[label_col_width, 0], "");
+        print!("   {line5}");
     }
 
     Ok((dr_results, format, trim_report, silence_report))

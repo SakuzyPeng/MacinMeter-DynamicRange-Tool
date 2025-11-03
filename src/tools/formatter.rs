@@ -707,6 +707,8 @@ pub fn calculate_official_dr(
                 output.push_str(&warning);
             }
 
+            // 保持现有边界预警逻辑，不进行额外复算提示
+
             output.push('\n');
 
             // 显示计算说明（仅当有排除声道时）
@@ -753,18 +755,24 @@ pub fn calculate_official_dr(
 pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     let mut output = String::new();
 
-    output.push_str(&format!(
-        "{:<22}{} Hz\n",
-        "采样率 / Sample rate:", format.sample_rate
-    ));
-    output.push_str(&format!(
-        "{:<22}{}\n",
-        "声道数 / Channels:", format.channels
-    ));
-    output.push_str(&format!(
-        "{:<22}{}\n",
-        "位深 / Bits per sample:", format.bits_per_sample
-    ));
+    // 统一对齐：按“显示宽度”对齐左列标签，避免中英混排产生的偏移
+    let labels = [
+        "采样率 / Sample rate:",
+        "声道数 / Channels:",
+        "位深 / Bits per sample:",
+        "比特率 / Bitrate:",
+        "编码 / Codec:",
+    ];
+
+    // 计算统一的标签列宽（按Unicode显示宽度）
+    let widths = vec![0usize; labels.len()];
+    let eff = utils::table::effective_widths(&labels, &widths);
+    let label_col_width = eff.into_iter().max().unwrap_or(0);
+
+    // 值列
+    let sample_rate_s = format!("{} Hz", format.sample_rate);
+    let channels_s = format!("{}", format.channels);
+    let bits_s = format!("{}", format.bits_per_sample);
 
     // 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
     let extension_fallback = utils::extract_extension_uppercase(&config.input_path);
@@ -773,7 +781,6 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
             Ok(bitrate) => format!("{bitrate} kbps"),
             Err(_) => "N/A".to_string(), // 计算失败时显示N/A（如部分分析模式）
         };
-    output.push_str(&format!("{:<22}{bitrate_display}\n", "比特率 / Bitrate:"));
 
     // 优先使用真实的编解码器类型，回退到文件扩展名
     let codec_display = if let Some(codec_type) = format.codec_type {
@@ -781,7 +788,33 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     } else {
         extension_fallback
     };
-    output.push_str(&format!("{:<22}{codec_display}\n", "编码 / Codec:"));
+
+    // 逐行输出（两列对齐：标签列固定宽度，值列不定宽）
+    output.push_str(&utils::table::format_cols_line(
+        &[labels[0], &sample_rate_s],
+        &[label_col_width, 0],
+        "",
+    ));
+    output.push_str(&utils::table::format_cols_line(
+        &[labels[1], &channels_s],
+        &[label_col_width, 0],
+        "",
+    ));
+    output.push_str(&utils::table::format_cols_line(
+        &[labels[2], &bits_s],
+        &[label_col_width, 0],
+        "",
+    ));
+    output.push_str(&utils::table::format_cols_line(
+        &[labels[3], &bitrate_display],
+        &[label_col_width, 0],
+        "",
+    ));
+    output.push_str(&utils::table::format_cols_line(
+        &[labels[4], &codec_display],
+        &[label_col_width, 0],
+        "",
+    ));
 
     // 结尾分隔线（长度与标题一致）
     let sep_eq =
@@ -874,8 +907,8 @@ mod tests {
         let warning = detect_dr_boundary_warning(10, 10.45);
         assert!(warning.is_some());
         let msg = warning.unwrap();
-        assert!(msg.contains("接近边界"));
-        assert!(msg.contains("Near Boundary"));
+        assert!(msg.contains("边界风险"));
+        assert!(msg.contains("Boundary Risk"));
 
         // 中风险：10.46 距上边界 0.04
         let warning = detect_dr_boundary_warning(10, 10.46);

@@ -96,8 +96,24 @@ impl UniversalDecoder {
             return Ok(temp_decoder.format());
         }
 
-        // 其他格式使用Symphonia探测
-        self.probe_with_symphonia(path)
+        // 其他格式优先使用Symphonia探测，失败则尝试FFmpeg兜底
+        match self.probe_with_symphonia(path) {
+            Ok(fmt) => Ok(fmt),
+            Err(e) => {
+                // 若存在FFmpeg，尝试用FFmpeg探测（兼容容器内E-AC-3/Dolby Atmos等情况）
+                if super::ffmpeg_bridge::FFmpegDecoder::is_available() {
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[INFO] Symphonia probe failed, trying FFmpeg probe / Symphonia探测失败，尝试FFmpeg探测"
+                    );
+                    // 通过创建临时FFmpeg解码器来获取格式（内部会运行ffprobe）
+                    let decoder = super::ffmpeg_bridge::FFmpegDecoder::new(path)?;
+                    Ok(decoder.format())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     /// 创建流式解码器（串行模式，BatchPacketReader优化）
@@ -141,6 +157,41 @@ impl UniversalDecoder {
                         "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装\n\
                          See installation guide above / 请参考上方安装指南"
                     )));
+                }
+            }
+
+            // 特例：mp4/m4a 容器内的 E-AC-3/AC-3（含 Atmos）
+            // 若 ffprobe 可用且检测到 codec=eac3/ac3，则直接切换到 FFmpeg 解码器
+            if (ext_lower == "mp4" || ext_lower == "m4a")
+                && super::ffmpeg_bridge::FFmpegDecoder::is_available()
+            {
+                let ffprobe = if cfg!(target_os = "windows") {
+                    "ffprobe.exe"
+                } else {
+                    "ffprobe"
+                };
+                if let Ok(out) = std::process::Command::new(ffprobe)
+                    .args([
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "a:0",
+                        "-show_entries",
+                        "stream=codec_name",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        &path.to_string_lossy(),
+                    ])
+                    .output()
+                    && out.status.success()
+                {
+                    let codec = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+                    if codec == "eac3" || codec == "ac3" || codec == "ec-3" {
+                        eprintln!(
+                            "[INFO] Detected {codec} in MP4/M4A, using FFmpeg / 在MP4/M4A中检测到{codec}，切换FFmpeg"
+                        );
+                        return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                    }
                 }
             }
         }
@@ -201,6 +252,42 @@ impl UniversalDecoder {
                     return Err(AudioError::FormatError(format!(
                         "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装"
                     )));
+                }
+            }
+
+            // 特例：mp4/m4a 容器内的 E-AC-3/AC-3（含 Atmos），强制串行FFmpeg
+            if (ext_lower == "mp4" || ext_lower == "m4a")
+                && super::ffmpeg_bridge::FFmpegDecoder::is_available()
+            {
+                let ffprobe = if cfg!(target_os = "windows") {
+                    "ffprobe.exe"
+                } else {
+                    "ffprobe"
+                };
+                if let Ok(out) = std::process::Command::new(ffprobe)
+                    .args([
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "a:0",
+                        "-show_entries",
+                        "stream=codec_name",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        &path.to_string_lossy(),
+                    ])
+                    .output()
+                    && out.status.success()
+                {
+                    let codec = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+                    if codec == "eac3" || codec == "ac3" || codec == "ec-3" {
+                        eprintln!(
+                            "[INFO] {} in MP4/M4A, falling back to serial FFmpeg / MP4/M4A中检测到{}，回退到串行FFmpeg",
+                            codec.to_uppercase(),
+                            codec.to_uppercase()
+                        );
+                        return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                    }
                 }
             }
         }

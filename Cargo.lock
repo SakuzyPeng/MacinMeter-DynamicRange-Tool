@@ -1359,6 +1359,8 @@ dependencies = [
  "hound",
  "pprof",
  "rayon",
+ "serde",
+ "serde_json",
  "songbird",
  "symphonia",
  "symphonia-core",

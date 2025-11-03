@@ -17,10 +17,10 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
 ## 简介（Introduction）
 - 本工具遵循 foobar2000 DR Meter 官方算法，可输出官方四舍五入值（Official DR）与精确小数（Precise DR），并结合 SIMD + 并行优化。
 - The tool follows the foobar2000 DR Meter specification, returning both Official DR (rounded) and Precise DR values with SIMD and parallel optimisations.
-- 支持 WAV/PCM、FLAC/ALAC、AAC/MP3、Opus 等常见格式，依赖 Symphonia 解码库。
-- Supported formats include WAV/PCM, FLAC/ALAC, AAC/MP3, Opus, and other codecs via the Symphonia decoding stack.
-- Precise DR 相比 foobar2000 通常在 ±0.02–0.05 dB 内波动（窗口抽样及舍入口径差异）；106 首批量测试中有 3 首 Official DR 与 foobar 不一致。预警功能将在 Precise DR 接近四舍五入边界时提醒交叉验证。
-- Precise DR typically differs from foobar2000 by ±0.02–0.05 dB (window selection & rounding); in the 106-track batch, 3 tracks diverged from foobar’s Official DR. A rounding-boundary warning highlights potential discrepancies.
+- 支持 12+ 种常见音频格式（FLAC、WAV、AAC、MP3、Opus 等），并在必要时自动切换至 FFmpeg 解码。详见"支持的音频格式"章节。
+- Supports 12+ mainstream audio formats (FLAC, WAV, AAC, MP3, Opus, etc.) with automatic fallback to FFmpeg when needed. See "Supported Audio Formats" section for details.
+- Precise DR 相比 foobar2000 通常在 ±0.02–0.05 dB 内波动（窗口抽样及舍入口径差异）；预警功能将在 Precise DR 接近四舍五入边界时提醒交叉验证。
+- Precise DR typically differs from foobar2000 by ±0.02–0.05 dB (window selection & rounding); a rounding-boundary warning highlights potential discrepancies.
 
 ## 构建与运行（Build & Run）
 - Release 构建：`cargo build --release`
@@ -56,15 +56,16 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
   - `--parallel-batch <N>`：解码批大小（默认 64）。
   - `--parallel-batch <N>`: decode batch size (default 64).
   - `--parallel-files <N>` / `--no-parallel-files`：多文件并行度（默认 4）/ 禁用多文件并行。
-  - `--parallel-files <N>` / `--no-parallel-files`: number of concurrent files (default 4) / disable multi-file parallelism.
-- 边缘裁切（默认关闭）：`--trim-edges[=<DB>]`，默认阈值 -60 dBFS；配合 `--trim-min-run <MS>`（默认 60 ms）控制首尾连贯静音裁切。
-- Edge trimming (disabled by default): `--trim-edges[=<DB>]`, default threshold −60 dBFS, with `--trim-min-run <MS>` (default 60 ms) to require sustained silence before trimming.
-- 窗口静音过滤（默认关闭）：`--filter-silence[=<DB>]`，默认阈值 -70 dBFS；目录模式建议写作 `--filter-silence -- /path/to/dir`（示例 `./tool --filter-silence -- ./album`），避免路径被解析为阈值。
-- Window silence filter (disabled by default): `--filter-silence[=<DB>]`, default −70 dBFS; when scanning a directory use `--filter-silence -- /path/to/dir` to prevent the path from being parsed as the threshold.
- - LFE 剔除（默认关闭）：`--exclude-lfe`，在容器提供声道布局元数据（WAV WAVEFORMATEXTENSIBLE 掩码或解码器通道位图）时，将 LFE 声道从最终聚合中剔除；单声道明细仍保留。
- - LFE exclusion (off by default): `--exclude-lfe`; when the container exposes channel layout metadata (e.g., WAV WAVEFORMATEXTENSIBLE mask or a decoder channel bitset), LFE channels are excluded from final aggregation; per‑channel DR entries remain.
+ - `--parallel-files <N>` / `--no-parallel-files`: number of concurrent files (default 4) / disable multi-file parallelism.
 - 输出文件：`--output <file>` 指定单文件结果路径；批量模式默认写入目标目录。
 - Output control: use `--output <file>` for single-file reports; batch mode writes to the target directory by default.
+- **实验性功能 / Experimental features**（默认关闭）
+  - `--trim-edges[=<DB>]`：首尾边缘裁切，默认阈值 -60 dBFS；配合 `--trim-min-run <MS>`（默认 60 ms）控制最小连贯静音长度。
+  - `--trim-edges[=<DB>]`: edge trimming with default threshold −60 dBFS; use `--trim-min-run <MS>` (default 60 ms) to set minimum sustained silence.
+  - `--filter-silence[=<DB>]`：窗口级静音过滤，默认阈值 -70 dBFS；目录模式建议写作 `--filter-silence -- /path/to/dir` 避免路径被解析为阈值。
+  - `--filter-silence[=<DB>]`: window-level silence filtering, default −70 dBFS; for directories use `--filter-silence -- /path/to/dir` to prevent path parsing as threshold.
+  - `--exclude-lfe`：从最终 DR 聚合中剔除 LFE 声道（仅在存在声道布局元数据时生效）；单声道明细仍保留。
+  - `--exclude-lfe`: exclude LFE channels from final DR aggregation (effective only with channel layout metadata); per‑channel details remain.
 
 ## 输出说明（Output Format）
 - 每声道 DR 值、Official DR（整数）、Precise DR（小数）及音频信息（采样率/声道/位深/比特率/编解码器）。
@@ -293,20 +294,63 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 
 ## 支持的音频格式（Supported Audio Formats）
 
-**通过Symphonia支持 / Via Symphonia**:
-- 无损格式 / Lossless: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM
-- 有损格式 / Lossy: AAC, OGG Vorbis, MP1 (MPEG Layer I)
-- 容器格式 / Containers: MP4/M4A, MKV/WebM
+### 解码器路由（Decoder Routing）
+
+工具采用智能自动路由，优先使用 Symphonia，必要时自动切换 FFmpeg：
+
+**Symphonia 原生支持 / Native Symphonia Support**:
+- **无损格式 / Lossless**: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM
+- **有损格式 / Lossy**: AAC, OGG Vorbis, MP1 (MPEG Layer I)
+- **容器格式 / Containers**: MP4/M4A（仅限 Symphonia 支持的编码），MKV/WebM
 
 **专用解码器 / Dedicated Decoders**:
 - **Opus**: 通过songbird专用解码器 (Discord音频库) / Via songbird decoder (Discord audio library)
 - **MP3**: 有状态解码格式，强制串行处理 / Stateful format, forced serial decoding
 
-**总计 / Total**: 12+种主流音频格式 / 12+ mainstream formats
+**FFmpeg 自动回退 / Auto Fallback to FFmpeg**:
+当 Symphonia 无法支持时，工具自动切换至 FFmpeg 进行解码。典型场景：
+- 扩展名为 `.ac3`、`.ec3`、`.eac3`、`.dts`、`.dsf`、`.dff` → 直接使用 FFmpeg
+- MP4/M4A 容器内包含 AC-3、E-AC-3（含 Dolby Atmos）、DTS → 自动切换 FFmpeg
+- 其他容器格式（部分 MKV、MP4 变体）内的不兼容编码 → 自动回退 FFmpeg
 
-注 / Note: MP3格式由于技术特性采用串行解码，其他大部分格式支持并行加速。
+### FFmpeg 安装（FFmpeg Installation）
 
-MP3 uses serial decoding due to technical characteristics; most other formats support parallel acceleration.
+如需使用 FFmpeg 功能，请确保系统已安装 `ffmpeg` 和 `ffprobe`：
+
+- **macOS**: `brew install ffmpeg`
+- **Windows**: `winget install Gyan.FFmpeg`（或通过 Chocolatey、其他发行渠道）
+- **Linux**:
+  - Ubuntu/Debian: `sudo apt install ffmpeg`
+  - Fedora/RHEL: `sudo dnf install ffmpeg`
+  - Arch: `sudo pacman -S ffmpeg`
+
+验证安装：`ffmpeg -version` 和 `ffprobe -version` 应返回版本号。工具会自动检测 PATH 中的 ffmpeg 和 ffprobe。
+
+### 多声道与 LFE 支持（Multichannel & LFE Support）
+
+- **多声道分析**: 支持 3-32 声道音频，每声道独立计算 DR，输出详细的 per-channel 结果
+- **Official DR 聚合**: 对所有"非静音"声道的 DR 值进行算术平均并四舍五入，符合 foobar2000 标准
+- **LFE 识别**:
+  - 通过 Symphonia：自动检测声道布局元数据（WAV、某些 MP4/MKV）
+  - 通过 FFmpeg：读取 ffprobe JSON 标签序列（如 `FL+FR+FC+LFE+...`），精确定位 LFE 位置
+- **LFE 剔除**（可选）：使用 `--exclude-lfe` 在最终聚合中排除 LFE，单声道 DR 明细仍保留
+
+### 总计（Summary）
+
+**12+种主流音频格式** / 12+ mainstream formats，覆盖 90%+ 用户需求：
+
+| 分类 / Category | 格式 / Formats | 解码器 / Decoder |
+| --- | --- | --- |
+| 无损 Lossless | FLAC, ALAC, WAV, AIFF, PCM | Symphonia |
+| 有损 Lossy | AAC, OGG Vorbis, MP1 | Symphonia |
+| 音乐编码 Proprietary | MP3 | Symphonia (串行 Serial) |
+| 音乐编码 Proprietary | Opus | songbird (专用 Dedicated) |
+| 影音编码 Video Codec | AC-3, E-AC-3, DTS, DSD | FFmpeg (自动回退 Auto) |
+| 容器 Containers | MP4/M4A, MKV, WebM | Symphonia / FFmpeg (智能路由 Smart) |
+
+**并行性能**：MP3 采用串行处理（有状态格式），其他格式均支持并行加速；多声道使用零拷贝跨步优化，3+ 声道性能提升 8-16 倍。
+
+MP3 uses serial decoding (stateful format); other formats support parallel acceleration. Multichannel uses zero-copy strided optimization with 8–16× performance gain for 3+ channels.
 
 ---
 

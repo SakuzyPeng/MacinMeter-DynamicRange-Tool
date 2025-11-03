@@ -2,7 +2,8 @@
 # 🚀 MacinMeter DR Tool - 预提交钩子
 # 与GitHub Actions相同的代码质量检查，在本地提交前执行
 
-set -e  # 任何命令失败时立即退出
+set -Eeuo pipefail  # 任何命令或管道失败时立即退出
+trap 'echo; echo "❌ 预提交脚本在第 $LINENO 行失败 (命令: $BASH_COMMAND)"; echo' ERR
 
 echo "🔍 MacinMeter DR Tool - 预提交质量检查"
 echo "======================================"
@@ -19,105 +20,77 @@ echo "✅ 代码格式检查通过"
 # 📎 2. Clippy静态分析
 echo ""
 echo "📎 2. 运行Clippy静态分析..."
-CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -D warnings 2>&1)
-CLIPPY_EXIT=$?
-if [ $CLIPPY_EXIT -ne 0 ]; then
-    # 只显示错误和警告，不显示成功的编译信息
-    echo "$CLIPPY_OUTPUT" | grep -E "^error|^warning:" || echo "$CLIPPY_OUTPUT"
-    echo "❌ Clippy检查失败！请修复上述警告"
-    exit 1
-fi
+cargo clippy --all-targets --all-features -- -D warnings
 echo "✅ Clippy静态分析通过"
 
 # 🔨 3. 编译检查
 echo ""
 echo "🔨 3. 检查代码编译..."
-CHECK_OUTPUT=$(cargo check --all-targets --all-features 2>&1)
-CHECK_EXIT=$?
-if [ $CHECK_EXIT -ne 0 ]; then
-    # 只显示错误，不显示编译进度信息
-    echo "$CHECK_OUTPUT" | grep -E "^error" || echo "$CHECK_OUTPUT"
-    echo "❌ 编译检查失败！请修复编译错误"
-    exit 1
-fi
+cargo check --all-targets --all-features
 echo "✅ 编译检查通过"
 
 # 🧪 4. 单元测试
 echo ""
 echo "🧪 4. 运行单元测试..."
-# 直接运行测试，cargo test 会自动显示输出
-cargo test
-TEST_RESULT=$?
-if [ $TEST_RESULT -ne 0 ]; then
-    echo "❌ 单元测试失败！请修复测试问题"
-    exit 1
-fi
+# 直接运行测试 (不包含 #[ignore] 测试)
+cargo test --all-targets --all-features -- --color=always
 echo "✅ 单元测试通过"
 
 # 🐳 5. x86 Docker CI模拟测试（跨平台验证）
 echo ""
-echo "🐳 5. x86 Docker CI模拟测试..."
+echo "🐳 5. x86 Docker CI模拟测试 (强制运行)..."
 
-#!/usr/bin/env bash
-# 检测是否存在与编译/测试相关的代码变更（仅在变更时才运行Docker）
-# 优先使用已暂存（staged）的变更；若为空则回退到工作区变更
-CODE_CHANGED=0
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMRTUXB)
-    if [ -z "$CHANGED_FILES" ]; then
-        CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB)
-    fi
-    # 逐条判定，只有命中以下路径才认为是“代码变更”
-    while IFS= read -r f; do
-        case "$f" in
-            src/*|tests/*|benches/*|examples/*|build.rs|Cargo.toml|Cargo.lock)
-                CODE_CHANGED=1; break ;;
-            *) ;;
-        esac
-    done <<< "$CHANGED_FILES"
+DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-macinmeter-ci:standalone}"
+DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "❌ 未检测到Docker，请安装后重试"
+    exit 1
 fi
 
-# 允许通过环境变量强制运行或强制跳过
-if [ "${PRECOMMIT_FORCE_DOCKER:-}" = "1" ]; then
-    CODE_CHANGED=1
-elif [ "${PRECOMMIT_SKIP_DOCKER:-}" = "1" ]; then
-    CODE_CHANGED=0
+if ! docker images "$DOCKER_IMAGE_TAG" -q | grep -q .; then
+    echo "❌ 需要Docker镜像 '$DOCKER_IMAGE_TAG'，但未找到。" 
+    echo "💡 提示: 使用以下任一方式准备镜像后重试："
+    echo "   1) docker pull $DOCKER_IMAGE_TAG"
+    echo "   2) 设定 DOCKER_IMAGE_TAG 指向本地镜像标签"
+    echo "   3) 如有镜像文件： docker load -i /path/to/macinmeter-ci_standalone.tar"
+    exit 1
 fi
 
-if [ "$CODE_CHANGED" -ne 1 ]; then
-    echo "⏭️  未检测到与构建/测试相关的代码变更，跳过Docker CI模拟"
-else
-    if command -v docker &> /dev/null; then
-        # 检查是否有 macinmeter-ci 镜像
-        if docker images macinmeter-ci:standalone -q | grep -q .; then
-            echo "   正在使用Docker模拟x86 CI环境运行完整测试..."
-            echo "   开始时间: $(date +%H:%M:%S)"
-
-            DOCKER_START=$(date +%s)
-            # 使用项目专用CI镜像（已预装所有依赖）
-            if docker run --rm \
-                --platform linux/amd64 \
-                -v "$(pwd):/workspace" \
-                -w /workspace \
-                macinmeter-ci:standalone \
-                bash -c "cargo test 2>&1 | tail -100"; then
-                DOCKER_END=$(date +%s)
-                DOCKER_TIME=$((DOCKER_END - DOCKER_START))
-                echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
-            else
-                echo "❌ x86 Docker CI测试失败！"
-                echo "💡 提示: 这可能是跨平台差异，请检查上述错误"
-                exit 1
-            fi
-        else
-            echo "⚠️  macinmeter-ci:standalone 镜像未找到，跳过x86 CI模拟"
-            echo "💡 提示: 运行 'docker pull macinmeter-ci:standalone' 或构建镜像"
-        fi
+DESIRED_ARCH="$(echo "$DOCKER_PLATFORM" | cut -d'/' -f2)"
+IMG_ARCH="$(docker image inspect "$DOCKER_IMAGE_TAG" --format '{{.Architecture}}' 2>/dev/null || echo '')"
+if [ -n "$IMG_ARCH" ] && [ "$IMG_ARCH" != "$DESIRED_ARCH" ]; then
+    echo "⚠️  本地镜像架构为 '$IMG_ARCH'，与期望 '$DESIRED_ARCH' 不一致。尝试使用 buildx 以 $DOCKER_PLATFORM 重建镜像..."
+    if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; then
+        docker buildx build --platform "$DOCKER_PLATFORM" -t "$DOCKER_IMAGE_TAG" -f scripts/ci/Dockerfile.standalone . --load
     else
-        echo "⚠️  Docker未安装，跳过x86 CI模拟测试"
-        echo "💡 建议安装Docker以在本地验证x86兼容性"
+        echo "❌ 缺少 buildx，无法自动重建 x86 镜像。"
+        echo "💡 手动执行: docker buildx build --platform $DOCKER_PLATFORM -t $DOCKER_IMAGE_TAG -f scripts/ci/Dockerfile.standalone . --load"
+        exit 1
     fi
 fi
+
+echo "   正在使用Docker模拟x86 CI环境运行完整测试... ($DOCKER_PLATFORM)"
+echo "   开始时间: $(date +%H:%M:%S)"
+
+DOCKER_START=$(date +%s)
+
+DOCKER_CMD=(docker run --rm --platform "$DOCKER_PLATFORM" -v "$(pwd):/workspace" -w /workspace "$DOCKER_IMAGE_TAG" bash -lc \
+    "set -Eeuo pipefail; \
+     export PATH=/usr/local/cargo/bin:\$PATH; \
+     rustc --version; cargo --version; \
+     cargo clippy --all-targets --all-features -- -D warnings; \
+     cargo test --all-targets --all-features -- --color=always")
+
+if command -v timeout >/dev/null 2>&1; then
+    timeout 30m "${DOCKER_CMD[@]}"
+else
+    "${DOCKER_CMD[@]}"
+fi
+
+DOCKER_END=$(date +%s)
+DOCKER_TIME=$((DOCKER_END - DOCKER_START))
+echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
 
 # 🛡️ 6. 安全审计 (可选，如果安装了cargo-audit)
 echo ""

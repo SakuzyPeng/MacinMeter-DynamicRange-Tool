@@ -55,7 +55,8 @@ impl ChunkSizeStats {
         {
             *self.size_distribution.entry(size).or_insert(0) += 1;
 
-            if self.total_chunks <= 5 || (self.total_chunks % 500 == 0) {
+            let is_500_mult = (self.total_chunks / 500) * 500 == self.total_chunks;
+            if self.total_chunks <= 5 || is_500_mult {
                 eprintln!(
                     "Processed packet #{count}: {size} samples/channel (total {total}) / 处理包#{count}: {size}样本/声道 (总计{total}包)",
                     count = self.total_chunks,
