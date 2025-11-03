@@ -106,6 +106,8 @@ impl UniversalDecoder {
     /// - BatchPacketReader：减少99%系统调用
     /// - SIMD样本转换：ARM NEON/x86 SSE2
     /// - 流式窗口处理：恒定45MB内存
+    ///
+    /// 不支持的格式自动尝试FFmpeg回退（AC-3/E-AC-3/DTS/DSD等）
     pub fn create_streaming<P: AsRef<Path>>(
         &self,
         path: P,
@@ -119,8 +121,45 @@ impl UniversalDecoder {
             return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
         }
 
-        // 其他格式使用通用解码器
-        Ok(Box::new(UniversalStreamProcessor::new(path)?))
+        // 检查是否为Symphonia不支持的格式（需要FFmpeg回退）
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            let ext_lower = ext.to_lowercase();
+
+            // 支持的格式列表：AC-3, E-AC-3, DTS, DSD等
+            let ffmpeg_formats = ["ac3", "ec3", "eac3", "dts", "dsf", "dff"];
+
+            if ffmpeg_formats.contains(&ext_lower.as_str()) {
+                if super::ffmpeg_bridge::FFmpegDecoder::is_available() {
+                    eprintln!(
+                        "[INFO] Using FFmpeg decoder for {} format / 使用FFmpeg解码器处理{}格式",
+                        ext_lower.to_uppercase(),
+                        ext_lower.to_uppercase()
+                    );
+                    return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                } else {
+                    return Err(AudioError::FormatError(format!(
+                        "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装\n\
+                         See installation guide above / 请参考上方安装指南"
+                    )));
+                }
+            }
+        }
+
+        // 尝试使用Symphonia解码器
+        match UniversalStreamProcessor::new(path) {
+            Ok(processor) => Ok(Box::new(processor)),
+            Err(e) => {
+                // Symphonia失败，尝试FFmpeg兜底
+                if super::ffmpeg_bridge::FFmpegDecoder::is_available() {
+                    eprintln!(
+                        "[INFO] Symphonia failed, trying FFmpeg fallback / Symphonia失败，尝试FFmpeg兜底"
+                    );
+                    Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?))
+                } else {
+                    Err(e) // FFmpeg不可用，返回原始错误
+                }
+            }
+        }
     }
 
     /// 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
@@ -143,6 +182,27 @@ impl UniversalDecoder {
             && ext.to_lowercase() == "opus"
         {
             return Ok(Box::new(SongbirdOpusDecoder::new(path)?));
+        }
+
+        // FFmpeg格式无法并行解码（管道限制），使用串行FFmpeg解码器
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            let ext_lower = ext.to_lowercase();
+            let ffmpeg_formats = ["ac3", "ec3", "eac3", "dts", "dsf", "dff"];
+
+            if ffmpeg_formats.contains(&ext_lower.as_str()) {
+                if super::ffmpeg_bridge::FFmpegDecoder::is_available() {
+                    eprintln!(
+                        "[INFO] {} format uses FFmpeg (serial only) / {}格式使用FFmpeg（仅串行）",
+                        ext_lower.to_uppercase(),
+                        ext_lower.to_uppercase()
+                    );
+                    return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                } else {
+                    return Err(AudioError::FormatError(format!(
+                        "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装"
+                    )));
+                }
+            }
         }
 
         // 有状态编码格式必须使用串行解码

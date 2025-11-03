@@ -57,6 +57,32 @@ MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态
 
 **总计支持格式**: 12+种主流音频格式，覆盖90%+用户需求
 
+### 🎧 多声道与LFE支持
+
+**多声道分析**（3+ channels）：
+- 支持3-32声道音频分析（架构限制：MAX_CHANNELS=32）
+- 每个声道独立计算DR值，输出完整的per-channel DR明细
+- Official DR采用foobar2000标准：对所有"非静音"声道的单声道DR做算术平均并四舍五入
+- 零拷贝优化：使用process_samples_strided单次遍历处理交错样本，消除中间Vec分配
+- 性能收益：7.1(8ch)→8倍，7.1.4(12ch)→12倍，9.1.6(16ch)→16倍内存和CPU效率提升
+
+**LFE声道剔除**（可选，通过`--exclude-lfe`开启）：
+- 从官方DR聚合计算中剔除LFE（低频效果）声道，但per-channel DR明细仍保留
+- 仅当存在可靠的声道布局元数据时生效（如WAV WAVEFORMATEXTENSIBLE掩码或解码器通道位图）
+- 无元数据时不执行剔除，避免误判（报告会提示"请求剔除LFE，但未检测到声道布局元数据"）
+- FLAC特殊处理：5.1/7.1布局在缺少元数据时，按FLAC规范回退将LFE视作index=3（0-based）
+- 更高阶布局（如7.1.4/9.1.6）须依赖容器提供的布局或位图
+
+**声道布局元数据来源**：
+- AudioFormat结构体包含has_channel_layout_metadata和lfe_indices字段
+- 从解码器channel_layout、WAV WAVEFORMATEXTENSIBLE掩码等获取
+- 支持的容器/格式在持续完善中（部分MP4/MKV、ADM/RF64等仍在开发）
+
+**静音声道检测**：
+- 使用DR_ZERO_EPS阈值（1e-12）判定静音声道，而非精确的0.0比较
+- 兼容解码器产生的近零噪声，避免误判为非静音声道
+- 静音声道自动从Official DR聚合中排除，不计入平均
+
 ### ⚠️ 有状态编码格式处理策略
 
 **MP3特殊处理**：MP3采用有状态解码，每个packet依赖前一个packet的解码器状态。并行解码会创建独立decoder丢失上下文，导致样本错误。因此**MP3格式自动降级到串行解码器**，确保解码正确性。
@@ -85,6 +111,9 @@ cargo run -- [目录路径]
 # 运行生产版本
 ./target/release/MacinMeter-DynamicRange-Tool-foo_dr [目录路径]
 
+# 多声道音频分析（启用LFE剔除）
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr --exclude-lfe [目录路径]
+
 # 运行测试
 cargo test
 
@@ -93,6 +122,9 @@ cargo test test_dr_calculation_accuracy
 
 # 运行基准测试
 cargo test --release benchmark
+
+# 多声道性能基准测试（10次平均）
+./benchmark_multichannel_10x.sh
 
 # 检查代码格式
 cargo fmt --check
@@ -580,12 +612,14 @@ trait StreamingDecoder {
 ### 🎯 架构约束
 - **串行≠并发度1的并行**: 保持两条独立路径，不强行统一
 - **组合优于继承**: 用ProcessorState共享状态，而非enum统一模式
-- **声道限制**: 仅支持1-2声道，3+声道友好拒绝
+- **多声道支持**: 支持3-32声道音频分析（架构限制：MAX_CHANNELS=32）
+- **零拷贝优化**: 3+声道使用process_samples_strided单次遍历，1-2声道保持SIMD分离路径
 
 ### 💎 性能优先
 - 默认并行解码（4线程64包批量）
 - SIMD自动启用（ARM NEON/x86 SSE2）
 - Sum Doubling固定启用（foobar2000兼容）
+- 多声道零拷贝处理：7.1(8ch)→8倍，7.1.4(12ch)→12倍，9.1.6(16ch)→16倍效率提升
 
 ## 测试策略
 
@@ -725,6 +759,39 @@ cargo test --release --features simd-perf-tests --test simd_performance_tests
 - **风险标识**: 🧪标记提醒用户这些功能可能改变DR值
 - **渐进稳定**: 实验验证后可能移除标记，成为稳定特性
 - **结论**: 允许探索新功能，同时保护核心精度保证
+
+### 为什么多声道采用零拷贝跨步处理？
+**问题**: 为何3+声道使用process_samples_strided而非传统的extract+process？
+
+**答案**: 性能和内存优化的关键设计：
+- **内存问题**: 传统方法需要N次extract创建N个Vec，对7.1(8ch)文件产生8倍内存占用
+- **CPU效率**: 单次遍历vs N次遍历，显著提升缓存局部性
+- **性能收益**: 7.1→8倍，7.1.4→12倍，9.1.6→16倍内存和CPU效率提升
+- **混合策略**: 1-2声道保持ProcessingCoordinator路径，享受SIMD分离优势
+- **实现细节**: histogram.rs:376中process_samples_strided使用chunks_exact直接提取目标声道
+- **结论**: 零拷贝是多声道高性能处理的必选路径
+
+### 为什么LFE剔除需要元数据支持？
+**问题**: 为何`--exclude-lfe`仅在存在声道布局元数据时生效？
+
+**答案**: 避免误判和保证可靠性：
+- **声道歧义**: 无元数据时无法确定哪个物理声道是LFE（如5.1中LFE可能在index 3、4或5）
+- **格式差异**: WAV、MP4、MKV等容器对声道顺序定义不同，不能假设通用规则
+- **FLAC特例**: 5.1/7.1有明确规范（LFE在index 3），但7.1.4/9.1.6仍需元数据
+- **用户体验**: 无元数据时报告提示"请求剔除LFE，但未检测到声道布局元数据"，而非静默失败
+- **实现细节**: AudioFormat.has_channel_layout_metadata和lfe_indices字段协同工作
+- **结论**: 宁可保守不剔除，也不能错误剔除非LFE声道
+
+### 为什么静音声道使用DR_ZERO_EPS阈值？
+**问题**: 为何不用精确的0.0比较判断静音声道？
+
+**答案**: 处理实际音频数据的鲁棒性：
+- **解码噪声**: 解码器可能产生近零噪声（如1e-15），不代表非静音声道
+- **浮点精度**: 浮点运算累积误差可能导致理论上的0.0变成1e-16
+- **阈值选择**: 1e-12足够严格（远小于16bit量化噪声3e-5），同时容忍合理误差
+- **影响范围**: formatter.rs中3处判定逻辑统一使用DR_ZERO_EPS（格式化、标签、筛选）
+- **与常量系统一致**: 使用constants::dr_analysis::DR_ZERO_EPS避免值漂移
+- **结论**: 阈值判断是实际音频处理的工业级实践
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

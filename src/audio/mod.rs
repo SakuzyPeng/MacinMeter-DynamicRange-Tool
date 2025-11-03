@@ -43,6 +43,9 @@ mod streaming;
 // Opus音频支持模块（使用songbird专用解码器）
 mod opus_decoder;
 
+// FFmpeg桥接解码器 - 为Symphonia不支持的格式提供回退方案
+mod ffmpeg_bridge;
+
 // 有序并行解码器 - 攻击解码瓶颈的核心性能优化
 pub mod parallel_decoder;
 
