@@ -258,17 +258,20 @@ pub fn create_output_header(
 /// 格式化单声道DR结果
 pub fn format_mono_results(result: &DrResult) -> String {
     let mut output = String::new();
-    // 保留用于将来可能的显示需求
-    // let peak_db = utils::linear_to_db(result.peak);
-    // let rms_db = utils::linear_to_db(result.rms);
-
     output.push_str("                 单声道 / Mono\n\n");
-    // 暂时隐藏Peak和RMS显示
-    // output.push_str(&format!("Peak Value:     {peak_db:.2} dB   \n"));
-    // output.push_str(&format!("Avg RMS:       {rms_db:.2} dB   \n"));
     output.push_str(&format!(
         "DR通道 / DR Channel:      {:.2} dB   \n",
         result.dr_value
+    ));
+
+    // 诊断：RMS与Peak（以dBFS显示）
+    let rms_db = utils::linear_to_db_string(result.rms);
+    let peak_sel_db = utils::linear_to_db_string(result.peak);
+    let peak1_db = utils::linear_to_db_string(result.primary_peak);
+    let peak2_db = utils::linear_to_db_string(result.secondary_peak);
+    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+    output.push_str(&format!(
+        "  RMS(20%): {rms_db} dB   |  Peak(选用/selected): {peak_sel_db} dB   |  Primary: {peak1_db} dB   |  Secondary: {peak2_db} dB\n\n"
     ));
 
     output
@@ -277,24 +280,32 @@ pub fn format_mono_results(result: &DrResult) -> String {
 /// 格式化立体声DR结果
 pub fn format_stereo_results(results: &[DrResult]) -> String {
     let mut output = String::new();
-    // 保留用于将来可能的显示需求
-    // let left_peak_db = utils::linear_to_db(results[0].peak);
-    // let right_peak_db = utils::linear_to_db(results[1].peak);
-    // let left_rms_db = utils::linear_to_db(results[0].rms);
-    // let right_rms_db = utils::linear_to_db(results[1].rms);
-
     output.push_str("                         左声道 / Left      右声道 / Right\n\n");
-    // 暂时隐藏Peak和RMS显示
-    // output.push_str(&format!(
-    //     "Peak Value:     {left_peak_db:.2} dB   ---     {right_peak_db:.2} dB   \n"
-    // ));
-    // output.push_str(&format!(
-    //     "Avg RMS:       {left_rms_db:.2} dB   ---    {right_rms_db:.2} dB   \n"
-    // ));
     output.push_str("DR通道 / DR Channel:      ");
     output.push_str(&format!(
         "{:.2} dB   ---    {:.2} dB   \n",
         results[0].dr_value, results[1].dr_value
+    ));
+
+    // 诊断：RMS与Peak（以dBFS显示）
+    let l_rms = utils::linear_to_db_string(results[0].rms);
+    let r_rms = utils::linear_to_db_string(results[1].rms);
+    let l_peak = utils::linear_to_db_string(results[0].peak);
+    let r_peak = utils::linear_to_db_string(results[1].peak);
+    let l_p1 = utils::linear_to_db_string(results[0].primary_peak);
+    let r_p1 = utils::linear_to_db_string(results[1].primary_peak);
+    let l_p2 = utils::linear_to_db_string(results[0].secondary_peak);
+    let r_p2 = utils::linear_to_db_string(results[1].secondary_peak);
+    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+    output.push_str(&format!(
+        "  RMS(20%):       {l_rms} dB   ---    {r_rms} dB\n"
+    ));
+    output.push_str(&format!(
+        "  Peak(选用/sel): {l_peak} dB   ---    {r_peak} dB\n"
+    ));
+    output.push_str(&format!("  Primary Peak:   {l_p1} dB   ---    {r_p1} dB\n"));
+    output.push_str(&format!(
+        "  Secondary Peak: {l_p2} dB   ---    {r_p2} dB\n\n"
     ));
 
     output
@@ -353,6 +364,36 @@ pub fn format_medium_multichannel_results(results: &[DrResult], format: &AudioFo
             &col_official,
             &col_precise,
             &label,
+        ));
+    }
+
+    // 附加 RMS/Peak 诊断表（每通道）
+    output.push('\n');
+    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+    let header = utils::table::format_two_cols_line("RMS(20%)", "Peak(选用/sel)", "通道 / Channel");
+    output.push_str(&header);
+    let sep = utils::table::separator_from(&header);
+    output.push_str(&sep);
+    for (i, r) in results.iter().enumerate() {
+        let col_rms = format!("{} dB", utils::linear_to_db_string(r.rms));
+        let col_peak = format!("{} dB", utils::linear_to_db_string(r.peak));
+        let mut label = format!("通道 / Channel {:>2}", i + 1);
+        // 附注：静音/LFE保持一致
+        let is_silent = r.peak <= constants::dr_analysis::DR_ZERO_EPS
+            || r.rms <= constants::dr_analysis::DR_ZERO_EPS;
+        let lfe_channels: Vec<usize> =
+            if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
+                format.lfe_indices.clone()
+            } else {
+                identify_lfe_channels(format.channels)
+            };
+        if lfe_channels.contains(&i) {
+            label.push_str("  [LFE]");
+        } else if is_silent {
+            label.push_str("  [Silent / 静音]");
+        }
+        output.push_str(&utils::table::format_two_cols_line(
+            &col_rms, &col_peak, &label,
         ));
     }
 
@@ -450,6 +491,29 @@ pub fn format_large_multichannel_results(results: &[DrResult], format: &AudioFor
                 .map(|&i| (i + 1).to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
+        ));
+    }
+
+    // 附加 RMS/Peak 诊断表（每通道）
+    output.push('\n');
+    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+    let header = utils::table::format_two_cols_line("RMS(20%)", "Peak(选用/sel)", "通道 / Channel");
+    output.push_str(&header);
+    let sep = utils::table::separator_from(&header);
+    output.push_str(&sep);
+    for (i, r) in results.iter().enumerate() {
+        let col_rms = format!("{} dB", utils::linear_to_db_string(r.rms));
+        let col_peak = format!("{} dB", utils::linear_to_db_string(r.peak));
+        let mut label = format!("通道 / Channel {:>2}", i + 1);
+        if lfe_channels.contains(&i) {
+            label.push_str("  [LFE]");
+        } else if r.peak <= constants::dr_analysis::DR_ZERO_EPS
+            || r.rms <= constants::dr_analysis::DR_ZERO_EPS
+        {
+            label.push_str("  [Silent / 静音]");
+        }
+        output.push_str(&utils::table::format_two_cols_line(
+            &col_rms, &col_peak, &label,
         ));
     }
 
