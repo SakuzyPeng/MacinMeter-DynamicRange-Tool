@@ -395,7 +395,7 @@ impl FFmpegDecoder {
             .ok_or_else(|| AudioError::FormatError(FFMPEG_INSTALL_GUIDE.to_string()))?;
 
         // 探测格式信息
-        let format = Self::probe_format(path)?;
+        let mut format = Self::probe_format(path)?;
 
         // 检测是否为DSD格式
         let is_dsd = path
@@ -404,10 +404,16 @@ impl FFmpegDecoder {
             .map(|s| s.eq_ignore_ascii_case("dsf") || s.eq_ignore_ascii_case("dff"))
             .unwrap_or(false);
 
-        // 构建FFmpeg命令参数
+        // 构建FFmpeg命令参数（基础参数）
         let mut args = vec![
+            "-hide_banner".to_string(),
+            "-nostdin".to_string(),
             "-v".to_string(),
             "error".to_string(),
+            // 禁止非音频流
+            "-vn".to_string(),
+            "-sn".to_string(),
+            "-dn".to_string(),
             "-i".to_string(),
             path.to_str().unwrap().to_string(),
         ];
@@ -415,13 +421,28 @@ impl FFmpegDecoder {
         let use_s32 = is_dsd; // DSD使用32位输出以避免精度损失
 
         if is_dsd {
-            // DSD专用优化：高质量转换参数（输出32位PCM）
+            // DSD 专用：固定策略下采样，避免 2.8224MHz 带来的巨大数据量。
+            // 规则：DSD128 及以上 → 176400，否则 → 88200
+            let target_rate: u32 = if format.sample_rate >= 5_644_800 {
+                176_400
+            } else {
+                88_200
+            };
+
+            // DSD → PCM：低通 + 轻微增益补偿（与常见播放器一致），并设置输出采样率
             args.extend(vec![
                 "-af".to_string(),
-                "lowpass=20000,volume=6dB".to_string(), // 低通滤波 + 增益补偿
+                "lowpass=20000,volume=6dB".to_string(),
                 "-ar".to_string(),
-                format.sample_rate.to_string(), // 保持探测到的采样率
+                target_rate.to_string(),
             ]);
+
+            // 标记处理用采样率，便于报告输出“源 → 处理（DSD降采样）”
+            // 注意：AudioFormat.sample_rate 保留为“源采样率”
+            //       processed_sample_rate 记录真实处理用采样率
+            // SAFETY: 仅在内部使用，可安全更新
+            // 这里 format 仍在本作用域，未跨线程共享
+            format.processed_sample_rate = Some(target_rate);
         }
 
         // 输出PCM格式（DSD使用32位，其他格式使用16位）

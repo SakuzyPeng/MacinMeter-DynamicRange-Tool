@@ -20,6 +20,10 @@ pub struct AudioFormat {
     pub sample_count: u64,
     /// 真实的编解码器类型（从解码器获取，比文件扩展名更准确）
     pub codec_type: Option<CodecType>,
+    /// 若处理流程发生重采样，此处记录“处理用采样率”。
+    /// 常见于 DSD(DSF/DFF) → PCM 的降采样（例如 705600 → 88200 Hz）。
+    /// 若未发生转换则为 None。
+    pub processed_sample_rate: Option<u32>,
     /// 是否存在声道布局元数据（如容器提供的 channel_layout），用于可靠识别 LFE 等通道
     pub has_channel_layout_metadata: bool,
     /// 由通道掩码/映射推导的 LFE 声道索引（交错顺序中的下标）。若无可用元数据则为空
@@ -39,6 +43,7 @@ impl AudioFormat {
             bits_per_sample,
             sample_count,
             codec_type: None,
+            processed_sample_rate: None,
             has_channel_layout_metadata: false,
             lfe_indices: Vec::new(),
             is_partial: false,

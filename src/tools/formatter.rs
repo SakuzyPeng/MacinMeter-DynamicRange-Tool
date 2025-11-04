@@ -886,7 +886,19 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     let label_col_width = eff.into_iter().max().unwrap_or(0);
 
     // 值列
-    let sample_rate_s = format!("{} Hz", format.sample_rate);
+    // 采样率显示：若发生重采样（如DSD→PCM降采样），显示“源 → 处理（DSD降采样）”
+    let sample_rate_s = if let Some(proc_sr) = format.processed_sample_rate {
+        if proc_sr != format.sample_rate {
+            format!(
+                "{} Hz → {} Hz (DSD downsampled / DSD降采样)",
+                format.sample_rate, proc_sr
+            )
+        } else {
+            format!("{} Hz", format.sample_rate)
+        }
+    } else {
+        format!("{} Hz", format.sample_rate)
+    };
     let channels_s = format!("{}", format.channels);
     let bits_s = format!("{}", format.bits_per_sample);
 
