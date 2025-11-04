@@ -7,7 +7,7 @@ use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
 mod audio_test_fixtures;
-use audio_test_fixtures::{fixture_path, fixtures_dir};
+use audio_test_fixtures::fixture_path;
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());

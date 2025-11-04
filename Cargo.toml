@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 # 音频文件解码
 hound = "3.5"
-# 🔥 优化：启用所有必要的编解码器，支持多格式兼容
+#  优化：启用所有必要的编解码器，支持多格式兼容
 symphonia = { version = "0.5", features = [
     "flac",      # FLAC支持（音质测试常用）
     "mp3",       # MP3支持（通用格式）
@@ -76,7 +76,7 @@ fs2 = "0.4"
 # 风险评估：本地文件解码场景下，这些问题的攻击面为零
 
 [profile.release]
-opt-level = 3          # 🚀 性能优化（针对处理/解码路径更合适）
+opt-level = 3          #  性能优化（针对处理/解码路径更合适）
 lto = "fat"            # 更激进的链接时优化
 codegen-units = 1      # 单个代码生成单元（更好的优化）
 panic = "abort"        # panic时直接abort（减少代码体积）

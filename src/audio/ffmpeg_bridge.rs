@@ -85,20 +85,31 @@ impl FFmpegDecoder {
         {
             // Windows: 检查多个常见位置
             let candidates = vec![
-                PathBuf::from("ffmpeg.exe"), // PATH中
                 PathBuf::from(r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"),
                 PathBuf::from(r"C:\ffmpeg\bin\ffmpeg.exe"),
                 // 便携部署：与可执行文件同目录
                 std::env::current_exe().ok()?.parent()?.join("ffmpeg.exe"),
             ];
 
+            // 先尝试 PATH 中的 ffmpeg（不依赖文件存在，直接调用）
+            if Command::new("ffmpeg")
+                .arg("-version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return Some(PathBuf::from("ffmpeg"));
+            }
+
             candidates.into_iter().find(|p| {
-                p.exists()
-                    && Command::new(p)
-                        .arg("-version")
-                        .output()
-                        .map(|o| o.status.success())
-                        .unwrap_or(false)
+                if !p.exists() {
+                    return false;
+                }
+                Command::new(p)
+                    .arg("-version")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
             })
         }
 

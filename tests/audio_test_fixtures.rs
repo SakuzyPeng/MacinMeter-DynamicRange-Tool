@@ -57,6 +57,7 @@ impl FixtureLock {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(false)
             .open(&lock_path)
             .expect("无法创建固件锁文件");
         file.lock_exclusive()
@@ -71,7 +72,7 @@ impl FixtureLock {
 
 impl Drop for FixtureLock {
     fn drop(&mut self) {
-        let _ = self.lock_file.unlock();
+        let _ = fs2::FileExt::unlock(&self.lock_file);
     }
 }
 
