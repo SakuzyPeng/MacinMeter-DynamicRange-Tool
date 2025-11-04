@@ -65,8 +65,10 @@ pub struct FFmpegDecoder {
     chunk_stats: ChunkSizeStats,
     /// 是否已到达流末尾
     eof_reached: bool,
-    /// 是否使用32位样本（DSD格式）
+    /// 是否使用32位整型样本（S32LE）
     use_s32: bool,
+    /// 是否使用32位浮点样本（F32LE）
+    use_f32: bool,
     /// FFmpeg错误输出摘要（最近的错误）
     /// 注：当前未直接使用，保留用于后续错误诊断和I/O鲁棒性增强
     #[allow(dead_code)]
@@ -558,7 +560,8 @@ impl FFmpegDecoder {
             path.to_str().unwrap().to_string(),
         ];
 
-        let use_s32 = is_dsd; // DSD使用32位输出以避免精度损失
+        let use_s32 = false;
+        let mut use_f32 = false;
 
         if is_dsd {
             // DSD 专用：统一转换为可配置的 PCM 采样率（默认 352.8 kHz，整数比率）
@@ -588,18 +591,25 @@ impl FFmpegDecoder {
 
             // 组装滤镜与采样率
             let gain_db = dsd_gain_db.unwrap_or(6.0);
-            let lowpass = format!("lowpass=f={fc_hz:.0}");
-            let filter = if gain_db.abs() > 0.0001 {
-                format!("{lowpass},volume={gain_db}dB")
-            } else {
-                lowpass
-            };
-            args.extend(vec![
-                "-af".to_string(),
-                filter,
-                "-ar".to_string(),
-                target_rate.to_string(),
-            ]);
+            let mut filter_chain = String::new();
+            if !mode.eq_ignore_ascii_case("off") {
+                filter_chain.push_str(&format!("lowpass=f={fc_hz:.0}"));
+            }
+            if gain_db.abs() > 0.0001 {
+                if !filter_chain.is_empty() {
+                    filter_chain.push(',');
+                }
+                filter_chain.push_str(&format!("volume={gain_db}dB"));
+            }
+            if !filter_chain.is_empty() {
+                args.push("-af".to_string());
+                args.push(filter_chain);
+            }
+            args.push("-ar".to_string());
+            args.push(target_rate.to_string());
+
+            // DSD 输出使用 32-bit float（F32LE）
+            use_f32 = true;
 
             // 标记处理用采样率，便于报告输出“源 → 处理（DSD降采样）”
             // 注意：AudioFormat.sample_rate 保留为“源采样率”
@@ -608,23 +618,35 @@ impl FFmpegDecoder {
             // 这里 format 仍在本作用域，未跨线程共享
             format.processed_sample_rate = Some(target_rate);
         }
+        // 非 DSD 路径：统一使用 32-bit float（F32LE）输出，便于后续处理一致性
+        if !is_dsd {
+            use_f32 = true;
+        }
 
-        // 输出PCM格式（DSD使用32位，其他格式使用16位）
-        args.extend(vec![
-            "-f".to_string(),
-            if use_s32 {
-                "s32le".to_string()
-            } else {
-                "s16le".to_string()
-            },
-            "-acodec".to_string(),
-            if use_s32 {
-                "pcm_s32le".to_string()
-            } else {
-                "pcm_s16le".to_string()
-            },
-            "-".to_string(), // 输出到stdout
-        ]);
+        // 输出PCM格式：DSD→F32，其余默认 S16
+        if use_f32 {
+            args.extend(vec![
+                "-f".to_string(),
+                "f32le".to_string(),
+                "-acodec".to_string(),
+                "pcm_f32le".to_string(),
+            ]);
+        } else if use_s32 {
+            args.extend(vec![
+                "-f".to_string(),
+                "s32le".to_string(),
+                "-acodec".to_string(),
+                "pcm_s32le".to_string(),
+            ]);
+        } else {
+            args.extend(vec![
+                "-f".to_string(),
+                "s16le".to_string(),
+                "-acodec".to_string(),
+                "pcm_s16le".to_string(),
+            ]);
+        }
+        args.push("-".to_string()); // 输出到stdout
 
         // 启动FFmpeg子进程
         let child = Command::new(&ffmpeg_path)
@@ -642,7 +664,13 @@ impl FFmpegDecoder {
             "[INFO] FFmpeg decoder initialized / FFmpeg解码器已初始化: {} channels, {}Hz, format={}",
             format.channels,
             format.sample_rate,
-            if use_s32 { "S32LE" } else { "S16LE" }
+            if use_f32 {
+                "F32LE"
+            } else if use_s32 {
+                "S32LE"
+            } else {
+                "S16LE"
+            }
         );
 
         Ok(Self {
@@ -656,6 +684,7 @@ impl FFmpegDecoder {
             chunk_stats: ChunkSizeStats::new(),
             eof_reached: false,
             use_s32,
+            use_f32,
             last_stderr: String::new(),
         })
     }
@@ -681,6 +710,15 @@ impl FFmpegDecoder {
             })
             .collect()
     }
+
+    /// F32LE 字节转 f32 样本（小端序，零拷贝重组）
+    #[allow(dead_code)]
+    fn convert_f32le_to_f32(bytes: &[u8]) -> Vec<f32> {
+        bytes
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect()
+    }
 }
 
 impl StreamingDecoder for FFmpegDecoder {
@@ -695,7 +733,7 @@ impl StreamingDecoder for FFmpegDecoder {
         const MIN_CHUNK_BYTES: usize = 64 * 1024; // 64KB下限
         let channels = self.format.channels as usize;
         // 按实际输出位宽选择样本字节数
-        let bytes_per_sample = if self.use_s32 { 4 } else { 2 };
+        let bytes_per_sample = if self.use_f32 || self.use_s32 { 4 } else { 2 };
         let default_chunk_bytes =
             self.format.sample_rate as usize * channels * bytes_per_sample * 3; // 目标≈3秒
         let bytes_per_chunk = default_chunk_bytes.clamp(MIN_CHUNK_BYTES, MAX_CHUNK_BYTES);
