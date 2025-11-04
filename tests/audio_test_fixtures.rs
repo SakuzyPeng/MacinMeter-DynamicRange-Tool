@@ -52,6 +52,7 @@ pub fn ensure_fixtures_generated() {
 struct FixtureLock {
     _mutex_guard: std::sync::MutexGuard<'static, ()>,
     lock_file: File,
+    lock_path: PathBuf,
 }
 
 impl FixtureLock {
@@ -76,6 +77,7 @@ impl FixtureLock {
         Self {
             _mutex_guard: guard,
             lock_file: file,
+            lock_path,
         }
     }
 }
@@ -83,6 +85,7 @@ impl FixtureLock {
 impl Drop for FixtureLock {
     fn drop(&mut self) {
         let _ = fs2::FileExt::unlock(&self.lock_file);
+        let _ = std::fs::remove_file(&self.lock_path);
     }
 }
 
