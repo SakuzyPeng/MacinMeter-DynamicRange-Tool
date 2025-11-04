@@ -421,13 +421,10 @@ impl FFmpegDecoder {
         let use_s32 = is_dsd; // DSD使用32位输出以避免精度损失
 
         if is_dsd {
-            // DSD 专用：固定策略下采样，避免 2.8224MHz 带来的巨大数据量。
-            // 规则：DSD128 及以上 → 176400，否则 → 88200
-            let target_rate: u32 = if format.sample_rate >= 5_644_800 {
-                176_400
-            } else {
-                88_200
-            };
+            // DSD 专用：统一转换为 176.4 kHz（整数比率，稳定且与专业工具一致）
+            // 说明：部分 DSF 在 ffprobe 中 sample_rate 可能显示为 705600（实现相关），
+            // 为避免误判采样等级，这里对所有 DSD 统一降至 176400 Hz。
+            let target_rate: u32 = 176_400;
 
             // DSD → PCM：低通 + 轻微增益补偿（与常见播放器一致），并设置输出采样率
             args.extend(vec![
