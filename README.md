@@ -337,6 +337,20 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
   - 通过 FFmpeg：读取 ffprobe JSON 标签序列（如 `FL+FR+FC+LFE+...`），精确定位 LFE 位置
 - **LFE 剔除**（可选）：使用 `--exclude-lfe` 在最终聚合中排除 LFE，单声道 DR 明细仍保留
 
+### DSD Processing / DSD 处理
+
+- Flags / 开关：
+  - `--dsd-pcm-rate` = 88200 | 176400 | 352800 | 384000（默认 default 352800，整数倍率更稳）
+  - `--dsd-gain-db` 线性增益（默认 default +6.0 dB，设 0 关闭）
+  - `--dsd-filter` = teac | studio | off（默认 default teac）
+    - teac（TEAC Narrow）：DSD64→39kHz，DSD128→78kHz，DSD256→156kHz，DSD512→312kHz（DSD1024→624kHz）；并按 0.45×Fs（目标采样率）限顶
+    - studio：固定 20kHz（只看可听带宽）
+    - off：关闭低通（仅诊断用，超声噪声将进入 RMS，可能降低 DR；与 +6 dB 同用时存在削顶风险）
+
+- Output format / 输出格式：
+  - FFmpeg 回退路径统一输出 32-bit float（F32LE），便于后续计算与一致性
+  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为 “1 (DSD 1-bit, processed as f32)”
+
 ### 总计（Summary）
 
 **12+种主流音频格式** / 12+ mainstream formats，覆盖 90%+ 用户需求：
@@ -416,16 +430,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is for technical research and educational purposes only. All reverse engineering activities comply with relevant laws and regulations. For legal questions, please consult a professional lawyer.
 
 **为专业音频制作而生 / Built for Professional Audio Production**
-### DSD Processing / DSD 处理
-
-- Flags / 开关：
-  - `--dsd-pcm-rate` = 88200 | 176400 | 352800 | 384000（默认 default 352800，整数倍率更稳）
-  - `--dsd-gain-db` 线性增益（默认 default +6.0 dB，设 0 关闭）
-  - `--dsd-filter` = teac | studio | off（默认 default teac）
-    - teac（TEAC Narrow）：DSD64→39kHz，DSD128→78kHz，DSD256→156kHz，DSD512→312kHz（DSD1024→624kHz）；并按 0.45×Fs（目标采样率）限顶
-    - studio：固定 20kHz（只看可听带宽）
-    - off：关闭低通（仅诊断用，超声噪声将进入 RMS，可能降低 DR；与 +6 dB 同用时存在削顶风险）
-
-- Output format / 输出格式：
-  - FFmpeg 回退路径统一输出 32-bit float（F32LE），便于后续计算与一致性
-  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为 “1 (DSD 1-bit, processed as f32)”
