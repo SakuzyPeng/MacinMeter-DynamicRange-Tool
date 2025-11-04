@@ -35,6 +35,7 @@ fn default_test_config() -> AppConfig {
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: false,
+        dsd_pcm_rate: Some(352_800),
     }
 }
 

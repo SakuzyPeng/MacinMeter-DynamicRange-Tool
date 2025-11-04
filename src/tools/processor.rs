@@ -113,11 +113,12 @@ pub fn process_audio_file_streaming(
                 config.parallel_threads, config.parallel_batch_size
             );
         }
-        decoder.create_streaming_parallel(
+        decoder.create_streaming_parallel_with_options(
             path,
             true,
             Some(config.parallel_batch_size),
             Some(config.parallel_threads),
+            config.dsd_pcm_rate,
         )?
     } else {
         if config.verbose {
@@ -125,7 +126,7 @@ pub fn process_audio_file_streaming(
                 "使用串行解码模式 / Using serial decoding mode (BatchPacketReader optimization)"
             );
         }
-        decoder.create_streaming(path)?
+        decoder.create_streaming_with_options(path, config.dsd_pcm_rate)?
     };
 
     // 从已创建的解码器获取格式信息（零额外 I/O 开销）
@@ -868,6 +869,7 @@ pub fn save_individual_result(
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: config.show_rms_peak,
+        dsd_pcm_rate: config.dsd_pcm_rate,
     };
 
     if let Err(e) = output_results(

@@ -119,17 +119,13 @@ impl UniversalDecoder {
         }
     }
 
-    /// 创建流式解码器（串行模式，BatchPacketReader优化）
+    /// 创建流式解码器（串行模式，BatchPacketReader优化）- 可选项版本
     ///
-    /// UniversalStreamProcessor已默认启用所有优化：
-    /// - BatchPacketReader：减少99%系统调用
-    /// - SIMD样本转换：ARM NEON/x86 SSE2
-    /// - 流式窗口处理：恒定45MB内存
-    ///
-    /// 不支持的格式自动尝试FFmpeg回退（AC-3/E-AC-3/DTS/DSD等）
-    pub fn create_streaming<P: AsRef<Path>>(
+    /// 允许传入 DSD → PCM 的目标采样率（Hz）。
+    pub fn create_streaming_with_options<P: AsRef<Path>>(
         &self,
         path: P,
+        dsd_pcm_rate: Option<u32>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -154,7 +150,9 @@ impl UniversalDecoder {
                         ext_lower.to_uppercase(),
                         ext_lower.to_uppercase()
                     );
-                    return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                    return Ok(Box::new(
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                    ));
                 } else {
                     return Err(AudioError::FormatError(format!(
                         "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装\n\
@@ -193,7 +191,9 @@ impl UniversalDecoder {
                         eprintln!(
                             "[INFO] Detected {codec} in MP4/M4A, using FFmpeg / 在MP4/M4A中检测到{codec}，切换FFmpeg"
                         );
-                        return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                        return Ok(Box::new(
+                            super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                        ));
                     }
                 }
             }
@@ -208,12 +208,22 @@ impl UniversalDecoder {
                     eprintln!(
                         "[INFO] Symphonia failed, trying FFmpeg fallback / Symphonia失败，尝试FFmpeg兜底"
                     );
-                    Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?))
+                    Ok(Box::new(
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                    ))
                 } else {
                     Err(e) // FFmpeg不可用，返回原始错误
                 }
             }
         }
+    }
+
+    /// 创建流式解码器（串行模式，BatchPacketReader优化）- 兼容旧API
+    pub fn create_streaming<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        self.create_streaming_with_options(path, None)
     }
 
     /// 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
@@ -222,12 +232,13 @@ impl UniversalDecoder {
     /// 预期获得3-5倍性能提升，处理速度从115MB/s提升到350-600MB/s。
     ///
     /// 实验性功能：在生产环境使用前请进行充分测试。
-    pub fn create_streaming_parallel<P: AsRef<Path>>(
+    pub fn create_streaming_parallel_with_options<P: AsRef<Path>>(
         &self,
         path: P,
         parallel_enabled: bool,
         batch_size: Option<usize>,
         thread_count: Option<usize>,
+        dsd_pcm_rate: Option<u32>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -250,7 +261,9 @@ impl UniversalDecoder {
                         ext_lower.to_uppercase(),
                         ext_lower.to_uppercase()
                     );
-                    return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                    return Ok(Box::new(
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                    ));
                 } else {
                     return Err(AudioError::FormatError(format!(
                         "Format '{ext_lower}' requires FFmpeg, but FFmpeg is not installed / 格式'{ext_lower}'需要FFmpeg，但FFmpeg未安装"
@@ -289,7 +302,9 @@ impl UniversalDecoder {
                             codec.to_uppercase(),
                             codec.to_uppercase()
                         );
-                        return Ok(Box::new(super::ffmpeg_bridge::FFmpegDecoder::new(path)?));
+                        return Ok(Box::new(
+                            super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                        ));
                     }
                 }
             }
@@ -321,6 +336,23 @@ impl UniversalDecoder {
         );
 
         Ok(Box::new(parallel_processor))
+    }
+
+    /// 兼容旧API：保留原有签名，内部委托到 with_options 版本
+    pub fn create_streaming_parallel<P: AsRef<Path>>(
+        &self,
+        path: P,
+        parallel_enabled: bool,
+        batch_size: Option<usize>,
+        thread_count: Option<usize>,
+    ) -> AudioResult<Box<dyn StreamingDecoder>> {
+        self.create_streaming_parallel_with_options(
+            path,
+            parallel_enabled,
+            batch_size,
+            thread_count,
+            None,
+        )
     }
 
     /// 使用Symphonia探测格式

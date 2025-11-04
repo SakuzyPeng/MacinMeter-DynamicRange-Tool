@@ -388,8 +388,13 @@ impl FFmpegDecoder {
         Ok(format)
     }
 
-    /// 创建FFmpeg解码器
+    /// 创建FFmpeg解码器（默认策略）
     pub fn new(path: &Path) -> AudioResult<Self> {
+        Self::new_with_rate(path, None)
+    }
+
+    /// 创建FFmpeg解码器（可配置 DSD → PCM 采样率）
+    pub fn new_with_rate(path: &Path, dsd_pcm_rate: Option<u32>) -> AudioResult<Self> {
         // 检查FFmpeg可用性
         let ffmpeg_path = Self::find_ffmpeg_path()
             .ok_or_else(|| AudioError::FormatError(FFMPEG_INSTALL_GUIDE.to_string()))?;
@@ -421,10 +426,9 @@ impl FFmpegDecoder {
         let use_s32 = is_dsd; // DSD使用32位输出以避免精度损失
 
         if is_dsd {
-            // DSD 专用：统一转换为 176.4 kHz（整数比率，稳定且与专业工具一致）
-            // 说明：部分 DSF 在 ffprobe 中 sample_rate 可能显示为 705600（实现相关），
-            // 为避免误判采样等级，这里对所有 DSD 统一降至 176400 Hz。
-            let target_rate: u32 = 176_400;
+            // DSD 专用：统一转换为可配置的 PCM 采样率（默认 352.8 kHz，整数比率）
+            // 注：foobar2000 常见显示为 384 kHz（非 44.1k 整数比），此处默认选用 352.8 kHz 以避免分数重采样。
+            let target_rate: u32 = dsd_pcm_rate.unwrap_or(352_800);
 
             // DSD → PCM：低通 + 轻微增益补偿（与常见播放器一致），并设置输出采样率
             args.extend(vec![

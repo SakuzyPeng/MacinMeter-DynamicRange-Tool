@@ -123,6 +123,11 @@ pub struct AppConfig {
 
     /// 是否在结果中显示 RMS/Peak 诊断信息
     pub show_rms_peak: bool,
+
+    /// DSD → PCM 的目标采样率（Hz）。
+    /// 可选：88200 / 176400 / 352800 / 384000。
+    /// None 表示使用默认值（352800）。
+    pub dsd_pcm_rate: Option<u32>,
 }
 
 impl AppConfig {
@@ -231,6 +236,29 @@ pub fn parse_args() -> AppConfig {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("dsd-pcm-rate")
+                .long("dsd-pcm-rate")
+                .help(
+                    "Target PCM rate for DSD (Hz: 88200|176400|352800|384000). Default 352800.\n\
+                     DSD 转 PCM 的目标采样率（单位 Hz，可选 88200/176400/352800/384000；默认 352800）。\n\
+                     注 / Note: foobar2000 常见显示为 384 kHz（设备/输出链重采样），\n\
+                     本工具默认采用 352.8 kHz 的 44.1k 整数比率（避免分数重采样）。",
+                )
+                .value_name("HZ")
+                .value_parser(clap::builder::ValueParser::new(|s: &str| -> Result<u32, String> {
+                    let v: u32 = s
+                        .parse()
+                        .map_err(|_| format!("invalid rate '{s}' / 无效采样率"))?;
+                    match v {
+                        88_200 | 176_400 | 352_800 | 384_000 => Ok(v),
+                        _ => Err(
+                            "must be 88200|176400|352800|384000 / 仅支持 88200/176400/352800/384000"
+                                .to_string(),
+                        ),
+                    }
+                })),
+        )
+        .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
                 .help("[EXPERIMENTAL] Enable edge-level silence trimming; optional threshold (dBFS, range -120~0, default -60) / 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
@@ -316,6 +344,11 @@ pub fn parse_args() -> AppConfig {
         edge_trim_min_run_ms,
         exclude_lfe: matches.get_flag("exclude-lfe"),
         show_rms_peak: matches.get_flag("show-rms-peak"),
+        // 默认 352.8 kHz；用户可通过 --dsd-pcm-rate 覆盖
+        dsd_pcm_rate: matches
+            .get_one::<u32>("dsd-pcm-rate")
+            .copied()
+            .or(Some(352_800)),
     }
 }
 
