@@ -340,16 +340,22 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 ### DSD Processing / DSD 处理
 
 - Flags / 开关：
-  - `--dsd-pcm-rate` = 88200 | 176400 | 352800 | 384000（默认 default 352800，整数倍率更稳）
-  - `--dsd-gain-db` 线性增益（默认 default +6.0 dB，设 0 关闭）
-  - `--dsd-filter` = teac | studio | off（默认 default teac）
-    - teac（TEAC Narrow）：DSD64→39kHz，DSD128→78kHz，DSD256→156kHz，DSD512→312kHz（DSD1024→624kHz）；并按 0.45×Fs（目标采样率）限顶
-    - studio：固定 20kHz（只看可听带宽）
-    - off：关闭低通（仅诊断用，超声噪声将进入 RMS，可能降低 DR；与 +6 dB 同用时存在削顶风险）
+  - `--dsd-pcm-rate` = 88200 | 176400 | 352800 | 384000（默认 352800 / default 352800）
+  - `--dsd-gain-db` 线性增益（默认 +6.0 dB；设 0 关闭 / default +6.0 dB; set 0 to disable）
+  - `--dsd-filter` = teac | studio | off（默认 teac / default teac）
+    - teac（TEAC Narrow）：
+      - DSD64→39 kHz；DSD128→78 kHz；DSD256→156 kHz；DSD512→312 kHz；DSD1024→624 kHz
+      - 并按 0.45×Fs（目标采样率）限顶 / capped at 0.45×Fs (target rate)
+    - studio：
+      - 固定 20 kHz（仅可听带宽）/ fixed 20 kHz (audible‑band only)
+    - off：
+      - 关闭低通（仅诊断；超声噪声进入 RMS 可能降低 DR；与 +6 dB 同用时存在削顶风险）
+      - no extra low‑pass (diagnostic; ultrasonics enter RMS and may reduce DR; clipping risk with +6 dB)
 
 - Output format / 输出格式：
-  - FFmpeg 回退路径统一输出 32-bit float（F32LE），便于后续计算与一致性
-  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为 “1 (DSD 1-bit, processed as f32)”
+  - 统一输出 32‑bit float（F32LE），便于后续计算与一致性 / unified F32LE output for consistency and easy processing
+  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为“1 (DSD 1‑bit, processed as f32)” /
+    Reports show “native 1‑bit rate & tier → processed rate”; bit depth printed as “1 (DSD 1‑bit, processed as f32)”
 
 ### 总计（Summary）
 
@@ -388,9 +394,9 @@ MP3 uses serial decoding (stateful format); other formats support parallel accel
 - 通过输入/输出对比验证算法正确性 / Algorithm verified through input/output comparison
 
 ### 智能助力 / AI Collaboration
-- 感谢 Anthropic Claude 4.5 系列模型（Sonnet / Haiku）完成了项目的大部分代码编写  
+- 感谢 Anthropic Claude 4.5 系列模型（Sonnet / Haiku）完成了项目的大部分代码编写
   Thanks to Anthropic Claude 4.5 models (Sonnet / Haiku) for implementing the majority of the codebase
-- 感谢 OpenAI GPT-5 与 Codex 模型协助补充部分代码并负责大部分审阅与改进建议  
+- 感谢 OpenAI GPT-5 与 Codex 模型协助补充部分代码并负责大部分审阅与改进建议
   Thanks to OpenAI GPT-5 and Codex models for contributing additional code and providing the bulk of reviews & refinements
 
 ### 逆向工程合法性 / Reverse Engineering Legality
