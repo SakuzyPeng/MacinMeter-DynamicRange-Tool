@@ -767,14 +767,9 @@ impl StreamingDecoder for FFmpegDecoder {
                 }
                 Ok(bytes_read) => {
                     accumulated.extend_from_slice(&buffer[..bytes_read]);
-                    // 计算字节大小（S16LE=2字节，S32LE=4字节）
-                    let bytes_per_s16_sample = 2;
-                    let bytes_per_s32_sample = 4;
-                    let bytes_per_complete_sample = if self.use_s32 {
-                        bytes_per_s32_sample
-                    } else {
-                        bytes_per_s16_sample
-                    };
+                    // 计算字节大小（S16LE=2字节，S32LE/F32LE=4字节）
+                    let bytes_per_complete_sample =
+                        if self.use_f32 || self.use_s32 { 4 } else { 2 };
                     // 检查是否有完整帧
                     let complete_frames = (accumulated.len()
                         / (channels * bytes_per_complete_sample))
@@ -782,7 +777,9 @@ impl StreamingDecoder for FFmpegDecoder {
                     if complete_frames > 0 {
                         // 有完整帧，返回
                         let data = accumulated.drain(..complete_frames).collect::<Vec<_>>();
-                        let samples = if self.use_s32 {
+                        let samples = if self.use_f32 {
+                            Self::convert_f32le_to_f32(&data)
+                        } else if self.use_s32 {
                             Self::convert_s32le_to_f32(&data)
                         } else {
                             Self::convert_s16le_to_f32(&data)
@@ -804,7 +801,9 @@ impl StreamingDecoder for FFmpegDecoder {
 
         // 处理EOF时积累的不足一帧的数据（符合P0实现：尾块直接参与计算）
         if !accumulated.is_empty() {
-            let samples = if self.use_s32 {
+            let samples = if self.use_f32 {
+                Self::convert_f32le_to_f32(&accumulated)
+            } else if self.use_s32 {
                 Self::convert_s32le_to_f32(&accumulated)
             } else {
                 Self::convert_s16le_to_f32(&accumulated)
