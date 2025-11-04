@@ -5,6 +5,9 @@
 use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
+mod audio_test_fixtures;
+use audio_test_fixtures::fixture_path;
+
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
 }
@@ -20,7 +23,7 @@ fn test_serial_vs_parallel_samples() {
     let test_file = std::env::var("TEST_AUDIO_FILE")
         .ok()
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("tests/fixtures/high_sample_rate.wav"));
+        .unwrap_or_else(|| fixture_path("high_sample_rate.wav"));
 
     if !test_file.exists() {
         log_err(
@@ -209,7 +212,7 @@ fn test_serial_vs_parallel_samples() {
 /// 测试并行解码器的chunk顺序
 #[test]
 fn test_parallel_chunk_order() {
-    let test_file = PathBuf::from("tests/fixtures/beethoven_9th_2_Scherzo_snippet.flac");
+    let test_file = fixture_path("beethoven_9th_2_Scherzo_snippet.flac");
 
     if !test_file.exists() {
         log_err(

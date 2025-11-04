@@ -6,6 +6,9 @@ use macinmeter_dr_tool::AudioError;
 use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
+mod audio_test_fixtures;
+use audio_test_fixtures::{fixture_path, fixtures_dir};
+
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
 }
@@ -197,7 +200,7 @@ fn test_probe_format_wav_file() {
     let decoder = UniversalDecoder::new();
 
     // 使用测试固件中的WAV文件
-    let path = PathBuf::from("tests/fixtures/silence.wav");
+    let path = fixture_path("silence.wav");
 
     if !path.exists() {
         log(
@@ -235,7 +238,7 @@ fn test_probe_format_wav_file() {
 fn test_probe_format_high_sample_rate() {
     let decoder = UniversalDecoder::new();
 
-    let path = PathBuf::from("tests/fixtures/high_sample_rate.wav");
+    let path = fixture_path("high_sample_rate.wav");
 
     if !path.exists() {
         log(
@@ -299,7 +302,7 @@ fn test_probe_format_invalid_file() {
     let decoder = UniversalDecoder::new();
 
     // 使用伪装的音频文件
-    let path = PathBuf::from("tests/fixtures/fake_audio.wav");
+    let path = fixture_path("fake_audio.wav");
 
     if !path.exists() {
         log(
@@ -336,7 +339,7 @@ fn test_probe_format_invalid_file() {
 fn test_create_streaming_wav() {
     let decoder = UniversalDecoder::new();
 
-    let path = PathBuf::from("tests/fixtures/silence.wav");
+    let path = fixture_path("silence.wav");
 
     if !path.exists() {
         log(
@@ -410,7 +413,7 @@ fn test_create_streaming_nonexistent() {
 fn test_create_streaming_parallel_disabled() {
     let decoder = UniversalDecoder::new();
 
-    let path = PathBuf::from("tests/fixtures/silence.wav");
+    let path = fixture_path("silence.wav");
 
     if !path.exists() {
         log(
@@ -442,7 +445,7 @@ fn test_create_streaming_parallel_disabled() {
 fn test_create_streaming_parallel_enabled() {
     let decoder = UniversalDecoder::new();
 
-    let path = PathBuf::from("tests/fixtures/silence.wav");
+    let path = fixture_path("silence.wav");
 
     if !path.exists() {
         log(
@@ -540,7 +543,7 @@ fn test_create_streaming_parallel_opus_uses_dedicated_decoder() {
 fn test_decoder_workflow_complete() {
     let decoder = UniversalDecoder::new();
 
-    let path = PathBuf::from("tests/fixtures/silence.wav");
+    let path = fixture_path("silence.wav");
 
     if !path.exists() {
         log(

@@ -5,6 +5,9 @@
 use macinmeter_dr_tool::tools::{self, AppConfig};
 use std::path::{Path, PathBuf};
 
+mod audio_test_fixtures;
+use audio_test_fixtures::{fixture_path, fixtures_dir};
+
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
 }
@@ -34,7 +37,7 @@ fn base_config() -> AppConfig {
 #[test]
 fn test_batch_mode_detection_directory() {
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures"),
+        input_path: fixtures_dir(),
         ..base_config()
     };
 
@@ -49,7 +52,7 @@ fn test_batch_mode_detection_directory() {
 #[test]
 fn test_single_file_mode_detection() {
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures/silence.wav"),
+        input_path: fixture_path("silence.wav"),
         ..base_config()
     };
 
@@ -64,7 +67,7 @@ fn test_single_file_mode_detection() {
 #[test]
 fn test_sum_doubling_always_enabled() {
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures"),
+        input_path: fixtures_dir(),
         ..base_config()
     };
 
@@ -151,7 +154,8 @@ fn test_cli_parallel_files_range() {
 /// 验证扫描真实测试目录
 #[test]
 fn test_scan_fixtures_directory() {
-    let result = tools::scan_audio_files(Path::new("tests/fixtures"));
+    let fixtures = fixtures_dir();
+    let result = tools::scan_audio_files(fixtures.as_path());
 
     assert!(result.is_ok(), "扫描测试目录应该成功");
 
@@ -221,7 +225,8 @@ fn test_scan_nonexistent_path() {
 /// 验证文件路径（非目录）返回错误
 #[test]
 fn test_scan_file_instead_of_directory() {
-    let result = tools::scan_audio_files(Path::new("tests/fixtures/silence.wav"));
+    let silence = fixture_path("silence.wav");
+    let result = tools::scan_audio_files(silence.as_path());
 
     assert!(result.is_err(), "文件路径应该返回错误（需要目录）");
 
@@ -281,7 +286,7 @@ fn test_official_dr_formatting() {
 #[test]
 fn test_batch_output_header_generation() {
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures"),
+        input_path: fixtures_dir(),
         ..base_config()
     };
 
@@ -350,7 +355,7 @@ fn test_batch_output_footer_with_errors() {
 #[test]
 fn test_batch_output_path_generation() {
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures"),
+        input_path: fixtures_dir(),
         output_path: None, // 未指定，应该自动生成
         ..base_config()
     };
@@ -379,7 +384,7 @@ fn test_batch_output_path_user_specified() {
     user_path.push("my_custom_output.txt");
 
     let config = AppConfig {
-        input_path: PathBuf::from("tests/fixtures"),
+        input_path: fixtures_dir(),
         output_path: Some(user_path.clone()), // 用户指定
         ..base_config()
     };

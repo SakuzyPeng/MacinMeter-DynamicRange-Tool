@@ -2,8 +2,9 @@
 //!
 //! 为边界和异常测试生成各种特殊的音频文件
 
+use fs2::FileExt;
 use hound::{SampleFormat, WavSpec, WavWriter};
-use std::fs::{File, create_dir_all};
+use std::fs::{File, OpenOptions, create_dir_all};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -12,10 +13,66 @@ fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
 }
 
-/// 全局互斥，用于串行化测试固件的生成，避免并发写入时出现截断文件。
-fn fixtures_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+fn fixtures_base_dir() -> &'static PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        if let Ok(custom) = std::env::var("MACINMETER_FIXTURES_DIR") {
+            let path = PathBuf::from(custom);
+            create_dir_all(&path).expect("无法创建自定义测试固件目录");
+            path
+        } else {
+            let path = PathBuf::from("tests/fixtures");
+            create_dir_all(&path).expect("无法创建测试固件目录");
+            path
+        }
+    })
+}
+
+/// 公开获取固件根目录
+pub fn fixtures_dir() -> PathBuf {
+    fixtures_base_dir().clone()
+}
+
+/// 获取特定固件文件路径
+pub fn fixture_path(name: &str) -> PathBuf {
+    fixtures_base_dir().join(name)
+}
+
+/// 跨进程文件锁 + 进程内互斥，避免并发写入导致的截断文件。
+struct FixtureLock {
+    _mutex_guard: std::sync::MutexGuard<'static, ()>,
+    lock_file: File,
+}
+
+impl FixtureLock {
+    fn acquire() -> Self {
+        static MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        let mutex = MUTEX.get_or_init(|| Mutex::new(()));
+        let guard = mutex.lock().expect("Fixture mutex poisoned");
+
+        let lock_path = fixtures_base_dir().join(".lock");
+        if let Some(parent) = lock_path.parent() {
+            create_dir_all(parent).expect("无法创建锁文件目录");
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)
+            .expect("无法创建固件锁文件");
+        file.lock_exclusive()
+            .expect("无法获取固件文件锁，可能被其他进程占用");
+
+        Self {
+            _mutex_guard: guard,
+            lock_file: file,
+        }
+    }
+}
+
+impl Drop for FixtureLock {
+    fn drop(&mut self) {
+        let _ = self.lock_file.unlock();
+    }
 }
 
 /// 测试固件生成器
@@ -26,8 +83,7 @@ pub struct AudioTestFixtures {
 impl AudioTestFixtures {
     /// 创建固件生成器，默认目录为 tests/fixtures
     pub fn new() -> Self {
-        let fixtures_dir = PathBuf::from("tests/fixtures");
-        create_dir_all(&fixtures_dir).expect("无法创建测试固件目录");
+        let fixtures_dir = fixtures_dir();
         Self { fixtures_dir }
     }
 
@@ -41,15 +97,13 @@ impl AudioTestFixtures {
 
     /// 获取固件路径
     pub fn get_path(&self, filename: &str) -> PathBuf {
-        self.fixtures_dir.join(filename)
+        fixture_path(filename)
     }
 
     /// 生成所有测试固件
     pub fn generate_all(&self) {
         // 同一时间只允许一个线程生成固件，避免并行测试造成中途读取未完成的文件。
-        let _guard = fixtures_lock()
-            .lock()
-            .expect("Fixture generation lock poisoned");
+        let _guard = FixtureLock::acquire();
 
         log(
             "开始生成音频测试固件...",

@@ -64,6 +64,9 @@ flame-prof = ["pprof"]
 # 启用SIMD性能测试（包含大数据集，可能导致CI链接器崩溃，默认禁用）
 simd-perf-tests = []
 
+[dev-dependencies]
+fs2 = "0.4"
+
 # 📝 安全警告说明：
 # songbird的Discord依赖存在已知安全问题，但不影响我们的使用场景：
 # - ring/rustls: TLS问题，我们无网络通信
