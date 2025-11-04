@@ -39,6 +39,7 @@ pub fn fixture_path(name: &str) -> PathBuf {
 }
 
 /// 确保所有固件生成完毕（幂等）。
+#[allow(dead_code)]
 pub fn ensure_fixtures_generated() {
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| {
