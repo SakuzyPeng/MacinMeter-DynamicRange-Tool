@@ -6,9 +6,16 @@ use hound::{SampleFormat, WavSpec, WavWriter};
 use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
+/// 全局互斥，用于串行化测试固件的生成，避免并发写入时出现截断文件。
+fn fixtures_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 /// 测试固件生成器
@@ -39,6 +46,11 @@ impl AudioTestFixtures {
 
     /// 生成所有测试固件
     pub fn generate_all(&self) {
+        // 同一时间只允许一个线程生成固件，避免并行测试造成中途读取未完成的文件。
+        let _guard = fixtures_lock()
+            .lock()
+            .expect("Fixture generation lock poisoned");
+
         log(
             "开始生成音频测试固件...",
             "Generating audio test fixtures...",
