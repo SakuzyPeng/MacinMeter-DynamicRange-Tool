@@ -60,11 +60,14 @@ impl UniversalDecoder {
     /// 获取支持的格式信息
     pub fn supported_formats(&self) -> &FormatSupport {
         static SUPPORT: FormatSupport = FormatSupport {
-            // 统一格式支持声明 - 基于Symphonia features + Songbird扩展（已验证）
+            // 统一格式支持声明 - 基于Symphonia features + FFmpeg/Songbird 扩展（已验证）
             extensions: &[
-                // 无损格式 (已验证)
-                "wav", "flac", "aiff", "m4a", // 有损格式 (已验证)
-                "mp3", "mp1", "aac", "ogg", "opus", // 容器格式 (新增)
+                // 无损格式
+                "wav", "flac", "aiff", "alac", "m4a", "mp4", // 有损格式
+                "mp3", "mp1", "aac", "ogg", "opus",
+                // 家庭影院 / 高阶格式（FFmpeg 回退）
+                "ac3", "ec3", "eac3", "dts", // DSD
+                "dsf", "dff", // 容器格式
                 "mkv", "webm",
             ],
         };
@@ -1264,8 +1267,9 @@ mod tests {
         let formats = decoder.supported_formats();
 
         // 验证支持主要格式
-        let expected_formats = vec![
-            "wav", "flac", "aiff", "m4a", "mp3", "mp1", "aac", "ogg", "opus", "mkv", "webm",
+        let expected_formats = [
+            "wav", "flac", "aiff", "alac", "m4a", "mp4", "mp3", "mp1", "aac", "ogg", "opus", "ac3",
+            "ec3", "eac3", "dts", "dsf", "dff", "mkv", "webm",
         ];
 
         for format in &expected_formats {
@@ -1273,7 +1277,11 @@ mod tests {
         }
 
         // 验证总数合理（至少11种格式）
-        assert!(formats.extensions.len() >= 11, "至少应支持11种音频格式");
+        assert!(
+            formats.extensions.len() >= expected_formats.len(),
+            "支持的音频格式数量应不少于{}",
+            expected_formats.len()
+        );
     }
 
     #[test]
@@ -1287,7 +1295,13 @@ mod tests {
             ("test.mp3", true),
             ("test.aac", true),
             ("test.m4a", true),
+            ("test.mp4", true),
             ("test.opus", true),
+            ("test.ac3", true),
+            ("test.ec3", true),
+            ("test.dts", true),
+            ("test.dsf", true),
+            ("test.dff", true),
             ("TEST.WAV", true), // 大小写不敏感
             ("path/to/test.flac", true),
         ];
@@ -1305,9 +1319,8 @@ mod tests {
         let unsupported_cases = vec![
             ("test.txt", false),
             ("test.pdf", false),
-            ("test.mp4", false), // 视频格式
-            ("test", false),     // 无扩展名
-            ("", false),         // 空路径
+            ("test", false), // 无扩展名
+            ("", false),     // 空路径
         ];
 
         for (path_str, expected) in unsupported_cases {

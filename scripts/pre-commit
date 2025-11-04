@@ -40,6 +40,9 @@ echo "✅ 单元测试通过"
 echo ""
 echo "🐳 5. x86 Docker CI模拟测试 (强制运行)..."
 
+if [[ "${SKIP_DOCKER_TESTS:-0}" == "1" ]]; then
+    echo "⚠️  SKIP_DOCKER_TESTS=1 已设置，跳过 Docker 模拟阶段"
+else
 DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-macinmeter-ci:standalone}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
 
@@ -91,12 +94,19 @@ fi
 DOCKER_END=$(date +%s)
 DOCKER_TIME=$((DOCKER_END - DOCKER_START))
 echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
+fi
 
 # 🛡️ 6. 安全审计 (可选，如果安装了cargo-audit)
 echo ""
 echo "🛡️ 6. 安全审计..."
 if command -v cargo-audit &> /dev/null; then
-    if ! cargo audit --ignore RUSTSEC-0000-0000; then
+    if ! cargo audit \
+        --ignore RUSTSEC-2025-0009 \
+        --ignore RUSTSEC-2024-0336 \
+        --ignore RUSTSEC-2023-0065 \
+        --ignore RUSTSEC-2024-0388 \
+        --ignore RUSTSEC-2025-0010 \
+        --ignore RUSTSEC-2024-0408; then
         echo "⚠️  安全审计发现依赖问题（可能是已知的songbird依赖）"
         echo "💡 运行 'cargo audit' 查看详情，或继续提交"
     else

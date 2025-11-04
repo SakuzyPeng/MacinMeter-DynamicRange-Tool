@@ -98,7 +98,15 @@ fn test_can_decode_supported_formats() {
         PathBuf::from_iter(["test.ogg"]),
         PathBuf::from_iter(["test.opus"]),
         PathBuf::from_iter(["test.m4a"]),
+        PathBuf::from_iter(["test.mp4"]),
         PathBuf::from_iter(["test.aiff"]),
+        PathBuf::from_iter(["test.ac3"]),
+        PathBuf::from_iter(["test.ec3"]),
+        PathBuf::from_iter(["test.dts"]),
+        PathBuf::from_iter(["test.dsf"]),
+        PathBuf::from_iter(["test.dff"]),
+        PathBuf::from_iter(["test.mkv"]),
+        PathBuf::from_iter(["test.webm"]),
     ];
 
     for path in supported_files {
@@ -119,7 +127,6 @@ fn test_can_decode_unsupported_formats() {
         PathBuf::from_iter(["test.txt"]),
         PathBuf::from_iter(["test.pdf"]),
         PathBuf::from_iter(["test.jpg"]),
-        PathBuf::from_iter(["test.mp4"]), // 视频容器
         PathBuf::from_iter(["test.avi"]),
         PathBuf::from_iter(["test.unknown"]),
     ];
