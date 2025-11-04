@@ -758,7 +758,9 @@ pub fn output_results(
 
     // 2. 根据声道数格式化DR结果
     output.push_str(&formatter::format_dr_results_by_channel_count(
-        results, format,
+        results,
+        format,
+        config.show_rms_peak,
     ));
 
     // 3. 添加标准分隔线（长度与单文件标题一致）
@@ -865,6 +867,7 @@ pub fn save_individual_result(
         edge_trim_threshold_db: None,
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
+        show_rms_peak: config.show_rms_peak,
     };
 
     if let Err(e) = output_results(

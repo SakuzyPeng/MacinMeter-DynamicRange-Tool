@@ -120,6 +120,9 @@ pub struct AppConfig {
 
     /// 是否在官方DR聚合中剔除LFE声道（仅当存在可靠的声道布局元数据时生效）
     pub exclude_lfe: bool,
+
+    /// 是否在结果中显示 RMS/Peak 诊断信息
+    pub show_rms_peak: bool,
 }
 
 impl AppConfig {
@@ -222,6 +225,12 @@ pub fn parse_args() -> AppConfig {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("show-rms-peak")
+                .long("show-rms-peak")
+                .help("Display RMS/Peak diagnostics table in DR reports / 在DR报告中显示 RMS/Peak 诊断表")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
                 .help("[EXPERIMENTAL] Enable edge-level silence trimming; optional threshold (dBFS, range -120~0, default -60) / 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
@@ -306,6 +315,7 @@ pub fn parse_args() -> AppConfig {
         edge_trim_threshold_db,
         edge_trim_min_run_ms,
         exclude_lfe: matches.get_flag("exclude-lfe"),
+        show_rms_peak: matches.get_flag("show-rms-peak"),
     }
 }
 

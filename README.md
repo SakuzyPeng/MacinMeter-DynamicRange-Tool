@@ -64,8 +64,10 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
   - `--trim-edges[=<DB>]`: edge trimming with default threshold −60 dBFS; use `--trim-min-run <MS>` (default 60 ms) to set minimum sustained silence.
   - `--filter-silence[=<DB>]`：窗口级静音过滤，默认阈值 -70 dBFS；目录模式建议写作 `--filter-silence -- /path/to/dir` 避免路径被解析为阈值。
   - `--filter-silence[=<DB>]`: window-level silence filtering, default −70 dBFS; for directories use `--filter-silence -- /path/to/dir` to prevent path parsing as threshold.
-  - `--exclude-lfe`：从最终 DR 聚合中剔除 LFE 声道（仅在存在声道布局元数据时生效）；单声道明细仍保留。
-  - `--exclude-lfe`: exclude LFE channels from final DR aggregation (effective only with channel layout metadata); per‑channel details remain.
+- `--exclude-lfe`：从最终 DR 聚合中剔除 LFE 声道（仅在存在声道布局元数据时生效）；单声道明细仍保留。
+- `--exclude-lfe`: exclude LFE channels from final DR aggregation (effective only with channel layout metadata); per‑channel details remain.
+- `--show-rms-peak`：在单文件报告中附加 RMS/Peak 诊断表（默认隐藏，批量汇总暂不支持）。
+- `--show-rms-peak`: append the RMS/Peak diagnostics table in single-file reports (hidden by default; batch summaries not yet supported).
 
 ## 输出说明（Output Format）
 - 每声道 DR 值、Official DR（整数）、Precise DR（小数）及音频信息（采样率/声道/位深/比特率/编解码器）。

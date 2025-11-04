@@ -256,57 +256,109 @@ pub fn create_output_header(
 }
 
 /// 格式化单声道DR结果
-pub fn format_mono_results(result: &DrResult) -> String {
+pub fn format_mono_results(result: &DrResult, show_rms_peak: bool) -> String {
     let mut output = String::new();
     output.push_str("                 单声道 / Mono\n\n");
-    output.push_str(&format!(
-        "DR通道 / DR Channel:      {:.2} dB   \n",
-        result.dr_value
+    let dr_value = format!("{:.2} dB", result.dr_value);
+    output.push_str(&utils::table::format_cols_line(
+        &["DR通道 / DR Channel:", &dr_value],
+        &[28, 14],
+        "",
     ));
 
-    // 诊断：RMS与Peak（以dBFS显示）
-    let rms_db = utils::linear_to_db_string(result.rms);
-    let peak_sel_db = utils::linear_to_db_string(result.peak);
-    let peak1_db = utils::linear_to_db_string(result.primary_peak);
-    let peak2_db = utils::linear_to_db_string(result.secondary_peak);
-    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-    output.push_str(&format!(
-        "  RMS(20%): {rms_db} dB   |  Peak(选用/selected): {peak_sel_db} dB   |  Primary: {peak1_db} dB   |  Secondary: {peak2_db} dB\n\n"
-    ));
+    if show_rms_peak {
+        // 诊断：RMS与Peak（以dBFS显示）
+        output.push('\n');
+        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+        let label_widths = [22, 14];
+        let rms_db = format!("{} dB", utils::linear_to_db_string(result.rms));
+        let peak_sel_db = format!("{} dB", utils::linear_to_db_string(result.peak));
+        let peak1_db = format!("{} dB", utils::linear_to_db_string(result.primary_peak));
+        let peak2_db = format!("{} dB", utils::linear_to_db_string(result.secondary_peak));
+
+        output.push_str(&utils::table::format_cols_line(
+            &["RMS(20%):", &rms_db],
+            &label_widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Peak(选用/selected):", &peak_sel_db],
+            &label_widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Primary Peak:", &peak1_db],
+            &label_widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Secondary Peak:", &peak2_db],
+            &label_widths,
+            "",
+        ));
+        output.push('\n');
+    } else {
+        output.push('\n');
+    }
 
     output
 }
 
 /// 格式化立体声DR结果
-pub fn format_stereo_results(results: &[DrResult]) -> String {
+pub fn format_stereo_results(results: &[DrResult], show_rms_peak: bool) -> String {
     let mut output = String::new();
     output.push_str("                         左声道 / Left      右声道 / Right\n\n");
-    output.push_str("DR通道 / DR Channel:      ");
-    output.push_str(&format!(
-        "{:.2} dB   ---    {:.2} dB   \n",
-        results[0].dr_value, results[1].dr_value
+    let left_value = format!("{:.2} dB", results[0].dr_value);
+    let right_value = format!("{:.2} dB", results[1].dr_value);
+    output.push_str(&utils::table::format_cols_line(
+        &["DR通道 / DR Channel:", &left_value, &right_value],
+        &[28, 14, 14],
+        "",
     ));
 
-    // 诊断：RMS与Peak（以dBFS显示）
-    let l_rms = utils::linear_to_db_string(results[0].rms);
-    let r_rms = utils::linear_to_db_string(results[1].rms);
-    let l_peak = utils::linear_to_db_string(results[0].peak);
-    let r_peak = utils::linear_to_db_string(results[1].peak);
-    let l_p1 = utils::linear_to_db_string(results[0].primary_peak);
-    let r_p1 = utils::linear_to_db_string(results[1].primary_peak);
-    let l_p2 = utils::linear_to_db_string(results[0].secondary_peak);
-    let r_p2 = utils::linear_to_db_string(results[1].secondary_peak);
-    output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-    output.push_str(&format!(
-        "  RMS(20%):       {l_rms} dB   ---    {r_rms} dB\n"
-    ));
-    output.push_str(&format!(
-        "  Peak(选用/sel): {l_peak} dB   ---    {r_peak} dB\n"
-    ));
-    output.push_str(&format!("  Primary Peak:   {l_p1} dB   ---    {r_p1} dB\n"));
-    output.push_str(&format!(
-        "  Secondary Peak: {l_p2} dB   ---    {r_p2} dB\n\n"
-    ));
+    if show_rms_peak {
+        output.push('\n');
+        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
+        let widths = [18, 14, 14];
+        let l_rms = format!("{} dB", utils::linear_to_db_string(results[0].rms));
+        let r_rms = format!("{} dB", utils::linear_to_db_string(results[1].rms));
+        let l_peak = format!("{} dB", utils::linear_to_db_string(results[0].peak));
+        let r_peak = format!("{} dB", utils::linear_to_db_string(results[1].peak));
+        let l_p1 = format!("{} dB", utils::linear_to_db_string(results[0].primary_peak));
+        let r_p1 = format!("{} dB", utils::linear_to_db_string(results[1].primary_peak));
+        let l_p2 = format!(
+            "{} dB",
+            utils::linear_to_db_string(results[0].secondary_peak)
+        );
+        let r_p2 = format!(
+            "{} dB",
+            utils::linear_to_db_string(results[1].secondary_peak)
+        );
+
+        output.push_str(&utils::table::format_cols_line(
+            &["RMS(20%):", &l_rms, &r_rms],
+            &widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Peak(选用/sel):", &l_peak, &r_peak],
+            &widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Primary Peak:", &l_p1, &r_p1],
+            &widths,
+            "",
+        ));
+        output.push_str(&utils::table::format_cols_line(
+            &["Secondary Peak:", &l_p2, &r_p2],
+            &widths,
+            "",
+        ));
+        output.push('\n');
+    } else {
+        output.push('\n');
+    }
 
     output
 }
@@ -889,7 +941,11 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
 }
 
 /// 根据声道数选择合适的格式化方法
-pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFormat) -> String {
+pub fn format_dr_results_by_channel_count(
+    results: &[DrResult],
+    format: &AudioFormat,
+    show_rms_peak: bool,
+) -> String {
     let mut output = String::new();
 
     // 部分分析警告（如果跳过了损坏的音频包）
@@ -904,8 +960,8 @@ pub fn format_dr_results_by_channel_count(results: &[DrResult], format: &AudioFo
     // 根据声道数选择格式化方法
     output.push_str(&match results.len() {
         0 => "ERROR: 无音频数据\n".to_string(),
-        1 => format_mono_results(&results[0]),
-        2 => format_stereo_results(results),
+        1 => format_mono_results(&results[0], show_rms_peak),
+        2 => format_stereo_results(results, show_rms_peak),
         3..=8 => format_medium_multichannel_results(results, format),
         _ => format_large_multichannel_results(results, format),
     });
