@@ -154,6 +154,25 @@ pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -
         audio_files.len()
     ));
 
+    // 全局注记：DSD 文件（DSF/DFF）将按配置的 PCM 采样率降采样处理
+    let has_dsd = audio_files.iter().any(|p| {
+        p.extension()
+            .and_then(|s| s.to_str())
+            .map(|e| e.eq_ignore_ascii_case("dsf") || e.eq_ignore_ascii_case("dff"))
+            .unwrap_or(false)
+    });
+    if has_dsd {
+        let rate = config.dsd_pcm_rate.unwrap_or(352_800);
+        batch_output.push_str(&format!(
+            "注 / Note: DSD (DSF/DFF) files are downsampled to {rate} Hz for PCM analysis.\n"
+        ));
+        batch_output.push_str(
+            "      foobar2000 may show 384 kHz (device/output resampling); default here is 352.8 kHz (44.1k integer ratio).\n",
+        );
+        batch_output
+            .push_str("      可用 --dsd-pcm-rate 调整（支持 88200/176400/352800/384000）。\n\n");
+    }
+
     // 添加结果表头（使用固定宽度确保对齐）
     let header_line = crate::tools::utils::table::format_two_cols_line(
         "Official DR",

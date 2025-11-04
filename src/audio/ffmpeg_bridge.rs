@@ -520,11 +520,15 @@ impl FFmpegDecoder {
 
     /// 创建FFmpeg解码器（默认策略）
     pub fn new(path: &Path) -> AudioResult<Self> {
-        Self::new_with_rate(path, None)
+        Self::new_with_options(path, None, None)
     }
 
-    /// 创建FFmpeg解码器（可配置 DSD → PCM 采样率）
-    pub fn new_with_rate(path: &Path, dsd_pcm_rate: Option<u32>) -> AudioResult<Self> {
+    /// 创建FFmpeg解码器（可配置 DSD → PCM 采样率与增益）
+    pub fn new_with_options(
+        path: &Path,
+        dsd_pcm_rate: Option<u32>,
+        dsd_gain_db: Option<f32>,
+    ) -> AudioResult<Self> {
         // 检查FFmpeg可用性
         let ffmpeg_path = Self::find_ffmpeg_path()
             .ok_or_else(|| AudioError::FormatError(FFMPEG_INSTALL_GUIDE.to_string()))?;
@@ -561,9 +565,15 @@ impl FFmpegDecoder {
             let target_rate: u32 = dsd_pcm_rate.unwrap_or(352_800);
 
             // DSD → PCM：低通 + 轻微增益补偿（与常见播放器一致），并设置输出采样率
+            let gain_db = dsd_gain_db.unwrap_or(6.0);
+            let filter = if gain_db.abs() > 0.0001 {
+                format!("lowpass=20000,volume={gain_db}dB")
+            } else {
+                "lowpass=20000".to_string()
+            };
             args.extend(vec![
                 "-af".to_string(),
-                "lowpass=20000,volume=6dB".to_string(),
+                filter,
                 "-ar".to_string(),
                 target_rate.to_string(),
             ]);

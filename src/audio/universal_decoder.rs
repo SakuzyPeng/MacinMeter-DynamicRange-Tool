@@ -126,6 +126,7 @@ impl UniversalDecoder {
         &self,
         path: P,
         dsd_pcm_rate: Option<u32>,
+        dsd_gain_db: Option<f32>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -151,7 +152,11 @@ impl UniversalDecoder {
                         ext_lower.to_uppercase()
                     );
                     return Ok(Box::new(
-                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_options(
+                            path,
+                            dsd_pcm_rate,
+                            dsd_gain_db,
+                        )?,
                     ));
                 } else {
                     return Err(AudioError::FormatError(format!(
@@ -192,7 +197,11 @@ impl UniversalDecoder {
                             "[INFO] Detected {codec} in MP4/M4A, using FFmpeg / 在MP4/M4A中检测到{codec}，切换FFmpeg"
                         );
                         return Ok(Box::new(
-                            super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                            super::ffmpeg_bridge::FFmpegDecoder::new_with_options(
+                                path,
+                                dsd_pcm_rate,
+                                dsd_gain_db,
+                            )?,
                         ));
                     }
                 }
@@ -209,7 +218,11 @@ impl UniversalDecoder {
                         "[INFO] Symphonia failed, trying FFmpeg fallback / Symphonia失败，尝试FFmpeg兜底"
                     );
                     Ok(Box::new(
-                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_options(
+                            path,
+                            dsd_pcm_rate,
+                            dsd_gain_db,
+                        )?,
                     ))
                 } else {
                     Err(e) // FFmpeg不可用，返回原始错误
@@ -223,7 +236,7 @@ impl UniversalDecoder {
         &self,
         path: P,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
-        self.create_streaming_with_options(path, None)
+        self.create_streaming_with_options(path, None, None)
     }
 
     /// 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
@@ -239,6 +252,7 @@ impl UniversalDecoder {
         batch_size: Option<usize>,
         thread_count: Option<usize>,
         dsd_pcm_rate: Option<u32>,
+        dsd_gain_db: Option<f32>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -262,7 +276,11 @@ impl UniversalDecoder {
                         ext_lower.to_uppercase()
                     );
                     return Ok(Box::new(
-                        super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                        super::ffmpeg_bridge::FFmpegDecoder::new_with_options(
+                            path,
+                            dsd_pcm_rate,
+                            dsd_gain_db,
+                        )?,
                     ));
                 } else {
                     return Err(AudioError::FormatError(format!(
@@ -303,7 +321,11 @@ impl UniversalDecoder {
                             codec.to_uppercase()
                         );
                         return Ok(Box::new(
-                            super::ffmpeg_bridge::FFmpegDecoder::new_with_rate(path, dsd_pcm_rate)?,
+                            super::ffmpeg_bridge::FFmpegDecoder::new_with_options(
+                                path,
+                                dsd_pcm_rate,
+                                dsd_gain_db,
+                            )?,
                         ));
                     }
                 }
@@ -351,6 +373,7 @@ impl UniversalDecoder {
             parallel_enabled,
             batch_size,
             thread_count,
+            None,
             None,
         )
     }

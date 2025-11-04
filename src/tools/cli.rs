@@ -128,6 +128,8 @@ pub struct AppConfig {
     /// 可选：88200 / 176400 / 352800 / 384000。
     /// None 表示使用默认值（352800）。
     pub dsd_pcm_rate: Option<u32>,
+    /// DSD → PCM 的线性增益（dB）。默认 6.0（设置 0 可关闭）。
+    pub dsd_gain_db: f32,
 }
 
 impl AppConfig {
@@ -259,6 +261,25 @@ pub fn parse_args() -> AppConfig {
                 })),
         )
         .arg(
+            Arg::new("dsd-gain-db")
+                .long("dsd-gain-db")
+                .help(
+                    "Linear gain for DSD→PCM in dB (default 6.0). Set 0 to disable.\n\
+                     DSD 转 PCM 线性增益（单位 dB，默认 6.0；设置 0 关闭）。建议范围 [-24, 24]。",
+                )
+                .value_name("DB")
+                .value_parser(clap::builder::ValueParser::new(|s: &str| -> Result<f32, String> {
+                    let v: f32 = s
+                        .parse()
+                        .map_err(|_| format!("invalid dB '{s}' / 无效的 dB 数值"))?;
+                    if !(-48.0..=48.0).contains(&v) {
+                        return Err("must be between -48 and 48 dB / 需在 -48 到 48 dB 之间".to_string());
+                    }
+                    Ok(v)
+                }))
+                .default_value("6.0"),
+        )
+        .arg(
             Arg::new("trim-edges")
                 .long("trim-edges")
                 .help("[EXPERIMENTAL] Enable edge-level silence trimming; optional threshold (dBFS, range -120~0, default -60) / 启用首尾样本级静音裁切；可选指定阈值（dBFS，范围 -120~0，默认 -60，省略值即使用默认）")
@@ -349,6 +370,11 @@ pub fn parse_args() -> AppConfig {
             .get_one::<u32>("dsd-pcm-rate")
             .copied()
             .or(Some(352_800)),
+        // 默认 +6 dB；用户可通过 --dsd-gain-db 覆盖
+        dsd_gain_db: matches
+            .get_one::<f32>("dsd-gain-db")
+            .copied()
+            .unwrap_or(6.0),
     }
 }
 
