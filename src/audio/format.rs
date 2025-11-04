@@ -24,6 +24,10 @@ pub struct AudioFormat {
     /// 常见于 DSD(DSF/DFF) → PCM 的降采样（例如 705600 → 88200 Hz）。
     /// 若未发生转换则为 None。
     pub processed_sample_rate: Option<u32>,
+    /// 若为 DSD 源，记录原生一位采样率（Hz），例如 DSD128 = 5,644,800 Hz。
+    pub dsd_native_rate_hz: Option<u32>,
+    /// 若为 DSD 源，记录 44.1k 的倍数（如 64/128/256/512），用于显示 DSD 档位标签。
+    pub dsd_multiple_of_44k: Option<u32>,
     /// 是否存在声道布局元数据（如容器提供的 channel_layout），用于可靠识别 LFE 等通道
     pub has_channel_layout_metadata: bool,
     /// 由通道掩码/映射推导的 LFE 声道索引（交错顺序中的下标）。若无可用元数据则为空
@@ -44,6 +48,8 @@ impl AudioFormat {
             sample_count,
             codec_type: None,
             processed_sample_rate: None,
+            dsd_native_rate_hz: None,
+            dsd_multiple_of_44k: None,
             has_channel_layout_metadata: false,
             lfe_indices: Vec::new(),
             is_partial: false,

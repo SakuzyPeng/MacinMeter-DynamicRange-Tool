@@ -886,18 +886,39 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     let label_col_width = eff.into_iter().max().unwrap_or(0);
 
     // 值列
-    // 采样率显示：若发生重采样（如DSD→PCM降采样），显示“源 → 处理（DSD降采样）”
-    let sample_rate_s = if let Some(proc_sr) = format.processed_sample_rate {
-        if proc_sr != format.sample_rate {
-            format!(
-                "{} Hz → {} Hz (DSD downsampled / DSD降采样)",
-                format.sample_rate, proc_sr
-            )
+    // 采样率显示：
+    // - 若为 DSD 源，优先显示原生一位采样率（如 5,644,800 Hz (DSD128)）
+    // - 若发生降采样，则显示 “源 → 处理（DSD降采样）”
+    let sample_rate_s = {
+        let proc = format.processed_sample_rate;
+        let native_dsd = format.dsd_native_rate_hz;
+        if let Some(native) = native_dsd {
+            // 构造 DSD 档位标签
+            let lvl = format
+                .dsd_multiple_of_44k
+                .map(|m| format!("DSD{m}"))
+                .unwrap_or_else(|| "DSD".to_string());
+            if let Some(proc_sr) = proc {
+                if proc_sr != format.sample_rate {
+                    format!("{native} Hz ({lvl}) → {proc_sr} Hz (DSD downsampled / DSD降采样)")
+                } else {
+                    format!("{native} Hz ({lvl})")
+                }
+            } else {
+                format!("{native} Hz ({lvl})")
+            }
+        } else if let Some(proc_sr) = proc {
+            if proc_sr != format.sample_rate {
+                format!(
+                    "{} Hz → {} Hz (DSD downsampled / DSD降采样)",
+                    format.sample_rate, proc_sr
+                )
+            } else {
+                format!("{} Hz", format.sample_rate)
+            }
         } else {
             format!("{} Hz", format.sample_rate)
         }
-    } else {
-        format!("{} Hz", format.sample_rate)
     };
     let channels_s = format!("{}", format.channels);
     let bits_s = format!("{}", format.bits_per_sample);

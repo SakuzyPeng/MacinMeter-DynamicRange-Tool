@@ -381,6 +381,89 @@ impl FFmpegDecoder {
             }
         }
 
+        // 若为 DSD（通过扩展名或 codec_name 判断），尝试解析原生一位采样率（Hz）与 DSD 档位
+        let is_dsd_ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.eq_ignore_ascii_case("dsf") || s.eq_ignore_ascii_case("dff"))
+            .unwrap_or(false);
+        let is_dsd_codec = codec_name
+            .as_ref()
+            .map(|s| s.to_ascii_lowercase().contains("dsd"))
+            .unwrap_or(false);
+        if is_dsd_ext || is_dsd_codec {
+            if let Some(path_str) = path.to_str() {
+                let json_out = Command::new(&ffprobe_path)
+                    .args([
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "a:0",
+                        "-show_entries",
+                        "stream=sample_rate,bits_per_raw_sample,codec_name,profile",
+                        "-of",
+                        "json",
+                        path_str,
+                    ])
+                    .output()
+                    .ok();
+                if let Some(out) = json_out {
+                    if out.status.success() {
+                        if let Ok(text) = String::from_utf8(out.stdout) {
+                            #[derive(serde::Deserialize)]
+                            struct StreamDSD {
+                                #[serde(default)]
+                                sample_rate: Option<String>,
+                                #[serde(default)]
+                                bits_per_raw_sample: Option<u32>,
+                                #[allow(dead_code)]
+                                #[serde(default)]
+                                codec_name: Option<String>,
+                                #[allow(dead_code)]
+                                #[serde(default)]
+                                profile: Option<String>,
+                            }
+                            #[derive(serde::Deserialize)]
+                            struct RootDSD {
+                                #[serde(default)]
+                                streams: Vec<StreamDSD>,
+                            }
+                            if let Ok(parsed) = serde_json::from_str::<RootDSD>(&text) {
+                                if let Some(st) = parsed.streams.first() {
+                                    let sr = st
+                                        .sample_rate
+                                        .as_deref()
+                                        .and_then(|s| s.parse::<u32>().ok())
+                                        .unwrap_or(0);
+                                    let bits1 = st.bits_per_raw_sample.unwrap_or_default() == 1;
+                                    // 若 sample_rate ≥ 2MHz 且为 1bit，认作 DSD 原生率
+                                    if sr >= 2_000_000 || bits1 {
+                                        let native = if sr >= 2_000_000 { sr } else { 0 };
+                                        if native > 0 {
+                                            format.dsd_native_rate_hz = Some(native);
+                                            // 估算 44.1k 的倍数（就近匹配）
+                                            let m = (native as f64 / 44_100.0).round() as u32;
+                                            let candidates = [64u32, 128, 256, 512, 1024];
+                                            let mut best = None;
+                                            let mut best_diff = u32::MAX;
+                                            for &c in &candidates {
+                                                let diff = m.abs_diff(c);
+                                                if diff < best_diff {
+                                                    best_diff = diff;
+                                                    best = Some(c);
+                                                }
+                                            }
+                                            format.dsd_multiple_of_44k = best;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 标记为FFmpeg解码（用于诊断）
         // 注：codec_name信息已通过ffprobe获取（{codec_name:?}），保留供调试使用
         let _codec_name = codec_name; // 避免未使用变量警告

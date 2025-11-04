@@ -241,8 +241,8 @@ pub fn parse_args() -> AppConfig {
                 .help(
                     "Target PCM rate for DSD (Hz: 88200|176400|352800|384000). Default 352800.\n\
                      DSD 转 PCM 的目标采样率（单位 Hz，可选 88200/176400/352800/384000；默认 352800）。\n\
-                     注 / Note: foobar2000 常见显示为 384 kHz（设备/输出链重采样），\n\
-                     本工具默认采用 352.8 kHz 的 44.1k 整数比率（避免分数重采样）。",
+                     Note: foobar2000 may show 384 kHz (device/output resampling); we default to 352.8 kHz (44.1k integer ratio) to avoid fractional resampling.\n\
+                     注：foobar2000 常见显示为 384 kHz（设备/输出链重采样）；本工具默认采用 352.8 kHz（44.1k 整数比）以避免分数重采样。",
                 )
                 .value_name("HZ")
                 .value_parser(clap::builder::ValueParser::new(|s: &str| -> Result<u32, String> {
