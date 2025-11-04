@@ -310,32 +310,47 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 - **MP3**: 有状态解码格式，强制串行处理 / Stateful format, forced serial decoding
 
 **FFmpeg 自动回退 / Auto Fallback to FFmpeg**:
-当 Symphonia 无法支持时，工具自动切换至 FFmpeg 进行解码。典型场景：
-- 扩展名为 `.ac3`、`.ec3`、`.eac3`、`.dts`、`.dsf`、`.dff` → 直接使用 FFmpeg
-- MP4/M4A 容器内包含 AC-3、E-AC-3（含 Dolby Atmos）、DTS → 自动切换 FFmpeg
-- 其他容器格式（部分 MKV、MP4 变体）内的不兼容编码 → 自动回退 FFmpeg
+- 当 Symphonia 无法支持时，工具会自动切换到 FFmpeg 进行解码。
+- When Symphonia cannot decode a format, the tool automatically falls back to FFmpeg.
+- 典型场景 / Typical cases:
+  - 扩展名为 `.ac3`、`.ec3`、`.eac3`、`.dts`、`.dsf`、`.dff` → 直接使用 FFmpeg
+  - For extensions `.ac3`, `.ec3/.eac3`, `.dts`, `.dsf`, `.dff` → use FFmpeg directly
+  - MP4/M4A 容器包含 AC‑3、E‑AC‑3（含 Dolby Atmos）、DTS → 自动切换 FFmpeg
+  - MP4/M4A containers with AC‑3/E‑AC‑3 (incl. Atmos) or DTS → auto‑switch to FFmpeg
+  - 其他容器（部分 MKV/MP4 变体）内的不兼容编码 → 自动回退 FFmpeg
+  - Incompatible codecs inside containers (some MKV/MP4 variants) → auto fallback to FFmpeg
 
 ### FFmpeg 安装（FFmpeg Installation）
 
 如需使用 FFmpeg 功能，请确保系统已安装 `ffmpeg` 和 `ffprobe`：
+To use FFmpeg features, make sure both `ffmpeg` and `ffprobe` are installed:
 
 - **macOS**: `brew install ffmpeg`
+- macOS: `brew install ffmpeg`
 - **Windows**: `winget install Gyan.FFmpeg`（或通过 Chocolatey、其他发行渠道）
+- Windows: `winget install Gyan.FFmpeg` (or Chocolatey / other channels)
 - **Linux**:
   - Ubuntu/Debian: `sudo apt install ffmpeg`
   - Fedora/RHEL: `sudo dnf install ffmpeg`
   - Arch: `sudo pacman -S ffmpeg`
+  - Linux: install via your distro’s package manager (examples above)
 
-验证安装：`ffmpeg -version` 和 `ffprobe -version` 应返回版本号。工具会自动检测 PATH 中的 ffmpeg 和 ffprobe。
+验证安装：`ffmpeg -version` 与 `ffprobe -version` 应返回版本号；工具会自动检测 PATH 中的二者。
+Verify: both `ffmpeg -version` and `ffprobe -version` should print a version; the tool auto‑detects them from PATH.
 
 ### 多声道与 LFE 支持（Multichannel & LFE Support）
 
-- **多声道分析**: 支持 3-32 声道音频，每声道独立计算 DR，输出详细的 per-channel 结果
-- **Official DR 聚合**: 对所有"非静音"声道的 DR 值进行算术平均并四舍五入，符合 foobar2000 标准
-- **LFE 识别**:
-  - 通过 Symphonia：自动检测声道布局元数据（WAV、某些 MP4/MKV）
-  - 通过 FFmpeg：读取 ffprobe JSON 标签序列（如 `FL+FR+FC+LFE+...`），精确定位 LFE 位置
-- **LFE 剔除**（可选）：使用 `--exclude-lfe` 在最终聚合中排除 LFE，单声道 DR 明细仍保留
+- **多声道分析**：支持 3‑32 声道音频，每声道独立计算 DR，输出详细的 per‑channel 结果
+- Multichannel analysis: supports 3–32 channels; per‑channel DR is computed and listed.
+- **Official DR 聚合**：对所有“非静音”声道的 DR 值进行算术平均并四舍五入（foobar2000 口径）
+- Official aggregation: arithmetic mean of all non‑silent channel DRs, rounded (foobar2000 style).
+- **LFE 识别**：
+  - 通过 Symphonia：自动检测声道布局元数据（如 WAV WAVEFORMATEXTENSIBLE 掩码、部分 MP4/MKV）
+  - Via Symphonia: auto‑detects layout metadata (e.g., WAV WAVEFORMATEXTENSIBLE masks, some MP4/MKV).
+  - 通过 FFmpeg：读取 ffprobe JSON 标签序列（如 `FL+FR+FC+LFE+…`），精确定位 LFE 位置
+  - Via FFmpeg: parses ffprobe JSON label sequences (e.g., `FL+FR+FC+LFE+…`) to locate LFE accurately.
+- **LFE 剔除（可选）**：使用 `--exclude-lfe` 在最终聚合中排除 LFE；单声道 DR 明细仍保持输出
+- LFE exclusion (optional): enable `--exclude-lfe` to drop LFE from the aggregate; per‑channel DR lines remain.
 
 ### DSD Processing / DSD 处理
 
@@ -354,8 +369,8 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 
 - Output format / 输出格式：
   - 统一输出 32‑bit float（F32LE），便于后续计算与一致性 / unified F32LE output for consistency and easy processing
-  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为“1 (DSD 1‑bit, processed as f32)” /
-    Reports show “native 1‑bit rate & tier → processed rate”; bit depth printed as “1 (DSD 1‑bit, processed as f32)”
+  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为“1 (DSD 1‑bit, processed as f32)”
+  - Reports show “native 1‑bit rate & tier → processed rate”; bit depth printed as “1 (DSD 1‑bit, processed as f32)”
 
 ### 总计（Summary）
 
