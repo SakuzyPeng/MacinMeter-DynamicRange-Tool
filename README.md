@@ -401,7 +401,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 相关链接（Related Links）
 
 - **当前分支 / Current Branch**: foobar2000-plugin (智能缓冲流式处理 / smart buffered streaming)
-- **主线分支 / Main Branch**: early-version (通用高精度版本 / general high-precision version)
 - **参考实现 / Reference**: foobar2000 DR Meter (foo_dr_meter插件 / plugin)
 - **官方主页 / Official**: https://foobar.hyv.fi/?view=foo_dr_meter
 - **原作者 / Original Author**: Janne Hyvärinen
