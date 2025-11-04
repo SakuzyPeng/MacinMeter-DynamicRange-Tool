@@ -6,13 +6,14 @@ use macinmeter_dr_tool::tools::{self, AppConfig};
 use std::path::{Path, PathBuf};
 
 mod audio_test_fixtures;
-use audio_test_fixtures::{fixture_path, fixtures_dir};
+use audio_test_fixtures::{ensure_fixtures_generated, fixture_path, fixtures_dir};
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
 }
 
 fn base_config() -> AppConfig {
+    ensure_fixtures_generated();
     AppConfig {
         input_path: PathBuf::from("."),
         verbose: false,

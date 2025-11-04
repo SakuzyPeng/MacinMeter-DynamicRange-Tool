@@ -38,6 +38,15 @@ pub fn fixture_path(name: &str) -> PathBuf {
     fixtures_base_dir().join(name)
 }
 
+/// 确保所有固件生成完毕（幂等）。
+pub fn ensure_fixtures_generated() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| {
+        let fixtures = AudioTestFixtures::new();
+        fixtures.generate_all();
+    });
+}
+
 /// 跨进程文件锁 + 进程内互斥，避免并发写入导致的截断文件。
 struct FixtureLock {
     _mutex_guard: std::sync::MutexGuard<'static, ()>,

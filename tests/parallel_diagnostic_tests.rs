@@ -6,7 +6,7 @@ use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
 mod audio_test_fixtures;
-use audio_test_fixtures::fixture_path;
+use audio_test_fixtures::{ensure_fixtures_generated, fixture_path};
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
@@ -20,6 +20,7 @@ fn log_err(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
 #[test]
 fn test_serial_vs_parallel_samples() {
     // 使用测试文件 - 先尝试环境变量指定的文件，否则使用fixture
+    ensure_fixtures_generated();
     let test_file = std::env::var("TEST_AUDIO_FILE")
         .ok()
         .map(PathBuf::from)

@@ -7,7 +7,7 @@ use macinmeter_dr_tool::tools::{AppConfig, processor::process_audio_file_streami
 use std::path::PathBuf;
 
 mod audio_test_fixtures;
-use audio_test_fixtures::fixture_path;
+use audio_test_fixtures::{ensure_fixtures_generated, fixture_path};
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
@@ -373,6 +373,7 @@ fn test_ogg_opus_compatibility() {
 
 #[test]
 fn test_invalid_opus_file() {
+    ensure_fixtures_generated();
     let path = fixture_path("fake_audio.wav");
 
     // 尝试用opus解码器打开非opus文件

@@ -7,10 +7,14 @@ use macinmeter_dr_tool::audio::UniversalDecoder;
 use std::path::PathBuf;
 
 mod audio_test_fixtures;
-use audio_test_fixtures::fixture_path;
+use audio_test_fixtures::{ensure_fixtures_generated, fixture_path};
 
 fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
     println!("{} / {}", msg_zh.as_ref(), msg_en.as_ref());
+}
+
+fn ensure_fixtures() {
+    ensure_fixtures_generated();
 }
 
 // ========== 基础功能测试 ==========
@@ -197,6 +201,7 @@ fn test_can_decode_complex_paths() {
 
 #[test]
 fn test_probe_format_wav_file() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     // 使用测试固件中的WAV文件
@@ -236,6 +241,7 @@ fn test_probe_format_wav_file() {
 
 #[test]
 fn test_probe_format_high_sample_rate() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     let path = fixture_path("high_sample_rate.wav");
@@ -299,6 +305,7 @@ fn test_probe_format_nonexistent_file() {
 
 #[test]
 fn test_probe_format_invalid_file() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     // 使用伪装的音频文件
@@ -337,6 +344,7 @@ fn test_probe_format_invalid_file() {
 
 #[test]
 fn test_create_streaming_wav() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     let path = fixture_path("silence.wav");
@@ -411,6 +419,7 @@ fn test_create_streaming_nonexistent() {
 
 #[test]
 fn test_create_streaming_parallel_disabled() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     let path = fixture_path("silence.wav");
@@ -443,6 +452,7 @@ fn test_create_streaming_parallel_disabled() {
 
 #[test]
 fn test_create_streaming_parallel_enabled() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     let path = fixture_path("silence.wav");
@@ -541,6 +551,7 @@ fn test_create_streaming_parallel_opus_uses_dedicated_decoder() {
 
 #[test]
 fn test_decoder_workflow_complete() {
+    ensure_fixtures();
     let decoder = UniversalDecoder::new();
 
     let path = fixture_path("silence.wav");
