@@ -396,120 +396,122 @@ impl FFmpegDecoder {
         if is_dsd_ext || is_dsd_codec {
             // 明确将位深标记为 1（来源为 DSD 1-bit），避免报告显示默认 16bit
             format.bits_per_sample = 1;
-            if let Some(path_str) = path.to_str() {
-                let json_out = Command::new(&ffprobe_path)
-                    .args([
-                        "-v",
-                        "error",
-                        "-select_streams",
-                        "a:0",
-                        "-show_entries",
-                        "stream=sample_rate,bits_per_raw_sample,codec_name,profile",
-                        "-of",
-                        "json",
-                        path_str,
-                    ])
-                    .output()
-                    .ok();
-                if let Some(out) = json_out {
-                    if out.status.success() {
-                        if let Ok(text) = String::from_utf8(out.stdout) {
-                            #[derive(serde::Deserialize)]
-                            struct StreamDSD {
-                                #[serde(default)]
-                                sample_rate: Option<String>,
-                                #[serde(default)]
-                                bits_per_raw_sample: Option<u32>,
-                                #[allow(dead_code)]
-                                #[serde(default)]
-                                codec_name: Option<String>,
-                                #[allow(dead_code)]
-                                #[serde(default)]
-                                profile: Option<String>,
-                            }
-                            #[derive(serde::Deserialize)]
-                            struct RootDSD {
-                                #[serde(default)]
-                                streams: Vec<StreamDSD>,
-                            }
-                            if let Ok(parsed) = serde_json::from_str::<RootDSD>(&text) {
-                                if let Some(st) = parsed.streams.first() {
-                                    let sr = st
-                                        .sample_rate
-                                        .as_deref()
-                                        .and_then(|s| s.parse::<u32>().ok())
-                                        .unwrap_or(0);
-                                    let bits1 = st.bits_per_raw_sample.unwrap_or_default() == 1;
-                                    // 解析 profile 优先：dsd64/dsd128/...
-                                    let mut native: Option<u32> = None;
-                                    let mut level: Option<u32> = None;
-                                    if let Some(p) = &st.profile {
-                                        let pl = p.to_ascii_lowercase();
-                                        for &(tag, mul) in [
-                                            ("dsd64", 64u32),
-                                            ("dsd128", 128u32),
-                                            ("dsd256", 256u32),
-                                            ("dsd512", 512u32),
-                                            ("dsd1024", 1024u32),
-                                        ]
-                                        .iter()
-                                        {
-                                            if pl.contains(tag) {
-                                                level = Some(mul);
-                                                native = Some(44_100u32.saturating_mul(mul));
-                                                break;
-                                            }
-                                        }
-                                    }
+        }
 
-                                    // 回退1：1bit 且 sr ≥ 2MHz → 直接采用 sr 作为原生率
-                                    if native.is_none() && (bits1 && sr >= 2_000_000) {
-                                        native = Some(sr);
-                                    }
-
-                                    // 回退2：1bit 且 sr 为 44.1k*N（如 352800/705600/1411200），推断原生率 = sr*8
-                                    if native.is_none() && bits1 && sr % 44_100 == 0 {
-                                        let pre_mul = sr / 44_100; // 8/16/32...
-                                        let mul = pre_mul.saturating_mul(8); // → 64/128/256...
-                                        if [64u32, 128, 256, 512, 1024].contains(&mul) {
-                                            level = Some(mul);
-                                            native = Some(44_100u32.saturating_mul(mul));
-                                        }
-                                    }
-
-                                    // 3) 最后回退：仅凭扩展名与 sr 推断（无 bits 信息）
-                                    if native.is_none() && is_dsd_ext && sr % 44_100 == 0 {
-                                        let pre_mul = sr / 44_100;
-                                        if pre_mul >= 8 {
-                                            let mul = pre_mul.saturating_mul(8);
-                                            if [64u32, 128, 256, 512, 1024].contains(&mul) {
-                                                level = Some(mul);
-                                                native = Some(44_100u32.saturating_mul(mul));
-                                            }
-                                        }
-                                    }
-
-                                    if let Some(n) = native {
-                                        format.dsd_native_rate_hz = Some(n);
-                                        if level.is_none() {
-                                            let m = (n as f64 / 44_100.0).round() as u32;
-                                            let candidates = [64u32, 128, 256, 512, 1024];
-                                            let mut best = None;
-                                            let mut best_diff = u32::MAX;
-                                            for &c in &candidates {
-                                                let diff = m.abs_diff(c);
-                                                if diff < best_diff {
-                                                    best_diff = diff;
-                                                    best = Some(c);
-                                                }
-                                            }
-                                            level = best;
-                                        }
-                                        format.dsd_multiple_of_44k = level;
-                                    }
-                                }
+        if (is_dsd_ext || is_dsd_codec)
+            && let Some(path_str) = path.to_str()
+        {
+            let json_out = Command::new(&ffprobe_path)
+                .args([
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=sample_rate,bits_per_raw_sample,codec_name,profile",
+                    "-of",
+                    "json",
+                    path_str,
+                ])
+                .output()
+                .ok();
+            if let Some(out) = json_out
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
+            {
+                #[derive(serde::Deserialize)]
+                struct StreamDSD {
+                    #[serde(default)]
+                    sample_rate: Option<String>,
+                    #[serde(default)]
+                    bits_per_raw_sample: Option<u32>,
+                    #[allow(dead_code)]
+                    #[serde(default)]
+                    codec_name: Option<String>,
+                    #[allow(dead_code)]
+                    #[serde(default)]
+                    profile: Option<String>,
+                }
+                #[derive(serde::Deserialize)]
+                struct RootDSD {
+                    #[serde(default)]
+                    streams: Vec<StreamDSD>,
+                }
+                if let Ok(parsed) = serde_json::from_str::<RootDSD>(&text)
+                    && let Some(st) = parsed.streams.first()
+                {
+                    let sr = st
+                        .sample_rate
+                        .as_deref()
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(0);
+                    let bits1 = st.bits_per_raw_sample.unwrap_or_default() == 1;
+                    // 解析 profile 优先：dsd64/dsd128/...
+                    let mut native: Option<u32> = None;
+                    let mut level: Option<u32> = None;
+                    if let Some(p) = &st.profile {
+                        let pl = p.to_ascii_lowercase();
+                        for &(tag, mul) in [
+                            ("dsd64", 64u32),
+                            ("dsd128", 128u32),
+                            ("dsd256", 256u32),
+                            ("dsd512", 512u32),
+                            ("dsd1024", 1024u32),
+                        ]
+                        .iter()
+                        {
+                            if pl.contains(tag) {
+                                level = Some(mul);
+                                native = Some(44_100u32.saturating_mul(mul));
+                                break;
                             }
                         }
+                    }
+
+                    // 回退1：1bit 且 sr ≥ 2MHz → 直接采用 sr 作为原生率
+                    if native.is_none() && (bits1 && sr >= 2_000_000) {
+                        native = Some(sr);
+                    }
+
+                    // 回退2：1bit 且 sr 为 44.1k*N（如 352800/705600/1411200），推断原生率 = sr*8
+                    if native.is_none() && bits1 && sr % 44_100 == 0 {
+                        let pre_mul = sr / 44_100; // 8/16/32...
+                        let mul = pre_mul.saturating_mul(8); // → 64/128/256...
+                        if [64u32, 128, 256, 512, 1024].contains(&mul) {
+                            level = Some(mul);
+                            native = Some(44_100u32.saturating_mul(mul));
+                        }
+                    }
+
+                    // 3) 最后回退：仅凭扩展名与 sr 推断（无 bits 信息）
+                    if native.is_none() && is_dsd_ext && sr % 44_100 == 0 {
+                        let pre_mul = sr / 44_100;
+                        if pre_mul >= 8 {
+                            let mul = pre_mul.saturating_mul(8);
+                            if [64u32, 128, 256, 512, 1024].contains(&mul) {
+                                level = Some(mul);
+                                native = Some(44_100u32.saturating_mul(mul));
+                            }
+                        }
+                    }
+
+                    if let Some(n) = native {
+                        format.dsd_native_rate_hz = Some(n);
+                        if level.is_none() {
+                            let m = (n as f64 / 44_100.0).round() as u32;
+                            let candidates = [64u32, 128, 256, 512, 1024];
+                            let mut best = None;
+                            let mut best_diff = u32::MAX;
+                            for &c in &candidates {
+                                let diff = m.abs_diff(c);
+                                if diff < best_diff {
+                                    best_diff = diff;
+                                    best = Some(c);
+                                }
+                            }
+                            level = best;
+                        }
+                        format.dsd_multiple_of_44k = level;
                     }
                 }
             }

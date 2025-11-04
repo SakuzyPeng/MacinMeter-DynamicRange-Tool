@@ -956,15 +956,15 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
         "",
     ));
     // 如使用 352.8 kHz（整数比）进行 DSD 降采样，提示 foobar2000 常见显示为 384 kHz
-    if let Some(proc_sr) = format.processed_sample_rate {
-        if proc_sr == 352_800 {
-            let note = "Note: foobar2000 often shows 384 kHz; we use 352.8 kHz integer ratio to avoid fractional resampling. / 注：foobar2000 常见显示为 384 kHz；本工具采用 352.8 kHz 的 44.1k 整数比，避免分数重采样。";
-            output.push_str(&utils::table::format_cols_line(
-                &["", note],
-                &[label_col_width, 0],
-                "",
-            ));
-        }
+    if let Some(proc_sr) = format.processed_sample_rate
+        && proc_sr == 352_800
+    {
+        let note = "Note: foobar2000 often shows 384 kHz; we use 352.8 kHz integer ratio to avoid fractional resampling. / 注：foobar2000 常见显示为 384 kHz；本工具采用 352.8 kHz 的 44.1k 整数比，避免分数重采样。";
+        output.push_str(&utils::table::format_cols_line(
+            &["", note],
+            &[label_col_width, 0],
+            "",
+        ));
     }
     output.push_str(&utils::table::format_cols_line(
         &[labels[1], &channels_s],
