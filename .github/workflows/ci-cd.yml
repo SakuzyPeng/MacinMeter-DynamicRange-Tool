@@ -76,6 +76,7 @@ jobs:
             - 'Cargo.toml'
             - 'Cargo.lock'
             - '.github/workflows/**'
+            - 'tests/**/*.rs'
           docs:
             - 'README.md'
             - 'docs/**'
