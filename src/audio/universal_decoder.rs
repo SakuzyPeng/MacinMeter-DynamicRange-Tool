@@ -127,6 +127,7 @@ impl UniversalDecoder {
         path: P,
         dsd_pcm_rate: Option<u32>,
         dsd_gain_db: Option<f32>,
+        dsd_filter: Option<String>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -156,6 +157,7 @@ impl UniversalDecoder {
                             path,
                             dsd_pcm_rate,
                             dsd_gain_db,
+                            dsd_filter.clone(),
                         )?,
                     ));
                 } else {
@@ -201,6 +203,7 @@ impl UniversalDecoder {
                                 path,
                                 dsd_pcm_rate,
                                 dsd_gain_db,
+                                dsd_filter.clone(),
                             )?,
                         ));
                     }
@@ -222,6 +225,7 @@ impl UniversalDecoder {
                             path,
                             dsd_pcm_rate,
                             dsd_gain_db,
+                            dsd_filter,
                         )?,
                     ))
                 } else {
@@ -236,7 +240,7 @@ impl UniversalDecoder {
         &self,
         path: P,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
-        self.create_streaming_with_options(path, None, None)
+        self.create_streaming_with_options(path, None, None, None)
     }
 
     /// 创建并行高性能流式解码器（实验性，攻击解码瓶颈）
@@ -245,6 +249,7 @@ impl UniversalDecoder {
     /// 预期获得3-5倍性能提升，处理速度从115MB/s提升到350-600MB/s。
     ///
     /// 实验性功能：在生产环境使用前请进行充分测试。
+    #[allow(clippy::too_many_arguments)]
     pub fn create_streaming_parallel_with_options<P: AsRef<Path>>(
         &self,
         path: P,
@@ -253,6 +258,7 @@ impl UniversalDecoder {
         thread_count: Option<usize>,
         dsd_pcm_rate: Option<u32>,
         dsd_gain_db: Option<f32>,
+        dsd_filter: Option<String>,
     ) -> AudioResult<Box<dyn StreamingDecoder>> {
         let path = path.as_ref();
 
@@ -280,6 +286,7 @@ impl UniversalDecoder {
                             path,
                             dsd_pcm_rate,
                             dsd_gain_db,
+                            dsd_filter.clone(),
                         )?,
                     ));
                 } else {
@@ -325,6 +332,7 @@ impl UniversalDecoder {
                                 path,
                                 dsd_pcm_rate,
                                 dsd_gain_db,
+                                dsd_filter.clone(),
                             )?,
                         ));
                     }
@@ -373,6 +381,7 @@ impl UniversalDecoder {
             parallel_enabled,
             batch_size,
             thread_count,
+            None,
             None,
             None,
         )

@@ -520,7 +520,7 @@ impl FFmpegDecoder {
 
     /// 创建FFmpeg解码器（默认策略）
     pub fn new(path: &Path) -> AudioResult<Self> {
-        Self::new_with_options(path, None, None)
+        Self::new_with_options(path, None, None, None)
     }
 
     /// 创建FFmpeg解码器（可配置 DSD → PCM 采样率与增益）
@@ -528,6 +528,7 @@ impl FFmpegDecoder {
         path: &Path,
         dsd_pcm_rate: Option<u32>,
         dsd_gain_db: Option<f32>,
+        dsd_filter: Option<String>,
     ) -> AudioResult<Self> {
         // 检查FFmpeg可用性
         let ffmpeg_path = Self::find_ffmpeg_path()
@@ -564,12 +565,34 @@ impl FFmpegDecoder {
             // 注：foobar2000 常见显示为 384 kHz（非 44.1k 整数比），此处默认选用 352.8 kHz 以避免分数重采样。
             let target_rate: u32 = dsd_pcm_rate.unwrap_or(352_800);
 
-            // DSD → PCM：低通 + 轻微增益补偿（与常见播放器一致），并设置输出采样率
+            // 计算低通截止频率（TEAC 或 Studio 模式）
+            let mode = dsd_filter.as_deref().unwrap_or("teac");
+            let mut fc_hz: f32 = 20_000.0; // studio 默认 20kHz
+            if mode.eq_ignore_ascii_case("teac") {
+                if let Some(mul) = format.dsd_multiple_of_44k {
+                    let scale = (mul.max(64) as f32) / 64.0;
+                    fc_hz = 39_000.0 * scale;
+                } else if let Some(native) = format.dsd_native_rate_hz {
+                    let m = (native as f32 / 44_100.0).round().max(64.0);
+                    let scale = m / 64.0;
+                    fc_hz = 39_000.0 * scale;
+                } else {
+                    fc_hz = 20_000.0; // 未识别档位时，保守回退
+                }
+                // 安全上限：0.45 × 目标采样率
+                let fc_limit = (target_rate as f32) * 0.45;
+                if fc_hz > fc_limit {
+                    fc_hz = fc_limit;
+                }
+            }
+
+            // 组装滤镜与采样率
             let gain_db = dsd_gain_db.unwrap_or(6.0);
+            let lowpass = format!("lowpass=f={fc_hz:.0}");
             let filter = if gain_db.abs() > 0.0001 {
-                format!("lowpass=20000,volume={gain_db}dB")
+                format!("{lowpass},volume={gain_db}dB")
             } else {
-                "lowpass=20000".to_string()
+                lowpass
             };
             args.extend(vec![
                 "-af".to_string(),

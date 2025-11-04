@@ -120,6 +120,7 @@ pub fn process_audio_file_streaming(
             Some(config.parallel_threads),
             config.dsd_pcm_rate,
             Some(config.dsd_gain_db),
+            Some(config.dsd_filter.clone()),
         )?
     } else {
         if config.verbose {
@@ -131,6 +132,7 @@ pub fn process_audio_file_streaming(
             path,
             config.dsd_pcm_rate,
             Some(config.dsd_gain_db),
+            Some(config.dsd_filter.clone()),
         )?
     };
 
@@ -876,6 +878,7 @@ pub fn save_individual_result(
         show_rms_peak: config.show_rms_peak,
         dsd_pcm_rate: config.dsd_pcm_rate,
         dsd_gain_db: config.dsd_gain_db,
+        dsd_filter: config.dsd_filter.clone(),
     };
 
     if let Err(e) = output_results(

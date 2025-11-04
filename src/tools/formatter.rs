@@ -921,7 +921,12 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
         }
     };
     let channels_s = format!("{}", format.channels);
-    let bits_s = format!("{}", format.bits_per_sample);
+    let bits_s = if format.dsd_native_rate_hz.is_some() {
+        // DSD 源：显示 1-bit，并注明内部以 f32 处理
+        "1 (DSD 1-bit, processed as f32 / 以 f32 处理)".to_string()
+    } else {
+        format!("{}", format.bits_per_sample)
+    };
 
     // 智能比特率计算：压缩格式使用真实比特率，未压缩格式使用PCM比特率
     let extension_fallback = utils::extract_extension_uppercase(&config.input_path);

@@ -130,6 +130,8 @@ pub struct AppConfig {
     pub dsd_pcm_rate: Option<u32>,
     /// DSD → PCM 的线性增益（dB）。默认 6.0（设置 0 可关闭）。
     pub dsd_gain_db: f32,
+    /// DSD 低通滤波模式："teac" 或 "studio"（固定20kHz）。默认 "teac"。
+    pub dsd_filter: String,
 }
 
 impl AppConfig {
@@ -261,6 +263,17 @@ pub fn parse_args() -> AppConfig {
                 })),
         )
         .arg(
+            Arg::new("dsd-filter")
+                .long("dsd-filter")
+                .help(
+                    "DSD low-pass filter mode: teac|studio|off (default teac).\n\
+                     DSD 低通滤波模式：teac|studio|off（默认 teac；studio 固定 20kHz；off 关闭低通）。",
+                )
+                .value_name("MODE")
+                .value_parser(clap::builder::PossibleValuesParser::new(["teac", "studio", "off"]))
+                .default_value("teac"),
+        )
+        .arg(
             Arg::new("dsd-gain-db")
                 .long("dsd-gain-db")
                 .help(
@@ -375,6 +388,11 @@ pub fn parse_args() -> AppConfig {
             .get_one::<f32>("dsd-gain-db")
             .copied()
             .unwrap_or(6.0),
+        // 默认 teac
+        dsd_filter: matches
+            .get_one::<String>("dsd-filter")
+            .cloned()
+            .unwrap_or_else(|| "teac".to_string()),
     }
 }
 
