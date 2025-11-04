@@ -81,6 +81,12 @@ fn calculate_actual_bitrate(
     format: &AudioFormat,
     codec_fallback: &str,
 ) -> AudioResult<u32> {
+    // DSD 情况：显示 N/A（1-bit 源，PCM比特率无实际意义）
+    if format.dsd_native_rate_hz.is_some() {
+        return Err(AudioError::InvalidInput(
+            "Bitrate not applicable for DSD 1-bit source".to_string(),
+        ));
+    }
     // 部分分析时无法准确计算比特率（样本数不完整）
     if format.is_partial() {
         return Err(AudioError::InvalidInput(

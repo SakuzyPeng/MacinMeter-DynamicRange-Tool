@@ -394,6 +394,8 @@ impl FFmpegDecoder {
             .map(|s| s.to_ascii_lowercase().contains("dsd"))
             .unwrap_or(false);
         if is_dsd_ext || is_dsd_codec {
+            // 明确将位深标记为 1（来源为 DSD 1-bit），避免报告显示默认 16bit
+            format.bits_per_sample = 1;
             if let Some(path_str) = path.to_str() {
                 let json_out = Command::new(&ffprobe_path)
                     .args([
