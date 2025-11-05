@@ -50,8 +50,8 @@
 
 
 - Platform Packages / 平台产物
-  - Windows / macOS / Linux builds are published as zipped artifacts with the `-pre` suffix (e.g., `..._linux-x64-pre.zip`)
-    Windows／macOS／Linux 可执行文件均以带 `-pre` 后缀的压缩包形式提供（如 `..._windows-x64.exe-pre.zip`）
+  - Windows / macOS / Linux builds are published as zipped artifacts (no `-pre` suffix)
+    Windows／macOS／Linux 可执行文件以压缩包形式提供（不再带有 `-pre` 后缀）
   - macOS builds are unsigned; Gatekeeper may show “Apple can’t verify…” prompts—use Security & Privacy or `xattr -d com.apple.quarantine` if you trust the download
     macOS 产物未签名，可能触发“Apple 无法验证……”提示；若确认来源可信，可通过“安全性与隐私”或执行 `xattr -d com.apple.quarantine` 解除限制
 - Linux package is untested on real hosts; treat as experimental
