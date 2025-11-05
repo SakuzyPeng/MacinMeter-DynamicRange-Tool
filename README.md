@@ -435,6 +435,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+## 第三方许可与声明（Third‑Party Notices & Licenses）
+
+- 本项目的二进制发行物包含第三方依赖，均遵循其各自许可证条款，以下列出对归属与许可文本的致谢。
+- The binary distribution of this tool includes third‑party components under their respective licenses. Acknowledgements and license texts are provided below.
+
+- songbird — ISC License
+  - Copyright © respective authors and contributors.
+  - 许可证 / License: ISC（已在仓库中附带完整文本，见 `THIRD_PARTY_NOTICES.md`）。
+  - The full license text is included in `THIRD_PARTY_NOTICES.md`.
+
+---
+
 ## 相关链接（Related Links）
 
 - **当前分支 / Current Branch**: foobar2000-plugin (智能缓冲流式处理 / smart buffered streaming)
