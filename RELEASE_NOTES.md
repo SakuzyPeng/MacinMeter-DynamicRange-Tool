@@ -50,8 +50,8 @@
 
 
 - Platform Packages / 平台产物
-  - Windows / macOS / Linux builds are published as zipped artifacts (no `-pre` suffix)
-    Windows／macOS／Linux 可执行文件以压缩包形式提供（不再带有 `-pre` 后缀）
+  - Windows / macOS / Linux builds are published as zipped artifacts
+    Windows／macOS／Linux 可执行文件以压缩包形式提供
   - macOS builds are unsigned; Gatekeeper may show “Apple can’t verify…” prompts—use Security & Privacy or `xattr -d com.apple.quarantine` if you trust the download
     macOS 产物未签名，可能触发“Apple 无法验证……”提示；若确认来源可信，可通过“安全性与隐私”或执行 `xattr -d com.apple.quarantine` 解除限制
 - Linux package is untested on real hosts; treat as experimental
@@ -63,5 +63,5 @@
   - Audio sample feedback (attach or reference source files when possible) can be sent to **ruuokk208@gmail.com**
     音频样本反馈（如可附源文件）请发送至 **ruuokk208@gmail.com**
 
-Please treat this tag as a pre-release; verify DR results with foobar2000 when they are critical.
-此版本为预发布，重要曲目建议使用 foobar2000 交叉验证 DR 结果。
+This is v0.1.0 (first stable tag). It is still an early version and parts may be unstable; for critical work, please cross‑check DR with foobar2000 when in doubt.
+本版本为 v0.1.0（首个稳定标签）。整体仍属早期版本，部分环节可能不够稳定；关键场景下如有疑虑，仍建议与 foobar2000 结果交叉验证。
