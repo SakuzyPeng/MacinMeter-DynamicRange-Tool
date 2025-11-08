@@ -10,7 +10,7 @@
 
 FLAC/ALAC压缩格式显示的是**理论未压缩比特率**而非**实际压缩后比特率**：
 
-**测试文件**：海阔天空 ~DRV SURROUND AUDIO~.flac (48kHz/24bit/8ch)
+**测试文件**：flac (48kHz/24bit/8ch)
 
 | 工具 | 显示比特率 | 类型 |
 |------|-----------|------|
@@ -188,7 +188,7 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 ## foobar2000 版本对比分析 / foobar2000 Version Comparison
 
 ### 测试文件
-- 海阔天空 ~DRV SURROUND AUDIO~.flac
+- flac
 - 48kHz / 24bit / 8声道 (7.1)
 - 时长: 5:25
 

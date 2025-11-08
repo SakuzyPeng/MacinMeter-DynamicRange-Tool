@@ -617,13 +617,14 @@ Symphonia不支持DSD解码。FFmpeg提供成熟的DSD→PCM转换，降采样�
 
 ## 文档维护策略
 
-### 📚 文档职责分工
+### 文档职责分工
 
 | 文档 | 职责 | 读者 | 更新时机 |
 |------|------|------|----------|
 | **CLAUDE.md** | 架构约束、设计原则、Why&How | AI助手 | 架构变更、新增设计原则 |
 | **README.md** | 功能列表、CLI参数、性能数据、使用指南 | 用户 | 每次发布前 |
 | **RELEASE_NOTES.md** | 版本历史、新功能、Breaking Changes | 用户 | 每次发布时 |
+| **changelogs/** | 重要修复和改进的详细技术分析 | 开发者 | 重大变更时 |
 | **代码注释** | 具体实现细节、算法说明 | 开发者 | 代码变更时 |
 
 ### ✅ CLAUDE.md 更新原则
@@ -641,13 +642,70 @@ Symphonia不支持DSD解码。FFmpeg提供成熟的DSD→PCM转换，降采样�
 - Bug修复（应更新RELEASE_NOTES.md）
 - 实验性功能的具体参数调整（应更新README.md）
 
-### 📊 性能数据更新流程
+### 性能数据更新流程
 
 **每次发布前**：
 1. 运行性能基准测试：`./scripts/benchmark_10x.sh`或`./scripts/benchmark-10x.ps1`
 2. 将结果更新到README.md "性能建议"章节
 3. 在RELEASE_NOTES.md中记录性能变化
 4. CLAUDE.md仅通过引用指向README.md，不硬编码性能数据
+
+### Changelog规范（changelogs/文件夹）
+
+**目的**: 记录重大修复和改进的详细技术分析，供开发者参考
+
+**文件命名**: `CHANGELOG_v{版本号}_{YYYY-MM-DD-HH-MM}.md`
+
+**示例**: `CHANGELOG_v0.1.1_2025-11-08-14-20.md`
+
+**内容结构**（按顺序）:
+
+1. **标题和版本信息**
+   ```markdown
+   # Changelog v0.1.1 (2025-11-08-14-20)
+
+   ## 修复：问题简述 / Fix: Brief Issue Description
+   ```
+
+2. **问题描述 / Problem Description**
+   - 错误现象 / Symptom: 具体症状和测试数据
+   - 根本原因 / Root Cause: 代码逻辑错误的分析
+
+3. **修复方案 / Fix Solution**
+   - 代码变更: 修改的文件和具体代码
+   - 逻辑重构: 需要说明"为什么"不仅仅是"做了什么"
+
+4. **验证结果 / Verification Results**
+   - 多个测试场景的对比结果
+   - 与参考实现（如foobar2000）的对比数据
+   - 精度分析和误差范围说明
+
+5. **技术细节 / Technical Details**
+   - 公式和计算方法
+   - 误差来源分析
+   - 性能影响评估
+
+**格式要求**:
+- 删除所有emoji符号（改用文本标记）
+- 使用markdown表格展示数据对比
+- 代码块用```rust或```bash标记
+- 中英双语说明
+- 逻辑清晰，便于理解修复的"为什么"
+
+**示例差异对比表**:
+```markdown
+| 工具 | 比特率 | 差异 |
+|------|--------|------|
+| MacinMeter (修复后) | 5561 kbps | - |
+| foobar2000 v1.0.3 | 5558 kbps | +3 kbps (+0.05%) |
+| ffprobe | 5560 kbps | +1 kbps (+0.02%) |
+```
+
+**不包含内容**:
+- 不写"下一步计划"（规划性内容）
+- 不写"参考资料"（链接和引用）
+- 不写"质量保证"和"Git提交记录"细节（属于开发过程）
+- 不写"影响范围"（属于RELEASE_NOTES职责）
 
 ### 🔄 版本发布检查清单
 
