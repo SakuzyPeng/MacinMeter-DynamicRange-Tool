@@ -55,27 +55,34 @@ fn codec_type_to_string(codec_type: CodecType) -> &'static str {
     }
 }
 
-/// 根据真实编解码器类型判断是否为有损压缩
+/// 根据真实编解码器类型判断是否为压缩格式
+///
+/// 压缩格式（有损+无损压缩）需要用文件大小÷时长计算实际比特率
+/// 未压缩格式（PCM）使用采样率×位深×声道计算理论比特率
 ///
 /// 使用symphonia的编解码器常量进行精确判断，比文件扩展名更准确
-fn is_lossy_codec_type(codec_type: CodecType) -> bool {
+fn is_compressed_codec_type(codec_type: CodecType) -> bool {
     matches!(
         codec_type,
-        CODEC_TYPE_AAC |      // AAC - 有损
-        CODEC_TYPE_MP3 |      // MP3 - 有损
-        CODEC_TYPE_VORBIS |   // OGG Vorbis - 有损
-        CODEC_TYPE_OPUS // Opus - 有损
+        // 有损压缩格式
+        CODEC_TYPE_AAC |      // AAC - 有损压缩
+        CODEC_TYPE_MP3 |      // MP3 - 有损压缩
+        CODEC_TYPE_VORBIS |   // OGG Vorbis - 有损压缩
+        CODEC_TYPE_OPUS |     // Opus - 有损压缩
+        // 无损压缩格式
+        CODEC_TYPE_FLAC |     // FLAC - 无损压缩
+        CODEC_TYPE_ALAC // ALAC - 无损压缩
     )
-    // 无损格式：CODEC_TYPE_FLAC, CODEC_TYPE_ALAC, CODEC_TYPE_PCM_*
+    // 未压缩格式：CODEC_TYPE_PCM_*（WAV/AIFF等）
 }
 
 /// 智能比特率计算：根据真实编解码器类型选择合适的计算方法
 ///
-/// 有损压缩格式(OPUS/MP3/AAC/OGG): 使用文件大小÷时长计算真实比特率
-/// 无损格式(WAV/FLAC/ALAC): 使用采样率×声道×位深计算PCM比特率
+/// 压缩格式(FLAC/ALAC/MP3/AAC/Opus/OGG): 使用文件大小÷时长计算实际比特率
+/// 未压缩格式(WAV/PCM): 使用采样率×声道×位深计算理论比特率
 ///
 /// 优先使用从解码器获取的真实codec信息，回退到文件扩展名
-/// 如果无法计算有损格式的真实比特率，返回错误而不是估算值
+/// 如果无法计算压缩格式的实际比特率，返回错误而不是估算值
 fn calculate_actual_bitrate(
     file_path: &std::path::Path,
     format: &AudioFormat,
@@ -95,15 +102,18 @@ fn calculate_actual_bitrate(
     }
 
     // 优先使用真实的编解码器信息
-    let is_lossy_compressed = if let Some(codec_type) = format.codec_type {
-        is_lossy_codec_type(codec_type)
+    let is_compressed = if let Some(codec_type) = format.codec_type {
+        is_compressed_codec_type(codec_type)
     } else {
-        // 回退到扩展名判断
-        matches!(codec_fallback, "OPUS" | "MP3" | "AAC" | "OGG")
+        // 回退到扩展名判断（包括有损和无损压缩格式）
+        matches!(
+            codec_fallback,
+            "FLAC" | "ALAC" | "OPUS" | "MP3" | "AAC" | "OGG"
+        )
     };
 
-    if is_lossy_compressed {
-        // 有损压缩格式：使用文件大小和时长计算真实比特率
+    if is_compressed {
+        // 压缩格式（有损+无损）：使用文件大小和时长计算实际比特率
         let metadata = std::fs::metadata(file_path).map_err(AudioError::IoError)?;
 
         let file_size_bytes = metadata.len();
@@ -119,7 +129,7 @@ fn calculate_actual_bitrate(
         let bitrate_bps = (file_size_bytes as f64 * 8.0) / duration_seconds;
         Ok((bitrate_bps / 1000.0).round() as u32)
     } else {
-        // 无损格式(WAV/FLAC/M4A-ALAC)：使用PCM比特率公式
+        // 未压缩格式(WAV/PCM)：使用理论PCM比特率公式
         // 使用 u64 防止极端采样率/声道/位深组合下的溢出
         // 例如：384kHz × 32ch × 32bit = 393,216,000 bps (接近 u32 上限)
         let bitrate_bps =
