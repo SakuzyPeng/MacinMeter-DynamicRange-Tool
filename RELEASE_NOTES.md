@@ -1,6 +1,50 @@
 # Release Notes / 发布说明
 
-## v0.1.0 – Release / 正式发布
+## v0.1.1 (2025-11-08-12-18) – LFE Detection Fix / LFE检测修复
+
+- Added / 新增
+  - Created `channel_layout.rs` module based on Apple CoreAudio AudioChannelLayoutTag specification.
+    创建 `channel_layout.rs` 模块，基于 Apple CoreAudio AudioChannelLayoutTag 规范。
+  - Support for multiple standard layouts: MPEG 5.1/6.1/7.1, EAC3, Dolby Atmos (5.1.2/5.1.4/7.1.2/7.1.4/9.1.6), DTS 7.1, and common formats (2.1/3.1).
+    支持多种标准布局：MPEG 5.1/6.1/7.1、EAC3、Dolby Atmos (5.1.2/5.1.4/7.1.2/7.1.4/9.1.6)、DTS 7.1 以及常见格式（2.1/3.1）。
+  - Three-tier LFE detection strategy: exact match → fuzzy match → conservative fallback.
+    三级 LFE 检测策略：精确匹配 → 模糊匹配 → 保守回退。
+
+- Fixed / 修复
+  - **Critical**: Fixed LFE (Low Frequency Effects) channel misidentification in multi-channel audio files.
+    **关键修复**：修复多声道音频文件中 LFE（低频效果）声道识别错误。
+  - EAC3 raw stream (.ec3): LFE correctly identified at index 5 (L,C,R,Ls,Rs,**LFE**).
+    EAC3 裸流（.ec3）：LFE 正确识别在索引 5（L,C,R,Ls,Rs,**LFE**）。
+  - M4A/MP4 container: LFE correctly identified at index 3 (L,R,C,**LFE**,Ls,Rs).
+    M4A/MP4 容器：LFE 正确识别在索引 3（L,R,C,**LFE**,Ls,Rs）。
+  - Fixed ffprobe parsing bug: "7.1" was misidentified as duration (7.1 parses as f64); now uses numeric threshold (<20 is layout, ≥20 is duration).
+    修复 ffprobe 解析 bug："7.1" 被误判为 duration（7.1 可解析为 f64）；现使用数值阈值判断（<20 为布局，≥20 为 duration）。
+  - Fixed one bilingualization issue in processor.rs:710.
+    修复 processor.rs:710 中的一个双语化问题。
+
+- Behavior / 行为变化
+  - **Container format (not codec) determines channel order**: The same EAC3 codec has different channel layouts in raw stream vs. M4A container.
+    **容器格式（而非编码）决定声道顺序**：同一 EAC3 编码在裸流与 M4A 容器中具有不同的声道布局。
+  - Enhanced `--exclude-lfe` accuracy: Now reliably detects LFE channels across different container formats with proper metadata.
+    增强 `--exclude-lfe` 准确性：现可在不同容器格式中可靠检测 LFE 声道（需正确元数据）。
+
+- Known Issues / 已知问题
+  - ~~LFE identification may be inaccurate on files without reliable layout metadata~~ – **Significantly improved** with new channel_layout module; fallback strategy provides conservative defaults for unknown layouts.
+    ~~在缺少可靠声道布局元数据的文件上，LFE 识别可能不够精确~~ – 通过新 channel_layout 模块**显著改善**；回退策略为未知布局提供保守默认值。
+  - Small drift vs foobar2000 typically within ±0.02–0.05 dB; rare cases may approach ~0.1 dB (tail window).
+    与 foobar2000 的典型偏差在 ±0.02–0.05 dB；少数情况接近 ~0.1 dB（尾窗纳入与否）。
+  - Format coverage remains incomplete across container/codec variants and edge packet boundaries; samples welcome.
+    不同容器/编解码变体与极端包边界的覆盖仍不充分；欢迎提供样本。
+
+- Testing / 测试验证
+  - Verified LFE detection on 4 test files (5.1 m4a, 5.1/5.1.2/7.1 ec3): all passed ✅
+    在 4 个测试文件（5.1 m4a、5.1/5.1.2/7.1 ec3）上验证 LFE 检测：全部通过 ✅
+  - All 377 unit tests passed, zero compiler warnings.
+    所有 377 个单元测试通过，零编译警告。
+
+---
+
+## v0.1.0 (2025-11-06) – Release / 正式发布
 
 - Overview / 概览
   - First public release of a foobar2000‑compatible Dynamic Range (DR) analysis tool.
