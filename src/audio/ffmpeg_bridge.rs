@@ -312,10 +312,9 @@ impl FFmpegDecoder {
                 // 容器格式或其他编码：使用精确的声道布局检测（基于Apple CoreAudio规范）
                 if let Some(lfe_idxs) =
                     channel_layout::detect_lfe_from_layout(&layout_joined, format.channels)
+                    && !lfe_idxs.is_empty()
                 {
-                    if !lfe_idxs.is_empty() {
-                        format.set_lfe_indices(lfe_idxs);
-                    }
+                    format.set_lfe_indices(lfe_idxs);
                 }
             }
         }
