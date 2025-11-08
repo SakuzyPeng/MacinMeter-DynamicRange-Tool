@@ -131,37 +131,8 @@ fn calculate_actual_bitrate(
     }
 }
 
-/// 识别LFE(低频效果)声道的索引位置
-///
-/// 根据声道总数和标准多声道布局识别LFE声道位置
-/// 支持从2.1到11.1.10等主流格式
-fn identify_lfe_channels(channel_count: u16) -> Vec<usize> {
-    match channel_count {
-        // 标准环绕声格式
-        3 => vec![2], // 2.1: 声道3是LFE
-        4 => vec![3], // 3.1: 声道4是LFE
-        6 => vec![5], // 5.1: 声道6是LFE (最常见)
-        7 => vec![6], // 6.1: 声道7是LFE
-        8 => vec![7], // 7.1: 声道8是LFE (常见)
-
-        // 三维音频格式 (Dolby Atmos / DTS:X)
-        10 => vec![7], // 7.1.2: 声道8是LFE，9-10是天花板
-        12 => vec![7], // 7.1.4: 声道8是LFE，9-12是天花板 (Dolby Atmos)
-        14 => vec![7], // 7.1.6: 声道8是LFE，其余是天花板
-        16 => vec![9], // 9.1.6: 声道10是LFE (DTS:X Pro)
-
-        // 超高端格式
-        18 => vec![9],  // 9.1.8: 声道10是LFE
-        20 => vec![9],  // 9.1.10: 声道10是LFE
-        22 => vec![11], // 11.1.10: 声道12是LFE (极高端格式)
-        24 => vec![11], // 11.1.12: 声道12是LFE
-
-        // 其他可能格式
-        32 => vec![11], // 某些专业格式
-
-        _ => vec![], // 未知格式或无LFE声道
-    }
-}
+// 注意：LFE识别逻辑已迁移到 crate::audio::channel_layout 模块
+// 此处使用回退函数进行基于声道数的通用推断
 
 /// 创建输出文件头部信息
 pub fn create_output_header(
@@ -401,7 +372,7 @@ pub fn format_medium_multichannel_results(
                 .filter(|&idx| idx < results.len())
                 .collect()
         } else {
-            identify_lfe_channels(format.channels)
+            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
                 .into_iter()
                 .filter(|&idx| idx < results.len())
                 .collect()
@@ -449,7 +420,7 @@ pub fn format_medium_multichannel_results(
                 if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
                     format.lfe_indices.clone()
                 } else {
-                    identify_lfe_channels(format.channels)
+                    crate::audio::channel_layout::fallback_lfe_indices(format.channels)
                 };
             if lfe_channels.contains(&i) {
                 label.push_str("  [LFE]");
@@ -496,7 +467,7 @@ pub fn format_large_multichannel_results(
                 .filter(|&idx| idx < results.len())
                 .collect()
         } else {
-            identify_lfe_channels(format.channels)
+            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
                 .into_iter()
                 .filter(|&idx| idx < results.len())
                 .collect()
@@ -645,7 +616,7 @@ pub fn compute_official_precise_dr(
                 .filter(|&idx| idx < results.len())
                 .collect()
         } else {
-            identify_lfe_channels(format.channels)
+            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
                 .into_iter()
                 .filter(|&idx| idx < results.len())
                 .collect()

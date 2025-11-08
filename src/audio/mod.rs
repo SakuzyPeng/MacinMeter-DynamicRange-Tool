@@ -40,6 +40,9 @@ mod format;
 mod stats;
 mod streaming;
 
+// 声道布局定义和LFE检测（基于Apple CoreAudio规范）
+pub mod channel_layout;
+
 // Opus音频支持模块（使用songbird专用解码器）
 mod opus_decoder;
 

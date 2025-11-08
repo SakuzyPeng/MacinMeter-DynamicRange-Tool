@@ -14,156 +14,103 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 🔍 关键约束提醒
 - **Windows验证限制**: foobar2000 DR Meter仅在Windows可用，结果对比只能由用户执行
-- **高精度原则**: 与foobar2000结果保持±0.02-0.05的精度差异，接近X.5边界时四舍五入可能相差1级
-- **性能达成**: 当前已达到 **+230% 性能提升**（vs 早期基线）
+- **精度原则**: 与foobar2000结果通常在±0.02-0.05 dB内，接近X.5边界时四舍五入可能相差1级；部分歌曲可能存在~0.1 dB的精度偏差
+- **性能参考**: 参见README.md中M4 Pro和i9-13900H的基准数据
 
 ---
 
 ## 项目概述
 
-MacinMeter DR Tool 是一个基于foobar2000 DR Meter逆向分析的音频动态范围(DR)分析工具，使用Rust实现，目标是达到高精度实现和工业级性能。
+MacinMeter DR Tool 是基于foobar2000 DR Meter逆向分析的音频动态范围(DR)分析工具，使用Rust实现。
 
-**foobar2000-plugin分支**：采用完全流式原生架构，实现真正的零内存累积处理，默认启用与foobar2000原版完全对齐的窗口级算法。
+**核心特性**：
+- 完全流式处理，零内存累积（~45MB恒定内存）
+- 双路径架构（串行/并行）
+- SIMD优化 + 多声道零拷贝
+- 实验性增强功能（默认关闭，保持foobar2000兼容）
 
-### 🆕 实验性功能
+**详细信息请参考**：
+- **功能和CLI参数**：README.md "快速开始"和"常用选项"章节
+- **版本更新历史**：RELEASE_NOTES.md
+- **性能基准数据**：README.md "性能建议"章节
+- **当前版本**：v0.1.0（首个稳定发布）
 
-**静音过滤** (`--filter-silence`):
-- 在窗口RMS计算时过滤低于阈值的样本（默认 -70 dBFS）
-- 防止静音段虚高动态范围评分，适用于现场录音/有静音间隔的音乐
-- 用法: `--filter-silence` (使用默认 -70 dB) 或 `--filter-silence=-80` (自定义阈值)
+---
 
-**边缘裁切** (`--trim-edges`):
-- 样本级首尾静音裁切（P0实现），保留中段艺术静音
-- 三态状态机 (Leading→Passing→Trailing) + 迟滞机制防止弱音误判
-- 用法: `--trim-edges` (默认 -60 dB) 配合 `--trim-min-run=100` (最小持续60ms)
-- 时间/空间复杂度: O(N) / O(min_run_frames)
+## 核心架构约束
 
-**DR边界预警**:
-- 检测DR值接近四舍五入边界的情况（如10.45、10.52、15.48等）
-- 原因：与foobar2000存在±0.02-0.05的精度差异，接近X.5边界时四舍五入后可能跨越1级
-- 示例：10.47(MacinMeter)→DR10 vs 10.52(foobar2000)→DR11
-- 帮助用户理解为何结果与foobar2000可能相差1个DR级别
+### 格式处理特殊规则
 
-### 🎵 音频格式支持
+**MP3 - 强制串行解码**：
+- MP3是有状态编码格式，并行解码会丢失packet间的状态连续性
+- 自动降级到串行解码器（详见"架构决策记录"）
 
-**通过Symphonia支持**：
-- **无损格式**: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM (AU, CAF等)
-- **有损格式**: AAC, OGG Vorbis, MP1 (MPEG Layer I)
-- **容器格式**: MP4/M4A, MKV/WebM
+**DSD - FFmpeg桥接**：
+- 通过FFmpeg降采样到PCM处理（Symphonia不支持DSD解码）
+- 参数：`--dsd-pcm-rate`（默认352.8kHz）、`--dsd-gain-db`（默认+6dB）、`--dsd-filter`（默认teac）
+- 报告显示："原生1-bit采样率 → 处理采样率（DSD downsampled）"
 
-**专用解码器**：
-- **Opus**: 通过songbird专用解码器 (Discord音频库)
-- **MP3**: ⚠️ 有状态解码格式，强制串行处理（见下方说明）
+**多声道 - 零拷贝优化**：
+- 3+声道使用process_samples_strided单次遍历处理交错样本
+- 性能收益：7.1(8ch)→8倍，7.1.4(12ch)→12倍，9.1.6(16ch)→16倍
+- 1-2声道保持SIMD分离路径
 
-**总计支持格式**: 12+种主流音频格式，覆盖90%+用户需求
+**Opus - 专用解码器**：
+- 使用songbird库（Discord音频库）专用解码
 
-### 🎧 多声道与LFE支持
+**其他格式**：
+- 通过Symphonia统一处理（FLAC、WAV、AAC、OGG等）
+- 必要时自动回退到FFmpeg（详见README.md "支持的音频格式"）
 
-**多声道分析**（3+ channels）：
-- 支持3-32声道音频分析（架构限制：MAX_CHANNELS=32）
-- 每个声道独立计算DR值，输出完整的per-channel DR明细
-- Official DR采用foobar2000标准：对所有"非静音"声道的单声道DR做算术平均并四舍五入
-- 零拷贝优化：使用process_samples_strided单次遍历处理交错样本，消除中间Vec分配
-- 性能收益：7.1(8ch)→8倍，7.1.4(12ch)→12倍，9.1.6(16ch)→16倍内存和CPU效率提升
+### 实验性功能设计原则
 
-**LFE声道剔除**（可选，通过`--exclude-lfe`开启）：
-- 从官方DR聚合计算中剔除LFE（低频效果）声道，但per-channel DR明细仍保留
-- 仅当存在可靠的声道布局元数据时生效（如WAV WAVEFORMATEXTENSIBLE掩码或解码器通道位图）
-- 无元数据时不执行剔除，避免误判（报告会提示"请求剔除LFE，但未检测到声道布局元数据"）
-- FLAC特殊处理：5.1/7.1布局在缺少元数据时，按FLAC规范回退将LFE视作index=3（0-based）
-- 更高阶布局（如7.1.4/9.1.6）须依赖容器提供的布局或位图
+**设计目标**：平衡创新与foobar2000兼容性
 
-**声道布局元数据来源**：
-- AudioFormat结构体包含has_channel_layout_metadata和lfe_indices字段
-- 从解码器channel_layout、WAV WAVEFORMATEXTENSIBLE掩码等获取
-- 支持的容器/格式在持续完善中（部分MP4/MKV、ADM/RF64等仍在开发）
+**核心原则**：
+- **默认关闭**：保持与foobar2000的100%结果一致性
+- **显式激活**：通过CLI标志主动启用（`--filter-silence`、`--trim-edges`、`--exclude-lfe`）
+- **独立开关**：每个功能独立控制，互不影响
+- **边界预警**：检测DR值接近X.5边界，提醒交叉验证
+- **报告标注**：在输出中明确标识已启用的实验性功能及统计信息
 
-**静音声道检测**：
-- 使用DR_ZERO_EPS阈值（1e-12）判定静音声道，而非精确的0.0比较
-- 兼容解码器产生的近零噪声，避免误判为非静音声道
-- 静音声道自动从Official DR聚合中排除，不计入平均
+**添加新实验性功能的流程**：
+1. 在`AppConfig`中添加字段（默认值保持兼容）
+2. 在`cli.rs`中添加参数（使用`[EXPERIMENTAL]`标记）
+3. 在`ProcessorState`中传递配置
+4. 在报告中标注功能已启用及统计信息
+5. 经过充分验证后可移除实验标记
 
-### ⚠️ 有状态编码格式处理策略
+**现有实验性功能**（详细参数见README.md）：
+- 静音过滤（`--filter-silence`）：窗口级样本过滤
+- 边缘裁切（`--trim-edges`）：样本级首尾静音裁切
+- LFE剔除（`--exclude-lfe`）：从DR聚合中剔除LFE声道
 
-**MP3特殊处理**：MP3采用有状态解码，每个packet依赖前一个packet的解码器状态。并行解码会创建独立decoder丢失上下文，导致样本错误。因此**MP3格式自动降级到串行解码器**，确保解码正确性。
-
-```rust
-// src/audio/universal_decoder.rs (lines 144-154)
-if ext_lower == "mp3" {
-    return Ok(Box::new(UniversalStreamProcessor::new(path)?)); // 强制串行
-}
-```
-
-**并行支持格式**：FLAC、AAC、WAV、AIFF、OGG等无状态格式继续使用高性能并行解码。
+---
 
 ## 构建和运行命令
 
-```bash
-# 构建开发版本
-cargo build
+### 核心命令
 
-# 构建优化版本（生产环境）
+```bash
+# 构建Release版本
 cargo build --release
 
-# 运行工具（开发环境）
-cargo run -- [目录路径]
+# 运行工具
+./target/release/MacinMeter-DynamicRange-Tool-foo_dr <path>
 
-# 运行生产版本
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr [目录路径]
-
-# 多声道音频分析（启用LFE剔除）
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr --exclude-lfe [目录路径]
-
-# 运行测试
+# 完整测试
 cargo test
 
-# 运行单个测试
-cargo test test_dr_calculation_accuracy
+# Release模式慢速测试
+cargo test --release -- --ignored
 
-# 运行基准测试
-cargo test --release benchmark
-
-# 多声道性能基准测试（10次平均）
-./benchmark_multichannel_10x.sh
-
-# 检查代码格式
-cargo fmt --check
-
-# 应用代码格式化
-cargo fmt
-
-# 运行clippy检查
-cargo clippy -- -D warnings
+# SIMD性能测试（Feature门控）
+cargo test --features simd-perf-tests --test simd_performance_tests
 ```
 
-## 📁 Mac编译产物绝对路径
+**详细CLI参数和使用示例**：参见README.md
 
-### 可执行文件位置
-**Debug版本 (开发用)**:
-```
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/debug/MacinMeter-DynamicRange-Tool-foo_dr
-```
-- 文件大小: ~10.4 MB
-- 包含调试信息，启动快但运行较慢
-
-**Release版本 (生产用)**:
-```
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr
-```
-- 文件大小: ~1.7 MB
-- 优化编译，启动慢但运行快，用于性能测试和发布
-
-### 快速测试命令
-```bash
-# 测试release版本
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr --help
-
-# 测试流式处理功能 (支持任意大小文件)
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr /path/to/large/audio/file.flac
-
-# 启用详细模式查看流式处理过程
-/Users/Sakuzy/code/rust/MacinMeter-DynamicRange-Tool/target/release/MacinMeter-DynamicRange-Tool-foo_dr --verbose /path/to/audio/directory
-```
+---
 
 ## ⚠️ 重要开发习惯：零警告原则
 
@@ -234,24 +181,63 @@ let threads = defaults::PARALLEL_THREADS;
 **⚠️ 重要**: Rust编译器警告都很有价值，对音频处理应用尤其重要！
 
 ### 🔄 预提交钩子
+
+**功能说明**：
 自动执行：代码格式检查、Clippy分析、编译检查、单元测试、安全审计。所有检查必须通过才能提交。
+
+**环境信息**：
+- Docker镜像：`macinmeter-ci:standalone`（x86架构）
+- 用于标准化的CI和本地测试环境
+
+**⚠️ 重要操作提醒**：
+
+1. **正常提交流程**：
+   ```bash
+   git commit -m "feat: 你的提交信息 / Your commit message"
+   # 预提交钩子会自动运行，等待约3-5分钟完成所有检查
+   ```
+
+2. **如果提交长时间无响应**（超过5分钟）：
+   - **不要使用 `--no-verify` 跳过检查**（会浪费CI资源）
+   - **不要将提交放在后台运行**（无法及时发现错误）
+   - 应该手动运行预提交脚本检查问题：
+     ```bash
+     # 中断当前提交 (Ctrl+C)
+     # 手动运行完整检查
+     cargo fmt --check && cargo clippy -- -D warnings && cargo check && cargo audit && cargo test
+     ```
+
+3. **发现预提交脚本问题时**：
+   - 优先考虑完善脚本问题
+   - 确认脚本正常后再提交代码
+   - 避免绕过检查导致CI失败
+
+4. **禁止操作**：
+   - ❌ `git commit --no-verify` - 跳过预提交检查
+   - ❌ 将提交命令放在后台运行
+   - ❌ 不等待检查完成就强制提交
+
+**检查超时处理**：
+- 预提交钩子建议5分钟内完成
+- 超时时先手动运行检查命令定位问题
+- 解决问题后重新提交
 
 ---
 
-## 📐 代码风格规范
+## 🌍 双语化规范 (Bilingualization)
 
-### 🌍 打印语句双语化要求
+**核心原则**：本项目面向国际开发者，所有用户可见内容必须采用双语格式（中文+英文）
 
-**所有用户可见的打印语句必须采用双语格式（中文+英文）**
+### 1. 用户可见输出
 
-#### 适用范围
-- `println!()` - 标准输出
-- `eprintln!()` - 错误输出
+**必须双语化的内容**：
+- `println!()` / `eprintln!()` - 标准输出和错误输出
 - CLI参数的 `.help()` 文本
 - 错误消息（`AudioError` 的 `Display` 实现）
 - 错误分类显示名称（`ErrorCategory::display_name()`）
+- 参数验证错误消息
 
-#### 标准格式
+**标准格式**：
 
 ```rust
 // ✅ 正确格式1：英文在前
@@ -269,7 +255,7 @@ println!("[PROGRESS] Processing window / 处理窗口 #{}", num);
 println!("[EXPERIMENTAL] Enable edge trimming / 启用边缘裁切");
 ```
 
-#### CLI帮助文本格式
+**CLI帮助文本格式**：
 
 ```rust
 .help("Audio file or directory path / 音频文件或目录路径 (支持WAV, FLAC等)")
@@ -277,7 +263,7 @@ println!("[EXPERIMENTAL] Enable edge trimming / 启用边缘裁切");
 .help("[EXPERIMENTAL] Enable silence filtering / 启用静音过滤")
 ```
 
-#### 错误消息格式
+**错误消息格式**：
 
 ```rust
 // AudioError Display 实现
@@ -290,7 +276,7 @@ ErrorCategory::Format => "FORMAT/格式错误",
 ErrorCategory::Decoding => "DECODING/解码错误",
 ```
 
-#### 参数验证错误
+**参数验证错误**：
 
 ```rust
 // parse函数返回的错误消息
@@ -298,122 +284,11 @@ Err(format!("'{s}' is not a valid number / 不是有效的数字"))
 Err(format!("value must be at least {min} / 值必须至少为 {min}"))
 ```
 
-### 💬 注释规范
+### 2. Git提交信息
 
-**注释只需保留中文，不需要双语化**
+**强制要求**：所有commit message必须采用双语格式（中文+英文）
 
-#### 基本原则
-- 注释面向开发者，使用中文即可
-- 去除所有emoji符号（🚀 🎯 🎵 📄 ⌛ 🧪 🏁 等）
-- 避免模糊的阶段描述
-
-#### 注释清理规范
-
-```rust
-// ❌ 错误：包含emoji和模糊描述
-// 🧪 P0阶段：创建边缘裁切器（如果启用）
-// ⌛ 智能缓冲进度
-
-// ✅ 正确：清晰的中文描述
-// 创建边缘裁切器（如果启用）
-// 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
-```
-
-#### 避免模糊描述
-
-```rust
-// ❌ 错误：模糊的阶段标识
-// P0 phase: Edge trimming
-// 阶段D优化禁用时，仅使用阶段B的compact机制
-
-// ✅ 正确：具体的功能描述
-// 首尾边缘裁切（如果启用）
-// 窗口对齐优化禁用时，仅使用compact阈值机制
-```
-
-#### 长注释格式
-
-```rust
-// 尾块处理策略说明：
-// 末尾不足3秒的尾块直接参与计算（符合多数实现标准）：
-// - 尾块样本计入 20% RMS 统计（通过 WindowRmsAnalyzer.process_samples）
-// - 尾块峰值参与峰值检测（主Peak、次Peak更新）
-// - 此行为与 foobar2000 DR Meter 一致，确保完整音频内容被分析
-```
-
-### 🚫 禁止使用的emoji清单
-
-**在代码注释和打印语句中禁止使用以下emoji**：
-- 进度/状态：🚀 ⌛ 🏁 📊 ✅ ❌ ⚠️
-- 功能标识：🎯 🎵 🎨 🔧 🔍 💡 📝 📄
-- 实验性标记：🧪 🚧 🔬
-- 其他装饰：🌊 💎 🔥 ⚡ 💻
-
-**例外**：CLAUDE.md文档本身可以使用emoji作为视觉标识，因为它是面向开发者的参考文档。
-
-### 📝 实际清理示例
-
-#### 打印语句清理
-
-```rust
-// Before (❌)
-println!("📄 结果已保存到: {}", path.display());
-println!("⌛ 智能缓冲进度: {:.1}%", progress);
-
-// After (✅)
-println!("Results saved / 结果已保存到: {}", path.display());
-println!("[PROGRESS] Smart buffer progress / 智能缓冲进度: {:.1}%", progress);
-```
-
-#### 注释清理
-
-```rust
-// Before (❌)
-// 🧪 P0阶段：创建边缘裁切器（如果启用）
-// 🌊 智能缓冲流式处理：积累chunk到标准窗口大小
-
-// After (✅)
-// 创建边缘裁切器（如果启用）
-// 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
-```
-
-#### 错误消息清理
-
-```rust
-// Before (❌)
-return Err(format!("线程池创建失败: {e}"));
-return Err(format!("'{s}' 不是有效的数字"));
-
-// After (✅)
-return Err(format!("Thread pool creation failed / 线程池创建失败: {e}"));
-return Err(format!("'{s}' is not a valid number / 不是有效的数字"));
-```
-
-### ✅ 代码清理检查清单
-
-在提交代码前，确保完成以下检查：
-
-- [ ] 所有 `println!`/`eprintln!` 语句已双语化
-- [ ] CLI 参数的 `.help()` 文本已双语化
-- [ ] `AudioError` 的 `Display` 实现已双语化
-- [ ] 错误分类显示名称已双语化
-- [ ] 参数验证错误消息已双语化
-- [ ] 所有注释已去除emoji符号
-- [ ] 注释中没有模糊的阶段描述（如"P0"、"阶段X"）
-- [ ] 注释使用清晰、具体的中文描述
-- [ ] 代码通过 `cargo fmt` 格式化
-- [ ] 代码通过 `cargo clippy -- -D warnings` 检查
-- [ ] 所有测试通过 `cargo test`
-
----
-
-## 📝 Git提交规范：双语化Commit Message
-
-### ✅ 强制要求
-
-**所有commit message必须采用双语格式（中文+英文）**，确保国际协作和代码历史可读性。
-
-### 📋 标准格式
+**格式规范**：
 
 ```
 <type>: <中文简要描述> / <English brief description>
@@ -421,7 +296,7 @@ return Err(format!("'{s}' is not a valid number / 不是有效的数字"));
 [可选详细说明 / Optional detailed description]
 ```
 
-### 🏷️ Type类型
+**Type类型**：
 
 - **feat**: 新功能 / New feature
 - **fix**: Bug修复 / Bug fix
@@ -432,9 +307,8 @@ return Err(format!("'{s}' is not a valid number / 不是有效的数字"));
 - **chore**: 构建/工具/配置 / Build/tooling/config
 - **ci**: CI/CD配置 / CI/CD configuration
 
-### 📖 示例
+**提交示例**：
 
-**✅ 正确示例**：
 ```bash
 # 简单提交
 git commit -m "feat: 添加静音过滤功能 / Add silence filtering feature"
@@ -462,19 +336,7 @@ git commit -m "refactor: 重构DR计算逻辑并优化性能 / Refactor DR calcu
 - Improve calculation speed by 10%"
 ```
 
-**❌ 错误示例**：
-```bash
-# 纯中文（不符合国际规范）
-git commit -m "feat: 添加静音过滤功能"
-
-# 纯英文（缺少中文说明）
-git commit -m "feat: Add silence filtering feature"
-
-# 格式错误（未使用斜杠分隔）
-git commit -m "feat: 添加静音过滤功能 Add silence filtering feature"
-```
-
-### 💡 实用技巧
+**实用技巧**：
 
 **使用heredoc避免引号转义**：
 ```bash
@@ -495,6 +357,76 @@ EOF
 git log --oneline -10  # 查看简短历史
 git log -3 --format="%h %s%n%b"  # 查看详细历史
 ```
+
+### 3. 例外说明
+
+**不需要双语化的内容**：
+- **代码注释**：仅使用中文即可，面向开发者
+- **内部日志**：调试和开发用的日志信息
+- **文档内容**：CLAUDE.md、README.md等文档本身的正文内容（已经是双语）
+
+---
+
+## 📐 代码风格规范
+
+### 💬 注释规范
+
+**注释只需保留中文，不需要双语化**
+
+**基本原则**：
+- 注释面向开发者，使用中文即可
+- 去除所有emoji符号（🚀 🎯 🎵 📄 ⌛ 🧪 🏁 等）
+- 避免模糊的阶段描述
+
+**注释示例**：
+
+```rust
+// 创建边缘裁切器（如果启用）
+// 智能缓冲流式处理：积累chunk到标准窗口大小，保持算法精度
+
+// 首尾边缘裁切（如果启用）
+// 窗口对齐优化禁用时，仅使用compact阈值机制
+```
+
+**长注释格式**：
+
+```rust
+// 尾块处理策略说明：
+// 末尾不足3秒的尾块直接参与计算（符合多数实现标准）：
+// - 尾块样本计入 20% RMS 统计（通过 WindowRmsAnalyzer.process_samples）
+// - 尾块峰值参与峰值检测（主Peak、次Peak更新）
+// - 此行为与 foobar2000 DR Meter 一致，确保完整音频内容被分析
+```
+
+### 🚫 禁止使用的emoji清单
+
+**在代码注释和打印语句中禁止使用以下emoji**：
+- 进度/状态：🚀 ⌛ 🏁 📊 ✅ ❌ ⚠️
+- 功能标识：🎯 🎵 🎨 🔧 🔍 💡 📝 📄
+- 实验性标记：🧪 🚧 🔬
+- 其他装饰：🌊 💎 🔥 ⚡ 💻
+
+**例外**：CLAUDE.md文档本身可以使用emoji作为视觉标识，因为它是面向开发者的参考文档。
+
+### ✅ 代码清理检查清单
+
+在提交代码前，确保完成以下检查：
+
+**双语化检查**：
+- [ ] 所有 `println!`/`eprintln!` 语句已双语化
+- [ ] CLI 参数的 `.help()` 文本已双语化
+- [ ] `AudioError` 的 `Display` 实现已双语化
+- [ ] 错误分类显示名称已双语化
+- [ ] 参数验证错误消息已双语化
+- [ ] Git提交信息已双语化
+
+**代码风格检查**：
+- [ ] 所有注释已去除emoji符号
+- [ ] 注释中没有模糊的阶段描述（如"P0"、"阶段X"）
+- [ ] 注释使用清晰、具体的中文描述
+- [ ] 代码通过 `cargo fmt` 格式化
+- [ ] 代码通过 `cargo clippy -- -D warnings` 检查
+- [ ] 所有测试通过 `cargo test`
 
 ---
 
@@ -519,12 +451,13 @@ git log -3 --format="%h %s%n%b"  # 查看详细历史
   - `dr_channel_state.rs`: DR计算状态（24字节内存布局）
   - `processing_coordinator.rs`: 协调器（编排各服务）
   - `performance_metrics.rs`: 性能统计
-  - `edge_trimmer.rs`: **实验性边缘裁切**（P0样本级实现）
+  - `edge_trimmer.rs`: **实验性边缘裁切**（样本级实现）
 - **audio/**: 解码器（串行BatchPacketReader + 并行OrderedParallelDecoder）
-  - `universal_decoder.rs`: 解码器统一入口（自动选择串行/并行）
+  - `universal_decoder.rs`: 解码器统一入口（自动选择串行/并行/FFmpeg）
   - `streaming.rs`: 流式处理接口定义
   - `parallel_decoder.rs`: 并行解码实现（OrderedParallelDecoder）
   - `opus_decoder.rs`: Opus专用解码器（songbird库）
+  - `ffmpeg_bridge.rs`: FFmpeg桥接（DSD、格式回退）
 
 ### 🚀 双路径架构（关键设计）
 
@@ -536,7 +469,7 @@ git log -3 --format="%h %s%n%b"  # 查看详细历史
 **并行路径**（ParallelUniversalStreamProcessor）：
 - OrderedParallelDecoder：4线程64包批量解码
 - SequencedChannel：序列号保证样本时间顺序
-- 性能提升：累积 3.3倍 (115MB/s → 705MB/s，2025-10-25 数据)
+- 性能提升：累积 3.3倍（115MB/s → 705MB/s，2025-10-25 基准数据）
 - 适用场景：大文件、批量处理、复杂音频流
 
 **共享组件**（ProcessorState）：
@@ -555,8 +488,6 @@ git log -3 --format="%h %s%n%b"  # 查看详细历史
    - 边缘裁切：三态状态机实现首尾静音裁切（保留中段艺术静音）
    - DR边界预警：检测接近X.5四舍五入边界的DR值（如10.45-10.55），标识可能因±0.02-0.05精度差异导致的级别跨越
 
-## 关键设计模式
-
 ### 解码器选择逻辑
 ```rust
 UniversalDecoder::create_streaming(path)           // 串行，默认
@@ -572,54 +503,9 @@ trait StreamingDecoder {
 }
 ```
 
+**详细性能数据**：参见README.md "性能建议"章节
+
 ---
-
-## 性能基准测试
-
-```bash
-# 10次平均测试（消除测量误差）
-./benchmark_10x.sh
-
-# 当前性能基线（2025-10-25，O(n)峰值优化后）
-# 测试文件: 贝多芬第九交响曲 FLAC (1.51GB)
-#
-# 处理速度:
-#   平均值: 705.38 MB/s
-#   中位数: 750.97 MB/s (最可信指标)
-#   标准差: 74.60 MB/s (CV: 10.58%)
-#
-# 运行时间:
-#   平均值: 2.909s
-#   中位数: 2.698s
-#
-# 内存峰值:
-#   平均值: 44.02 MB
-#   中位数: 44.215 MB
-#   标准差: 2.70 MB
-#
-# 性能与前序对标:
-#   vs 2025-10-24 基线: 无回归 (+0.47% 平均值, -0.09% 中位数)
-#   vs 2025-01-14: +230.8% (213.27 → 705.38 MB/s)
-#
-# 最新优化 (2025-10-25):
-#   ✅ O(n)单遍扫描峰值选择 (替代 O(n log n) 排序)
-#   ✅ 长曲目性能改善: 12-20倍 (峰值查询)
-#   ✅ 168 个单元测试全通过
-```
-
-## 开发原则
-
-### 🎯 架构约束
-- **串行≠并发度1的并行**: 保持两条独立路径，不强行统一
-- **组合优于继承**: 用ProcessorState共享状态，而非enum统一模式
-- **多声道支持**: 支持3-32声道音频分析（架构限制：MAX_CHANNELS=32）
-- **零拷贝优化**: 3+声道使用process_samples_strided单次遍历，1-2声道保持SIMD分离路径
-
-### 💎 性能优先
-- 默认并行解码（4线程64包批量）
-- SIMD自动启用（ARM NEON/x86 SSE2）
-- Sum Doubling固定启用（foobar2000兼容）
-- 多声道零拷贝处理：7.1(8ch)→8倍，7.1.4(12ch)→12倍，9.1.6(16ch)→16倍效率提升
 
 ## 测试策略
 
@@ -639,25 +525,16 @@ cargo test --features simd-perf-tests --test simd_performance_tests
 
 # 性能基准测试（10次取平均值，消除系统噪声）
 # 生成性能报告：平均/中位/标准差/CV%
-./benchmark_10x.sh
-
-# 对标特定基线版本
-./benchmark_10x.sh --exe /path/to/baseline/binary
-
-# 串行模式性能测试
-./benchmark_10x.sh --serial
+./scripts/benchmark_10x.sh              # macOS
+./scripts/benchmark-10x.ps1             # Windows
 ```
 
 ### 📊 性能基准脚本说明
 
-**benchmark_10x.sh**: 10次重复测试取统计数据
+**benchmark_10x.sh / benchmark-10x.ps1**: 10次重复测试取统计数据
 - **功能**: 运行10次基准测试，计算平均值、中位数、标准差
 - **输出指标**: 运行时间、处理速度、内存峰值、CPU使用率
 - **用途**: 消除系统缓存/调度的随机性，获得可靠的性能数据
-- **选项**:
-  - `--exe PATH`: 指定可执行文件路径（默认：target/release版本）
-  - `--serial`: 使用串行解码而非并行解码
-  - `--help`: 显示帮助信息
 
 **推荐工作流**:
 ```bash
@@ -665,12 +542,9 @@ cargo test --features simd-perf-tests --test simd_performance_tests
 cargo build --release
 
 # 2. 运行10x基准测试（生成当前版本性能数据）
-./benchmark_10x.sh
+./scripts/benchmark_10x.sh
 
-# 3. 对标历史版本
-./benchmark_10x.sh --exe /path/to/old-version
-
-# 4. 观察指标：看中位数而非平均值（更稳定）
+# 3. 观察指标：看中位数而非平均值（更稳定）
 # 性能差异 < 5% 属于正常噪声范围
 ```
 
@@ -694,20 +568,6 @@ cargo build --release
 - **CI环境**：默认跳过编译（0 tests），避免链接器崩溃
 - **本地开发**：显式启用 feature 运行完整性能测试
 
-**运行方式**：
-```bash
-# 本地性能测试（9个测试，包含大数据集）
-cargo test --features simd-perf-tests --test simd_performance_tests
-
-# Release模式（获得真实性能数据）
-cargo test --release --features simd-perf-tests --test simd_performance_tests
-```
-
-**设计原则**：
-- 默认禁用大数据集测试，保护CI环境
-- 开发者可按需启用完整性能验证
-- 遵循Rust生态的feature flag最佳实践
-
 ---
 
 ## 重要架构决策记录
@@ -721,33 +581,10 @@ cargo test --release --features simd-perf-tests --test simd_performance_tests
 - **结论**: 保持两条独立路径，用ProcessorState消除重复
 
 ### 为什么MP3必须串行解码？
-**问题**: 为何不能对MP3使用并行解码器？
+MP3是有状态编码格式，每个packet的解码依赖前一个packet的decoder状态。并行解码会创建独立decoder，丢失packet间的状态连续性导致样本错误。因此通过文件扩展名检测，自动降级到串行解码器。
 
-**答案**: MP3是有状态编码格式：
-- **状态依赖**: 每个packet的解码依赖前一个packet的decoder状态
-- **并行问题**: 并行解码器为每个线程创建独立decoder，丢失packet间的状态连续性
-- **症状**: 样本值从某个位置开始变为0.0，导致DR计算错误
-- **解决方案**: 文件扩展名检测，自动降级到串行解码器
-- **其他格式**: FLAC、AAC、WAV、AIFF等无状态格式仍使用并行解码
-
-### 为什么processing层文件要精确命名？
-**问题**: 为何重命名channel_data、channel_extractor、simd_channel_data？
-
-**答案**: 解决命名混淆问题：
-- **"channel"前缀过载**: 3个文件都用"channel"但职责完全不同
-- **名不副实**: `simd_channel_data.rs`包含通用SIMD基础设施，与channel data无关
-- **语义模糊**: `channel_data.rs`缺少领域信息，不明确是DR计算状态
-- **结论**: 精确命名提升可维护性，降低认知负担
-
-### 为什么需要constants.rs集中管理常量？
-**问题**: 为何不能在各模块中直接定义常量？
-
-**答案**: 防止"默认值漂移"和重复定义：
-- **漂移问题**: 不同文件中相同语义的常量可能不一致（如批大小64 vs 128）
-- **维护成本**: 调整参数需要修改多处，容易遗漏
-- **文档缺失**: 散落的魔法数字缺少设计考量说明
-- **统一来源**: constants.rs作为"单一事实来源"，所有常量都有详细文档
-- **结论**: 集中管理提升一致性、可维护性和可审计性
+### 为什么DSD需要FFmpeg桥接？
+Symphonia不支持DSD解码。FFmpeg提供成熟的DSD→PCM转换，降采样到标准PCM后走统一DR计算路径，无需特殊处理。参数：`--dsd-pcm-rate`/`--dsd-gain-db`/`--dsd-filter`（详见README.md）。
 
 ### 实验性功能的设计原则是什么？
 **问题**: 边缘裁切和静音过滤为何标记为"实验性"？
@@ -768,36 +605,66 @@ cargo test --release --features simd-perf-tests --test simd_performance_tests
 - **CPU效率**: 单次遍历vs N次遍历，显著提升缓存局部性
 - **性能收益**: 7.1→8倍，7.1.4→12倍，9.1.6→16倍内存和CPU效率提升
 - **混合策略**: 1-2声道保持ProcessingCoordinator路径，享受SIMD分离优势
-- **实现细节**: histogram.rs:376中process_samples_strided使用chunks_exact直接提取目标声道
 - **结论**: 零拷贝是多声道高性能处理的必选路径
 
 ### 为什么LFE剔除需要元数据支持？
-**问题**: 为何`--exclude-lfe`仅在存在声道布局元数据时生效？
-
-**答案**: 避免误判和保证可靠性：
-- **声道歧义**: 无元数据时无法确定哪个物理声道是LFE（如5.1中LFE可能在index 3、4或5）
-- **格式差异**: WAV、MP4、MKV等容器对声道顺序定义不同，不能假设通用规则
-- **FLAC特例**: 5.1/7.1有明确规范（LFE在index 3），但7.1.4/9.1.6仍需元数据
-- **用户体验**: 无元数据时报告提示"请求剔除LFE，但未检测到声道布局元数据"，而非静默失败
-- **实现细节**: AudioFormat.has_channel_layout_metadata和lfe_indices字段协同工作
-- **结论**: 宁可保守不剔除，也不能错误剔除非LFE声道
+无元数据时无法确定哪个物理声道是LFE（5.1中可能在index 3/4/5），不同容器对声道顺序定义不同。宁可保守不剔除，避免误删非LFE声道。无元数据时报告会提示用户。
 
 ### 为什么静音声道使用DR_ZERO_EPS阈值？
-**问题**: 为何不用精确的0.0比较判断静音声道？
+解码器可能产生近零噪声（1e-15），浮点运算有累积误差。阈值1e-12足够严格（远小于16bit量化噪声3e-5）且容忍合理误差，是处理实际音频数据的工业级实践
 
-**答案**: 处理实际音频数据的鲁棒性：
-- **解码噪声**: 解码器可能产生近零噪声（如1e-15），不代表非静音声道
-- **浮点精度**: 浮点运算累积误差可能导致理论上的0.0变成1e-16
-- **阈值选择**: 1e-12足够严格（远小于16bit量化噪声3e-5），同时容忍合理误差
-- **影响范围**: formatter.rs中3处判定逻辑统一使用DR_ZERO_EPS（格式化、标签、筛选）
-- **与常量系统一致**: 使用constants::dr_analysis::DR_ZERO_EPS避免值漂移
-- **结论**: 阈值判断是实际音频处理的工业级实践
+---
+
+## 文档维护策略
+
+### 📚 文档职责分工
+
+| 文档 | 职责 | 读者 | 更新时机 |
+|------|------|------|----------|
+| **CLAUDE.md** | 架构约束、设计原则、Why&How | AI助手 | 架构变更、新增设计原则 |
+| **README.md** | 功能列表、CLI参数、性能数据、使用指南 | 用户 | 每次发布前 |
+| **RELEASE_NOTES.md** | 版本历史、新功能、Breaking Changes | 用户 | 每次发布时 |
+| **代码注释** | 具体实现细节、算法说明 | 开发者 | 代码变更时 |
+
+### ✅ CLAUDE.md 更新原则
+
+**应该更新的情况**：
+- 核心架构发生变化（如新增第三条解码路径）
+- 添加新的设计原则或约束（如新的格式处理规则）
+- 重要架构决策需要记录（添加到"架构决策记录"章节）
+- 开发规范调整（如新的代码风格要求）
+
+**不应该更新的情况**：
+- 添加新的CLI参数（应更新README.md）
+- 支持新的音频格式（应更新README.md）
+- 性能数据变化（应更新README.md）
+- Bug修复（应更新RELEASE_NOTES.md）
+- 实验性功能的具体参数调整（应更新README.md）
+
+### 📊 性能数据更新流程
+
+**每次发布前**：
+1. 运行性能基准测试：`./scripts/benchmark_10x.sh`或`./scripts/benchmark-10x.ps1`
+2. 将结果更新到README.md "性能建议"章节
+3. 在RELEASE_NOTES.md中记录性能变化
+4. CLAUDE.md仅通过引用指向README.md，不硬编码性能数据
+
+### 🔄 版本发布检查清单
+
+发布新版本前，确保完成：
+
+- [ ] 运行完整测试：`cargo test`和`cargo test --release -- --ignored`
+- [ ] 更新README.md中的性能基准数据
+- [ ] 在RELEASE_NOTES.md中添加版本记录
+- [ ] 检查CLAUDE.md是否需要更新架构决策
+- [ ] 确认所有代码通过`cargo clippy -- -D warnings`
+- [ ] 确认所有commit message符合双语化规范
+- [ ] 更新Cargo.toml中的版本号
+
+---
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
-
-
-      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.

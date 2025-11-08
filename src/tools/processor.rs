@@ -707,7 +707,9 @@ fn analyze_streaming_decoder(
         // 若确实是编码损坏导致的缺失，则标记部分分析；裁切场景已通过 update_sample_count 避免进入此分支
         final_format.mark_as_partial(skipped_approx);
     } else if actual_samples > expected_samples && config.verbose {
-        eprintln!("[WARNING] 实际解码样本({actual_samples}) 多于预期({expected_samples})");
+        eprintln!(
+            "[WARNING] Actual decoded samples exceed expected / 实际解码样本多于预期: actual / 实际 {actual_samples} > expected / 预期 {expected_samples}"
+        );
     }
 
     // 在函数返回前停止 processing 范围的采样并生成火焰图，避免包含尾段 drop/dealloc

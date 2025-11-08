@@ -8,22 +8,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+use super::channel_layout;
 use super::format::AudioFormat;
 use super::stats::ChunkSizeStats;
 use super::streaming::StreamingDecoder;
-
-/// 基于常见布局推断 LFE 在交错顺序中的索引（0-based）
-/// 说明：
-/// - 2.1 (3ch) -> index 2
-/// - 3.1/5.1/7.1/7.1.4/… (>=4ch) -> index 3（FL,FR,FC,LFE,...）
-/// - 其他未知布局返回空向量
-fn default_lfe_indices_for_channel_count(channel_count: u16) -> Vec<usize> {
-    match channel_count {
-        0..=2 => Vec::new(),
-        3 => vec![2],
-        _ => vec![3],
-    }
-}
 
 /// FFmpeg安装指南（跨平台）
 const FFMPEG_INSTALL_GUIDE: &str = r#"
@@ -182,8 +170,10 @@ impl FFmpegDecoder {
                 "-select_streams",
                 "a:0",
                 "-show_entries",
-                // 追加布局字段，按声明顺序输出，便于解析
+                // 追加布局字段和容器格式，按声明顺序输出，便于解析
                 "stream=codec_name,sample_rate,channels,duration,channel_layout,ch_layout",
+                "-show_entries",
+                "format=format_name",
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
                 path.to_str().unwrap(),
@@ -223,7 +213,8 @@ impl FFmpegDecoder {
             ));
         }
 
-        // ffprobe输出顺序：codec_name, sample_rate, channels, duration, channel_layout, ch_layout
+        // ffprobe输出顺序实际为：codec_name, sample_rate, channels, channel_layout, duration, ch_layout
+        // 注意：channel_layout在duration之前！
         let codec_name = Some(lines[0].to_string());
 
         let sample_rate = lines[1].parse::<u32>().map_err(|e| {
@@ -234,7 +225,32 @@ impl FFmpegDecoder {
             AudioError::FormatError(format!("Invalid channel count / 无效的声道数: {e}"))
         })?;
 
-        let duration = lines[3].parse::<f64>().ok().unwrap_or(0.0);
+        // lines[3]可能是channel_layout或duration，需要鲁棒解析
+        // 注意："7.1"也能解析为f64，所以不能简单用parse判断
+        // 判断规则：channel_layout通常包含字母、括号或小于20的小数（如5.1, 7.1）
+        //          duration通常是较大数字（如187.968000）
+        let is_likely_channel_layout = {
+            let s = lines[3];
+            // 包含字母或括号，肯定是channel_layout
+            if s.chars().any(|c| c.is_alphabetic() || c == '(' || c == ')') {
+                true
+            } else if let Ok(num) = s.parse::<f64>() {
+                // 纯数字：小于20认为是channel_layout（5.1, 7.1等），否则是duration
+                num < 20.0
+            } else {
+                true // 无法解析，默认认为是channel_layout
+            }
+        };
+
+        let (channel_layout_line, duration_line) = if is_likely_channel_layout {
+            // 标准输出：channel_layout在duration之前
+            (lines[3], lines.get(4).map(|s| s.trim()).unwrap_or(""))
+        } else {
+            // 旧版ffprobe或特殊格式：duration在channel_layout之前
+            (lines.get(4).map(|s| s.trim()).unwrap_or(""), lines[3])
+        };
+
+        let duration = duration_line.parse::<f64>().ok().unwrap_or(0.0);
         let sample_count = if duration > 0.0 {
             (duration * sample_rate as f64) as u64
         } else {
@@ -251,9 +267,18 @@ impl FFmpegDecoder {
 
         let mut format = AudioFormat::new(sample_rate, channels, bits_per_sample, sample_count);
 
-        // 解析布局字符串：用于标记布局元数据与推导LFE索引
-        let layout_str_raw = lines.get(4).map(|s| s.trim()).unwrap_or("");
-        let ch_layout_str_raw = lines.get(5).map(|s| s.trim()).unwrap_or("");
+        // 解析布局字符串和容器格式：用于标记布局元数据与推导LFE索引
+        // format_name总是最后一行输出
+        let format_name_raw = lines.last().map(|s| s.trim()).unwrap_or("");
+
+        // ch_layout可能为空（不输出），所以需要鲁棒解析
+        let ch_layout_str_raw = if lines.len() > 6 {
+            lines.get(5).map(|s| s.trim()).unwrap_or("")
+        } else {
+            ""
+        };
+
+        let layout_str_raw = channel_layout_line;
         let layout_joined = if !layout_str_raw.is_empty() {
             layout_str_raw.to_string()
         } else if !ch_layout_str_raw.is_empty() {
@@ -264,18 +289,33 @@ impl FFmpegDecoder {
 
         if !layout_joined.is_empty() {
             format.mark_has_channel_layout();
-            // 基于布局字符串粗略判断是否存在LFE（*.1 / 5.1 / 7.1 / 7.1.4 / 9.1.6等）
-            let lower = layout_joined.to_ascii_lowercase();
-            let looks_like_has_lfe = lower.contains(".1")
-                || lower.contains("5.1")
-                || lower.contains("6.1")
-                || lower.contains("7.1")
-                || lower.contains("9.1");
 
-            if looks_like_has_lfe {
-                let idxs = default_lfe_indices_for_channel_count(format.channels);
-                if !idxs.is_empty() {
-                    format.set_lfe_indices(idxs);
+            // 容器格式决定声道顺序：
+            // - EAC3裸流（.ec3）：format_name=eac3，声道顺序 L,C,R,Ls,Rs,LFE（索引5）
+            // - M4A/MP4容器：format_name包含mov/mp4/m4a，声道顺序 L,R,C,LFE,Ls,Rs（索引3）
+            let format_lower = format_name_raw.to_lowercase();
+            let is_eac3_raw = format_lower == "eac3" || format_lower == "ac3";
+
+            if is_eac3_raw {
+                // EAC3裸流：LFE固定在索引5
+                let lfe_idx = match (layout_joined.to_lowercase().as_str(), format.channels) {
+                    ("5.1" | "5.1(side)", 6) => Some(vec![5]), // EAC3 5.1: L,C,R,Ls,Rs,LFE
+                    ("5.1.2", 8) => Some(vec![5]), // EAC3 5.1.2: L,C,R,Ls,Rs,LFE,Ltm,Rtm
+                    ("7.1" | "7.1(wide)", 8) => Some(vec![5]), // EAC3 7.1: L,C,R,Ls,Rs,LFE,Rls,Rrs
+                    _ => None,
+                };
+
+                if let Some(indices) = lfe_idx {
+                    format.set_lfe_indices(indices);
+                }
+            } else {
+                // 容器格式或其他编码：使用精确的声道布局检测（基于Apple CoreAudio规范）
+                if let Some(lfe_idxs) =
+                    channel_layout::detect_lfe_from_layout(&layout_joined, format.channels)
+                {
+                    if !lfe_idxs.is_empty() {
+                        format.set_lfe_indices(lfe_idxs);
+                    }
                 }
             }
         }
