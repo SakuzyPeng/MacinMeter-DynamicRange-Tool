@@ -37,8 +37,8 @@
     不同容器/编解码变体与极端包边界的覆盖仍不充分；欢迎提供样本。
 
 - Testing / 测试验证
-  - Verified LFE detection on 4 test files (5.1 m4a, 5.1/5.1.2/7.1 ec3): all passed ✅
-    在 4 个测试文件（5.1 m4a、5.1/5.1.2/7.1 ec3）上验证 LFE 检测：全部通过 ✅
+  - Verified LFE detection on 4 test files (5.1 m4a, 5.1/5.1.2/7.1 ec3): all passed
+    在 4 个测试文件（5.1 m4a、5.1/5.1.2/7.1 ec3）上验证 LFE 检测：全部通过
   - All 377 unit tests passed, zero compiler warnings.
     所有 377 个单元测试通过，零编译警告。
 
