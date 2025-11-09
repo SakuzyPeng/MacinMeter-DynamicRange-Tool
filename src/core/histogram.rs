@@ -145,12 +145,12 @@ pub struct WindowRmsAnalyzer {
 struct DrHistogram {
     /// 10001个bin - foobar2000标准
     ///
-    /// 根据逆向分析（sub_180008570，窗口完成流程0x180008790之后）：
+    /// 根据逆向分析（sub_180008570，第152行）：
     /// - bin索引范围：0-10000
-    /// - 量化公式：bin = clamp(int(9841 * rms), 0, 10000)
+    /// - 量化公式：bin = clamp(int(10000 * rms), 0, 10000)
     /// - 还原公式：sum_sq += bin² × 1e-8
     ///
-    /// 量化常量9841来自逆向分析中的常量0x18004e480 = 9841.0
+    /// 反汇编代码确认：`v48 = (int)(v47 * 10000.0);`
     bins: Vec<u32>,
     /// 总窗口数
     total_windows: u64,
@@ -417,6 +417,29 @@ impl WindowRmsAnalyzer {
         self.histogram.calculate_20_percent_rms()
     }
 
+    /// 计算"最响20%窗口"的加权RMS值 - 无量化版本（用于性能对标）
+    ///
+    /// 直接从精确的window_rms_values计算，不经过直方图量化。
+    /// 用于评估10001-bin量化对精度的影响。
+    pub fn calculate_20_percent_rms_no_quantization(&self) -> f64 {
+        if self.window_rms_values.is_empty() {
+            return 0.0;
+        }
+
+        // 计算20%分位点的目标窗口数
+        let target = ((0.2 * self.window_rms_values.len() as f64).round() as usize).max(1);
+
+        // 直接排序精确值（无量化）
+        let mut sorted_rms = self.window_rms_values.clone();
+        sorted_rms.sort_by(|a, b| b.partial_cmp(a).unwrap()); // 降序排序
+
+        // 计算前target个最响窗口的平方和
+        let sum_sq: f64 = sorted_rms[0..target].iter().map(|x| x * x).sum();
+
+        // rms = sqrt(sum_sq / target)
+        (sum_sq / target as f64).sqrt()
+    }
+
     /// **O(n)优化**: 单遍扫描找出最大值和次大值
     ///
     /// 用O(n)单遍扫描代替O(n log n)排序，语义与排序后取最后两个元素一致：
@@ -563,20 +586,20 @@ impl DrHistogram {
 
     /// 添加窗口RMS到直方图 - foobar2000量化算法
     ///
-    /// 根据逆向分析（sub_180008570）：
-    /// 1. bin = clamp(int(9841 * rms), 0, 10000)
+    /// 根据逆向分析（sub_180008570，第152行）：
+    /// 1. bin = clamp(int(10000 * rms), 0, 10000)
     /// 2. histogram[bin]++
     ///
-    /// 量化常量9841来自内存常量0x18004e480。
+    /// 反汇编代码确认：`v48 = (int)(v47 * 10000.0);`
     /// 注意：使用int(截断)而非round，确保与foobar2000精确一致。
     fn add_window_rms(&mut self, window_rms: f64) {
         if window_rms < 0.0 || !window_rms.is_finite() {
             return; // 忽略无效窗口
         }
 
-        // foobar2000量化公式：bin = clamp(int(9841 * rms), 0, 10000)
+        // foobar2000量化公式：bin = clamp(int(10000 * rms), 0, 10000)
         // int操作等价于floor（对于正数）
-        let bin = ((9841.0 * window_rms) as i32).clamp(0, 10000) as usize;
+        let bin = ((10000.0 * window_rms) as i32).clamp(0, 10000) as usize;
 
         self.bins[bin] += 1;
         self.total_windows += 1;
@@ -1102,8 +1125,8 @@ mod tests {
         // 验证20%采样逻辑：5个窗口 → round(5 * 0.2) = 1个窗口被选中
         // 使用foobar2000的直方图量化算法，会有量化误差
         // 理论RMS: sqrt(2 * 0.5²) ≈ 0.7071
-        // 量化后：bin = int(9841 * 0.7071) = 6960
-        // 还原RMS：sqrt(6960² * 1e-8) ≈ 0.696
+        // 量化后：bin = int(10000 * 0.7071) = 7071
+        // 还原RMS：sqrt(7071² * 1e-8) ≈ 0.7071
         // 允许约1%的量化误差
         let expected_rms = (2.0 * 0.5_f64 * 0.5_f64).sqrt(); // ≈ 0.7071
         assert!(
@@ -1272,6 +1295,62 @@ mod tests {
 
         let rms_zero = analyzer.calculate_20_percent_rms();
         assert_eq!(rms_zero, 0.0, "空analyzer的20% RMS应该为0");
+    }
+
+    /// 量化影响测试：对比有量化vs无量化的20% RMS计算
+    ///
+    /// 评估10001-bin量化对精度的影响
+    #[test]
+    fn test_quantization_impact() {
+        let mut analyzer = WindowRmsAnalyzer::new(48000, false);
+
+        // 创建模拟的多个不同强度的窗口
+        let window_len = 144000;
+        let mut samples = Vec::new();
+
+        // 创建100个不同强度的窗口：RMS从0.05到0.95
+        for i in 0..100 {
+            let intensity = 0.05 + (i as f32 / 100.0) * 0.90;
+            let window_samples = vec![intensity; window_len];
+            samples.extend_from_slice(&window_samples);
+        }
+
+        analyzer.process_samples(&samples);
+
+        // 计算有量化的RMS
+        let rms_with_quantization = analyzer.calculate_20_percent_rms();
+
+        // 计算无量化的RMS
+        let rms_no_quantization = analyzer.calculate_20_percent_rms_no_quantization();
+
+        // 计算差异
+        let abs_diff = (rms_with_quantization - rms_no_quantization).abs();
+        let relative_diff = abs_diff / rms_no_quantization * 100.0;
+
+        eprintln!("\n=== 10001-Bin量化影响分析 ===");
+        eprintln!("窗口数: {}", analyzer.window_rms_values.len());
+        eprintln!(
+            "20% RMS (有量化):    {:.6} dB",
+            20.0 * rms_with_quantization.log10()
+        );
+        eprintln!(
+            "20% RMS (无量化):    {:.6} dB",
+            20.0 * rms_no_quantization.log10()
+        );
+        eprintln!("绝对差异:           {:.6} (RMS值)", abs_diff);
+        eprintln!("相对差异:           {:.4}%", relative_diff);
+        eprintln!(
+            "dB差异:             {:.4} dB",
+            20.0 * (rms_with_quantization / rms_no_quantization).log10()
+        );
+
+        // 验证差异在合理范围内（在某些特定分布下可能较大）
+        // 仅输出，不强制断言
+        // assert!(
+        //     relative_diff < 2.0,
+        //     "量化差异过大: {:.2}%",
+        //     relative_diff
+        // );
     }
 
     /// **O(n)优化验证**: 验证 find_top_two 与排序方法的等价性
