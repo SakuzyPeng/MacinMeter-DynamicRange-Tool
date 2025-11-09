@@ -426,8 +426,8 @@ impl WindowRmsAnalyzer {
             return 0.0;
         }
 
-        // 计算20%分位点的目标窗口数
-        let target = ((0.2 * self.window_rms_values.len() as f64).round() as usize).max(1);
+        // 计算20%分位点的目标窗口数（使用截断而非四舍五入，匹配foobar2000的cvttsd2si）
+        let target = ((0.2 * self.window_rms_values.len() as f64).trunc() as usize).max(1);
 
         // 直接排序精确值（无量化）
         let mut sorted_rms = self.window_rms_values.clone();
@@ -628,8 +628,9 @@ impl DrHistogram {
         }
 
         // 计算20%分位点的目标窗口数
-        // foobar2000公式：target = max(1, round(0.2 * window_count))
-        let target = ((0.2 * self.total_windows as f64).round() as usize).max(1);
+        // foobar2000使用cvttsd2si（截断转换）而非round
+        // target = max(1, truncate(0.2 * window_count))
+        let target = ((0.2 * self.total_windows as f64).trunc() as usize).max(1);
 
         let mut sum_sq = 0.0;
         let mut remaining = target;
