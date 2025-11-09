@@ -175,9 +175,7 @@ impl WindowRmsAnalyzer {
     ///
     /// # 参数
     /// * `sample_rate` - 音频采样率，用于计算3秒窗口长度
-    /// * `_sum_doubling` - 预留参数，当前foobar2000兼容模式固定启用Sum Doubling。
-    ///   该参数暂未使用，未来如需可配置再接入RMS计算逻辑。
-    ///   固定行为参见`process_samples()`中的`sum_sq * 2.0`计算。
+    /// * `_sum_doubling` - 已废弃参数（保留用于兼容性）。根据逆向分析，foobar2000不使用Sum Doubling。
     pub fn new(sample_rate: u32, _sum_doubling: bool) -> Self {
         Self::with_silence_filter(sample_rate, _sum_doubling, SilenceFilterConfig::default())
     }
@@ -186,7 +184,7 @@ impl WindowRmsAnalyzer {
     ///
     /// # 参数
     /// * `sample_rate` - 音频采样率，用于计算3秒窗口长度
-    /// * `_sum_doubling` - 预留参数，当前foobar2000兼容模式固定启用Sum Doubling
+    /// * `_sum_doubling` - 已废弃参数（保留用于兼容性）
     /// * `silence_filter` - 静音过滤配置（实验性功能）
     ///
     /// # 警告
@@ -246,9 +244,8 @@ impl WindowRmsAnalyzer {
 
         // 窗口满了，计算窗口RMS和Peak并添加到直方图
         if self.current_count >= self.window_len {
-            // 官方标准RMS公式：RMS = sqrt(2 * sum(smp_i^2) / n)
-            // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
-            // 这是foobar2000的固定行为，不受new()参数控制
+            // foobar2000 RMS公式：RMS = sqrt(2 * sumSq / window_len)
+            // 2.0乘数是foobar2000的实际行为（虽然逆向文档第2节未明确标注）
             let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
 
             // 实验性功能：应用静音过滤
@@ -299,17 +296,12 @@ impl WindowRmsAnalyzer {
             self.process_one_sample(sample as f64);
         }
 
-        // 处理不足一个窗口的剩余样本
+        // 处理不足一个窗口的剩余样本（尾窗）
         if self.current_count > 0 {
-            // 排除最后一个样本
+            // foobar2000尾窗处理：使用所有样本（分母取filled）
+            // RMS公式：RMS = sqrt(2 * sumSq / filled)
             if self.current_count > 1 {
-                // 排除最后一个样本：从平方和中减去最后样本的平方，样本数-1
-                let adjusted_sum_sq = self.current_sum_sq - (self.last_sample * self.last_sample);
-                let adjusted_count = self.current_count - 1;
-
-                // RMS公式：RMS = sqrt(2 * sum(smp_i^2) / (n-1))
-                // Sum Doubling（系数2.0）固定启用，与foobar2000 DR Meter兼容
-                let window_rms = (2.0 * adjusted_sum_sq / adjusted_count as f64).sqrt();
+                let window_rms = (2.0 * self.current_sum_sq / self.current_count as f64).sqrt();
 
                 // 实验性功能：应用静音过滤
                 if self.silence_filter.should_filter(window_rms) {
@@ -320,23 +312,8 @@ impl WindowRmsAnalyzer {
                     self.histogram.add_window_rms(window_rms);
                     self.window_rms_values.push(window_rms);
 
-                    // **流式双峰跟踪**: 使用O(1)算法调整Peak值，排除最后一个样本
-                    let last_abs = self.last_sample.abs();
-                    let adjusted_peak =
-                        if (last_abs - self.current_peak).abs() < PEAK_EQUALITY_EPSILON {
-                            // 最后样本是最大值
-                            if self.current_peak_count > 1 {
-                                // 还有其他最大值，Peak不变
-                                self.current_peak
-                            } else {
-                                // 最后样本是唯一最大值，使用次大值
-                                self.current_second_peak
-                            }
-                        } else {
-                            // 最后样本不是最大值，Peak不变
-                            self.current_peak
-                        };
-                    self.window_peaks.push(adjusted_peak);
+                    // foobar2000尾窗Peak处理：使用所有样本的Peak值
+                    self.window_peaks.push(self.current_peak);
                 }
             } else {
                 // 尾窗只有1个样本时会完全跳过
@@ -1002,18 +979,18 @@ mod tests {
         assert!((analyzer.get_second_largest_peak() - 0.5).abs() < 1e-6);
     }
 
-    /// 回归场景：尾窗仅最后一个样本达到最大值（唯一最大值）
+    /// 回归场景：尾窗最后一个样本达到最大值
     ///
-    /// 验证流式双峰跟踪在尾窗排除唯一最大值时是否正确回退到次大值
+    /// 验证foobar2000尾窗处理：使用所有样本的Peak值（不排除最后样本）
     #[test]
     fn test_tail_window_peak_adjustment_unique_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
 
-        // 完整窗口 + 尾窗（最后样本是唯一最大值）
+        // 完整窗口 + 尾窗（最后样本是最大值）
         let full_window = vec![0.5f32; 144000];
         analyzer.process_samples(&full_window);
 
-        // 尾窗：除最后一个样本外都是0.3，最后一个是0.8（唯一最大值）
+        // 尾窗：除最后一个样本外都是0.3，最后一个是0.8（最大值）
         let mut tail = vec![0.3f32; 1000];
         tail.push(0.8f32); // 最后样本是最大值
         analyzer.process_samples(&tail);
@@ -1021,17 +998,17 @@ mod tests {
         // 应该有2个窗口（1个完整+1个尾窗）
         assert_eq!(analyzer.window_peaks.len(), 2);
 
-        // 尾窗Peak应该是0.3（排除最后的0.8后，次大值是0.3）
+        // foobar2000尾窗Peak：使用所有样本的最大值（0.8）
         let tail_peak = analyzer.window_peaks[1];
         assert!(
-            (tail_peak - 0.3).abs() < 1e-6,
-            "尾窗Peak应该是0.3（次大值），实际={tail_peak}"
+            (tail_peak - 0.8).abs() < 1e-6,
+            "尾窗Peak应该是0.8（所有样本的最大值），实际={tail_peak}"
         );
     }
 
-    /// 回归场景：尾窗最后样本是最大值且出现多次
+    /// 回归场景：尾窗最后样本是重复的最大值
     ///
-    /// 验证流式双峰跟踪在尾窗排除重复最大值时仍能保持最大值
+    /// 验证foobar2000尾窗处理：使用所有样本的Peak值
     #[test]
     fn test_tail_window_peak_adjustment_duplicate_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -1049,17 +1026,17 @@ mod tests {
         // 应该有2个窗口
         assert_eq!(analyzer.window_peaks.len(), 2);
 
-        // 尾窗Peak应该仍是0.7（因为还有其他0.7的样本）
+        // foobar2000尾窗Peak：使用所有样本的最大值（0.7）
         let tail_peak = analyzer.window_peaks[1];
         assert!(
             (tail_peak - 0.7).abs() < 1e-6,
-            "尾窗Peak应该保持0.7（还有其他最大值），实际={tail_peak}"
+            "尾窗Peak应该是0.7（所有样本的最大值），实际={tail_peak}"
         );
     }
 
     /// 回归场景：尾窗最后样本不是最大值
     ///
-    /// 验证流式双峰跟踪在尾窗排除非最大值样本时保持 Peak 不变
+    /// 验证foobar2000尾窗处理：使用所有样本的Peak值
     #[test]
     fn test_tail_window_peak_adjustment_non_max() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
@@ -1078,11 +1055,11 @@ mod tests {
         // 应该有2个窗口
         assert_eq!(analyzer.window_peaks.len(), 2);
 
-        // 尾窗Peak应该是0.9（排除最后的0.4不影响，因为0.4不是最大值）
+        // foobar2000尾窗Peak：使用所有样本的最大值（0.9）
         let tail_peak = analyzer.window_peaks[1];
         assert!(
             (tail_peak - 0.9).abs() < 1e-6,
-            "尾窗Peak应该保持0.9（最后样本不是最大值），实际={tail_peak}"
+            "尾窗Peak应该是0.9（所有样本的最大值），实际={tail_peak}"
         );
     }
 
