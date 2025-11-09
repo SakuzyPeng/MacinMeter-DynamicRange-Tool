@@ -313,11 +313,14 @@ fn analyze_streaming_decoder(
     use super::constants::buffers::{
         BUFFER_CAPACITY_MULTIPLIER, MAX_BUFFER_RATIO, window_alignment_enabled,
     };
-    use super::constants::dr_analysis::WINDOW_DURATION_SECONDS;
-    // 使用整数计算避免浮点舍入误差（窗口固定为3秒）
-    let window_size_samples = (format.sample_rate as usize)
-        * (WINDOW_DURATION_SECONDS as usize)
-        * (format.channels as usize);
+    use super::constants::dr_analysis::{WINDOW_DURATION_COEFFICIENT, WINDOW_DURATION_SECONDS};
+
+    // 窗口长度计算 - foobar2000精确公式
+    // 逆向分析（sub_180007FB0）：window_samples = floor(sample_rate * 3.004081632653061)
+    // 然后乘以声道数得到总样本数
+    let window_samples_per_channel =
+        (format.sample_rate as f64 * WINDOW_DURATION_COEFFICIENT).floor() as usize;
+    let window_size_samples = window_samples_per_channel * (format.channels as usize);
 
     // 内存优化策略：预分配sample_buffer容量（减少扩容抖动）
     // 通过内部策略开关控制（默认启用，debug模式可通过环境变量禁用）

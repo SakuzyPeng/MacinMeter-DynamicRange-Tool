@@ -153,12 +153,18 @@ struct DrHistogram {
 }
 
 impl WindowRmsAnalyzer {
-    /// 计算符合官方DR测量标准的3秒窗口样本数
+    /// 计算符合foobar2000 DR Meter标准的窗口样本数
+    ///
+    /// 根据逆向分析（sub_180007FB0），foobar2000使用精确公式：
+    /// `window_samples = floor(sample_rate * 3.004081632653061)`
+    ///
+    /// 示例结果：
+    /// - 44.1 kHz: 132,480样本（3.00408秒）
+    /// - 48 kHz: 144,195样本（3.00406秒）
+    /// - 96 kHz: 288,391样本（3.00407秒）
     fn calculate_standard_window_size(sample_rate: u32) -> usize {
-        match sample_rate {
-            44100 => 132480,                 // 官方标准：44.1kHz使用132480样本
-            _ => (3 * sample_rate) as usize, // 其他采样率：标准3秒窗口
-        }
+        use crate::tools::constants::dr_analysis::WINDOW_DURATION_COEFFICIENT;
+        (sample_rate as f64 * WINDOW_DURATION_COEFFICIENT).floor() as usize
     }
 
     /// 创建3秒窗口RMS分析器
@@ -632,24 +638,23 @@ mod tests {
 
     #[test]
     fn test_window_size_calculation() {
-        // 44.1kHz特殊情况
+        // foobar2000精确窗口长度（使用 floor(sample_rate * 3.0040816326530613)）
         assert_eq!(
             WindowRmsAnalyzer::calculate_standard_window_size(44100),
-            132480
+            132480 // 官方44.1kHz标准
         );
 
-        // 其他采样率：3秒标准窗口
         assert_eq!(
             WindowRmsAnalyzer::calculate_standard_window_size(48000),
-            144000
+            144195 // 48kHz按公式计算
         );
         assert_eq!(
             WindowRmsAnalyzer::calculate_standard_window_size(96000),
-            288000
+            288391 // 96kHz按公式计算
         );
         assert_eq!(
             WindowRmsAnalyzer::calculate_standard_window_size(192000),
-            576000
+            576783 // 192kHz按公式计算
         );
     }
 
@@ -902,8 +907,9 @@ mod tests {
     fn test_virtual_zero_window_logic() {
         let mut analyzer = WindowRmsAnalyzer::new(48000, false);
 
-        // 恰好144000样本（1个完整窗口）
-        let samples = vec![0.5f32; 144000];
+        // 使用实际的窗口长度（foobar2000公式：144195样本）
+        let window_len = analyzer.window_len;
+        let samples = vec![0.5f32; window_len];
         analyzer.process_samples(&samples);
 
         // 验证虚拟0窗逻辑
@@ -913,9 +919,9 @@ mod tests {
                 .is_multiple_of(analyzer.window_len)
         );
 
-        // 145000样本（1个完整窗口+尾窗）
+        // 1个完整窗口+1000样本尾窗
         let mut analyzer2 = WindowRmsAnalyzer::new(48000, false);
-        let samples2 = vec![0.5f32; 145000];
+        let samples2 = vec![0.5f32; window_len + 1000];
         analyzer2.process_samples(&samples2);
 
         assert!(
