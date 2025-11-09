@@ -11,7 +11,6 @@
 //! - **SIMD优化**: 平方和计算使用SSE2并行加速
 //! - **实验性静音过滤**: 窗口级静音检测与过滤（可选）
 
-use crate::processing::simd_core::SimdProcessor;
 use crate::tools::constants::dr_analysis::PEAK_EQUALITY_EPSILON;
 
 /// 窗口级静音过滤配置（实验性功能）
@@ -136,8 +135,6 @@ pub struct WindowRmsAnalyzer {
     current_peak_count: usize,
     /// **流式双峰跟踪**: 当前窗口的次大Peak值（用于尾窗Peak调整）
     current_second_peak: f64,
-    /// **SIMD优化**: SIMD处理器用于平方和计算加速
-    simd_processor: SimdProcessor,
     /// 实验性：静音过滤配置
     silence_filter: SilenceFilterConfig,
     /// 实验性：被过滤的窗口数量（仅在启用静音过滤时有效）
@@ -146,7 +143,14 @@ pub struct WindowRmsAnalyzer {
 
 #[derive(Debug, Clone)]
 struct DrHistogram {
-    /// 10000个bin，索引0对应RMS=0，索引9999对应RMS=0.9999
+    /// 10001个bin - foobar2000标准
+    ///
+    /// 根据逆向分析（sub_180008570，窗口完成流程0x180008790之后）：
+    /// - bin索引范围：0-10000
+    /// - 量化公式：bin = clamp(int(9841 * rms), 0, 10000)
+    /// - 还原公式：sum_sq += bin² × 1e-8
+    ///
+    /// 量化常量9841来自逆向分析中的常量0x18004e480 = 9841.0
     bins: Vec<u32>,
     /// 总窗口数
     total_windows: u64,
@@ -206,7 +210,6 @@ impl WindowRmsAnalyzer {
             last_sample: 0.0,
             current_peak_count: 0,
             current_second_peak: 0.0,
-            simd_processor: SimdProcessor::new(),
             silence_filter,
             filtered_windows_count: 0,
         }
@@ -425,47 +428,16 @@ impl WindowRmsAnalyzer {
 
     /// 计算"最响20%窗口"的加权RMS值
     ///
-    /// - 若恰好整除3秒窗：seg_cnt = 实际窗口数 + 1（添加1个0窗）
-    /// - 若有尾部不满窗：seg_cnt = 实际窗口数（不添加0窗）
-    /// - 使用seg_cnt计算n_blk，选择最高20%的RMS值
+    /// 计算20%分位点的RMS - 委托给直方图实现
+    ///
+    /// 使用foobar2000的直方图量化算法：
+    /// 1. 窗口RMS已通过bin量化存储在直方图中
+    /// 2. 从bin=10000递减累计最响的20%窗口
+    /// 3. 使用bin²×1e-8还原平方和并开方
+    ///
+    /// 这消除了旧算法中的RMS数组排序，与foobar2000完全一致。
     pub fn calculate_20_percent_rms(&self) -> f64 {
-        if self.window_rms_values.is_empty() {
-            return 0.0;
-        }
-
-        // 关键修复：依据是否整除窗口长度决定是否补充虚拟0窗
-        let has_virtual_zero = self.total_samples_processed.is_multiple_of(self.window_len);
-        let seg_cnt = if has_virtual_zero {
-            self.window_rms_values.len() + 1 // 恰好整除：添加0窗
-        } else {
-            self.window_rms_values.len() // 有尾窗：不添加0窗
-        };
-
-        // 构建临时RMS数组并预留容量，避免重复分配
-        let mut rms_array = Vec::with_capacity(self.window_rms_values.len() + 1);
-        rms_array.extend_from_slice(&self.window_rms_values);
-        if has_virtual_zero {
-            rms_array.push(0.0);
-        }
-
-        // 计算需要保留的最响窗口数量（20%）
-        let cut_best_bins = 0.2;
-        let n_blk = ((seg_cnt as f64 * cut_best_bins).floor() as usize).max(1);
-
-        // 使用部分选择算法聚焦最高20%的 RMS 值
-        let start_index = seg_cnt - n_blk;
-
-        // 使用select_nth_unstable进行O(n)部分选择
-        // 这会将数组重新排列，使得index≥start_index的元素都是最大的n_blk个
-        // 使用total_cmp安全处理NaN：NaN会被排序到最后
-        rms_array.select_nth_unstable_by(start_index, |a: &f64, b: &f64| a.total_cmp(b));
-
-        // 计算最高20% RMS 值的平方和（SIMD 加速）
-        let top_20_values = &rms_array[start_index..start_index + n_blk];
-        let rms_sum = self.simd_processor.calculate_square_sum(top_20_values);
-
-        // 开方平均得到最终的 20% RMS
-        (rms_sum / n_blk as f64).sqrt()
+        self.histogram.calculate_20_percent_rms()
     }
 
     /// **O(n)优化**: 单遍扫描找出最大值和次大值
@@ -604,24 +576,32 @@ impl WindowRmsAnalyzer {
 }
 
 impl DrHistogram {
-    /// 创建新的10000-bin直方图
+    /// 创建新的10001-bin直方图（foobar2000标准）
     fn new() -> Self {
         Self {
-            bins: vec![0; 10000], // 索引0-9999
+            bins: vec![0; 10001], // 索引0-10000
             total_windows: 0,
         }
     }
 
-    /// 添加窗口RMS到直方图
+    /// 添加窗口RMS到直方图 - foobar2000量化算法
+    ///
+    /// 根据逆向分析（sub_180008570）：
+    /// 1. bin = clamp(int(9841 * rms), 0, 10000)
+    /// 2. histogram[bin]++
+    ///
+    /// 量化常量9841来自内存常量0x18004e480。
+    /// 注意：使用int(截断)而非round，确保与foobar2000精确一致。
     fn add_window_rms(&mut self, window_rms: f64) {
         if window_rms < 0.0 || !window_rms.is_finite() {
             return; // 忽略无效窗口
         }
 
-        // 计算bin索引：RMS映射到0-9999范围
-        let index = (window_rms * 10000.0).round().min(9999.0) as usize;
+        // foobar2000量化公式：bin = clamp(int(9841 * rms), 0, 10000)
+        // int操作等价于floor（对于正数）
+        let bin = ((9841.0 * window_rms) as i32).clamp(0, 10000) as usize;
 
-        self.bins[index] += 1;
+        self.bins[bin] += 1;
         self.total_windows += 1;
     }
 
@@ -629,6 +609,50 @@ impl DrHistogram {
     fn clear(&mut self) {
         self.bins.fill(0);
         self.total_windows = 0;
+    }
+
+    /// 计算20%分位点的RMS - foobar2000算法
+    ///
+    /// 根据逆向分析（sub_180008860，第3节）：
+    /// 1. target = max(1, round(0.2 * window_count))
+    /// 2. 从bin=10000递减，累计窗口数直到达到target
+    /// 3. sum_sq += min(count, remaining) * bin² * 1e-8
+    /// 4. rms_loud = sqrt(sum_sq / target)
+    ///
+    /// 常量说明：
+    /// - 0.2（20%比例）来自0x18004e3d8
+    /// - 1e-8（还原系数）来自0x18004e388
+    pub fn calculate_20_percent_rms(&self) -> f64 {
+        if self.total_windows == 0 {
+            return 0.0;
+        }
+
+        // 计算20%分位点的目标窗口数
+        // foobar2000公式：target = max(1, round(0.2 * window_count))
+        let target = ((0.2 * self.total_windows as f64).round() as usize).max(1);
+
+        let mut sum_sq = 0.0;
+        let mut remaining = target;
+
+        // 从bin=10000递减，累计最响的窗口
+        for bin in (0..=10000).rev() {
+            let count = self.bins[bin] as usize;
+            if count == 0 {
+                continue;
+            }
+
+            let take = count.min(remaining);
+            // 还原公式：sum_sq += bin² × 1e-8
+            sum_sq += take as f64 * (bin * bin) as f64 * 1e-8;
+            remaining -= take;
+
+            if remaining == 0 {
+                break;
+            }
+        }
+
+        // rms_loud = sqrt(sum_sq / target)
+        (sum_sq / target as f64).sqrt()
     }
 }
 
@@ -862,7 +886,7 @@ mod tests {
     #[test]
     fn test_dr_histogram_creation() {
         let hist = DrHistogram::new();
-        assert_eq!(hist.bins.len(), 10000);
+        assert_eq!(hist.bins.len(), 10001); // foobar2000使用10001个bins（索引0-10000）
         assert_eq!(hist.total_windows, 0);
     }
 
@@ -1098,12 +1122,16 @@ mod tests {
         assert!(rms_20_5 > 0.0, "5个窗口时RMS应该大于0");
         assert_eq!(analyzer.window_rms_values.len(), 5, "应该有5个窗口RMS值");
 
-        // 验证20%采样逻辑：5个窗口 → ceil(5 * 0.2) = 1个窗口被选中
-        // 由于所有窗口RMS相同，结果应该等于单个窗口的RMS
-        let window_rms = analyzer.window_rms_values[0];
+        // 验证20%采样逻辑：5个窗口 → round(5 * 0.2) = 1个窗口被选中
+        // 使用foobar2000的直方图量化算法，会有量化误差
+        // 理论RMS: sqrt(2 * 0.5²) ≈ 0.7071
+        // 量化后：bin = int(9841 * 0.7071) = 6960
+        // 还原RMS：sqrt(6960² * 1e-8) ≈ 0.696
+        // 允许约1%的量化误差
+        let expected_rms = (2.0 * 0.5_f64 * 0.5_f64).sqrt(); // ≈ 0.7071
         assert!(
-            (rms_20_5 - window_rms).abs() < 1e-6,
-            "5个相同窗口的20%采样应该等于单个窗口RMS"
+            (rms_20_5 - expected_rms).abs() < 0.015,
+            "5个相同窗口的20%采样结果: {rms_20_5}, 期望约: {expected_rms} (量化误差约1%)"
         );
     }
 
