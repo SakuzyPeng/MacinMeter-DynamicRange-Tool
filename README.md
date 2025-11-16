@@ -8,9 +8,9 @@
 
 *致敬Janne Hyvärinen的开创性工作 / Tribute to Janne Hyvärinen's pioneering work*
 
-这是MacinMeter DR Tool的**foobar2000-plugin分支**，学习并实现了foobar2000 DR Meter的算法原理，力求提供**准确的DR分析结果**和**更快的处理速度**。采用流式架构设计，希望能为用户带来便利。
+这是MacinMeter DR Tool的**foobar2000-plugin分支**，学习并实现了foobar2000 DR Meter 1.0.3（foo_dr_meter，作者Janne Hyvärinen）的算法原理，力求提供**准确的DR分析结果**和**更快的处理速度**。采用流式架构设计，希望能为用户带来便利。性能基准对比参考Dynamic Range Meter 1.1.1（foo_dynamic_range）。
 
-This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and implements the algorithm principles of foobar2000 DR Meter, striving to provide **accurate DR analysis results** and **faster processing speed**. With streaming architecture design, we hope to bring convenience to users.
+This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and implements the algorithm principles of foobar2000 DR Meter 1.0.3 (foo_dr_meter, by Janne Hyvärinen), striving to provide **accurate DR analysis results** and **faster processing speed**. With streaming architecture design, we hope to bring convenience to users. Performance benchmarks are compared against Dynamic Range Meter 1.1.1 (foo_dynamic_range).
 
 ---
 
@@ -280,11 +280,11 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 | 平台 / Platform | 模式 / Mode | 106 首 FLAC 时间 Time (s) | 吞吐 Throughput (MB/s) | 峰值内存 Peak (MB) | 平均内存 Avg (MB) | 平均 CPU Avg CPU (%) |
 | --- | --- | ---:| ---:| ---:| ---:| ---:|
 | Windows 10 · i7-11800H | `--serial --no-parallel-files` | 127.452 | 89.4 | 23.38 | 17.76 | 20.0 |
-| Windows 10 · i7-11800H | foobar2000 DR Meter | 162.0 | 70.4 | <15 | <15 | 15.0 |
+| Windows 10 · i7-11800H | Dynamic Range Meter 1.1.1 | 162.0 | 70.4 | <15 | <15 | 15.0 |
 
-> Windows 完全串行为极端调度或内存受限环境提供兜底，foobar2000 记录列供第三方基准参考。
+> Windows 完全串行为极端调度或内存受限环境提供兜底，Dynamic Range Meter 1.1.1 记录列供第三方基准参考。
 
-> Fully serial mode offers a fallback when scheduler pressure or memory limits are severe; foobar2000 numbers are listed for baseline comparison.
+> Fully serial mode offers a fallback when scheduler pressure or memory limits are severe; Dynamic Range Meter 1.1.1 numbers are listed for baseline comparison.
 
 ## 性能建议（Performance Tips）
 - 建议优先使用 Release 构建；并行解码与 SIMD 可显著提升吞吐。
@@ -450,9 +450,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 相关链接（Related Links）
 
 - **当前分支 / Current Branch**: foobar2000-plugin (智能缓冲流式处理 / smart buffered streaming)
-- **参考实现 / Reference**: foobar2000 DR Meter (foo_dr_meter插件 / plugin)
-- **官方主页 / Official**: https://foobar.hyv.fi/?view=foo_dr_meter
-- **原作者 / Original Author**: Janne Hyvärinen
+- **参考实现 / Reference Implementation**: foobar2000 DR Meter 1.0.3 (foo_dr_meter 插件 / plugin)
+  - **作者 / Author**: Janne Hyvärinen
+  - **官方主页 / Official**: https://foobar.hyv.fi/?view=foo_dr_meter
+- **性能对比 / Performance Benchmark**: Dynamic Range Meter 1.1.1 (foo_dynamic_range 插件 / plugin)
+  - **基于 / Based on**: TT Dynamic Range Offline Meter from the Pleasurize Music Foundation www.pleasurizemusic.com
+  - **foobar2000 组件作者 / foobar2000 Component Author**: Soerin Jokhan
 
 ---
 
