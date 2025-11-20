@@ -65,6 +65,20 @@ body {
   flex-grow: 1;
 }
 
+.custom-ffmpeg {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.custom-ffmpeg input {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid #d2d7f0;
+  background: #fff;
+}
+
 button {
   border: none;
   border-radius: 10px;

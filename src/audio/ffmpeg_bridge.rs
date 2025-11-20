@@ -71,15 +71,56 @@ impl FFmpegDecoder {
 
     /// 查找FFmpeg可执行文件路径（跨平台）
     fn find_ffmpeg_path() -> Option<PathBuf> {
+        if let Some(override_path) = std::env::var("MACINMETER_FFMPEG_PATH")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+        {
+            let path = PathBuf::from(override_path.trim());
+            if Command::new(&path)
+                .arg("-version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return Some(path);
+            }
+        }
+
         #[cfg(target_os = "windows")]
         {
+            // Windows: 额外从常见环境变量中解析 ffmpeg 路径
+            // 例如用户设置的 FFMPEG_PATH / FFMPEG_DIR 等
+            let mut env_candidates: Vec<PathBuf> = Vec::new();
+
+            if let Ok(p) = std::env::var("FFMPEG_PATH") {
+                let p = p.trim();
+                if !p.is_empty() {
+                    env_candidates.push(PathBuf::from(p));
+                }
+            }
+
+            if let Ok(p) = std::env::var("FFMPEG_DIR") {
+                let p = p.trim();
+                if !p.is_empty() {
+                    let base = PathBuf::from(p);
+                    env_candidates.push(base.join("bin").join("ffmpeg.exe"));
+                    env_candidates.push(base.join("ffmpeg.exe"));
+                }
+            }
+
             // Windows: 检查多个常见位置
-            let candidates = vec![
+            let mut candidates = vec![
                 PathBuf::from(r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"),
                 PathBuf::from(r"C:\ffmpeg\bin\ffmpeg.exe"),
                 // 便携部署：与可执行文件同目录
                 std::env::current_exe().ok()?.parent()?.join("ffmpeg.exe"),
             ];
+
+            // 环境变量优先于内置候选路径
+            if !env_candidates.is_empty() {
+                env_candidates.extend(candidates);
+                candidates = env_candidates;
+            }
 
             // 先尝试 PATH 中的 ffmpeg（不依赖文件存在，直接调用）
             if Command::new("ffmpeg")

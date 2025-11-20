@@ -269,6 +269,23 @@ fn load_app_metadata() -> MetadataResponse {
 }
 
 #[tauri::command]
+fn set_ffmpeg_override(path: Option<String>) -> Result<(), AnalyzeCommandError> {
+    if let Some(p) = path.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        unsafe { std::env::set_var("MACINMETER_FFMPEG_PATH", &p); }
+    } else {
+        unsafe { std::env::remove_var("MACINMETER_FFMPEG_PATH"); }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn path_is_directory(path: PathBuf) -> Result<bool, AnalyzeCommandError> {
+    std::fs::metadata(&path)
+        .map(|m| m.is_dir())
+        .map_err(|e| AnalyzeCommandError::from_audio_error(AudioError::IoError(e)))
+}
+
+#[tauri::command]
 async fn analyze_directory(
     path: PathBuf,
     options: UiAnalyzeOptions,
@@ -297,6 +314,33 @@ async fn analyze_directory(
     })
     .await
     .map_err(|err| AnalyzeCommandError::internal(format!("批量分析线程调度失败: {err}")))?
+}
+
+#[tauri::command]
+async fn analyze_files(
+    paths: Vec<String>,
+    options: UiAnalyzeOptions,
+) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if paths.is_empty() {
+            return Ok(DirectoryAnalysisResponse {
+                directory: "selected-files".to_string(),
+                files: Vec::new(),
+            });
+        }
+        let options = Arc::new(options);
+        let entries: Vec<DirectoryAnalysisEntry> = paths
+            .into_par_iter()
+            .map(|p| PathBuf::from(p))
+            .map(|file| analyze_single_file(file, &options))
+            .collect();
+        Ok(DirectoryAnalysisResponse {
+            directory: "selected-files".to_string(),
+            files: entries,
+        })
+    })
+    .await
+    .map_err(|err| AnalyzeCommandError::internal(format!("多文件分析线程调度失败: {err}")))?
 }
 
 fn build_analyze_response(
@@ -503,15 +547,35 @@ fn error_suggestion(error: &AudioError) -> &'static str {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ensure_default_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             analyze_audio,
             scan_audio_directory,
+            path_is_directory,
             analyze_directory,
+            analyze_files,
+            set_ffmpeg_override,
             load_app_metadata
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn ensure_default_path() {
+    #[cfg(target_os = "macos")]
+    {
+        use std::env;
+        const DEFAULT_SEGMENTS: &str = "/usr/local/bin:/opt/homebrew/bin";
+        if let Ok(current) = env::var("PATH") {
+            if !current.contains("/opt/homebrew/bin") && !current.contains("/usr/local/bin") {
+                let new_path = format!("{DEFAULT_SEGMENTS}:{current}");
+                unsafe { env::set_var("PATH", new_path); }
+            }
+        } else {
+            unsafe { env::set_var("PATH", DEFAULT_SEGMENTS); }
+        }
+    }
 }

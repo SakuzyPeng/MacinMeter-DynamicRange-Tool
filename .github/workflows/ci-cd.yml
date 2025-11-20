@@ -599,6 +599,59 @@ jobs:
       run: |
         echo "✅ Build summary has been added to the GitHub Actions Summary"
         echo "💡 You can view the formatted summary in the Actions page above"
+
+  # 🖼️ Tauri GUI 打包（macOS DMG & Windows 安装包）
+  gui-build:
+    name: Build Tauri GUI (${{ matrix.os }})
+    needs: [changes, quality-check]
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+          - os: windows-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 🦀 Install Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: ⚙️ Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: tauri-app/package-lock.json
+
+    - name: 📦 Install frontend dependencies
+      working-directory: tauri-app
+      run: npm ci
+
+    - name: 🏗️ Build Tauri app
+      working-directory: tauri-app
+      run: npm run tauri build -- --ci
+
+    - name: 📦 Upload macOS DMG
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: MacinMeter-DR-GUI-macos
+        path: |
+          tauri-app/src-tauri/target/release/bundle/dmg/*.dmg
+
+    - name: 📦 Upload Windows portable exe
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: MacinMeter-DR-GUI-windows
+        path: |
+          tauri-app/src-tauri/target/release/bundle/app/**/*.exe
       
   # 🚀 自动发布 (仅在tag推送时)
   release:

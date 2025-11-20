@@ -20,11 +20,19 @@
             readonly
           />
           <div class="path-actions">
-            <button id="pick-file" type="button">选择文件</button>
-            <button id="scan-dir" type="button">扫描目录</button>
+            <button id="pick-file" type="button">选择文件 / 目录</button>
+            <button id="scan-dir" type="button">扫描目录（展示文件数）</button>
             <button id="clear-path" type="button" class="ghost">清除</button>
             <button id="analyze-btn" type="button">开始分析</button>
           </div>
+        </div>
+        <div class="custom-ffmpeg">
+          <input
+            type="text"
+            id="ffmpeg-path"
+            placeholder="自定义 ffmpeg 路径（留空 = 使用默认）"
+          />
+          <button type="button" id="apply-ffmpeg">应用 FFmpeg 路径</button>
         </div>
         <div id="scan-results" class="scan-results hidden"></div>
       </section>

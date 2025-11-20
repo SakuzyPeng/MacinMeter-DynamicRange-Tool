@@ -1,9 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
-
-type MetadataResponse = {
-  supportedFormats: string[];
-};
 
 type UiAnalyzeOptions = {
   parallelDecoding: boolean;
@@ -127,8 +124,7 @@ type AnalysisPanel = {
 };
 
 let selectedPath: string | null = null;
-let selectedKind: "file" | "directory" | null = null;
-let metadata: MetadataResponse | null = null;
+let selectedKind: "file" | "directory" | "files" | null = null;
 let analyzing = false;
 
 let inputPathEl!: HTMLInputElement;
@@ -136,6 +132,9 @@ let scanResultsEl!: HTMLElement;
 let analyzeButton!: HTMLButtonElement;
 let resultExcludeToggleEl!: HTMLInputElement;
 let directoryResultsEl!: HTMLElement;
+let ffmpegPathInput!: HTMLInputElement;
+let applyFfmpegBtn!: HTMLButtonElement;
+let selectedFiles: string[] | null = null;
 let lastResponse: AnalyzeResponse | null = null;
 let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
 let aggregateExcludeLfe = false;
@@ -158,6 +157,7 @@ const clearOutput = () => {
   lastResponse = null;
   lastDirectoryResponse = null;
   aggregateExcludeLfe = false;
+  selectedFiles = null;
   if (resultExcludeToggleEl) {
     resultExcludeToggleEl.checked = false;
     resultExcludeToggleEl.disabled = true;
@@ -198,7 +198,36 @@ const disableWhile = async (flagSetter: (state: boolean) => void, task: () => Pr
   }
 };
 
-const updateSelectedPath = (path: string, kind: "file" | "directory") => {
+const checkIsDirectory = async (path: string): Promise<boolean> => {
+  try {
+    return await invoke<boolean>("path_is_directory", { path });
+  } catch {
+    return false;
+  }
+};
+
+const collectFilesFromPaths = async (paths: string[]): Promise<string[]> => {
+  const filePaths: string[] = [];
+  for (const p of paths) {
+    const isDir = await checkIsDirectory(p);
+    if (isDir) {
+      try {
+        const result = await invoke<ScanResult>("scan_audio_directory", { path: p });
+        for (const f of result.files) {
+          filePaths.push(f.path);
+        }
+      } catch {
+        // ignore directory scan errors for drag-and-drop aggregation
+      }
+    } else {
+      filePaths.push(p);
+    }
+  }
+  // 去重
+  return Array.from(new Set(filePaths));
+};
+
+const updateSelectedPath = (path: string, kind: "file" | "directory" | "files") => {
   selectedPath = path;
   selectedKind = kind;
   inputPathEl.value = path;
@@ -208,28 +237,9 @@ const renderScanResults = (result: ScanResult) => {
   if (!result.files.length) {
     scanResultsEl.innerHTML = `<p>目录 ${result.directory} 中未发现受支持的音频文件。</p>`;
   } else {
-    const list = result.files
-      .map(
-        (file) =>
-          `<li data-path="${file.path.replace(/"/g, "&quot;")}">${file.fileName}</li>`
-      )
-      .join("");
     scanResultsEl.innerHTML = `
-      <p>在 <strong>${result.directory}</strong> 中找到 ${result.files.length} 个文件：</p>
-      <ul>${list}</ul>
-      <p class="help-text">点击列表即可将文件载入到分析输入。</p>
+      <p>在 <strong>${result.directory}</strong> 中找到 ${result.files.length} 个文件，可点击“开始分析”执行批量处理。</p>
     `;
-    scanResultsEl.querySelectorAll("li").forEach((item) => {
-      item.addEventListener("click", () => {
-        const path = (item as HTMLElement).dataset.path;
-        if (path) {
-          updateSelectedPath(path, "file");
-          lastDirectoryResponse = null;
-          directoryResultsEl.innerHTML = "";
-          setStatus(singlePanel, `已选择 ${path}`);
-        }
-      });
-    });
   }
   scanResultsEl.classList.remove("hidden");
 };
@@ -503,10 +513,6 @@ const parseInvokeError = (error: unknown): CommandError => {
   return { message: "未知错误" };
 };
 
-const loadMetadata = async () => {
-  metadata = await invoke<MetadataResponse>("load_app_metadata");
-};
-
 const handleAnalyze = async () => {
   if (!selectedPath) {
     setStatus(singlePanel, "请先选择音频文件。", true);
@@ -514,6 +520,10 @@ const handleAnalyze = async () => {
   }
   if (selectedKind === "directory") {
     await handleDirectoryAnalyze();
+    return;
+  }
+  if (selectedKind === "files" && selectedFiles && selectedFiles.length > 0) {
+    await handleSelectedFilesAnalyze(selectedFiles);
     return;
   }
   await disableWhile(
@@ -590,30 +600,65 @@ const handleDirectoryAnalyze = async () => {
   );
 };
 
+const handleSelectedFilesAnalyze = async (files: string[]) => {
+  await disableWhile(
+    (state) => {
+      analyzing = state;
+      analyzeButton.disabled = state;
+    },
+    async () => {
+      clearOutput();
+      setStatus(
+        singlePanel,
+        `多文件分析中（${files.length} 个文件）...`,
+        false
+      );
+      try {
+        const options = gatherOptions();
+        const response = await invoke<DirectoryAnalysisResponse>("analyze_files", {
+          paths: files,
+          options,
+        });
+        lastResponse = null;
+        renderDirectoryResults(response);
+        if (resultExcludeToggleEl) {
+          resultExcludeToggleEl.disabled = false;
+          resultExcludeToggleEl.checked = aggregateExcludeLfe;
+        }
+        setStatus(
+          singlePanel,
+          `多文件分析完成，共 ${response.files.length} 个结果。`
+        );
+      } catch (error) {
+        const detail = parseInvokeError(error);
+        setStatus(
+          singlePanel,
+          detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
+          true
+        );
+      }
+    }
+  );
+};
+
 const handlePickFile = async () => {
   await disableWhile(
     (state) => {
       analyzeButton.disabled = analyzing || state;
     },
     async () => {
-      const file = await open({
-        multiple: false,
+      const selection = await open({
+        multiple: true,
         directory: false,
-        filters: metadata
-          ? [
-              {
-                name: "Audio",
-                extensions: metadata.supportedFormats.map((ext) => ext.toLowerCase()),
-              },
-            ]
-          : undefined,
       });
-      if (typeof file === "string") {
-        updateSelectedPath(file, "file");
-        lastDirectoryResponse = null;
-        directoryResultsEl.innerHTML = "";
-        setStatus(singlePanel, `已选择 ${file}`);
-        scanResultsEl.classList.add("hidden");
+
+      if (Array.isArray(selection)) {
+        if (!selection.length) {
+          return;
+        }
+        await handleMultiFileSelection(selection);
+      } else if (typeof selection === "string") {
+        await handleSinglePathSelection(selection);
       }
     }
   );
@@ -635,12 +680,92 @@ const handleScanDir = async () => {
   renderScanResults(result);
 };
 
+const handleSinglePathSelection = async (path: string) => {
+  const isDir = await checkIsDirectory(path);
+  if (isDir) {
+    selectedFiles = null;
+    updateSelectedPath(path, "directory");
+    const result = await invoke<ScanResult>("scan_audio_directory", { path }).catch(() => null);
+    if (result) {
+      renderScanResults(result);
+      setStatus(singlePanel, `目录 ${path} 已选，可点击“开始分析”执行批量处理。`);
+    } else {
+      setStatus(singlePanel, `目录 ${path} 无法读取。`, true);
+    }
+    lastDirectoryResponse = null;
+    directoryResultsEl.innerHTML = "";
+  } else {
+    selectedFiles = [path];
+    updateSelectedPath(path, "file");
+    lastDirectoryResponse = null;
+    directoryResultsEl.innerHTML = "";
+    setStatus(singlePanel, `已选择 ${path}`);
+    scanResultsEl.classList.add("hidden");
+  }
+};
+
+const handleMultiFileSelection = async (paths: string[]) => {
+  if (!paths.length) {
+    return;
+  }
+  const filePaths: string[] = [];
+  let ignoredDirs = 0;
+  for (const p of paths) {
+    const isDir = await checkIsDirectory(p);
+    if (isDir) {
+      ignoredDirs += 1;
+    } else {
+      filePaths.push(p);
+    }
+  }
+  if (!filePaths.length) {
+    setStatus(
+      singlePanel,
+      "所选项目均为目录，请使用“扫描目录”或仅选择音频文件。",
+      true
+    );
+    return;
+  }
+  selectedFiles = filePaths;
+  selectedKind = filePaths.length > 1 ? "files" : "file";
+  inputPathEl.value =
+    filePaths.length > 1
+      ? `${filePaths.length} 个文件`
+      : filePaths[0];
+  selectedPath = filePaths[0];
+  lastDirectoryResponse = null;
+  directoryResultsEl.innerHTML = "";
+  const extra =
+    ignoredDirs > 0
+      ? `（忽略了 ${ignoredDirs} 个目录，目录分析请使用“扫描目录”按钮）`
+      : "";
+  setStatus(singlePanel, `已选择 ${filePaths.length} 个文件${extra}`);
+  scanResultsEl.classList.add("hidden");
+};
+
+const handleDroppedPaths = async (paths: string[]) => {
+  if (!paths.length) {
+    return;
+  }
+  if (paths.length === 1) {
+    await handleSinglePathSelection(paths[0]);
+  }
+  const filePaths = await collectFilesFromPaths(paths);
+  if (!filePaths.length) {
+    setStatus(singlePanel, "拖入的项目中未发现可分析的音频文件。", true);
+    return;
+  }
+  await handleMultiFileSelection(filePaths);
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   inputPathEl = document.querySelector<HTMLInputElement>("#input-path")!;
   scanResultsEl = document.querySelector<HTMLElement>("#scan-results")!;
   resultExcludeToggleEl = document.querySelector<HTMLInputElement>("#result-exclude-lfe")!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
   directoryResultsEl = document.querySelector<HTMLElement>("#directory-results")!;
+  ffmpegPathInput = document.querySelector<HTMLInputElement>("#ffmpeg-path")!;
+  applyFfmpegBtn = document.querySelector<HTMLButtonElement>("#apply-ffmpeg")!;
   singlePanel = {
     container: document.querySelector<HTMLElement>("#single-analysis")!,
     statusEl: document.querySelector<HTMLElement>("#status")!,
@@ -664,6 +789,26 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelector<HTMLButtonElement>("#analyze-btn")?.addEventListener("click", () => {
     handleAnalyze();
   });
+  applyFfmpegBtn.addEventListener("click", async () => {
+    const value = ffmpegPathInput.value.trim();
+    try {
+      await invoke("set_ffmpeg_override", { path: value.length ? value : null });
+      setStatus(
+        singlePanel,
+        value.length
+          ? `已设置自定义 ffmpeg 路径：${value}`
+          : "已清除自定义 ffmpeg 路径，将使用系统默认 PATH。",
+        false
+      );
+    } catch (error) {
+      const detail = parseInvokeError(error);
+      setStatus(
+        singlePanel,
+        detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
+        true
+      );
+    }
+  });
 
   resultExcludeToggleEl.disabled = true;
   resultExcludeToggleEl.addEventListener("change", () => {
@@ -671,8 +816,9 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAggregateView();
   });
 
-  loadMetadata().catch((err) => {
-    const detail = parseInvokeError(err);
-    setStatus(singlePanel, `初始化失败：${detail.message}`, true);
+  void getCurrentWindow().onDragDropEvent((event) => {
+    if (event.payload.type === "drop" && Array.isArray(event.payload.paths)) {
+      void handleDroppedPaths(event.payload.paths);
+    }
   });
 });
