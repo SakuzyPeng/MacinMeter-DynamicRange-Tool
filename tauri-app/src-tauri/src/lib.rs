@@ -548,9 +548,9 @@ fn error_suggestion(error: &AudioError) -> &'static str {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     ensure_default_path();
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
+    tauri::Builder::<tauri::Wry>::default()
+        .plugin(tauri_plugin_opener::init::<tauri::Wry>())
+        .plugin(tauri_plugin_dialog::init::<tauri::Wry>())
         .invoke_handler(tauri::generate_handler![
             analyze_audio,
             scan_audio_directory,
