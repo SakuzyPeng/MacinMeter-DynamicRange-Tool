@@ -609,7 +609,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          # 只为 Apple Silicon macOS 和 Windows x64 构建 GUI
+          - os: macos-15
           - os: windows-latest
     runs-on: ${{ matrix.os }}
 
@@ -635,6 +636,9 @@ jobs:
 
     - name: 🏗️ Build Tauri app
       working-directory: tauri-app
+      env:
+        # 为 aarch64-apple-darwin 显式开启 ring 期望的 CPU 特性，避免编译期断言失败
+        RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C target-feature=+neon,+aes,+sha2,+pmull' || '' }}
       run: npm run tauri build -- --ci
 
     - name: 📦 Upload macOS DMG
@@ -651,7 +655,7 @@ jobs:
       with:
         name: MacinMeter-DR-GUI-windows
         path: |
-          tauri-app/src-tauri/target/release/bundle/app/**/*.exe
+          tauri-app/src-tauri/target/release/bundle/**/*.exe
       
   # 🚀 自动发布 (仅在tag推送时)
   release:
