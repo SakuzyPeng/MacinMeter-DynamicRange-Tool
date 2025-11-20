@@ -1338,8 +1338,8 @@ mod tests {
             "20% RMS (无量化):    {:.6} dB",
             20.0 * rms_no_quantization.log10()
         );
-        eprintln!("绝对差异:           {:.6} (RMS值)", abs_diff);
-        eprintln!("相对差异:           {:.4}%", relative_diff);
+        eprintln!("绝对差异:           {abs_diff:.6} (RMS值)");
+        eprintln!("相对差异:           {relative_diff:.4}%");
         eprintln!(
             "dB差异:             {:.4} dB",
             20.0 * (rms_with_quantization / rms_no_quantization).log10()

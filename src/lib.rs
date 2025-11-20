@@ -27,3 +27,17 @@ pub use tools::{AppConfig, process_streaming_decoder};
 pub use processing::sample_conversion::{
     ConversionStats, SampleConversion, SampleConverter, SampleFormat,
 };
+
+// 高层分析输出类型（供外部UI/壳程序直接使用）
+pub use tools::processor::AnalysisOutput;
+
+/// 分析单个音频文件的便捷入口（库模式）
+///
+/// - `path` 为音频文件路径
+/// - `config` 使用 `AppConfig` 控制并行度、静音过滤等行为
+///
+/// 返回的 [`AnalysisOutput`] 与内部 CLI 流程完全一致，
+/// 包含官方 DR 结果、精确 DR 和可选的裁切/静音诊断信息。
+pub fn analyze_file(path: &std::path::Path, config: &AppConfig) -> AudioResult<AnalysisOutput> {
+    tools::processor::process_audio_file(path, config)
+}

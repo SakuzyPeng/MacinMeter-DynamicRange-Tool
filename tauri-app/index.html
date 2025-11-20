@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MacinMeter DR GUI</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main class="app">
+      <section class="panel">
+        <h2>文件选择 / 分析</h2>
+        <div class="path-row">
+          <input
+            type="text"
+            id="input-path"
+            placeholder="尚未选择音频文件"
+            readonly
+          />
+          <div class="path-actions">
+            <button id="pick-file" type="button">选择文件</button>
+            <button id="scan-dir" type="button">扫描目录</button>
+            <button id="clear-path" type="button" class="ghost">清除</button>
+            <button id="analyze-btn" type="button">开始分析</button>
+          </div>
+        </div>
+        <div id="scan-results" class="scan-results hidden"></div>
+      </section>
+
+      <section class="panel">
+        <h2>分析结果</h2>
+        <div class="result-options">
+          <label class="toggle mini">
+            <input type="checkbox" id="result-exclude-lfe" />
+            排除 LFE（仅影响汇总显示）
+          </label>
+        </div>
+        <div id="status" class="status">请选择音频文件后运行分析。</div>
+        <div id="dr-table"></div>
+        <div id="warnings"></div>
+        <div id="trim-report"></div>
+        <div id="silence-report"></div>
+      </section>
+
+    </main>
+  </body>
+</html>

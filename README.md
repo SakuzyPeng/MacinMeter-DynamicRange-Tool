@@ -32,6 +32,11 @@ This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and
 - 运行测试：`cargo test`
 - Execute the test suite with `cargo test`.
 
+## 图形界面 / Tauri GUI
+- `tauri-app/` 目录提供了一个 Tauri 2 GUI——复用同一套 DR 引擎，可通过系统对话框选择音频并查看官方/精确 DR、静音过滤与裁切报告。
+- 运行方式（首次先 `npm install`）：`cd tauri-app && npm run tauri dev`；构建发行版：`npm run tauri build`。
+- 详情、命令说明与安全权限请见 `docs/tauri_wrapper.md`。
+
 ## 快速开始（Quick Start）
 1. **双击运行 / Double-click launch**
    - 默认扫描可执行文件所在目录：若存在多首音频，生成一份批量汇总 TXT；仅 1 首则写出 `<name>_DR_Analysis.txt`。
