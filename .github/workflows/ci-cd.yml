@@ -637,8 +637,9 @@ jobs:
     - name: 🏗️ Build Tauri app
       working-directory: tauri-app
       env:
-        # 为 aarch64-apple-darwin 显式开启 ring 期望的 CPU 特性，避免编译期断言失败
-        RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C target-feature=+neon,+aes,+sha2,+pmull' || '' }}
+        # macOS 上为 audiopus_sys 旧 CMakeLists 启用兼容策略
+        CMAKE_POLICY_VERSION_MINIMUM: ${{ startsWith(matrix.os, 'macos') && '3.5' || '' }}
+        CMAKE_ARGS: ${{ startsWith(matrix.os, 'macos') && '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' || '' }}
       run: npm run tauri build -- --ci
 
     - name: 📦 Upload macOS DMG
