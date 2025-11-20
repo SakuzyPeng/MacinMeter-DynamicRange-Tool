@@ -92,6 +92,18 @@ type AnalysisAggregates = {
   excludeLfe: AggregateView;
 };
 
+type DirectoryAnalysisEntry = {
+  path: string;
+  fileName: string;
+  analysis?: AnalyzeResponse | null;
+  error?: CommandError | null;
+};
+
+type DirectoryAnalysisResponse = {
+  directory: string;
+  files: DirectoryAnalysisEntry[];
+};
+
 type ScanResult = {
   directory: string;
   files: { fileName: string; path: string }[];
@@ -105,42 +117,76 @@ type CommandError = {
   supportedFormats?: string[];
 };
 
+type AnalysisPanel = {
+  container: HTMLElement;
+  statusEl: HTMLElement;
+  tableEl: HTMLElement;
+  warningsEl: HTMLElement;
+  trimEl: HTMLElement;
+  silenceEl: HTMLElement;
+};
+
 let selectedPath: string | null = null;
+let selectedKind: "file" | "directory" | null = null;
 let metadata: MetadataResponse | null = null;
 let analyzing = false;
 
-let inputPathEl: HTMLInputElement;
-let statusEl: HTMLElement;
-let drTableEl: HTMLElement;
-let warningsEl: HTMLElement;
-let trimReportEl: HTMLElement;
-let silenceReportEl: HTMLElement;
-let scanResultsEl: HTMLElement;
-let analyzeButton: HTMLButtonElement;
-let resultExcludeToggleEl: HTMLInputElement;
+let inputPathEl!: HTMLInputElement;
+let scanResultsEl!: HTMLElement;
+let analyzeButton!: HTMLButtonElement;
+let resultExcludeToggleEl!: HTMLInputElement;
+let directoryResultsEl!: HTMLElement;
 let lastResponse: AnalyzeResponse | null = null;
+let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
 let aggregateExcludeLfe = false;
+let singlePanel!: AnalysisPanel;
 
 const decimals = (value: number, digits = 2): string =>
   Number.isFinite(value) ? value.toFixed(digits) : "-";
 
-const setStatus = (message: string, isError = false) => {
-  statusEl.textContent = message;
-  statusEl.classList.toggle("error", isError);
+const setStatus = (panel: AnalysisPanel, message: string, isError = false) => {
+  panel.statusEl.textContent = message;
+  panel.statusEl.classList.toggle("error", isError);
 };
 
 const clearOutput = () => {
-  drTableEl.innerHTML = "";
-  warningsEl.innerHTML = "";
-  trimReportEl.innerHTML = "";
-  silenceReportEl.innerHTML = "";
+  singlePanel.tableEl.innerHTML = "";
+  singlePanel.warningsEl.innerHTML = "";
+  singlePanel.trimEl.innerHTML = "";
+  singlePanel.silenceEl.innerHTML = "";
+  directoryResultsEl.innerHTML = "";
   lastResponse = null;
+  lastDirectoryResponse = null;
   aggregateExcludeLfe = false;
   if (resultExcludeToggleEl) {
     resultExcludeToggleEl.checked = false;
     resultExcludeToggleEl.disabled = true;
   }
-  setStatus("请选择音频文件后运行分析。");
+  setStatus(singlePanel, "请选择音频文件后运行分析。");
+};
+
+const createAnalysisPanelElement = (): AnalysisPanel => {
+  const container = document.createElement("div");
+  container.className = "analysis-panel";
+
+  const statusEl = document.createElement("div");
+  statusEl.className = "status";
+  container.appendChild(statusEl);
+
+  const tableEl = document.createElement("div");
+  tableEl.className = "dr-table";
+  container.appendChild(tableEl);
+
+  const warningsEl = document.createElement("div");
+  container.appendChild(warningsEl);
+
+  const trimEl = document.createElement("div");
+  container.appendChild(trimEl);
+
+  const silenceEl = document.createElement("div");
+  container.appendChild(silenceEl);
+
+  return { container, statusEl, tableEl, warningsEl, trimEl, silenceEl };
 };
 
 const disableWhile = async (flagSetter: (state: boolean) => void, task: () => Promise<void>) => {
@@ -150,6 +196,12 @@ const disableWhile = async (flagSetter: (state: boolean) => void, task: () => Pr
   } finally {
     flagSetter(false);
   }
+};
+
+const updateSelectedPath = (path: string, kind: "file" | "directory") => {
+  selectedPath = path;
+  selectedKind = kind;
+  inputPathEl.value = path;
 };
 
 const renderScanResults = (result: ScanResult) => {
@@ -171,8 +223,10 @@ const renderScanResults = (result: ScanResult) => {
       item.addEventListener("click", () => {
         const path = (item as HTMLElement).dataset.path;
         if (path) {
-          updateSelectedPath(path);
-          setStatus(`已选择 ${path}`);
+          updateSelectedPath(path, "file");
+          lastDirectoryResponse = null;
+          directoryResultsEl.innerHTML = "";
+          setStatus(singlePanel, `已选择 ${path}`);
         }
       });
     });
@@ -186,31 +240,45 @@ const gatherOptions = (): UiAnalyzeOptions => ({
   showRmsPeak: false,
 });
 
-const renderDrTable = (response: AnalyzeResponse) => {
+const renderDrTable = (
+  panel: AnalysisPanel,
+  response: AnalyzeResponse,
+  highlightExcludedLfe: boolean
+) => {
   const channels = response.drResults;
   if (!channels.length) {
-    drTableEl.innerHTML = "<p>未产生有效声道结果。</p>";
+    panel.tableEl.innerHTML = "<p>未产生有效声道结果。</p>";
     return;
   }
   const lfeSet = new Set(response.format.lfeIndices ?? []);
   const rows = channels
-    .map(
-      (ch) => {
-        const isLfe = lfeSet.has(ch.channel);
-        const channelLabel = isLfe ? `CH ${ch.channel + 1} [LFE]` : `CH ${ch.channel + 1}`;
-        const rowClass = isLfe ? ' class="lfe-row"' : "";
-        return `
-      <tr${rowClass}>
+    .map((ch) => {
+      const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+      const isLfe = lfeSet.has(ch.channel);
+      const classes: string[] = [];
+      if (highlightExcludedLfe && isLfe) {
+        classes.push("lfe-row");
+      }
+      if (isSilent) {
+        classes.push("silent-row");
+      }
+      let channelLabel = `CH ${ch.channel + 1}`;
+      if (isLfe) {
+        channelLabel += " [LFE]";
+      } else if (isSilent) {
+        channelLabel += " [Silent]";
+      }
+      return `
+      <tr class="${classes.join(" ")}">
         <td>${channelLabel}</td>
         <td>DR${ch.drValueRounded}</td>
         <td>${decimals(ch.drValue)}</td>
       </tr>
     `;
-      }
-    )
+    })
     .join("");
 
-  drTableEl.innerHTML = `
+  panel.tableEl.innerHTML = `
     <div class="dr-table">
       <table>
         <thead>
@@ -227,7 +295,11 @@ const renderDrTable = (response: AnalyzeResponse) => {
 };
 
 
-const renderWarnings = (response: AnalyzeResponse, aggregate: AggregateView) => {
+const renderWarnings = (
+  panel: AnalysisPanel,
+  response: AnalyzeResponse,
+  aggregate: AggregateView
+) => {
   const notes: string[] = [];
   if (aggregate.boundaryWarning) {
     const warning = aggregate.boundaryWarning;
@@ -246,50 +318,37 @@ const renderWarnings = (response: AnalyzeResponse, aggregate: AggregateView) => 
     );
   }
   if (!notes.length) {
-    warningsEl.innerHTML = "";
+    panel.warningsEl.innerHTML = "";
     return;
   }
-  warningsEl.innerHTML = notes
+  panel.warningsEl.innerHTML = notes
     .map((note) => `<div class="warning-card">${note.replace(/\n/g, "<br>")}</div>`)
     .join("");
 };
 
-const getCurrentAggregate = (): AggregateView | null => {
-  if (!lastResponse) {
-    return null;
-  }
-  return aggregateExcludeLfe
-    ? lastResponse.aggregates.excludeLfe
-    : lastResponse.aggregates.includeLfe;
-};
-
 const updateAggregateView = () => {
-  const response = lastResponse;
-  const aggregate = getCurrentAggregate();
-  if (!response || !aggregate) {
-    setStatus("请选择音频文件后运行分析。");
-    return;
+  let hasRendered = false;
+  if (lastResponse) {
+    renderAnalysisPanelContent(singlePanel, lastResponse);
+    hasRendered = true;
   }
 
-  if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
-    const modeLabel = aggregateExcludeLfe ? "（排除 LFE）" : "";
-    setStatus(
-      `Official DR ${aggregate.officialDr}${modeLabel} · Precise ${decimals(aggregate.preciseDr)} dB`
-    );
-  } else {
-    setStatus(
-      aggregateExcludeLfe ? "没有有效声道（排除 LFE）" : "没有有效声道参与计算。"
-    );
+  if (lastDirectoryResponse) {
+    renderDirectoryResults(lastDirectoryResponse, false);
+    hasRendered = true;
   }
-  renderWarnings(response, aggregate);
+
+  if (!hasRendered) {
+    setStatus(singlePanel, "请选择音频文件后运行分析。");
+  }
 };
 
-const renderTrimReport = (report?: TrimReport | null) => {
+const renderTrimReport = (panel: AnalysisPanel, report?: TrimReport | null) => {
   if (!report || !report.enabled) {
-    trimReportEl.innerHTML = "";
+    panel.trimEl.innerHTML = "";
     return;
   }
-  trimReportEl.innerHTML = `
+  panel.trimEl.innerHTML = `
     <div class="warning-card">
       <strong>首尾静音裁切</strong>
       <p>阈值 ${report.thresholdDb.toFixed(1)} dBFS，最小时长 ${report.minRunMs.toFixed(
@@ -302,9 +361,9 @@ const renderTrimReport = (report?: TrimReport | null) => {
   `;
 };
 
-const renderSilenceReport = (report?: SilenceReport | null) => {
+const renderSilenceReport = (panel: AnalysisPanel, report?: SilenceReport | null) => {
   if (!report) {
-    silenceReportEl.innerHTML = "";
+    panel.silenceEl.innerHTML = "";
     return;
   }
   const rows = report.channels
@@ -318,7 +377,7 @@ const renderSilenceReport = (report?: SilenceReport | null) => {
     `
     )
     .join("");
-  silenceReportEl.innerHTML = `
+  panel.silenceEl.innerHTML = `
     <div class="dr-table">
       <strong>静音窗口过滤（阈值 ${report.thresholdDb.toFixed(1)} dBFS）</strong>
       <table>
@@ -335,17 +394,85 @@ const renderSilenceReport = (report?: SilenceReport | null) => {
   `;
 };
 
-const renderAnalysis = (response: AnalyzeResponse) => {
-  lastResponse = response;
-  aggregateExcludeLfe = false;
+const renderDirectoryResults = (
+  response: DirectoryAnalysisResponse,
+  remember: boolean = true
+) => {
+  if (remember) {
+    lastDirectoryResponse = response;
+  }
+  directoryResultsEl.innerHTML = "";
   if (resultExcludeToggleEl) {
-    resultExcludeToggleEl.checked = false;
     resultExcludeToggleEl.disabled = false;
   }
-  renderDrTable(response);
-  renderTrimReport(response.trimReport);
-  renderSilenceReport(response.silenceReport);
-  updateAggregateView();
+  if (!response.files.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "目录中未找到可分析的音频文件。";
+    directoryResultsEl.appendChild(empty);
+    return;
+  }
+
+  response.files.forEach((entry: DirectoryAnalysisEntry) => {
+    const card = document.createElement("div");
+    card.className = "directory-entry";
+
+    const header = document.createElement("div");
+    header.className = "directory-entry-header";
+    const title = document.createElement("h3");
+    title.textContent = entry.fileName;
+    const pathText = document.createElement("span");
+    pathText.textContent = entry.path;
+    header.appendChild(title);
+    header.appendChild(pathText);
+    card.appendChild(header);
+
+    if (entry.error) {
+      const err = document.createElement("div");
+      err.className = "warning-card";
+      const suggestion = entry.error.suggestion ? ` 建议：${entry.error.suggestion}` : "";
+      err.textContent = `${entry.error.message}${suggestion}`;
+      card.appendChild(err);
+    } else if (entry.analysis) {
+      const panel = createAnalysisPanelElement();
+      renderAnalysisPanelContent(panel, entry.analysis);
+      card.appendChild(panel.container);
+    }
+
+    directoryResultsEl.appendChild(card);
+  });
+};
+
+const renderAnalysisPanelContent = (panel: AnalysisPanel, response: AnalyzeResponse) => {
+  const aggregate = aggregateExcludeLfe
+    ? response.aggregates.excludeLfe
+    : response.aggregates.includeLfe;
+  renderDrTable(panel, response, aggregateExcludeLfe);
+  renderWarnings(panel, response, aggregate);
+  renderTrimReport(panel, response.trimReport);
+  renderSilenceReport(panel, response.silenceReport);
+  if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
+    const modeLabel = aggregateExcludeLfe ? "（排除 LFE）" : "";
+    setStatus(
+      panel,
+      `Official DR ${aggregate.officialDr}${modeLabel} · Precise ${decimals(aggregate.preciseDr)} dB`
+    );
+  } else {
+    setStatus(
+      panel,
+      aggregateExcludeLfe ? "没有有效声道（排除 LFE）" : "没有有效声道参与计算。"
+    );
+  }
+};
+
+const renderAnalysis = (response: AnalyzeResponse) => {
+  lastResponse = response;
+  lastDirectoryResponse = null;
+  directoryResultsEl.innerHTML = "";
+  if (resultExcludeToggleEl) {
+    resultExcludeToggleEl.disabled = false;
+    resultExcludeToggleEl.checked = aggregateExcludeLfe;
+  }
+  renderAnalysisPanelContent(singlePanel, response);
 };
 
 const parseInvokeError = (error: unknown): CommandError => {
@@ -376,18 +503,17 @@ const parseInvokeError = (error: unknown): CommandError => {
   return { message: "未知错误" };
 };
 
-const updateSelectedPath = (path: string) => {
-  selectedPath = path;
-  inputPathEl.value = path;
-};
-
 const loadMetadata = async () => {
   metadata = await invoke<MetadataResponse>("load_app_metadata");
 };
 
 const handleAnalyze = async () => {
   if (!selectedPath) {
-    setStatus("请先选择音频文件。", true);
+    setStatus(singlePanel, "请先选择音频文件。", true);
+    return;
+  }
+  if (selectedKind === "directory") {
+    await handleDirectoryAnalyze();
     return;
   }
   await disableWhile(
@@ -397,7 +523,7 @@ const handleAnalyze = async () => {
     },
     async () => {
       clearOutput();
-      setStatus("分析中...", false);
+      setStatus(singlePanel, "分析中...", false);
       try {
         const options = gatherOptions();
         const response = await invoke<AnalyzeResponse>("analyze_audio", {
@@ -405,17 +531,60 @@ const handleAnalyze = async () => {
           options,
         });
         renderAnalysis(response);
+        if (resultExcludeToggleEl) {
+          resultExcludeToggleEl.checked = aggregateExcludeLfe;
+          resultExcludeToggleEl.disabled = false;
+        }
       } catch (error) {
         const detail = parseInvokeError(error);
         setStatus(
+          singlePanel,
           detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
           true
         );
         if (detail.supportedFormats?.length) {
-          warningsEl.innerHTML = `<div class="warning-card">支持格式：${detail.supportedFormats.join(
+          singlePanel.warningsEl.innerHTML = `<div class="warning-card">支持格式：${detail.supportedFormats.join(
             ", "
           )}</div>`;
         }
+      }
+    }
+  );
+};
+
+const handleDirectoryAnalyze = async () => {
+  if (!selectedPath) {
+    setStatus(singlePanel, "请先选择目录。", true);
+    return;
+  }
+  await disableWhile(
+    (state) => {
+      analyzing = state;
+      analyzeButton.disabled = state;
+    },
+    async () => {
+      clearOutput();
+      setStatus(singlePanel, "目录批量分析中...", false);
+      try {
+        const options = gatherOptions();
+        const response = await invoke<DirectoryAnalysisResponse>("analyze_directory", {
+          path: selectedPath,
+          options,
+        });
+        lastResponse = null;
+        renderDirectoryResults(response);
+        if (resultExcludeToggleEl) {
+          resultExcludeToggleEl.disabled = false;
+          resultExcludeToggleEl.checked = aggregateExcludeLfe;
+        }
+        setStatus(singlePanel, `目录分析完成，共 ${response.files.length} 个结果。`);
+      } catch (error) {
+        const detail = parseInvokeError(error);
+        setStatus(
+          singlePanel,
+          detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
+          true
+        );
       }
     }
   );
@@ -440,8 +609,10 @@ const handlePickFile = async () => {
           : undefined,
       });
       if (typeof file === "string") {
-        updateSelectedPath(file);
-        setStatus(`已选择 ${file}`);
+        updateSelectedPath(file, "file");
+        lastDirectoryResponse = null;
+        directoryResultsEl.innerHTML = "";
+        setStatus(singlePanel, `已选择 ${file}`);
         scanResultsEl.classList.add("hidden");
       }
     }
@@ -457,26 +628,35 @@ const handleScanDir = async () => {
     return;
   }
   const result = await invoke<ScanResult>("scan_audio_directory", { path: dir });
+  updateSelectedPath(dir, "directory");
+  setStatus(singlePanel, `目录 ${dir} 已选，可点击“开始分析”执行批量处理。`);
+  lastDirectoryResponse = null;
+  directoryResultsEl.innerHTML = "";
   renderScanResults(result);
 };
 
 document.addEventListener("DOMContentLoaded", () => {
   inputPathEl = document.querySelector<HTMLInputElement>("#input-path")!;
-  statusEl = document.querySelector<HTMLElement>("#status")!;
-  drTableEl = document.querySelector<HTMLElement>("#dr-table")!;
-  warningsEl = document.querySelector<HTMLElement>("#warnings")!;
-  trimReportEl = document.querySelector<HTMLElement>("#trim-report")!;
-  silenceReportEl = document.querySelector<HTMLElement>("#silence-report")!;
   scanResultsEl = document.querySelector<HTMLElement>("#scan-results")!;
   resultExcludeToggleEl = document.querySelector<HTMLInputElement>("#result-exclude-lfe")!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
+  directoryResultsEl = document.querySelector<HTMLElement>("#directory-results")!;
+  singlePanel = {
+    container: document.querySelector<HTMLElement>("#single-analysis")!,
+    statusEl: document.querySelector<HTMLElement>("#status")!,
+    tableEl: document.querySelector<HTMLElement>("#dr-table")!,
+    warningsEl: document.querySelector<HTMLElement>("#warnings")!,
+    trimEl: document.querySelector<HTMLElement>("#trim-report")!,
+    silenceEl: document.querySelector<HTMLElement>("#silence-report")!,
+  };
 
   document.querySelector<HTMLButtonElement>("#pick-file")?.addEventListener("click", handlePickFile);
   document.querySelector<HTMLButtonElement>("#scan-dir")?.addEventListener("click", handleScanDir);
   document.querySelector<HTMLButtonElement>("#clear-path")?.addEventListener("click", () => {
     selectedPath = null;
+    selectedKind = null;
     inputPathEl.value = "";
-    setStatus("已清除输入路径。");
+    setStatus(singlePanel, "已清除输入路径。");
     clearOutput();
     scanResultsEl.classList.add("hidden");
   });
@@ -493,6 +673,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadMetadata().catch((err) => {
     const detail = parseInvokeError(err);
-    setStatus(`初始化失败：${detail.message}`, true);
+    setStatus(singlePanel, `初始化失败：${detail.message}`, true);
   });
 });

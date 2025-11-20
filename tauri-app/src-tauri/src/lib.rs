@@ -7,12 +7,14 @@ use macinmeter_dr_tool::{
     AppConfig, AudioFormat, DrResult,
 };
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 use std::{
     fmt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct UiAnalyzeOptions {
     parallel_decoding: bool,
@@ -121,6 +123,22 @@ struct AggregatesView {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DirectoryAnalysisEntry {
+    path: String,
+    file_name: String,
+    analysis: Option<AnalyzeResponse>,
+    error: Option<AnalyzeCommandError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirectoryAnalysisResponse {
+    directory: String,
+    files: Vec<DirectoryAnalysisEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ScanResult {
     directory: String,
     files: Vec<ScannedFile>,
@@ -196,7 +214,7 @@ async fn analyze_audio(
     options: UiAnalyzeOptions,
 ) -> Result<AnalyzeResponse, AnalyzeCommandError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let config = options.into_app_config(path);
+        let config = options.to_app_config(path);
         let analysis_target = config.input_path.clone();
         let (results, format, trim_report, silence_report) =
             analyze_file(&analysis_target, &config).map_err(AnalyzeCommandError::from_audio_error)?;
@@ -248,6 +266,37 @@ fn load_app_metadata() -> MetadataResponse {
     MetadataResponse {
         supported_formats: supported_formats_list(),
     }
+}
+
+#[tauri::command]
+async fn analyze_directory(
+    path: PathBuf,
+    options: UiAnalyzeOptions,
+) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = path.clone();
+        let files =
+            tools::scan_audio_files(&directory).map_err(|e| AnalyzeCommandError::from_scan_error(e, &directory))?;
+        if files.is_empty() {
+            return Ok(DirectoryAnalysisResponse {
+                directory: directory.display().to_string(),
+                files: Vec::new(),
+            });
+        }
+
+        let options = Arc::new(options);
+        let entries: Vec<DirectoryAnalysisEntry> = files
+            .into_par_iter()
+            .map(|file| analyze_single_file(file, &options))
+            .collect();
+
+        Ok(DirectoryAnalysisResponse {
+            directory: directory.display().to_string(),
+            files: entries,
+        })
+    })
+    .await
+    .map_err(|err| AnalyzeCommandError::internal(format!("批量分析线程调度失败: {err}")))?
 }
 
 fn build_analyze_response(
@@ -367,8 +416,40 @@ fn build_aggregate_view(
     }
 }
 
+fn analyze_single_file(file: PathBuf, options: &UiAnalyzeOptions) -> DirectoryAnalysisEntry {
+    let file_name = file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| file.to_string_lossy().into_owned());
+    let path_display = file.to_string_lossy().into_owned();
+    let config = options.to_app_config(file.clone());
+
+    match analyze_file(&file, &config) {
+        Ok((results, format, trim_report, silence_report)) => DirectoryAnalysisEntry {
+            path: path_display,
+            file_name,
+            analysis: Some(build_analyze_response(
+                &config,
+                &file,
+                results,
+                format,
+                trim_report,
+                silence_report,
+            )),
+            error: None,
+        },
+        Err(err) => DirectoryAnalysisEntry {
+            path: path_display,
+            file_name,
+            analysis: None,
+            error: Some(AnalyzeCommandError::from_audio_error(err)),
+        },
+    }
+}
+
 impl UiAnalyzeOptions {
-    fn into_app_config(self, input_path: PathBuf) -> AppConfig {
+    fn to_app_config(&self, input_path: PathBuf) -> AppConfig {
         AppConfig {
             input_path,
             verbose: false,
@@ -428,6 +509,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             analyze_audio,
             scan_audio_directory,
+            analyze_directory,
             load_app_metadata
         ])
         .run(tauri::generate_context!())

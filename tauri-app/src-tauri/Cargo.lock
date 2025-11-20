@@ -5310,6 +5310,7 @@ name = "tauri-app"
 version = "0.1.0"
 dependencies = [
  "macinmeter-dr-tool",
+ "rayon",
  "serde",
  "serde_json",
  "tauri",

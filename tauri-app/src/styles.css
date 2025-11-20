@@ -172,6 +172,15 @@ button.ghost {
   color: #c2410c;
 }
 
+.dr-table tr.silent-row {
+  background: #fef3c7;
+}
+
+.dr-table tr.silent-row td:first-child {
+  font-weight: 600;
+  color: #b45309;
+}
+
 .warning-card {
   margin-top: 0.75rem;
   padding: 0.85rem;
@@ -233,4 +242,45 @@ button.ghost {
     justify-content: center;
   }
 
+}
+.analysis-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #fff;
+}
+
+.directory-results {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.directory-entry {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #fafafa;
+}
+
+.directory-entry-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.5rem;
+}
+
+.directory-entry-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.directory-entry-header span {
+  font-size: 0.85rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.directory-entry .analysis-panel {
+  margin-top: 0.5rem;
 }
