@@ -656,6 +656,7 @@ jobs:
       with:
         name: MacinMeter-DR-GUI-windows
         path: |
+          tauri-app/src-tauri/target/release/*.exe
           tauri-app/src-tauri/target/release/bundle/**/*.exe
       
   # 🚀 自动发布 (仅在tag推送时)
