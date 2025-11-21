@@ -959,20 +959,79 @@ const renderDirectoryResults = (
     titleText.textContent = entry.fileName;
     title.appendChild(titleText);
 
-    // 添加单个文件复制MD按钮
+    // 添加单个文件复制按钮
     if (entry.analysis) {
-      const copyBtn = document.createElement("button");
-      copyBtn.className = "copy-entry-btn";
-      copyBtn.textContent = "Copy";
-      copyBtn.type = "button";
-      copyBtn.addEventListener("click", (e) => {
+      const copyMdBtn = document.createElement("button");
+      copyMdBtn.className = "copy-entry-btn";
+      copyMdBtn.textContent = "MD";
+      copyMdBtn.type = "button";
+      copyMdBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const md = formatEntryAsMd(entry);
         if (md) {
-          void copyToClipboard(md, copyBtn);
+          void copyToClipboard(md, copyMdBtn);
         }
       });
-      title.appendChild(copyBtn);
+      title.appendChild(copyMdBtn);
+
+      const copyPngBtn = document.createElement("button");
+      copyPngBtn.className = "copy-entry-btn";
+      copyPngBtn.textContent = "PNG";
+      copyPngBtn.type = "button";
+      copyPngBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // 找到该条目的分析面板
+        const panelEl = card.querySelector<HTMLElement>(".analysis-panel");
+        if (!panelEl) return;
+
+        try {
+          const dataUrl = await toPng(panelEl, {
+            backgroundColor: "#ffffff",
+            pixelRatio: 2,
+          });
+
+          // 用 canvas 扩大画布，添加边距
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject;
+            img.src = dataUrl;
+          });
+
+          const padding = 32; // 边距像素
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width + padding * 2;
+          canvas.height = img.height + padding * 2;
+          const ctx = canvas.getContext("2d")!;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, padding, padding);
+
+          const paddedDataUrl = canvas.toDataURL("image/png");
+
+          // 从 data URL 提取 base64
+          const base64 = paddedDataUrl.split(",")[1];
+
+          // 调用后端命令复制到剪贴板
+          await invoke("copy_image_to_clipboard", { base64Data: base64 });
+
+          copyPngBtn.classList.add("copied");
+          const original = copyPngBtn.textContent;
+          copyPngBtn.textContent = "OK!";
+          setTimeout(() => {
+            copyPngBtn.classList.remove("copied");
+            copyPngBtn.textContent = original;
+          }, 1500);
+        } catch (err) {
+          console.error("Copy PNG failed:", err);
+          // 显示错误提示
+          copyPngBtn.textContent = "Fail";
+          setTimeout(() => {
+            copyPngBtn.textContent = "PNG";
+          }, 1500);
+        }
+      });
+      title.appendChild(copyPngBtn);
     }
 
     const pathText = document.createElement("span");
@@ -1597,12 +1656,19 @@ document.addEventListener("DOMContentLoaded", () => {
     .querySelector<HTMLButtonElement>("#analyze-btn")
     ?.addEventListener("click", () => {
       if (analyzing) {
-        // 取消当前分析：仅在前端层面生效（忽略后续结果）
+        // 取消当前分析：通知后端停止处理
         analysisToken++;
         analyzing = false;
         updateAnalyzeButton();
         cleanupAnalysisListeners();
-        setStatus(singlePanel, "已取消当前分析。");
+        setStatus(singlePanel, "正在取消分析...");
+        invoke("cancel_analysis")
+          .then(() => {
+            setStatus(singlePanel, "已取消当前分析。");
+          })
+          .catch(() => {
+            setStatus(singlePanel, "已取消当前分析。");
+          });
         return;
       }
       void handleAnalyze();

@@ -170,6 +170,7 @@ struct AnalyzeCommandError {
 }
 
 static DEEP_SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
+static ANALYSIS_CANCEL: AtomicBool = AtomicBool::new(false);
 
 impl fmt::Display for AnalyzeCommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -359,6 +360,12 @@ fn cancel_deep_scan() -> Result<(), AnalyzeCommandError> {
 }
 
 #[tauri::command]
+fn cancel_analysis() -> Result<(), AnalyzeCommandError> {
+    ANALYSIS_CANCEL.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
 fn load_app_metadata() -> MetadataResponse {
     MetadataResponse {
         supported_formats: supported_formats_list(),
@@ -383,12 +390,78 @@ fn path_is_directory(path: PathBuf) -> Result<bool, AnalyzeCommandError> {
 }
 
 #[tauri::command]
+fn copy_image_to_clipboard(base64_data: String) -> Result<(), AnalyzeCommandError> {
+    use std::io::Write;
+    use std::process::Command;
+
+    // 解码base64
+    let data = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &base64_data,
+    )
+    .map_err(|e| AnalyzeCommandError::internal(format!("Base64解码失败: {e}")))?;
+
+    // 创建临时文件
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join("macinmeter_clipboard_temp.png");
+
+    let mut file = std::fs::File::create(&temp_path)
+        .map_err(|e| AnalyzeCommandError::internal(format!("创建临时文件失败: {e}")))?;
+    file.write_all(&data)
+        .map_err(|e| AnalyzeCommandError::internal(format!("写入临时文件失败: {e}")))?;
+
+    // 使用系统命令复制到剪贴板
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "set the clipboard to (read (POSIX file \"{}\") as «class PNGf»)",
+            temp_path.display()
+        );
+        Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|e| AnalyzeCommandError::internal(format!("执行osascript失败: {e}")))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows使用PowerShell
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{}'))",
+            temp_path.display()
+        );
+        Command::new("powershell")
+            .args(["-Command", &script])
+            .output()
+            .map_err(|e| AnalyzeCommandError::internal(format!("执行PowerShell失败: {e}")))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Linux使用xclip
+        Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "image/png", "-i"])
+            .arg(&temp_path)
+            .output()
+            .map_err(|e| AnalyzeCommandError::internal(format!("执行xclip失败: {e}")))?;
+    }
+
+    // 清理临时文件
+    let _ = std::fs::remove_file(&temp_path);
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn analyze_directory(
     window: tauri::Window,
     path: PathBuf,
     options: UiAnalyzeOptions,
 ) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
     tauri::async_runtime::spawn_blocking(move || {
+        // 重置取消标志
+        ANALYSIS_CANCEL.store(false, Ordering::SeqCst);
+
         let directory = path.clone();
         let files =
             tools::scan_audio_files(&directory).map_err(|e| AnalyzeCommandError::from_scan_error(e, &directory))?;
@@ -423,6 +496,9 @@ async fn analyze_files(
     options: UiAnalyzeOptions,
 ) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
     tauri::async_runtime::spawn_blocking(move || {
+        // 重置取消标志
+        ANALYSIS_CANCEL.store(false, Ordering::SeqCst);
+
         if paths.is_empty() {
             return Ok(DirectoryAnalysisResponse {
                 directory: "selected-files".to_string(),
@@ -473,6 +549,11 @@ fn process_entries_serial(
     let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(files.len());
     let mut completed: usize = 0;
     for file in files {
+        // 检查取消标志
+        if ANALYSIS_CANCEL.load(Ordering::Relaxed) {
+            break;
+        }
+
         let entry = analyze_single_file(file, options);
         completed += 1;
         let _ = window.emit("analysis-entry", &entry);
@@ -508,6 +589,10 @@ fn process_entries_parallel(
             .into_par_iter()
             .enumerate()
             .for_each_with(tx, |channel, (index, file)| {
+                // 检查取消标志，跳过新文件的处理
+                if ANALYSIS_CANCEL.load(Ordering::Relaxed) {
+                    return;
+                }
                 let entry = analyze_single_file(file, &worker_options);
                 let _ = channel.send((index, entry));
             });
@@ -520,6 +605,13 @@ fn process_entries_parallel(
     let mut completed: usize = 0;
 
     while let Ok((index, entry)) = rx.recv() {
+        // 检查取消标志
+        if ANALYSIS_CANCEL.load(Ordering::Relaxed) {
+            // 消费剩余的已完成结果，但不再处理
+            while rx.try_recv().is_ok() {}
+            break;
+        }
+
         completed += 1;
         let _ = window.emit("analysis-progress", &completed);
         if index < pending.len() {
@@ -779,7 +871,9 @@ pub fn run() {
             scan_audio_directory,
             deep_scan_audio_directory,
             cancel_deep_scan,
+            cancel_analysis,
             path_is_directory,
+            copy_image_to_clipboard,
             analyze_directory,
             analyze_files,
             set_ffmpeg_override,
