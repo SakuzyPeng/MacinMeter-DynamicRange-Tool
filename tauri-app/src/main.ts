@@ -490,8 +490,10 @@ const exportImageToFile = async () => {
   const format = await showFormatDialog();
   if (!format) return;
 
-  // 获取结果面板
-  const resultPanel = document.querySelector<HTMLElement>(".panel:last-child");
+  // 获取导出区域：单文件导出单个分析面板，多文件导出目录结果列表
+  const resultPanel = lastDirectoryResponse
+    ? document.querySelector<HTMLElement>("#directory-results")
+    : document.querySelector<HTMLElement>("#single-analysis");
   if (!resultPanel) return;
 
   const ext = format === "svg" ? "svg" : "png";
@@ -505,12 +507,6 @@ const exportImageToFile = async () => {
   });
 
   if (!filePath) return;
-
-  // 添加标题信息
-  const header = document.createElement("div");
-  header.className = "export-header";
-  header.textContent = `MacinMeter DR GUI v0.1.0 - ${getTimestamp()}`;
-  resultPanel.insertBefore(header, resultPanel.firstChild);
 
   try {
     if (format === "svg") {
@@ -559,9 +555,6 @@ const exportImageToFile = async () => {
     }
   } catch (error) {
     console.error("Export image failed:", error);
-  } finally {
-    // 移除标题
-    header.remove();
   }
 };
 
