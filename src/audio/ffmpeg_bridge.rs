@@ -8,6 +8,19 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+/// 在 Windows 上隐藏子进程控制台窗口（用于 GUI 场景避免 FFmpeg 弹窗）
+#[cfg(target_os = "windows")]
+fn configure_creation_flags(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    // CREATE_NO_WINDOW
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+/// 非 Windows 平台：不做任何额外配置
+#[cfg(not(target_os = "windows"))]
+fn configure_creation_flags(_cmd: &mut Command) {}
+
 use super::channel_layout;
 use super::format::AudioFormat;
 use super::stats::ChunkSizeStats;
@@ -75,14 +88,12 @@ impl FFmpegDecoder {
             .ok()
             .filter(|s| !s.trim().is_empty())
         {
-            let path = PathBuf::from(override_path.trim());
-            if Command::new(&path)
-                .arg("-version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-            {
-                return Some(path);
+            let candidate = PathBuf::from(override_path.trim());
+            let mut cmd = Command::new(&candidate);
+            cmd.arg("-version");
+            configure_creation_flags(&mut cmd);
+            if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
+                return Some(candidate);
             }
         }
 
@@ -123,38 +134,35 @@ impl FFmpegDecoder {
             }
 
             // 先尝试 PATH 中的 ffmpeg（不依赖文件存在，直接调用）
-            if Command::new("ffmpeg")
-                .arg("-version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
             {
-                return Some(PathBuf::from("ffmpeg"));
+                let mut cmd = Command::new("ffmpeg");
+                cmd.arg("-version");
+                configure_creation_flags(&mut cmd);
+                if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
+                    return Some(PathBuf::from("ffmpeg"));
+                }
             }
 
             candidates.into_iter().find(|p| {
                 if !p.exists() {
                     return false;
                 }
-                Command::new(p)
-                    .arg("-version")
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false)
+                let mut cmd = Command::new(p);
+                cmd.arg("-version");
+                configure_creation_flags(&mut cmd);
+                cmd.output().map(|o| o.status.success()).unwrap_or(false)
             })
         }
 
         #[cfg(not(target_os = "windows"))]
         {
             // macOS/Linux: 直接使用PATH中的ffmpeg
-            let path = PathBuf::from("ffmpeg");
-            if Command::new(&path)
-                .arg("-version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-            {
-                Some(path)
+            let candidate = PathBuf::from("ffmpeg");
+            let mut cmd = Command::new(&candidate);
+            cmd.arg("-version");
+            configure_creation_flags(&mut cmd);
+            if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
+                Some(candidate)
             } else {
                 None
             }
@@ -184,12 +192,10 @@ impl FFmpegDecoder {
         #[cfg(not(target_os = "windows"))]
         let ffprobe_cmd = "ffprobe";
 
-        if Command::new(ffprobe_cmd)
-            .arg("-version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
+        let mut cmd = Command::new(ffprobe_cmd);
+        cmd.arg("-version");
+        configure_creation_flags(&mut cmd);
+        if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
             Some(PathBuf::from(ffprobe_cmd))
         } else {
             None
@@ -204,27 +210,27 @@ impl FFmpegDecoder {
             ))
         })?;
 
-        let output = Command::new(&ffprobe_path)
-            .args([
-                "-v",
-                "error",
-                "-select_streams",
-                "a:0",
-                "-show_entries",
-                // 追加布局字段和容器格式，按声明顺序输出，便于解析
-                "stream=codec_name,sample_rate,channels,duration,channel_layout,ch_layout",
-                "-show_entries",
-                "format=format_name",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                path.to_str().unwrap(),
-            ])
-            .output()
-            .map_err(|e| {
-                AudioError::FormatError(format!(
-                    "Failed to run ffprobe / 无法运行ffprobe: {e}\n{FFMPEG_INSTALL_GUIDE}"
-                ))
-            })?;
+        let mut cmd = Command::new(&ffprobe_path);
+        cmd.args([
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            // 追加布局字段和容器格式，按声明顺序输出，便于解析
+            "stream=codec_name,sample_rate,channels,duration,channel_layout,ch_layout",
+            "-show_entries",
+            "format=format_name",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path.to_str().unwrap(),
+        ]);
+        configure_creation_flags(&mut cmd);
+        let output = cmd.output().map_err(|e| {
+            AudioError::FormatError(format!(
+                "Failed to run ffprobe / 无法运行ffprobe: {e}\n{FFMPEG_INSTALL_GUIDE}"
+            ))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -366,20 +372,20 @@ impl FFmpegDecoder {
         {
             if format.lfe_indices.is_empty() {
                 if let Some(path_str) = path.to_str() {
-                    let json_output = Command::new(&ffprobe_path)
-                        .args([
-                            "-v",
-                            "error",
-                            "-select_streams",
-                            "a:0",
-                            "-show_entries",
-                            "stream=channel_layout,side_data_list",
-                            "-of",
-                            "json",
-                            path_str,
-                        ])
-                        .output()
-                        .ok();
+                    let mut cmd = Command::new(&ffprobe_path);
+                    cmd.args([
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "a:0",
+                        "-show_entries",
+                        "stream=channel_layout,side_data_list",
+                        "-of",
+                        "json",
+                        path_str,
+                    ]);
+                    configure_creation_flags(&mut cmd);
+                    let json_output = cmd.output().ok();
 
                     if let Some(json_out) = json_output {
                         if json_out.status.success() {
@@ -481,20 +487,20 @@ impl FFmpegDecoder {
         if (is_dsd_ext || is_dsd_codec)
             && let Some(path_str) = path.to_str()
         {
-            let json_out = Command::new(&ffprobe_path)
-                .args([
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "a:0",
-                    "-show_entries",
-                    "stream=sample_rate,bits_per_raw_sample,codec_name,profile",
-                    "-of",
-                    "json",
-                    path_str,
-                ])
-                .output()
-                .ok();
+            let mut cmd = Command::new(&ffprobe_path);
+            cmd.args([
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=sample_rate,bits_per_raw_sample,codec_name,profile",
+                "-of",
+                "json",
+                path_str,
+            ]);
+            configure_creation_flags(&mut cmd);
+            let json_out = cmd.output().ok();
             if let Some(out) = json_out
                 && out.status.success()
                 && let Ok(text) = String::from_utf8(out.stdout)
@@ -733,14 +739,14 @@ impl FFmpegDecoder {
         args.push("-".to_string()); // 输出到stdout
 
         // 启动FFmpeg子进程
-        let child = Command::new(&ffmpeg_path)
-            .args(&args)
+        let mut cmd = Command::new(&ffmpeg_path);
+        cmd.args(&args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AudioError::DecodingError(format!("Failed to spawn FFmpeg / 无法启动FFmpeg: {e}"))
-            })?;
+            .stderr(Stdio::piped());
+        configure_creation_flags(&mut cmd);
+        let child = cmd.spawn().map_err(|e| {
+            AudioError::DecodingError(format!("Failed to spawn FFmpeg / 无法启动FFmpeg: {e}"))
+        })?;
 
         let total_samples = format.sample_count; // 提前保存，避免move后使用
 
@@ -917,14 +923,14 @@ impl StreamingDecoder for FFmpegDecoder {
         let _ = self.child.wait();
 
         // 按相同参数重启FFmpeg子进程
-        self.child = Command::new(&self.ffmpeg_path)
-            .args(&self.spawn_args)
+        let mut cmd = Command::new(&self.ffmpeg_path);
+        cmd.args(&self.spawn_args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AudioError::DecodingError(format!("Failed to respawn FFmpeg / 无法重启FFmpeg: {e}"))
-            })?;
+            .stderr(Stdio::piped());
+        configure_creation_flags(&mut cmd);
+        self.child = cmd.spawn().map_err(|e| {
+            AudioError::DecodingError(format!("Failed to respawn FFmpeg / 无法重启FFmpeg: {e}"))
+        })?;
 
         // 重置内部状态
         self.current_position = 0;

@@ -1,5 +1,5 @@
 [package]
-name = "tauri-app"
+name = "macinmeter-dr-gui"
 version = "0.1.0"
 description = "MacinMeter Dynamic Range GUI (Tauri wrapper)"
 authors = ["MacinMeter Team"]
