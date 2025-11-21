@@ -196,6 +196,11 @@ button.ghost {
   color: #166534;
 }
 
+.toggle-btn.active {
+  background: #a5b4fc;
+  color: #3730a3;
+}
+
 .sort-select {
   padding: 0.4rem 0.5rem;
   font-size: 0.8rem;

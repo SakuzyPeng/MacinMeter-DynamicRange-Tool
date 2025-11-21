@@ -146,8 +146,8 @@ let currentDirectoryEntries: DirectoryAnalysisEntry[] = [];
 let inputPathEl!: HTMLInputElement;
 let scanResultsEl!: HTMLElement;
 let analyzeButton!: HTMLButtonElement;
-let resultExcludeToggleEl!: HTMLInputElement;
-let exportHidePathEl!: HTMLInputElement;
+let resultExcludeLfeBtn!: HTMLButtonElement;
+let exportHidePathBtn!: HTMLButtonElement;
 let directoryResultsEl!: HTMLElement;
 let ffmpegPathInput!: HTMLInputElement;
 let applyFfmpegBtn!: HTMLButtonElement;
@@ -158,6 +158,7 @@ let selectedFiles: string[] | null = null;
 let lastResponse: AnalyzeResponse | null = null;
 let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
 let aggregateExcludeLfe = false;
+let hidePath = false;
 let singlePanel!: AnalysisPanel;
 
 const decimals = (value: number, digits = 2): string =>
@@ -241,6 +242,9 @@ const formatDirectoryResultsAsMd = (
         ? `*${entry.fileName}*`
         : entry.fileName;
       md += `## ${fileTitle}\n\n`;
+      if (!hidePath) {
+        md += `**Path**: ${entry.path}\n\n`;
+      }
       md += "| Channel | Official | Precise |\n";
       md += "|---------|----------|----------|\n";
 
@@ -516,7 +520,6 @@ const exportImageToFile = async () => {
   const buttons = resultPanel.querySelectorAll<HTMLElement>(".copy-entry-btn");
   buttons.forEach((btn) => (btn.style.display = "none"));
 
-  const hidePath = exportHidePathEl?.checked ?? false;
   const pathSpans = resultPanel.querySelectorAll<HTMLElement>(
     ".directory-entry-header > span:last-child",
   );
@@ -634,9 +637,9 @@ const clearOutput = () => {
   lastDirectoryResponse = null;
   aggregateExcludeLfe = false;
   selectedFiles = null;
-  if (resultExcludeToggleEl) {
-    resultExcludeToggleEl.checked = false;
-    resultExcludeToggleEl.disabled = true;
+  if (resultExcludeLfeBtn) {
+    resultExcludeLfeBtn.classList.remove("active");
+    resultExcludeLfeBtn.disabled = true;
   }
   updateCopyButtons();
   setStatus(singlePanel, "请选择音频文件后运行分析。");
@@ -936,8 +939,8 @@ const renderDirectoryResults = (
     }
   }
   directoryResultsEl.innerHTML = "";
-  if (resultExcludeToggleEl) {
-    resultExcludeToggleEl.disabled = false;
+  if (resultExcludeLfeBtn) {
+    resultExcludeLfeBtn.disabled = false;
   }
   if (!response.files.length) {
     const empty = document.createElement("p");
@@ -989,7 +992,6 @@ const renderDirectoryResults = (
       copyMdBtn.type = "button";
       copyMdBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const hidePath = exportHidePathEl?.checked ?? false;
         const md = formatEntryAsMd(entry, hidePath);
         if (md) {
           void copyToClipboard(md, copyMdBtn);
@@ -1013,7 +1015,6 @@ const renderDirectoryResults = (
           const pathSpan = card.querySelector<HTMLElement>(
             ".directory-entry-header > span:last-child",
           );
-          const hidePath = exportHidePathEl?.checked ?? false;
           if (hidePath && pathSpan) {
             pathSpan.style.display = "none";
           }
@@ -1128,9 +1129,9 @@ const renderAnalysis = (response: AnalyzeResponse) => {
   lastResponse = response;
   lastDirectoryResponse = null;
   directoryResultsEl.innerHTML = "";
-  if (resultExcludeToggleEl) {
-    resultExcludeToggleEl.disabled = false;
-    resultExcludeToggleEl.checked = aggregateExcludeLfe;
+  if (resultExcludeLfeBtn) {
+    resultExcludeLfeBtn.disabled = false;
+    resultExcludeLfeBtn.classList.toggle("active", aggregateExcludeLfe);
   }
   renderAnalysisPanelContent(singlePanel, response);
   updateCopyButtons();
@@ -1214,9 +1215,9 @@ const startSingleFileAnalyze = async () => {
       return;
     }
     renderAnalysis(response);
-    if (resultExcludeToggleEl) {
-      resultExcludeToggleEl.checked = aggregateExcludeLfe;
-      resultExcludeToggleEl.disabled = false;
+    if (resultExcludeLfeBtn) {
+      resultExcludeLfeBtn.classList.toggle("active", aggregateExcludeLfe);
+      resultExcludeLfeBtn.disabled = false;
     }
   } catch (error) {
     if (token !== analysisToken) {
@@ -1643,11 +1644,11 @@ const handleDroppedPaths = async (paths: string[]) => {
 document.addEventListener("DOMContentLoaded", () => {
   inputPathEl = document.querySelector<HTMLInputElement>("#input-path")!;
   scanResultsEl = document.querySelector<HTMLElement>("#scan-results")!;
-  resultExcludeToggleEl = document.querySelector<HTMLInputElement>(
-    "#result-exclude-lfe",
+  resultExcludeLfeBtn = document.querySelector<HTMLButtonElement>(
+    "#result-exclude-lfe-btn",
   )!;
-  exportHidePathEl = document.querySelector<HTMLInputElement>(
-    "#export-hide-path",
+  exportHidePathBtn = document.querySelector<HTMLButtonElement>(
+    "#export-hide-path-btn",
   )!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
   directoryResultsEl =
@@ -1740,9 +1741,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  resultExcludeToggleEl.disabled = true;
-  resultExcludeToggleEl.addEventListener("change", () => {
-    aggregateExcludeLfe = resultExcludeToggleEl.checked;
+  resultExcludeLfeBtn.disabled = true;
+  resultExcludeLfeBtn.addEventListener("click", () => {
+    aggregateExcludeLfe = !aggregateExcludeLfe;
+    resultExcludeLfeBtn.classList.toggle("active", aggregateExcludeLfe);
+    updateAggregateView();
+  });
+
+  exportHidePathBtn.addEventListener("click", () => {
+    hidePath = !hidePath;
+    exportHidePathBtn.classList.toggle("active", hidePath);
     updateAggregateView();
   });
 

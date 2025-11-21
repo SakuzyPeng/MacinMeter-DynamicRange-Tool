@@ -43,14 +43,10 @@
       <section class="panel">
         <h2>分析结果</h2>
         <div class="result-options">
-          <label class="toggle mini">
-            <input type="checkbox" id="result-exclude-lfe" />
-            排除 LFE
-          </label>
-          <label class="toggle mini">
-            <input type="checkbox" id="export-hide-path" />
-            导出隐藏路径
-          </label>
+          <div class="copy-actions">
+            <button id="result-exclude-lfe-btn" type="button" class="copy-btn toggle-btn">排除 LFE</button>
+            <button id="export-hide-path-btn" type="button" class="copy-btn toggle-btn">隐藏路径</button>
+          </div>
           <div class="copy-actions">
             <button id="copy-md" type="button" class="copy-btn" disabled>Copy MD</button>
             <button id="copy-json" type="button" class="copy-btn" disabled>Export JSON</button>
