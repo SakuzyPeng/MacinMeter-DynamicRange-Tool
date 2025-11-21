@@ -577,7 +577,7 @@ const exportImageToFile = async () => {
   } finally {
     // 恢复显示
     buttons.forEach((btn) => (btn.style.display = ""));
-    if (hidePath) {
+    if (!hidePath) {
       pathSpans.forEach((span) => (span.style.display = ""));
     }
   }
@@ -1026,7 +1026,7 @@ const renderDirectoryResults = (
 
           // 恢复显示
           buttons.forEach((btn) => (btn.style.display = ""));
-          if (hidePath && pathSpan) {
+          if (!hidePath && pathSpan) {
             pathSpan.style.display = "";
           }
 
