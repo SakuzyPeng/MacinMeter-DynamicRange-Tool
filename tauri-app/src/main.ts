@@ -147,6 +147,7 @@ let inputPathEl!: HTMLInputElement;
 let scanResultsEl!: HTMLElement;
 let analyzeButton!: HTMLButtonElement;
 let resultExcludeToggleEl!: HTMLInputElement;
+let exportHidePathEl!: HTMLInputElement;
 let directoryResultsEl!: HTMLElement;
 let ffmpegPathInput!: HTMLInputElement;
 let applyFfmpegBtn!: HTMLButtonElement;
@@ -283,7 +284,7 @@ const formatDirectoryResultsAsMd = (
 };
 
 // 格式化单个entry为MD（用于批量分析中的单个文件复制）
-const formatEntryAsMd = (entry: DirectoryAnalysisEntry): string => {
+const formatEntryAsMd = (entry: DirectoryAnalysisEntry, hidePath = false): string => {
   if (!entry.analysis) return "";
 
   const aggregate = aggregateExcludeLfe
@@ -292,6 +293,9 @@ const formatEntryAsMd = (entry: DirectoryAnalysisEntry): string => {
   const lfeSet = new Set(entry.analysis.format.lfeIndices ?? []);
 
   let md = `# ${entry.fileName} - ${getTimestamp()}\n\n`;
+  if (!hidePath) {
+    md += `**Path**: ${entry.path}\n\n`;
+  }
   md += "| Channel | Official | Precise |\n";
   md += "|---------|----------|----------|\n";
 
@@ -508,6 +512,18 @@ const exportImageToFile = async () => {
 
   if (!filePath) return;
 
+  // 临时隐藏按钮和路径
+  const buttons = resultPanel.querySelectorAll<HTMLElement>(".copy-entry-btn");
+  buttons.forEach((btn) => (btn.style.display = "none"));
+
+  const hidePath = exportHidePathEl?.checked ?? false;
+  const pathSpans = resultPanel.querySelectorAll<HTMLElement>(
+    ".directory-entry-header > span:last-child",
+  );
+  if (hidePath) {
+    pathSpans.forEach((span) => (span.style.display = "none"));
+  }
+
   try {
     if (format === "svg") {
       const svgData = await toSvg(resultPanel, {
@@ -555,6 +571,12 @@ const exportImageToFile = async () => {
     }
   } catch (error) {
     console.error("Export image failed:", error);
+  } finally {
+    // 恢复显示
+    buttons.forEach((btn) => (btn.style.display = ""));
+    if (hidePath) {
+      pathSpans.forEach((span) => (span.style.display = ""));
+    }
   }
 };
 
@@ -967,7 +989,8 @@ const renderDirectoryResults = (
       copyMdBtn.type = "button";
       copyMdBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const md = formatEntryAsMd(entry);
+        const hidePath = exportHidePathEl?.checked ?? false;
+        const md = formatEntryAsMd(entry, hidePath);
         if (md) {
           void copyToClipboard(md, copyMdBtn);
         }
@@ -980,15 +1003,31 @@ const renderDirectoryResults = (
       copyPngBtn.type = "button";
       copyPngBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        // 找到该条目的分析面板
-        const panelEl = card.querySelector<HTMLElement>(".analysis-panel");
-        if (!panelEl) return;
 
         try {
-          const dataUrl = await toPng(panelEl, {
+          // 临时隐藏按钮
+          const buttons = card.querySelectorAll<HTMLElement>(".copy-entry-btn");
+          buttons.forEach((btn) => (btn.style.display = "none"));
+
+          // 根据设置隐藏路径
+          const pathSpan = card.querySelector<HTMLElement>(
+            ".directory-entry-header > span:last-child",
+          );
+          const hidePath = exportHidePathEl?.checked ?? false;
+          if (hidePath && pathSpan) {
+            pathSpan.style.display = "none";
+          }
+
+          const dataUrl = await toPng(card, {
             backgroundColor: "#ffffff",
             pixelRatio: 2,
           });
+
+          // 恢复显示
+          buttons.forEach((btn) => (btn.style.display = ""));
+          if (hidePath && pathSpan) {
+            pathSpan.style.display = "";
+          }
 
           // 用 canvas 扩大画布，添加边距
           const img = new Image();
@@ -1606,6 +1645,9 @@ document.addEventListener("DOMContentLoaded", () => {
   scanResultsEl = document.querySelector<HTMLElement>("#scan-results")!;
   resultExcludeToggleEl = document.querySelector<HTMLInputElement>(
     "#result-exclude-lfe",
+  )!;
+  exportHidePathEl = document.querySelector<HTMLInputElement>(
+    "#export-hide-path",
   )!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
   directoryResultsEl =
