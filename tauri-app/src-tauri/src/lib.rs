@@ -6,14 +6,14 @@ use macinmeter_dr_tool::{
     tools::{self, constants::defaults, formatter},
     AppConfig, AudioFormat, DrResult,
 };
-use tauri::Emitter;
-use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{mpsc, Arc},
 };
+use tauri::Emitter;
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -304,14 +304,7 @@ async fn analyze_directory(
         }
 
         let options = Arc::new(options);
-        let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(files.len());
-
-        for file in files {
-            let entry = analyze_single_file(file, &options);
-            // 流式推送单文件结果到前端（GUI可增量渲染）
-            let _ = window.emit("analysis-entry", &entry);
-            entries.push(entry);
-        }
+        let entries = process_file_entries_for_gui(&window, files, options)?;
 
         let response = DirectoryAnalysisResponse {
             directory: directory.display().to_string(),
@@ -341,14 +334,8 @@ async fn analyze_files(
             });
         }
         let options = Arc::new(options);
-        let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(paths.len());
-
-        for p in paths {
-            let file = PathBuf::from(p);
-            let entry = analyze_single_file(file, &options);
-            let _ = window.emit("analysis-entry", &entry);
-            entries.push(entry);
-        }
+        let files: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let entries = process_file_entries_for_gui(&window, files, options)?;
 
         let response = DirectoryAnalysisResponse {
             directory: "selected-files".to_string(),
@@ -361,6 +348,104 @@ async fn analyze_files(
     })
     .await
     .map_err(|err| AnalyzeCommandError::internal(format!("多文件分析线程调度失败: {err}")))?
+}
+
+fn process_file_entries_for_gui(
+    window: &tauri::Window,
+    files: Vec<PathBuf>,
+    options: Arc<UiAnalyzeOptions>,
+) -> Result<Vec<DirectoryAnalysisEntry>, AnalyzeCommandError> {
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if let Some(degree) = options.parallel_file_degree_hint() {
+        let effective = tools::utils::effective_parallel_degree(degree, Some(files.len()));
+        if effective > 1 {
+            return process_entries_parallel(window, files, options, effective);
+        }
+    }
+
+    Ok(process_entries_serial(window, files, options.as_ref()))
+}
+
+fn process_entries_serial(
+    window: &tauri::Window,
+    files: Vec<PathBuf>,
+    options: &UiAnalyzeOptions,
+) -> Vec<DirectoryAnalysisEntry> {
+    let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(files.len());
+    for file in files {
+        let entry = analyze_single_file(file, options);
+        let _ = window.emit("analysis-entry", &entry);
+        entries.push(entry);
+    }
+    entries
+}
+
+fn process_entries_parallel(
+    window: &tauri::Window,
+    files: Vec<PathBuf>,
+    options: Arc<UiAnalyzeOptions>,
+    parallelism: usize,
+) -> Result<Vec<DirectoryAnalysisEntry>, AnalyzeCommandError> {
+    let total = files.len();
+    let (tx, rx) = mpsc::channel();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(parallelism)
+        .stack_size(4 * 1024 * 1024)
+        .thread_name(|i| format!("gui-dr-worker-{i}"))
+        .panic_handler(|_| {
+            eprintln!(
+                "[WARNING] GUI parallel worker panicked during analysis / GUI 并行线程在处理时发生 panic"
+            );
+        })
+        .build()
+        .map_err(|e| AnalyzeCommandError::internal(format!("无法创建并行线程池: {e}")))?;
+
+    let worker_options = options.clone();
+    pool.spawn(move || {
+        files
+            .into_par_iter()
+            .enumerate()
+            .for_each_with(tx, |channel, (index, file)| {
+                let entry = analyze_single_file(file, &worker_options);
+                let _ = channel.send((index, entry));
+            });
+    });
+
+    let mut ordered_entries = Vec::with_capacity(total);
+    let mut pending: Vec<Option<DirectoryAnalysisEntry>> = Vec::with_capacity(total);
+    pending.resize_with(total, || None);
+    let mut next_emit = 0;
+
+    while let Ok((index, entry)) = rx.recv() {
+        if index < pending.len() {
+            pending[index] = Some(entry);
+        }
+        loop {
+            if next_emit >= pending.len() {
+                break;
+            }
+            if let Some(entry) = pending[next_emit].take() {
+                let _ = window.emit("analysis-entry", &entry);
+                ordered_entries.push(entry);
+                next_emit += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    while next_emit < pending.len() {
+        if let Some(entry) = pending[next_emit].take() {
+            let _ = window.emit("analysis-entry", &entry);
+            ordered_entries.push(entry);
+        }
+        next_emit += 1;
+    }
+
+    Ok(ordered_entries)
 }
 
 fn build_analyze_response(
@@ -513,6 +598,21 @@ fn analyze_single_file(file: PathBuf, options: &UiAnalyzeOptions) -> DirectoryAn
 }
 
 impl UiAnalyzeOptions {
+    /// GUI 多文件并行的并发度提示：
+    /// - 默认值：`defaults::PARALLEL_FILES_DEGREE`（当前为 4，定义于 `src/tools/constants.rs`）
+    /// - 覆盖方式：环境变量 `MACINMETER_GUI_PARALLEL_FILES`（<=1 表示禁用并行）
+    fn parallel_file_degree_hint(&self) -> Option<usize> {
+        if let Ok(value) = std::env::var("MACINMETER_GUI_PARALLEL_FILES") {
+            if let Ok(parsed) = value.trim().parse::<usize>() {
+                if parsed <= 1 {
+                    return None;
+                }
+                return Some(parsed);
+            }
+        }
+        Some(defaults::PARALLEL_FILES_DEGREE)
+    }
+
     fn to_app_config(&self, input_path: PathBuf) -> AppConfig {
         AppConfig {
             input_path,
