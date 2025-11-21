@@ -1076,6 +1076,9 @@ const renderDirectoryResults = (
 
     const pathText = document.createElement("span");
     pathText.textContent = entry.path;
+    if (hidePath) {
+      pathText.style.display = "none";
+    }
     header.appendChild(title);
     header.appendChild(pathText);
     card.appendChild(header);
