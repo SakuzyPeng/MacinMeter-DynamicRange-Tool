@@ -6,6 +6,7 @@ use macinmeter_dr_tool::{
     tools::{self, constants::defaults, formatter},
     AppConfig, AudioFormat, DrResult,
 };
+use tauri::Emitter;
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use std::{
@@ -287,6 +288,7 @@ fn path_is_directory(path: PathBuf) -> Result<bool, AnalyzeCommandError> {
 
 #[tauri::command]
 async fn analyze_directory(
+    window: tauri::Window,
     path: PathBuf,
     options: UiAnalyzeOptions,
 ) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
@@ -302,15 +304,24 @@ async fn analyze_directory(
         }
 
         let options = Arc::new(options);
-        let entries: Vec<DirectoryAnalysisEntry> = files
-            .into_par_iter()
-            .map(|file| analyze_single_file(file, &options))
-            .collect();
+        let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(files.len());
 
-        Ok(DirectoryAnalysisResponse {
+        for file in files {
+            let entry = analyze_single_file(file, &options);
+            // 流式推送单文件结果到前端（GUI可增量渲染）
+            let _ = window.emit("analysis-entry", &entry);
+            entries.push(entry);
+        }
+
+        let response = DirectoryAnalysisResponse {
             directory: directory.display().to_string(),
             files: entries,
-        })
+        };
+
+        // 发送完成事件，便于前端更新状态
+        let _ = window.emit("analysis-finished", &response);
+
+        Ok(response)
     })
     .await
     .map_err(|err| AnalyzeCommandError::internal(format!("批量分析线程调度失败: {err}")))?
@@ -318,6 +329,7 @@ async fn analyze_directory(
 
 #[tauri::command]
 async fn analyze_files(
+    window: tauri::Window,
     paths: Vec<String>,
     options: UiAnalyzeOptions,
 ) -> Result<DirectoryAnalysisResponse, AnalyzeCommandError> {
@@ -329,15 +341,23 @@ async fn analyze_files(
             });
         }
         let options = Arc::new(options);
-        let entries: Vec<DirectoryAnalysisEntry> = paths
-            .into_par_iter()
-            .map(|p| PathBuf::from(p))
-            .map(|file| analyze_single_file(file, &options))
-            .collect();
-        Ok(DirectoryAnalysisResponse {
+        let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(paths.len());
+
+        for p in paths {
+            let file = PathBuf::from(p);
+            let entry = analyze_single_file(file, &options);
+            let _ = window.emit("analysis-entry", &entry);
+            entries.push(entry);
+        }
+
+        let response = DirectoryAnalysisResponse {
             directory: "selected-files".to_string(),
             files: entries,
-        })
+        };
+
+        let _ = window.emit("analysis-finished", &response);
+
+        Ok(response)
     })
     .await
     .map_err(|err| AnalyzeCommandError::internal(format!("多文件分析线程调度失败: {err}")))?

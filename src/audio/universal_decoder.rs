@@ -11,6 +11,18 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 
+/// 在 Windows 上隐藏子进程控制台窗口（用于 GUI 场景避免 ffprobe 弹窗）
+#[cfg(target_os = "windows")]
+fn configure_creation_flags(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+/// 非 Windows 平台：不做任何额外配置
+#[cfg(not(target_os = "windows"))]
+fn configure_creation_flags(_cmd: &mut std::process::Command) {}
+
 // 重新导出公共接口
 pub use super::format::{AudioFormat, FormatSupport};
 pub use super::stats::ChunkSizeStats;
@@ -178,19 +190,20 @@ impl UniversalDecoder {
                 } else {
                     "ffprobe"
                 };
-                if let Ok(out) = std::process::Command::new(ffprobe)
-                    .args([
-                        "-v",
-                        "error",
-                        "-select_streams",
-                        "a:0",
-                        "-show_entries",
-                        "stream=codec_name",
-                        "-of",
-                        "default=noprint_wrappers=1:nokey=1",
-                        &path.to_string_lossy(),
-                    ])
-                    .output()
+                let mut cmd = std::process::Command::new(ffprobe);
+                cmd.args([
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=codec_name",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    &path.to_string_lossy(),
+                ]);
+                configure_creation_flags(&mut cmd);
+                if let Ok(out) = cmd.output()
                     && out.status.success()
                 {
                     let codec = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
