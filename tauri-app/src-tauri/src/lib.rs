@@ -12,6 +12,7 @@ use std::{
     fmt,
     path::{Path, PathBuf},
     sync::{mpsc, Arc},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use tauri::Emitter;
 
@@ -168,6 +169,8 @@ struct AnalyzeCommandError {
     supported_formats: Option<Vec<String>>,
 }
 
+static DEEP_SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
+
 impl fmt::Display for AnalyzeCommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.message)
@@ -233,33 +236,126 @@ async fn analyze_audio(
     .map_err(|err| AnalyzeCommandError::internal(format!("分析线程调度失败: {err}")))?
 }
 
+fn build_scan_result(directory: &Path, files: Vec<PathBuf>) -> ScanResult {
+    ScanResult {
+        directory: directory.display().to_string(),
+        files: files
+            .into_iter()
+            .map(|p| {
+                let file_name = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| p.to_string_lossy().into_owned());
+                ScannedFile {
+                    file_name,
+                    path: p.to_string_lossy().into_owned(),
+                }
+            })
+            .collect(),
+        supported_formats: supported_formats_list(),
+    }
+}
+
 #[tauri::command]
 async fn scan_audio_directory(path: PathBuf) -> Result<ScanResult, AnalyzeCommandError> {
     let directory = path.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let files =
-            tools::scan_audio_files(&directory).map_err(|e| AnalyzeCommandError::from_scan_error(e, &directory))?;
-        Ok(ScanResult {
-            directory: directory.display().to_string(),
-            files: files
-                .into_iter()
-                .map(|p| {
-                    let file_name = p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| p.to_string_lossy().into_owned());
-                    ScannedFile {
-                        file_name,
-                        path: p.to_string_lossy().into_owned(),
-                    }
-                })
-                .collect(),
-            supported_formats: supported_formats_list(),
-        })
+        let files = tools::scan_audio_files(&directory)
+            .map_err(|e| AnalyzeCommandError::from_scan_error(e, &directory))?;
+        Ok(build_scan_result(&directory, files))
     })
     .await
     .map_err(|err| AnalyzeCommandError::internal(format!("扫描线程调度失败: {err}")))?
+}
+
+#[tauri::command]
+async fn deep_scan_audio_directory(
+    window: tauri::Window,
+    path: PathBuf,
+) -> Result<ScanResult, AnalyzeCommandError> {
+    let directory = path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::fs;
+
+        DEEP_SCAN_CANCEL.store(false, Ordering::SeqCst);
+
+        if !directory.exists() {
+            return Err(AnalyzeCommandError::from_scan_error(
+                AudioError::InvalidInput(format!("目录不存在: {}", directory.display())),
+                &directory,
+            ));
+        }
+        if !directory.is_dir() {
+            return Err(AnalyzeCommandError::from_scan_error(
+                AudioError::InvalidInput(format!(
+                    "路径不是目录: {}",
+                    directory.display()
+                )),
+                &directory,
+            ));
+        }
+
+        let decoder = UniversalDecoder::new();
+        let supported_exts = decoder.supported_formats().extensions;
+
+        let mut files: Vec<PathBuf> = Vec::new();
+
+        fn visit_dir(
+            dir: &Path,
+            supported_exts: &[&str],
+            files: &mut Vec<PathBuf>,
+            window: &tauri::Window,
+        ) -> Result<(), AudioError> {
+            if DEEP_SCAN_CANCEL.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+
+            let entries = fs::read_dir(dir).map_err(AudioError::IoError)?;
+            for entry in entries {
+                let entry = entry.map_err(AudioError::IoError)?;
+                let path = entry.path();
+                let file_type = entry.file_type().map_err(AudioError::IoError)?;
+
+                if DEEP_SCAN_CANCEL.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                if file_type.is_dir() {
+                    visit_dir(&path, supported_exts, files, window)?;
+                } else if file_type.is_file() {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        let ext_lower = ext.to_lowercase();
+                        if supported_exts.contains(&ext_lower.as_str()) {
+                            files.push(path.clone());
+                            let count = files.len();
+                            let _ = window.emit("deep-scan-progress", &count);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        if let Err(e) = visit_dir(&directory, supported_exts, &mut files, &window) {
+            return Err(AnalyzeCommandError::from_scan_error(e, &directory));
+        }
+
+        files.sort();
+
+        let result = build_scan_result(&directory, files);
+        DEEP_SCAN_CANCEL.store(false, Ordering::SeqCst);
+        Ok(result)
+    })
+    .await
+    .map_err(|err| AnalyzeCommandError::internal(format!("递归扫描线程调度失败: {err}")))?
+}
+
+#[tauri::command]
+fn cancel_deep_scan() -> Result<(), AnalyzeCommandError> {
+    DEEP_SCAN_CANCEL.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -375,9 +471,12 @@ fn process_entries_serial(
     options: &UiAnalyzeOptions,
 ) -> Vec<DirectoryAnalysisEntry> {
     let mut entries: Vec<DirectoryAnalysisEntry> = Vec::with_capacity(files.len());
+    let mut completed: usize = 0;
     for file in files {
         let entry = analyze_single_file(file, options);
+        completed += 1;
         let _ = window.emit("analysis-entry", &entry);
+        let _ = window.emit("analysis-progress", &completed);
         entries.push(entry);
     }
     entries
@@ -418,8 +517,11 @@ fn process_entries_parallel(
     let mut pending: Vec<Option<DirectoryAnalysisEntry>> = Vec::with_capacity(total);
     pending.resize_with(total, || None);
     let mut next_emit = 0;
+    let mut completed: usize = 0;
 
     while let Ok((index, entry)) = rx.recv() {
+        completed += 1;
+        let _ = window.emit("analysis-progress", &completed);
         if index < pending.len() {
             pending[index] = Some(entry);
         }
@@ -671,9 +773,12 @@ pub fn run() {
     tauri::Builder::<tauri::Wry>::default()
         .plugin(tauri_plugin_opener::init::<tauri::Wry>())
         .plugin(tauri_plugin_dialog::init::<tauri::Wry>())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             analyze_audio,
             scan_audio_directory,
+            deep_scan_audio_directory,
+            cancel_deep_scan,
             path_is_directory,
             analyze_directory,
             analyze_files,

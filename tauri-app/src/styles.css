@@ -61,6 +61,16 @@ body {
   gap: 0.4rem;
 }
 
+.danger {
+  border-color: #f97316;
+  color: #b45309;
+}
+
+.danger:hover:not(:disabled) {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
 .path-actions #analyze-btn {
   flex-grow: 1;
 }
@@ -138,23 +148,96 @@ button.ghost {
 
 .result-options {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.copy-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.copy-btn {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.8rem;
+  background: #e2e8f0;
+  color: #475569;
+  box-shadow: none;
+}
+
+.copy-btn:hover:not(:disabled) {
+  background: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.copy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copy-btn.copied {
+  background: #86efac;
+  color: #166534;
+}
+
+.sort-select {
+  padding: 0.35rem 0.4rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.search-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.search-actions input {
+  width: 150px;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
 }
 
 .status {
+  position: relative;
   padding: 0.6rem 0.9rem;
   border-radius: 10px;
   background: #f1f5f9;
   border: 1px dashed #cbd5f5;
   margin-bottom: 0.8rem;
   font-size: 0.9rem;
+  overflow: hidden;
+}
+
+.status .progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #c7d2fe, #a5b4fc);
+  transition: width 0.3s ease;
+  z-index: 0;
+}
+
+.status .status-text {
+  position: relative;
+  z-index: 1;
 }
 
 .status.error {
   background: #fee2e2;
   border-color: #fca5a5;
   color: #b91c1c;
+}
+
+.status.error .progress-fill {
+  display: none;
 }
 
 .dr-table table {
@@ -245,6 +328,52 @@ button.ghost {
   display: none;
 }
 
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-dialog {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  min-width: 280px;
+}
+
+.modal-dialog h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.modal-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.modal-buttons button {
+  width: 100%;
+  padding: 0.7rem;
+}
+
+.export-header {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
 .footer {
   text-align: center;
   font-size: 0.8rem;
@@ -255,8 +384,65 @@ button.ghost {
   .form-actions {
     justify-content: center;
   }
-
 }
+
+@media print {
+  body {
+    background: white;
+  }
+
+  .app {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .panel:first-child,
+  .path-row,
+  .path-actions,
+  .custom-ffmpeg,
+  .scan-results,
+  .result-options,
+  .copy-actions,
+  .copy-entry-btn {
+    display: none !important;
+  }
+
+  .panel {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+
+  .panel h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+  }
+
+  .status {
+    border: none;
+    background: none;
+    padding: 0;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+
+  .status .progress-fill {
+    display: none;
+  }
+
+  .directory-entry {
+    break-inside: avoid;
+    page-break-inside: avoid; /* 兼容旧浏览器 */
+    border: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+  }
+
+  .analysis-panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 .analysis-panel {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -287,12 +473,28 @@ button.ghost {
 .directory-entry-header h3 {
   margin: 0;
   font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .directory-entry-header span {
   font-size: 0.85rem;
   color: #64748b;
   word-break: break-all;
+}
+
+.copy-entry-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  background: #e2e8f0;
+  color: #475569;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.copy-entry-btn:hover {
+  background: #cbd5e1;
 }
 
 .directory-entry .analysis-panel {

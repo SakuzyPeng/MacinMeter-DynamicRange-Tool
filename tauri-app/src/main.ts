@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, writeFile } from "@tauri-apps/plugin-fs";
+import { toPng, toSvg } from "html-to-image";
 
 type UiAnalyzeOptions = {
   parallelDecoding: boolean;
@@ -130,6 +132,15 @@ let analyzing = false;
 let analysisToken = 0;
 let analysisEntryUnlisten: (() => void) | null = null;
 let analysisFinishedUnlisten: (() => void) | null = null;
+let analysisProgressUnlisten: (() => void) | null = null;
+let deepScanProgressUnlisten: (() => void) | null = null;
+let deepScanning = false;
+let deepScanCancelled = false;
+let sortModeSelect!: HTMLSelectElement;
+let resultSearchInput!: HTMLInputElement;
+let resultSearchNextBtn!: HTMLButtonElement;
+let lastSearchQuery = "";
+let lastSearchIndex = -1;
 let currentDirectoryEntries: DirectoryAnalysisEntry[] = [];
 
 let inputPathEl!: HTMLInputElement;
@@ -139,6 +150,9 @@ let resultExcludeToggleEl!: HTMLInputElement;
 let directoryResultsEl!: HTMLElement;
 let ffmpegPathInput!: HTMLInputElement;
 let applyFfmpegBtn!: HTMLButtonElement;
+let copyMdBtn!: HTMLButtonElement;
+let copyJsonBtn!: HTMLButtonElement;
+let exportImageBtn!: HTMLButtonElement;
 let selectedFiles: string[] | null = null;
 let lastResponse: AnalyzeResponse | null = null;
 let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
@@ -148,9 +162,451 @@ let singlePanel!: AnalysisPanel;
 const decimals = (value: number, digits = 2): string =>
   Number.isFinite(value) ? value.toFixed(digits) : "-";
 
+// 获取格式化的时间戳
+const getTimestamp = (): string => {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+};
+
+// 获取文件名格式的时间戳
+const getFileTimestamp = (): string => {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+};
+
+// 格式化单文件结果为Markdown
+const formatSingleResultAsMd = (response: AnalyzeResponse): string => {
+  const aggregate = aggregateExcludeLfe
+    ? response.aggregates.excludeLfe
+    : response.aggregates.includeLfe;
+  const lfeSet = new Set(response.format.lfeIndices ?? []);
+  const fileName = response.sourcePath.split("/").pop() || response.sourcePath;
+
+  let md = `# MacinMeter DR Analysis - ${getTimestamp()}\n\n`;
+  md += `## ${fileName}\n\n`;
+  md += "| Channel | Official | Precise |\n";
+  md += "|---------|----------|----------|\n";
+
+  for (const ch of response.drResults) {
+    const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+    const isLfe = lfeSet.has(ch.channel);
+    const isExcluded = isSilent || (aggregateExcludeLfe && isLfe);
+
+    let label = `CH ${ch.channel + 1}`;
+    const tags: string[] = [];
+    if (isLfe) tags.push("LFE");
+    if (isSilent) tags.push("Silent");
+    if (isExcluded) tags.push("excluded");
+    if (tags.length) label += ` [${tags.join(", ")}]`;
+
+    const drRounded = isSilent ? "-" : `DR${ch.drValueRounded}`;
+    const drPrecise = isSilent ? "-" : decimals(ch.drValue);
+    md += `| ${label} | ${drRounded} | ${drPrecise} |\n`;
+  }
+
+  // 汇总行
+  if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
+    const mode = aggregateExcludeLfe ? " (excl. LFE)" : "";
+    md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
+  }
+
+  // 边界风险用斜体
+  if (aggregate.boundaryWarning) {
+    const w = aggregate.boundaryWarning;
+    md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+  }
+
+  return md;
+};
+
+// 格式化批量结果为Markdown
+const formatDirectoryResultsAsMd = (
+  response: DirectoryAnalysisResponse,
+): string => {
+  let md = `# MacinMeter DR Analysis - ${getTimestamp()}\n\n`;
+
+  for (const entry of response.files) {
+    if (entry.analysis) {
+      const aggregate = aggregateExcludeLfe
+        ? entry.analysis.aggregates.excludeLfe
+        : entry.analysis.aggregates.includeLfe;
+      const lfeSet = new Set(entry.analysis.format.lfeIndices ?? []);
+      const hasBoundaryWarning = aggregate.boundaryWarning !== null;
+
+      // 文件名：有边界风险用斜体
+      const fileTitle = hasBoundaryWarning
+        ? `*${entry.fileName}*`
+        : entry.fileName;
+      md += `## ${fileTitle}\n\n`;
+      md += "| Channel | Official | Precise |\n";
+      md += "|---------|----------|----------|\n";
+
+      for (const ch of entry.analysis.drResults) {
+        const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+        const isLfe = lfeSet.has(ch.channel);
+        const isExcluded = isSilent || (aggregateExcludeLfe && isLfe);
+
+        let label = `CH ${ch.channel + 1}`;
+        const tags: string[] = [];
+        if (isLfe) tags.push("LFE");
+        if (isSilent) tags.push("Silent");
+        if (isExcluded) tags.push("excluded");
+        if (tags.length) label += ` [${tags.join(", ")}]`;
+
+        const drRounded = isSilent ? "-" : `DR${ch.drValueRounded}`;
+        const drPrecise = isSilent ? "-" : decimals(ch.drValue);
+        md += `| ${label} | ${drRounded} | ${drPrecise} |\n`;
+      }
+
+      // 汇总行
+      if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
+        const mode = aggregateExcludeLfe ? " (excl. LFE)" : "";
+        md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
+      }
+
+      // 边界风险
+      if (aggregate.boundaryWarning) {
+        const w = aggregate.boundaryWarning;
+        md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+      }
+
+      md += "\n";
+    } else if (entry.error) {
+      md += `## ${entry.fileName}\n\n`;
+      md += `**Error**: ${entry.error.message}\n\n`;
+    }
+  }
+
+  return md;
+};
+
+// 格式化单个entry为MD（用于批量分析中的单个文件复制）
+const formatEntryAsMd = (entry: DirectoryAnalysisEntry): string => {
+  if (!entry.analysis) return "";
+
+  const aggregate = aggregateExcludeLfe
+    ? entry.analysis.aggregates.excludeLfe
+    : entry.analysis.aggregates.includeLfe;
+  const lfeSet = new Set(entry.analysis.format.lfeIndices ?? []);
+
+  let md = `# ${entry.fileName} - ${getTimestamp()}\n\n`;
+  md += "| Channel | Official | Precise |\n";
+  md += "|---------|----------|----------|\n";
+
+  for (const ch of entry.analysis.drResults) {
+    const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+    const isLfe = lfeSet.has(ch.channel);
+    const isExcluded = isSilent || (aggregateExcludeLfe && isLfe);
+
+    let label = `CH ${ch.channel + 1}`;
+    const tags: string[] = [];
+    if (isLfe) tags.push("LFE");
+    if (isSilent) tags.push("Silent");
+    if (isExcluded) tags.push("excluded");
+    if (tags.length) label += ` [${tags.join(", ")}]`;
+
+    const drRounded = isSilent ? "-" : `DR${ch.drValueRounded}`;
+    const drPrecise = isSilent ? "-" : decimals(ch.drValue);
+    md += `| ${label} | ${drRounded} | ${drPrecise} |\n`;
+  }
+
+  if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
+    const mode = aggregateExcludeLfe ? " (excl. LFE)" : "";
+    md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
+  }
+
+  if (aggregate.boundaryWarning) {
+    const w = aggregate.boundaryWarning;
+    md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+  }
+
+  return md;
+};
+
+// 格式化为JSON（用于导出）
+const formatResultAsJson = (): object => {
+  const timestamp = getTimestamp();
+  const version = "0.1.0"; // TODO: 从app metadata获取
+
+  const formatChannelInfo = (ch: DrChannelResult, lfeIndices: number[]) => {
+    const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+    const isLfe = lfeIndices.includes(ch.channel);
+    const isExcluded = isSilent || (aggregateExcludeLfe && isLfe);
+
+    return {
+      channel: ch.channel + 1,
+      drRounded: ch.drValueRounded,
+      drPrecise: ch.drValue,
+      status: isSilent ? "silent" : isLfe ? "lfe" : "normal",
+      excluded: isExcluded,
+    };
+  };
+
+  if (lastDirectoryResponse) {
+    const files = lastDirectoryResponse.files.map((entry) => {
+      if (entry.analysis) {
+        const aggregate = aggregateExcludeLfe
+          ? entry.analysis.aggregates.excludeLfe
+          : entry.analysis.aggregates.includeLfe;
+        const lfeIndices = entry.analysis.format.lfeIndices ?? [];
+
+        return {
+          file: entry.fileName,
+          path: entry.path,
+          officialDr: aggregate.officialDr,
+          preciseDr: aggregate.preciseDr,
+          boundaryWarning: aggregate.boundaryWarning
+            ? {
+                level: aggregate.boundaryWarning.level,
+                direction: aggregate.boundaryWarning.direction,
+                distanceDb: aggregate.boundaryWarning.distanceDb,
+              }
+            : null,
+          channels: entry.analysis.drResults.map((ch) =>
+            formatChannelInfo(ch, lfeIndices),
+          ),
+        };
+      }
+      return {
+        file: entry.fileName,
+        path: entry.path,
+        error: entry.error?.message,
+      };
+    });
+
+    return {
+      tool: "MacinMeter DR Tool",
+      version,
+      timestamp,
+      excludeLfe: aggregateExcludeLfe,
+      files,
+    };
+  }
+
+  if (lastResponse) {
+    const aggregate = aggregateExcludeLfe
+      ? lastResponse.aggregates.excludeLfe
+      : lastResponse.aggregates.includeLfe;
+    const lfeIndices = lastResponse.format.lfeIndices ?? [];
+    const fileName =
+      lastResponse.sourcePath.split("/").pop() || lastResponse.sourcePath;
+
+    return {
+      tool: "MacinMeter DR Tool",
+      version,
+      timestamp,
+      excludeLfe: aggregateExcludeLfe,
+      file: fileName,
+      path: lastResponse.sourcePath,
+      officialDr: aggregate.officialDr,
+      preciseDr: aggregate.preciseDr,
+      boundaryWarning: aggregate.boundaryWarning
+        ? {
+            level: aggregate.boundaryWarning.level,
+            direction: aggregate.boundaryWarning.direction,
+            distanceDb: aggregate.boundaryWarning.distanceDb,
+          }
+        : null,
+      channels: lastResponse.drResults.map((ch) =>
+        formatChannelInfo(ch, lfeIndices),
+      ),
+    };
+  }
+
+  return {};
+};
+
+// 导出JSON到文件
+const exportJsonToFile = async () => {
+  const data = formatResultAsJson();
+  if (Object.keys(data).length === 0) return;
+
+  const defaultName = `MacinMeter_v0.1.0_${getFileTimestamp()}.json`;
+
+  const filePath = await save({
+    defaultPath: defaultName,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+
+  if (filePath) {
+    await writeTextFile(filePath, JSON.stringify(data, null, 2));
+  }
+};
+
+// 显示格式选择对话框
+const showFormatDialog = (): Promise<"png" | "svg" | null> => {
+  return new Promise((resolve) => {
+    // 创建模态对话框
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "modal-dialog";
+    dialog.innerHTML = `
+      <h3>选择导出格式</h3>
+      <div class="modal-buttons">
+        <button type="button" data-format="png">PNG</button>
+        <button type="button" data-format="svg">SVG</button>
+        <button type="button" data-format="cancel" class="ghost">取消</button>
+      </div>
+    `;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const cleanup = () => {
+      document.body.removeChild(overlay);
+    };
+
+    // 点击按钮
+    dialog.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const format = btn.dataset.format;
+        cleanup();
+        if (format === "png") resolve("png");
+        else if (format === "svg") resolve("svg");
+        else resolve(null);
+      });
+    });
+
+    // 点击遮罩关闭
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        cleanup();
+        resolve(null);
+      }
+    });
+  });
+};
+
+// 导出图片到文件
+const exportImageToFile = async () => {
+  const hasResult = lastResponse !== null || lastDirectoryResponse !== null;
+  if (!hasResult) return;
+
+  // 先选择格式
+  const format = await showFormatDialog();
+  if (!format) return;
+
+  // 获取结果面板
+  const resultPanel = document.querySelector<HTMLElement>(".panel:last-child");
+  if (!resultPanel) return;
+
+  const ext = format === "svg" ? "svg" : "png";
+  const defaultName = `MacinMeter_v0.1.0_${getFileTimestamp()}.${ext}`;
+
+  const filePath = await save({
+    defaultPath: defaultName,
+    filters: [
+      { name: format === "svg" ? "SVG Image" : "PNG Image", extensions: [ext] },
+    ],
+  });
+
+  if (!filePath) return;
+
+  // 添加标题信息
+  const header = document.createElement("div");
+  header.className = "export-header";
+  header.textContent = `MacinMeter DR GUI v0.1.0 - ${getTimestamp()}`;
+  resultPanel.insertBefore(header, resultPanel.firstChild);
+
+  try {
+    if (format === "svg") {
+      const svgData = await toSvg(resultPanel, {
+        backgroundColor: "#ffffff",
+      });
+      let svgContent = decodeURIComponent(svgData.split(",")[1]);
+      // 让独立打开的 SVG 在浏览器中水平居中显示
+      svgContent = svgContent.replace(
+        /<svg([^>]*)>/,
+        '<svg$1 style="display:block;margin:0 auto;">',
+      );
+      await writeTextFile(filePath, svgContent);
+    } else {
+      // PNG：通过放大导出画布尺寸来提高像素分辨率
+      const rect = resultPanel.getBoundingClientRect();
+      const baseWidth = rect.width;
+      const baseHeight = rect.height;
+      const pixelRatio = 4;
+
+      // 避免生成过大的画布，和 html-to-image 内部 16384 限制保持一致
+      const maxCanvas = 16384;
+      const scale =
+        baseWidth > 0 && baseHeight > 0
+          ? Math.min(pixelRatio, maxCanvas / Math.max(baseWidth, baseHeight))
+          : 1;
+
+      const canvasWidth = Math.round(baseWidth * scale);
+      const canvasHeight = Math.round(baseHeight * scale);
+
+      const dataUrl = await toPng(resultPanel, {
+        backgroundColor: "#ffffff",
+        canvasWidth,
+        canvasHeight,
+        // 固定内部像素比为 1，全部缩放由 canvasWidth/Height 控制
+        pixelRatio: 1,
+        skipAutoScale: true,
+      });
+      const base64 = dataUrl.split(",")[1];
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      await writeFile(filePath, bytes);
+    }
+  } catch (error) {
+    console.error("Export image failed:", error);
+  } finally {
+    // 移除标题
+    header.remove();
+  }
+};
+
+// 拷贝到剪贴板
+const copyToClipboard = async (text: string, btn: HTMLButtonElement) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add("copied");
+    const original = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => {
+      btn.classList.remove("copied");
+      btn.textContent = original;
+    }, 1500);
+  } catch {
+    // 静默失败
+  }
+};
+
+// 更新拷贝按钮状态
+const updateCopyButtons = () => {
+  const hasResult = lastResponse !== null || lastDirectoryResponse !== null;
+  if (copyMdBtn) copyMdBtn.disabled = !hasResult;
+  if (copyJsonBtn) copyJsonBtn.disabled = !hasResult;
+  if (exportImageBtn) exportImageBtn.disabled = !hasResult;
+};
+
+// 进度状态
+let analysisTotal = 0;
+
 const setStatus = (panel: AnalysisPanel, message: string, isError = false) => {
-  panel.statusEl.textContent = message;
+  panel.statusEl.innerHTML = `<span class="status-text">${message}</span><div class="progress-fill" style="width: 0%"></div>`;
   panel.statusEl.classList.toggle("error", isError);
+};
+
+const setStatusWithProgress = (
+  panel: AnalysisPanel,
+  current: number,
+  total: number,
+) => {
+  analysisTotal = total;
+
+  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  panel.statusEl.innerHTML = `<span class="status-text">分析中... ${current}/${total}</span><div class="progress-fill" style="width: ${percent}%"></div>`;
+  panel.statusEl.classList.remove("error");
 };
 
 const clearOutput = () => {
@@ -167,6 +623,7 @@ const clearOutput = () => {
     resultExcludeToggleEl.checked = false;
     resultExcludeToggleEl.disabled = true;
   }
+  updateCopyButtons();
   setStatus(singlePanel, "请选择音频文件后运行分析。");
 };
 
@@ -175,9 +632,20 @@ const cleanupAnalysisListeners = () => {
     analysisEntryUnlisten();
     analysisEntryUnlisten = null;
   }
+  if (analysisProgressUnlisten) {
+    analysisProgressUnlisten();
+    analysisProgressUnlisten = null;
+  }
   if (analysisFinishedUnlisten) {
     analysisFinishedUnlisten();
     analysisFinishedUnlisten = null;
+  }
+};
+
+const cleanupDeepScanListeners = () => {
+  if (deepScanProgressUnlisten) {
+    deepScanProgressUnlisten();
+    deepScanProgressUnlisten = null;
   }
 };
 
@@ -210,7 +678,10 @@ const createAnalysisPanelElement = (): AnalysisPanel => {
   return { container, statusEl, tableEl, warningsEl, trimEl, silenceEl };
 };
 
-const disableWhile = async (flagSetter: (state: boolean) => void, task: () => Promise<void>) => {
+const disableWhile = async (
+  flagSetter: (state: boolean) => void,
+  task: () => Promise<void>,
+) => {
   flagSetter(true);
   try {
     await task();
@@ -233,7 +704,9 @@ const collectFilesFromPaths = async (paths: string[]): Promise<string[]> => {
     const isDir = await checkIsDirectory(p);
     if (isDir) {
       try {
-        const result = await invoke<ScanResult>("scan_audio_directory", { path: p });
+        const result = await invoke<ScanResult>("scan_audio_directory", {
+          path: p,
+        });
         for (const f of result.files) {
           filePaths.push(f.path);
         }
@@ -248,7 +721,10 @@ const collectFilesFromPaths = async (paths: string[]): Promise<string[]> => {
   return Array.from(new Set(filePaths));
 };
 
-const updateSelectedPath = (path: string, kind: "file" | "directory" | "files") => {
+const updateSelectedPath = (
+  path: string,
+  kind: "file" | "directory" | "files",
+) => {
   selectedPath = path;
   selectedKind = kind;
   inputPathEl.value = path;
@@ -274,7 +750,7 @@ const gatherOptions = (): UiAnalyzeOptions => ({
 const renderDrTable = (
   panel: AnalysisPanel,
   response: AnalyzeResponse,
-  highlightExcludedLfe: boolean
+  highlightExcludedLfe: boolean,
 ) => {
   const channels = response.drResults;
   if (!channels.length) {
@@ -325,19 +801,18 @@ const renderDrTable = (
   `;
 };
 
-
 const renderWarnings = (
   panel: AnalysisPanel,
   response: AnalyzeResponse,
-  aggregate: AggregateView
+  aggregate: AggregateView,
 ) => {
   const notes: string[] = [];
   if (aggregate.boundaryWarning) {
     const warning = aggregate.boundaryWarning;
     notes.push(
       `边界风险 (${warning.level}): 距 ${warning.direction} 边界 ${warning.distanceDb.toFixed(
-        2
-      )} dB。`
+        2,
+      )} dB。`,
     );
   }
   if (aggregate.warningText) {
@@ -345,7 +820,7 @@ const renderWarnings = (
   }
   if (response.format.partialAnalysis) {
     notes.push(
-      `警告：解码时跳过 ${response.format.skippedPackets} 个损坏包，结果仅供参考。`
+      `警告：解码时跳过 ${response.format.skippedPackets} 个损坏包，结果仅供参考。`,
     );
   }
   if (!notes.length) {
@@ -353,7 +828,10 @@ const renderWarnings = (
     return;
   }
   panel.warningsEl.innerHTML = notes
-    .map((note) => `<div class="warning-card">${note.replace(/\n/g, "<br>")}</div>`)
+    .map(
+      (note) =>
+        `<div class="warning-card">${note.replace(/\n/g, "<br>")}</div>`,
+    )
     .join("");
 };
 
@@ -383,16 +861,19 @@ const renderTrimReport = (panel: AnalysisPanel, report?: TrimReport | null) => {
     <div class="warning-card">
       <strong>首尾静音裁切</strong>
       <p>阈值 ${report.thresholdDb.toFixed(1)} dBFS，最小时长 ${report.minRunMs.toFixed(
-        0
+        0,
       )} ms。</p>
       <p>裁切 ${report.totalSamplesTrimmed} 个样本（首部 ${decimals(
-    report.leadingSeconds
-  )}s / 尾部 ${decimals(report.trailingSeconds)}s）。</p>
+        report.leadingSeconds,
+      )}s / 尾部 ${decimals(report.trailingSeconds)}s）。</p>
     </div>
   `;
 };
 
-const renderSilenceReport = (panel: AnalysisPanel, report?: SilenceReport | null) => {
+const renderSilenceReport = (
+  panel: AnalysisPanel,
+  report?: SilenceReport | null,
+) => {
   if (!report) {
     panel.silenceEl.innerHTML = "";
     return;
@@ -405,7 +886,7 @@ const renderSilenceReport = (panel: AnalysisPanel, report?: SilenceReport | null
         <td>${ch.filteredWindows}/${ch.totalWindows}</td>
         <td>${decimals(ch.filteredPercent)}</td>
       </tr>
-    `
+    `,
     )
     .join("");
   panel.silenceEl.innerHTML = `
@@ -427,10 +908,17 @@ const renderSilenceReport = (panel: AnalysisPanel, report?: SilenceReport | null
 
 const renderDirectoryResults = (
   response: DirectoryAnalysisResponse,
-  remember: boolean = true
+  remember: boolean = true,
 ) => {
   if (remember) {
     lastDirectoryResponse = response;
+    updateCopyButtons();
+    if (sortModeSelect) {
+      sortModeSelect.disabled = response.files.length === 0;
+    }
+    if (resultSearchNextBtn) {
+      resultSearchNextBtn.disabled = response.files.length === 0;
+    }
   }
   directoryResultsEl.innerHTML = "";
   if (resultExcludeToggleEl) {
@@ -443,14 +931,57 @@ const renderDirectoryResults = (
     return;
   }
 
-  response.files.forEach((entry: DirectoryAnalysisEntry) => {
+  const files = response.files.slice();
+
+  const sortMode = sortModeSelect ? sortModeSelect.value : "none";
+  const getEntryPreciseDr = (entry: DirectoryAnalysisEntry): number | null => {
+    if (!entry.analysis) return null;
+    const aggregate = aggregateExcludeLfe
+      ? entry.analysis.aggregates.excludeLfe
+      : entry.analysis.aggregates.includeLfe;
+    return aggregate.preciseDr;
+  };
+
+  if (sortMode === "dr-asc" || sortMode === "dr-desc") {
+    files.sort((a, b) => {
+      const da = getEntryPreciseDr(a);
+      const db = getEntryPreciseDr(b);
+      if (da === null && db === null) return 0;
+      if (da === null) return 1;
+      if (db === null) return -1;
+      return sortMode === "dr-asc" ? da - db : db - da;
+    });
+  }
+
+  files.forEach((entry: DirectoryAnalysisEntry) => {
     const card = document.createElement("div");
     card.className = "directory-entry";
+    card.dataset.path = entry.path;
+    card.dataset.fileName = entry.fileName;
 
     const header = document.createElement("div");
     header.className = "directory-entry-header";
     const title = document.createElement("h3");
-    title.textContent = entry.fileName;
+    const titleText = document.createElement("span");
+    titleText.textContent = entry.fileName;
+    title.appendChild(titleText);
+
+    // 添加单个文件复制MD按钮
+    if (entry.analysis) {
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "copy-entry-btn";
+      copyBtn.textContent = "Copy";
+      copyBtn.type = "button";
+      copyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const md = formatEntryAsMd(entry);
+        if (md) {
+          void copyToClipboard(md, copyBtn);
+        }
+      });
+      title.appendChild(copyBtn);
+    }
+
     const pathText = document.createElement("span");
     pathText.textContent = entry.path;
     header.appendChild(title);
@@ -460,7 +991,9 @@ const renderDirectoryResults = (
     if (entry.error) {
       const err = document.createElement("div");
       err.className = "warning-card";
-      const suggestion = entry.error.suggestion ? ` 建议：${entry.error.suggestion}` : "";
+      const suggestion = entry.error.suggestion
+        ? ` 建议：${entry.error.suggestion}`
+        : "";
       err.textContent = `${entry.error.message}${suggestion}`;
       card.appendChild(err);
     } else if (entry.analysis) {
@@ -473,7 +1006,10 @@ const renderDirectoryResults = (
   });
 };
 
-const renderAnalysisPanelContent = (panel: AnalysisPanel, response: AnalyzeResponse) => {
+const renderAnalysisPanelContent = (
+  panel: AnalysisPanel,
+  response: AnalyzeResponse,
+) => {
   const aggregate = aggregateExcludeLfe
     ? response.aggregates.excludeLfe
     : response.aggregates.includeLfe;
@@ -485,12 +1021,14 @@ const renderAnalysisPanelContent = (panel: AnalysisPanel, response: AnalyzeRespo
     const modeLabel = aggregateExcludeLfe ? "（排除 LFE）" : "";
     setStatus(
       panel,
-      `Official DR ${aggregate.officialDr}${modeLabel} · Precise ${decimals(aggregate.preciseDr)} dB`
+      `Official DR ${aggregate.officialDr}${modeLabel} · Precise ${decimals(aggregate.preciseDr)} dB`,
     );
   } else {
     setStatus(
       panel,
-      aggregateExcludeLfe ? "没有有效声道（排除 LFE）" : "没有有效声道参与计算。"
+      aggregateExcludeLfe
+        ? "没有有效声道（排除 LFE）"
+        : "没有有效声道参与计算。",
     );
   }
 };
@@ -504,6 +1042,17 @@ const renderAnalysis = (response: AnalyzeResponse) => {
     resultExcludeToggleEl.checked = aggregateExcludeLfe;
   }
   renderAnalysisPanelContent(singlePanel, response);
+  updateCopyButtons();
+  if (sortModeSelect) {
+    sortModeSelect.disabled = true;
+    sortModeSelect.value = "none";
+  }
+  if (resultSearchNextBtn && resultSearchInput) {
+    resultSearchNextBtn.disabled = true;
+    resultSearchInput.value = "";
+    lastSearchQuery = "";
+    lastSearchIndex = -1;
+  }
 };
 
 const parseInvokeError = (error: unknown): CommandError => {
@@ -527,7 +1076,10 @@ const parseInvokeError = (error: unknown): CommandError => {
     if (typeof payload === "object" && payload !== null) {
       return payload as CommandError;
     }
-    if ("message" in error && typeof (error as { message: unknown }).message === "string") {
+    if (
+      "message" in error &&
+      typeof (error as { message: unknown }).message === "string"
+    ) {
       return { message: (error as { message: string }).message };
     }
   }
@@ -582,12 +1134,14 @@ const startSingleFileAnalyze = async () => {
     const detail = parseInvokeError(error);
     setStatus(
       singlePanel,
-      detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
-      true
+      detail.suggestion
+        ? `${detail.message}（建议：${detail.suggestion}）`
+        : detail.message,
+      true,
     );
     if (detail.supportedFormats?.length) {
       singlePanel.warningsEl.innerHTML = `<div class="warning-card">支持格式：${detail.supportedFormats.join(
-        ", "
+        ", ",
       )}</div>`;
     }
   } finally {
@@ -608,33 +1162,60 @@ const startDirectoryAnalyze = async () => {
   updateAnalyzeButton();
   clearOutput();
   currentDirectoryEntries = [];
-  setStatus(singlePanel, "目录批量分析中...", false);
+
+  // 先扫描获取文件总数
+  try {
+    const scanResult = await invoke<ScanResult>("scan_audio_directory", {
+      path: selectedPath,
+    });
+    analysisTotal = scanResult.files.length;
+  } catch {
+    analysisTotal = 0;
+  }
+
+  setStatusWithProgress(singlePanel, 0, analysisTotal);
 
   cleanupAnalysisListeners();
-  analysisEntryUnlisten = await listen<DirectoryAnalysisEntry>("analysis-entry", (event) => {
-    if (token !== analysisToken) {
-      return;
-    }
-    currentDirectoryEntries.push(event.payload);
-    const response: DirectoryAnalysisResponse = {
-      directory: selectedPath!,
-      files: currentDirectoryEntries.slice(),
-    };
-    renderDirectoryResults(response, false);
-  });
-  analysisFinishedUnlisten = await listen<DirectoryAnalysisResponse>("analysis-finished", (event) => {
-    if (token !== analysisToken) {
-      return;
-    }
-    renderDirectoryResults(event.payload);
-    setStatus(
-      singlePanel,
-      `目录分析完成，共 ${event.payload.files.length} 个结果。`
-    );
-    analyzing = false;
-    updateAnalyzeButton();
-    cleanupAnalysisListeners();
-  });
+  analysisProgressUnlisten = await listen<number>(
+    "analysis-progress",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      const completed = event.payload ?? 0;
+      setStatusWithProgress(singlePanel, completed, analysisTotal);
+    },
+  );
+  analysisEntryUnlisten = await listen<DirectoryAnalysisEntry>(
+    "analysis-entry",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      currentDirectoryEntries.push(event.payload);
+      const response: DirectoryAnalysisResponse = {
+        directory: selectedPath!,
+        files: currentDirectoryEntries.slice(),
+      };
+      renderDirectoryResults(response, false);
+    },
+  );
+  analysisFinishedUnlisten = await listen<DirectoryAnalysisResponse>(
+    "analysis-finished",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      renderDirectoryResults(event.payload);
+      setStatus(
+        singlePanel,
+        `目录分析完成，共 ${event.payload.files.length} 个结果。`,
+      );
+      analyzing = false;
+      updateAnalyzeButton();
+      cleanupAnalysisListeners();
+    },
+  );
 
   try {
     const options = gatherOptions();
@@ -649,8 +1230,10 @@ const startDirectoryAnalyze = async () => {
     const detail = parseInvokeError(error);
     setStatus(
       singlePanel,
-      detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
-      true
+      detail.suggestion
+        ? `${detail.message}（建议：${detail.suggestion}）`
+        : detail.message,
+      true,
     );
     analyzing = false;
     updateAnalyzeButton();
@@ -668,33 +1251,52 @@ const startSelectedFilesAnalyze = async (files: string[]) => {
   updateAnalyzeButton();
   clearOutput();
   currentDirectoryEntries = [];
-  setStatus(singlePanel, `多文件分析中（${files.length} 个文件）...`, false);
+
+  // 设置总数
+  analysisTotal = files.length;
+  setStatusWithProgress(singlePanel, 0, analysisTotal);
 
   cleanupAnalysisListeners();
-  analysisEntryUnlisten = await listen<DirectoryAnalysisEntry>("analysis-entry", (event) => {
-    if (token !== analysisToken) {
-      return;
-    }
-    currentDirectoryEntries.push(event.payload);
-    const response: DirectoryAnalysisResponse = {
-      directory: "selected-files",
-      files: currentDirectoryEntries.slice(),
-    };
-    renderDirectoryResults(response, false);
-  });
-  analysisFinishedUnlisten = await listen<DirectoryAnalysisResponse>("analysis-finished", (event) => {
-    if (token !== analysisToken) {
-      return;
-    }
-    renderDirectoryResults(event.payload);
-    setStatus(
-      singlePanel,
-      `多文件分析完成，共 ${event.payload.files.length} 个结果。`
-    );
-    analyzing = false;
-    updateAnalyzeButton();
-    cleanupAnalysisListeners();
-  });
+  analysisProgressUnlisten = await listen<number>(
+    "analysis-progress",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      const completed = event.payload ?? 0;
+      setStatusWithProgress(singlePanel, completed, analysisTotal);
+    },
+  );
+  analysisEntryUnlisten = await listen<DirectoryAnalysisEntry>(
+    "analysis-entry",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      currentDirectoryEntries.push(event.payload);
+      const response: DirectoryAnalysisResponse = {
+        directory: "selected-files",
+        files: currentDirectoryEntries.slice(),
+      };
+      renderDirectoryResults(response, false);
+    },
+  );
+  analysisFinishedUnlisten = await listen<DirectoryAnalysisResponse>(
+    "analysis-finished",
+    (event) => {
+      if (token !== analysisToken) {
+        return;
+      }
+      renderDirectoryResults(event.payload);
+      setStatus(
+        singlePanel,
+        `多文件分析完成，共 ${event.payload.files.length} 个结果。`,
+      );
+      analyzing = false;
+      updateAnalyzeButton();
+      cleanupAnalysisListeners();
+    },
+  );
 
   try {
     const options = gatherOptions();
@@ -709,8 +1311,10 @@ const startSelectedFilesAnalyze = async (files: string[]) => {
     const detail = parseInvokeError(error);
     setStatus(
       singlePanel,
-      detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
-      true
+      detail.suggestion
+        ? `${detail.message}（建议：${detail.suggestion}）`
+        : detail.message,
+      true,
     );
     analyzing = false;
     updateAnalyzeButton();
@@ -737,7 +1341,7 @@ const handlePickFile = async () => {
       } else if (typeof selection === "string") {
         await handleSinglePathSelection(selection);
       }
-    }
+    },
   );
 };
 
@@ -749,7 +1353,9 @@ const handleScanDir = async () => {
   if (typeof dir !== "string") {
     return;
   }
-  const result = await invoke<ScanResult>("scan_audio_directory", { path: dir });
+  const result = await invoke<ScanResult>("scan_audio_directory", {
+    path: dir,
+  });
   updateSelectedPath(dir, "directory");
   setStatus(singlePanel, `目录 ${dir} 已选，可点击“开始分析”执行批量处理。`);
   lastDirectoryResponse = null;
@@ -757,15 +1363,124 @@ const handleScanDir = async () => {
   renderScanResults(result);
 };
 
+const handleDeepScanDir = async () => {
+  const button = document.querySelector<HTMLButtonElement>("#deep-scan-dir");
+  if (!button) return;
+
+  // 如果正在深度扫描，则此次点击视为“取消递归”
+  if (deepScanning) {
+    deepScanCancelled = true;
+    setStatus(singlePanel, "正在请求取消深度扫描...", false);
+    try {
+      await invoke("cancel_deep_scan");
+    } catch {
+      // 忽略取消失败，后端扫描函数会在下次调用时重置状态
+    }
+    return;
+  }
+
+  const dir = await open({
+    directory: true,
+    multiple: false,
+  });
+  if (typeof dir !== "string") {
+    return;
+  }
+
+  const confirmed = await confirm(
+    `将对目录及其所有子目录执行递归扫描：\n${dir}\n\n` +
+      "在包含大量文件的目录上，这可能会非常缓慢，并占用较高的磁盘与CPU资源。\n" +
+      "建议仅对主要存放音频文件的专用目录使用此功能，避免选择整个磁盘或用户主目录。",
+    {
+      title: "深度扫描目录（递归）风险提示",
+      kind: "warning",
+      okLabel: "继续深度扫描",
+      cancelLabel: "取消",
+    },
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  deepScanning = true;
+  deepScanCancelled = false;
+  button.textContent = "取消递归扫描";
+
+  cleanupDeepScanListeners();
+  scanResultsEl.classList.remove("hidden");
+  scanResultsEl.innerHTML = `<p>正在递归扫描目录 <strong>${dir}</strong> ...</p>`;
+  setStatus(
+    singlePanel,
+    `正在递归扫描目录 ${dir} ... 这可能需要一段时间。`,
+    false,
+  );
+
+  deepScanProgressUnlisten = await listen<number>(
+    "deep-scan-progress",
+    (event) => {
+      const count = event.payload ?? 0;
+      scanResultsEl.innerHTML = `<p>正在递归扫描目录 <strong>${dir}</strong> ... 已发现 ${count} 个音频文件。</p>`;
+    },
+  );
+
+  try {
+    const result = await invoke<ScanResult>("deep_scan_audio_directory", {
+      path: dir,
+    });
+
+    updateSelectedPath(dir, "directory");
+    selectedFiles = result.files.map((f) => f.path);
+    selectedKind = selectedFiles.length > 1 ? "files" : "file";
+    inputPathEl.value =
+      selectedFiles.length > 1
+        ? `${selectedFiles.length} 个文件（递归）`
+        : selectedFiles[0];
+
+    const summaryText =
+      result.files.length > 0
+        ? deepScanCancelled
+          ? `深度扫描已取消：在 ${result.directory} 及其子目录中已发现 ${result.files.length} 个音频文件。`
+          : `深度扫描完成：在 ${result.directory} 及其子目录中找到 ${result.files.length} 个音频文件，可点击“开始分析”执行批量处理。`
+        : deepScanCancelled
+          ? `深度扫描已取消：在 ${result.directory} 及其子目录中未发现可分析的音频文件。`
+          : `深度扫描完成：在 ${result.directory} 及其子目录中未找到可分析的音频文件。`;
+    setStatus(singlePanel, summaryText);
+
+    lastDirectoryResponse = null;
+    directoryResultsEl.innerHTML = "";
+    renderScanResults(result);
+  } catch (error) {
+    const detail = parseInvokeError(error);
+    setStatus(
+      singlePanel,
+      detail.suggestion
+        ? `${detail.message}（建议：${detail.suggestion}）`
+        : detail.message,
+      true,
+    );
+  } finally {
+    cleanupDeepScanListeners();
+    deepScanning = false;
+    deepScanCancelled = false;
+    button.textContent = "深度扫描目录";
+  }
+};
+
 const handleSinglePathSelection = async (path: string) => {
   const isDir = await checkIsDirectory(path);
   if (isDir) {
     selectedFiles = null;
     updateSelectedPath(path, "directory");
-    const result = await invoke<ScanResult>("scan_audio_directory", { path }).catch(() => null);
+    const result = await invoke<ScanResult>("scan_audio_directory", {
+      path,
+    }).catch(() => null);
     if (result) {
       renderScanResults(result);
-      setStatus(singlePanel, `目录 ${path} 已选，可点击“开始分析”执行批量处理。`);
+      setStatus(
+        singlePanel,
+        `目录 ${path} 已选，可点击“开始分析”执行批量处理。`,
+      );
     } else {
       setStatus(singlePanel, `目录 ${path} 无法读取。`, true);
     }
@@ -798,17 +1513,15 @@ const handleMultiFileSelection = async (paths: string[]) => {
   if (!filePaths.length) {
     setStatus(
       singlePanel,
-      "所选项目均为目录，请使用“扫描目录”或仅选择音频文件。",
-      true
+      "所选项目均为目录，请使用“选择目录（批量分析）”按钮或仅选择音频文件。",
+      true,
     );
     return;
   }
   selectedFiles = filePaths;
   selectedKind = filePaths.length > 1 ? "files" : "file";
   inputPathEl.value =
-    filePaths.length > 1
-      ? `${filePaths.length} 个文件`
-      : filePaths[0];
+    filePaths.length > 1 ? `${filePaths.length} 个文件` : filePaths[0];
   selectedPath = filePaths[0];
   lastDirectoryResponse = null;
   directoryResultsEl.innerHTML = "";
@@ -826,6 +1539,7 @@ const handleDroppedPaths = async (paths: string[]) => {
   }
   if (paths.length === 1) {
     await handleSinglePathSelection(paths[0]);
+    return;
   }
   const filePaths = await collectFilesFromPaths(paths);
   if (!filePaths.length) {
@@ -838,11 +1552,23 @@ const handleDroppedPaths = async (paths: string[]) => {
 document.addEventListener("DOMContentLoaded", () => {
   inputPathEl = document.querySelector<HTMLInputElement>("#input-path")!;
   scanResultsEl = document.querySelector<HTMLElement>("#scan-results")!;
-  resultExcludeToggleEl = document.querySelector<HTMLInputElement>("#result-exclude-lfe")!;
+  resultExcludeToggleEl = document.querySelector<HTMLInputElement>(
+    "#result-exclude-lfe",
+  )!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
-  directoryResultsEl = document.querySelector<HTMLElement>("#directory-results")!;
+  directoryResultsEl =
+    document.querySelector<HTMLElement>("#directory-results")!;
   ffmpegPathInput = document.querySelector<HTMLInputElement>("#ffmpeg-path")!;
   applyFfmpegBtn = document.querySelector<HTMLButtonElement>("#apply-ffmpeg")!;
+  copyMdBtn = document.querySelector<HTMLButtonElement>("#copy-md")!;
+  copyJsonBtn = document.querySelector<HTMLButtonElement>("#copy-json")!;
+  exportImageBtn = document.querySelector<HTMLButtonElement>("#export-image")!;
+  sortModeSelect = document.querySelector<HTMLSelectElement>("#sort-mode")!;
+  resultSearchInput =
+    document.querySelector<HTMLInputElement>("#result-search")!;
+  resultSearchNextBtn = document.querySelector<HTMLButtonElement>(
+    "#result-search-next",
+  )!;
   singlePanel = {
     container: document.querySelector<HTMLElement>("#single-analysis")!,
     statusEl: document.querySelector<HTMLElement>("#status")!,
@@ -852,46 +1578,63 @@ document.addEventListener("DOMContentLoaded", () => {
     silenceEl: document.querySelector<HTMLElement>("#silence-report")!,
   };
 
-  document.querySelector<HTMLButtonElement>("#pick-file")?.addEventListener("click", handlePickFile);
-  document.querySelector<HTMLButtonElement>("#scan-dir")?.addEventListener("click", handleScanDir);
-  document.querySelector<HTMLButtonElement>("#clear-path")?.addEventListener("click", () => {
-    selectedPath = null;
-    selectedKind = null;
-    inputPathEl.value = "";
-    setStatus(singlePanel, "已清除输入路径。");
-    clearOutput();
-    scanResultsEl.classList.add("hidden");
-  });
+  document
+    .querySelector<HTMLButtonElement>("#pick-file")
+    ?.addEventListener("click", handlePickFile);
+  document
+    .querySelector<HTMLButtonElement>("#scan-dir")
+    ?.addEventListener("click", handleScanDir);
+  document
+    .querySelector<HTMLButtonElement>("#deep-scan-dir")
+    ?.addEventListener("click", () => {
+      void handleDeepScanDir();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#clear-path")
+    ?.addEventListener("click", () => {
+      selectedPath = null;
+      selectedKind = null;
+      inputPathEl.value = "";
+      setStatus(singlePanel, "已清除输入路径。");
+      clearOutput();
+      scanResultsEl.classList.add("hidden");
+    });
 
-  document.querySelector<HTMLButtonElement>("#analyze-btn")?.addEventListener("click", () => {
-    if (analyzing) {
-      // 取消当前分析：仅在前端层面生效（忽略后续结果）
-      analysisToken++;
-      analyzing = false;
-      updateAnalyzeButton();
-      cleanupAnalysisListeners();
-      setStatus(singlePanel, "已取消当前分析。");
-      return;
-    }
-    void handleAnalyze();
-  });
+  document
+    .querySelector<HTMLButtonElement>("#analyze-btn")
+    ?.addEventListener("click", () => {
+      if (analyzing) {
+        // 取消当前分析：仅在前端层面生效（忽略后续结果）
+        analysisToken++;
+        analyzing = false;
+        updateAnalyzeButton();
+        cleanupAnalysisListeners();
+        setStatus(singlePanel, "已取消当前分析。");
+        return;
+      }
+      void handleAnalyze();
+    });
   applyFfmpegBtn.addEventListener("click", async () => {
     const value = ffmpegPathInput.value.trim();
     try {
-      await invoke("set_ffmpeg_override", { path: value.length ? value : null });
+      await invoke("set_ffmpeg_override", {
+        path: value.length ? value : null,
+      });
       setStatus(
         singlePanel,
         value.length
           ? `已设置自定义 ffmpeg 路径：${value}`
           : "已清除自定义 ffmpeg 路径，将使用系统默认 PATH。",
-        false
+        false,
       );
     } catch (error) {
       const detail = parseInvokeError(error);
       setStatus(
         singlePanel,
-        detail.suggestion ? `${detail.message}（建议：${detail.suggestion}）` : detail.message,
-        true
+        detail.suggestion
+          ? `${detail.message}（建议：${detail.suggestion}）`
+          : detail.message,
+        true,
       );
     }
   });
@@ -900,6 +1643,65 @@ document.addEventListener("DOMContentLoaded", () => {
   resultExcludeToggleEl.addEventListener("change", () => {
     aggregateExcludeLfe = resultExcludeToggleEl.checked;
     updateAggregateView();
+  });
+
+  sortModeSelect.disabled = true;
+  sortModeSelect.addEventListener("change", () => {
+    updateAggregateView();
+  });
+
+  resultSearchNextBtn.disabled = true;
+  resultSearchNextBtn.addEventListener("click", () => {
+    const query = resultSearchInput.value.trim();
+    if (!query) return;
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>(".directory-entry"),
+    );
+    if (!cards.length) return;
+
+    const lowered = query.toLowerCase();
+    const matches = cards.filter((card) => {
+      const name = (card.dataset.fileName ?? "").toLowerCase();
+      const path = (card.dataset.path ?? "").toLowerCase();
+      return name.includes(lowered) || path.includes(lowered);
+    });
+    if (!matches.length) {
+      setStatus(singlePanel, `未找到包含「${query}」的结果。`, true);
+      lastSearchQuery = query;
+      lastSearchIndex = -1;
+      return;
+    }
+
+    if (lastSearchQuery !== query) {
+      lastSearchQuery = query;
+      lastSearchIndex = 0;
+    } else {
+      lastSearchIndex = (lastSearchIndex + 1) % matches.length;
+    }
+
+    const target = matches[lastSearchIndex];
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // 拷贝按钮事件
+  copyMdBtn.addEventListener("click", () => {
+    let md = "";
+    if (lastDirectoryResponse) {
+      md = formatDirectoryResultsAsMd(lastDirectoryResponse);
+    } else if (lastResponse) {
+      md = formatSingleResultAsMd(lastResponse);
+    }
+    if (md) {
+      void copyToClipboard(md, copyMdBtn);
+    }
+  });
+
+  copyJsonBtn.addEventListener("click", () => {
+    void exportJsonToFile();
+  });
+
+  exportImageBtn.addEventListener("click", () => {
+    void exportImageToFile();
   });
 
   void getCurrentWindow().onDragDropEvent((event) => {

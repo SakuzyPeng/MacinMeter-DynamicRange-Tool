@@ -20,8 +20,11 @@
             readonly
           />
           <div class="path-actions">
-            <button id="pick-file" type="button">选择文件 / 目录</button>
-            <button id="scan-dir" type="button">扫描目录（展示文件数）</button>
+            <button id="pick-file" type="button">选择文件</button>
+            <button id="scan-dir" type="button">选择目录</button>
+            <button id="deep-scan-dir" type="button" class="ghost danger">
+              深度扫描目录
+            </button>
             <button id="clear-path" type="button" class="ghost">清除</button>
             <button id="analyze-btn" type="button">开始分析</button>
           </div>
@@ -44,6 +47,25 @@
             <input type="checkbox" id="result-exclude-lfe" />
             排除 LFE（仅影响汇总显示）
           </label>
+          <div class="copy-actions">
+            <button id="copy-md" type="button" class="copy-btn" disabled>Copy MD</button>
+            <button id="copy-json" type="button" class="copy-btn" disabled>Export JSON</button>
+            <button id="export-image" type="button" class="copy-btn" disabled>Export Image</button>
+            <select id="sort-mode" class="sort-select" disabled>
+              <option value="none">原顺序</option>
+              <option value="dr-asc">DR 精细值 ↑</option>
+              <option value="dr-desc">DR 精细值 ↓</option>
+            </select>
+            <div class="search-actions">
+              <input
+                type="text"
+                id="result-search"
+                placeholder="搜索文件名/路径"
+                autocomplete="off"
+              />
+              <button id="result-search-next" type="button" class="copy-btn" disabled>跳转</button>
+            </div>
+          </div>
         </div>
         <div id="single-analysis" class="analysis-panel">
           <div id="status" class="status">请选择音频文件后运行分析。</div>
