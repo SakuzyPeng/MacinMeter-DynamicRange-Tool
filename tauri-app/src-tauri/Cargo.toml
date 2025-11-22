@@ -27,3 +27,5 @@ serde_json = "1"
 macinmeter-dr-tool = { path = "../.." }
 rayon = "1.10"
 base64 = "0.22"
+arboard = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -391,63 +391,40 @@ fn path_is_directory(path: PathBuf) -> Result<bool, AnalyzeCommandError> {
 
 #[tauri::command]
 fn copy_image_to_clipboard(base64_data: String) -> Result<(), AnalyzeCommandError> {
-    use std::io::Write;
-    use std::process::Command;
+    use arboard::{Clipboard, ImageData};
+    use image::ImageReader;
+    use std::io::Cursor;
 
-    // 解码base64
-    let data = base64::Engine::decode(
+    // 解码base64得到PNG数据
+    let png_data = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         &base64_data,
     )
     .map_err(|e| AnalyzeCommandError::internal(format!("Base64解码失败: {e}")))?;
 
-    // 创建临时文件
-    let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join("macinmeter_clipboard_temp.png");
+    // 解码PNG为RGBA像素数据
+    let img = ImageReader::new(Cursor::new(&png_data))
+        .with_guessed_format()
+        .map_err(|e| AnalyzeCommandError::internal(format!("读取PNG格式失败: {e}")))?
+        .decode()
+        .map_err(|e| AnalyzeCommandError::internal(format!("解码PNG失败: {e}")))?;
 
-    let mut file = std::fs::File::create(&temp_path)
-        .map_err(|e| AnalyzeCommandError::internal(format!("创建临时文件失败: {e}")))?;
-    file.write_all(&data)
-        .map_err(|e| AnalyzeCommandError::internal(format!("写入临时文件失败: {e}")))?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
 
-    // 使用系统命令复制到剪贴板
-    #[cfg(target_os = "macos")]
-    {
-        let script = format!(
-            "set the clipboard to (read (POSIX file \"{}\") as «class PNGf»)",
-            temp_path.display()
-        );
-        Command::new("osascript")
-            .args(["-e", &script])
-            .output()
-            .map_err(|e| AnalyzeCommandError::internal(format!("执行osascript失败: {e}")))?;
-    }
+    // 使用arboard复制到剪贴板
+    let img_data = ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: rgba.into_raw().into(),
+    };
 
-    #[cfg(target_os = "windows")]
-    {
-        // Windows使用PowerShell
-        let script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{}'))",
-            temp_path.display()
-        );
-        Command::new("powershell")
-            .args(["-WindowStyle", "Hidden", "-Command", &script])
-            .output()
-            .map_err(|e| AnalyzeCommandError::internal(format!("执行PowerShell失败: {e}")))?;
-    }
+    let mut clipboard = Clipboard::new()
+        .map_err(|e| AnalyzeCommandError::internal(format!("初始化剪贴板失败: {e}")))?;
 
-    #[cfg(target_os = "linux")]
-    {
-        // Linux使用xclip
-        Command::new("xclip")
-            .args(["-selection", "clipboard", "-t", "image/png", "-i"])
-            .arg(&temp_path)
-            .output()
-            .map_err(|e| AnalyzeCommandError::internal(format!("执行xclip失败: {e}")))?;
-    }
-
-    // 清理临时文件
-    let _ = std::fs::remove_file(&temp_path);
+    clipboard
+        .set_image(img_data)
+        .map_err(|e| AnalyzeCommandError::internal(format!("复制图片到剪贴板失败: {e}")))?;
 
     Ok(())
 }
