@@ -425,17 +425,13 @@ fn copy_image_to_clipboard(base64_data: String) -> Result<(), AnalyzeCommandErro
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
         // Windows使用PowerShell
         let script = format!(
             "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{}'))",
             temp_path.display()
         );
         Command::new("powershell")
-            .args(["-Command", &script])
-            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-WindowStyle", "Hidden", "-Command", &script])
             .output()
             .map_err(|e| AnalyzeCommandError::internal(format!("执行PowerShell失败: {e}")))?;
     }
