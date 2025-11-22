@@ -63,6 +63,18 @@ npm run tauri build
 
 输出位置：`src-tauri/target/release/bundle/`
 
+### macOS 安装说明
+
+从网络下载的 DMG 安装后，首次打开可能提示"已损坏"或"无法验证开发者"。这是因为应用未经 Apple 签名。
+
+**解决方法**：打开终端，执行以下命令移除隔离属性：
+
+```bash
+xattr -cr "/Applications/MacinMeter DR GUI.app"
+```
+
+或者：系统设置 → 隐私与安全性 → 安全性 → 点击「仍要打开」
+
 ## 使用说明
 
 ### 单文件分析
