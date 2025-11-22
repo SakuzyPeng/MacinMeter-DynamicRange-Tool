@@ -1056,11 +1056,10 @@ const renderDirectoryResults = (
           await invoke("copy_image_to_clipboard", { base64Data: base64 });
 
           copyPngBtn.classList.add("copied");
-          const original = copyPngBtn.textContent;
           copyPngBtn.textContent = "OK!";
           setTimeout(() => {
             copyPngBtn.classList.remove("copied");
-            copyPngBtn.textContent = original;
+            copyPngBtn.textContent = "PNG";
           }, 1500);
         } catch (err) {
           console.error("Copy PNG failed:", err);
