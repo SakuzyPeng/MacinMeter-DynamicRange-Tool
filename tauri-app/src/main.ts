@@ -1708,12 +1708,31 @@ document.addEventListener("DOMContentLoaded", () => {
         updateAnalyzeButton();
         cleanupAnalysisListeners();
         setStatus(singlePanel, "正在取消分析...");
+
+        // 如果已有部分结果，启用相关按钮
+        if (currentDirectoryEntries.length > 0) {
+          lastDirectoryResponse = {
+            directory: selectedPath || "selected-files",
+            files: currentDirectoryEntries.slice(),
+          };
+          if (resultExcludeLfeBtn) {
+            resultExcludeLfeBtn.disabled = false;
+          }
+          updateCopyButtons();
+        }
+
         invoke("cancel_analysis")
           .then(() => {
-            setStatus(singlePanel, "已取消当前分析。");
+            const count = currentDirectoryEntries.length;
+            setStatus(singlePanel, count > 0
+              ? `已取消分析，已完成 ${count} 个文件。`
+              : "已取消当前分析。");
           })
           .catch(() => {
-            setStatus(singlePanel, "已取消当前分析。");
+            const count = currentDirectoryEntries.length;
+            setStatus(singlePanel, count > 0
+              ? `已取消分析，已完成 ${count} 个文件。`
+              : "已取消当前分析。");
           });
         return;
       }
