@@ -820,7 +820,7 @@ impl UniversalStreamProcessor {
     /// 创建统一流式处理器（串行模式）
     ///
     /// 固定启用智能缓冲流式处理，遵循"无条件高性能原则"。
-    /// foobar2000-plugin分支专用，提供最优的流式处理性能。
+    /// 提供最优的流式处理性能。
     pub fn new<P: AsRef<Path>>(path: P) -> AudioResult<Self> {
         let path = path.as_ref().to_path_buf();
         let decoder = UniversalDecoder::new();

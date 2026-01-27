@@ -265,7 +265,7 @@ pub mod buffers {
 /// 应用程序信息常量（统一文案，避免漂移）
 pub mod app_info {
     /// Git 分支信息（用于显示和输出）
-    pub const BRANCH_INFO: &str = "foobar2000-plugin (默认批处理模式)";
+    pub const BRANCH_INFO: &str = "main (默认批处理模式)";
 
     /// 基础描述信息
     pub const BASE_DESCRIPTION: &str = "基于foobar2000 DR Meter逆向分析 (Measuring_DR_ENv3规范) / Based on foobar2000 DR Meter Reverse Analysis (Measuring_DR_ENv3 Specification)";

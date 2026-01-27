@@ -2,15 +2,15 @@
 
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)
-![Branch](https://img.shields.io/badge/branch-foobar2000--plugin-orange.svg?style=for-the-badge)
+![Branch](https://img.shields.io/badge/branch-main-green.svg?style=for-the-badge)
 
 **尝试提供更好体验的foobar2000兼容实现 / A foobar2000-compatible implementation aiming for better experience**
 
 *致敬Janne Hyvärinen的开创性工作 / Tribute to Janne Hyvärinen's pioneering work*
 
-这是MacinMeter DR Tool的**foobar2000-plugin分支**，学习并实现了foobar2000 DR Meter 1.0.3（foo_dr_meter，作者Janne Hyvärinen）的算法原理，力求提供**准确的DR分析结果**和**更快的处理速度**。采用流式架构设计，希望能为用户带来便利。性能基准对比参考Dynamic Range Meter 1.1.1（foo_dynamic_range）。
+MacinMeter DR Tool 学习并实现了 foobar2000 DR Meter 1.0.3（foo_dr_meter，作者 Janne Hyvärinen）的算法原理，力求提供**准确的DR分析结果**和**更快的处理速度**。采用流式架构设计，希望能为用户带来便利。性能基准对比参考 Dynamic Range Meter 1.1.1（foo_dynamic_range）。
 
-This is the **foobar2000-plugin branch** of MacinMeter DR Tool, which learns and implements the algorithm principles of foobar2000 DR Meter 1.0.3 (foo_dr_meter, by Janne Hyvärinen), striving to provide **accurate DR analysis results** and **faster processing speed**. With streaming architecture design, we hope to bring convenience to users. Performance benchmarks are compared against Dynamic Range Meter 1.1.1 (foo_dynamic_range).
+MacinMeter DR Tool learns and implements the algorithm principles of foobar2000 DR Meter 1.0.3 (foo_dr_meter, by Janne Hyvärinen), striving to provide **accurate DR analysis results** and **faster processing speed**. With streaming architecture design, we hope to bring convenience to users. Performance benchmarks are compared against Dynamic Range Meter 1.1.1 (foo_dynamic_range).
 
 ---
 
@@ -126,7 +126,7 @@ Precise DR 15.51 dB 距离 DR15/DR16 下边界 0.01 dB
    批量分析结果 (foobar2000兼容版) / Batch Analysis Results (foobar2000 Compatible)
 ====================================================================================
 
-Git分支 / Git Branch: foobar2000-plugin (默认批处理模式)
+Git分支 / Git Branch: main (默认批处理模式)
 基于foobar2000 DR Meter逆向分析 (Measuring_DR_ENv3规范)
 扫描目录 / Scanned Directory: /path/to/audio
 处理文件数 / Files to Process: 106

@@ -144,7 +144,7 @@ impl AppConfig {
     /// 固定启用Sum Doubling（foobar2000兼容模式）
     #[inline]
     pub fn sum_doubling_enabled(&self) -> bool {
-        true // foobar2000-plugin分支固定启用
+        true // foobar2000兼容模式固定启用
     }
 }
 
