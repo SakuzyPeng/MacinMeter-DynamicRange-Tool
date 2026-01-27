@@ -1293,7 +1293,7 @@ impl StreamingDecoder for ParallelUniversalStreamProcessor {
                             // 所有批次已消费完，切换到Completed状态
                             self.parallel_decoder
                                 .as_mut()
-                                .unwrap()
+                                .expect("parallel_decoder必须已初始化")
                                 .set_state(DecodingState::Completed);
                         }
                     }

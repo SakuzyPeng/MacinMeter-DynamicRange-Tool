@@ -431,7 +431,10 @@ impl WindowRmsAnalyzer {
 
         // 直接排序精确值（无量化）
         let mut sorted_rms = self.window_rms_values.clone();
-        sorted_rms.sort_by(|a, b| b.partial_cmp(a).unwrap()); // 降序排序
+        sorted_rms.sort_by(|a, b| {
+            b.partial_cmp(a)
+                .expect("RMS values are always valid (non-NaN)")
+        }); // 降序排序
 
         // 计算前target个最响窗口的平方和
         let sum_sq: f64 = sorted_rms[0..target].iter().map(|x| x * x).sum();

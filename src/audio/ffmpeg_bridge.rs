@@ -223,7 +223,11 @@ impl FFmpegDecoder {
             "format=format_name",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap(),
+            path.to_str().ok_or_else(|| {
+                AudioError::InvalidInput(
+                    "File path contains invalid UTF-8 / 文件路径包含无效UTF-8".to_string(),
+                )
+            })?,
         ]);
         configure_creation_flags(&mut cmd);
         let output = cmd.output().map_err(|e| {
@@ -647,7 +651,13 @@ impl FFmpegDecoder {
             "-sn".to_string(),
             "-dn".to_string(),
             "-i".to_string(),
-            path.to_str().unwrap().to_string(),
+            path.to_str()
+                .ok_or_else(|| {
+                    AudioError::InvalidInput(
+                        "File path contains invalid UTF-8 / 文件路径包含无效UTF-8".to_string(),
+                    )
+                })?
+                .to_string(),
         ];
 
         let use_s32 = false;
