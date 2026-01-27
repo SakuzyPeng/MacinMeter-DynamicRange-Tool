@@ -1180,8 +1180,13 @@ mod tests {
         assert!(rms_20 > 0.0, "1000个窗口的20% RMS应该大于0");
 
         // 验证20%采样逻辑：1000个窗口 → floor(1000 * 0.2).max(1) = 200个最响窗口被选中
-        let mut sorted_rms = analyzer.window_rms_values.clone();
-        sorted_rms.sort_by(|a, b| b.partial_cmp(a).unwrap()); // 降序排序
+        let mut sorted_rms: Vec<f64> = analyzer
+            .window_rms_values
+            .iter()
+            .copied()
+            .filter(|x| !x.is_nan())
+            .collect();
+        sorted_rms.sort_by(|a, b| b.partial_cmp(a).expect("NaN already filtered")); // 降序排序
 
         let top_20_percent_count = ((num_windows as f64 * 0.2).floor() as usize).max(1);
         assert_eq!(top_20_percent_count, 200, "应该选中200个最响窗口");
@@ -1413,8 +1418,8 @@ mod tests {
             let (max_our, second_our) = WindowRmsAnalyzer::find_top_two(&values, false);
 
             // 排序方法（参考实现）
-            let mut sorted = values.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let mut sorted: Vec<f64> = values.iter().copied().filter(|x| !x.is_nan()).collect();
+            sorted.sort_by(|a, b| a.partial_cmp(b).expect("NaN already filtered"));
             let max_ref = sorted[sorted.len() - 1];
             let second_ref = if sorted.len() >= 2 {
                 sorted[sorted.len() - 2]
