@@ -248,12 +248,15 @@ pub fn format_mono_results(result: &DrResult, format: &AudioFormat, show_rms_pea
     let mut output = String::new();
 
     // DR 结果表格
-    output.push_str(&create_dr_table(&[result.clone()], format));
+    output.push_str(&create_dr_table(std::slice::from_ref(result), format));
 
     // 可选：RMS/Peak 诊断表格
     if show_rms_peak {
         output.push('\n');
-        output.push_str(&create_diagnostics_table(&[result.clone()], format));
+        output.push_str(&create_diagnostics_table(
+            std::slice::from_ref(result),
+            format,
+        ));
     }
 
     output
