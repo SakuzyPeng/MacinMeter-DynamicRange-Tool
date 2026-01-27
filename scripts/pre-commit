@@ -1,59 +1,59 @@
 #!/bin/bash
-# 🚀 MacinMeter DR Tool - 预提交钩子
+# [HOOK] MacinMeter DR Tool - 预提交钩子
 # 与GitHub Actions相同的代码质量检查，在本地提交前执行
 
 set -Eeuo pipefail  # 任何命令或管道失败时立即退出
-trap 'echo; echo "❌ 预提交脚本在第 $LINENO 行失败 (命令: $BASH_COMMAND)"; echo' ERR
+trap 'echo; echo "[FAIL] 预提交脚本在第 $LINENO 行失败 (命令: $BASH_COMMAND)"; echo' ERR
 
-echo "🔍 MacinMeter DR Tool - 预提交质量检查"
+echo "[CHECK] MacinMeter DR Tool - 预提交质量检查"
 echo "======================================"
 
-# 🎨 1. 代码格式检查
+# [FMT] 1. 代码格式检查
 echo ""
-echo "🎨 1. 检查代码格式..."
+echo "[FMT] 1. 检查代码格式..."
 if ! cargo fmt --check; then
-    echo "❌ 代码格式检查失败！请运行 'cargo fmt' 修复格式问题"
+    echo "[FAIL] 代码格式检查失败！请运行 'cargo fmt' 修复格式问题"
     exit 1
 fi
-echo "✅ 代码格式检查通过"
+echo "[OK] 代码格式检查通过"
 
-# 📎 2. Clippy静态分析
+# [LINT] 2. Clippy静态分析
 echo ""
-echo "📎 2. 运行Clippy静态分析..."
+echo "[LINT] 2. 运行Clippy静态分析..."
 cargo clippy --all-targets --all-features -- -D warnings
-echo "✅ Clippy静态分析通过"
+echo "[OK] Clippy静态分析通过"
 
-# 🔨 3. 编译检查
+# [BUILD] 3. 编译检查
 echo ""
-echo "🔨 3. 检查代码编译..."
+echo "[BUILD] 3. 检查代码编译..."
 cargo check --all-targets --all-features
-echo "✅ 编译检查通过"
+echo "[OK] 编译检查通过"
 
-# 🧪 4. 单元测试
+# [TEST] 4. 单元测试
 echo ""
-echo "🧪 4. 运行单元测试..."
+echo "[TEST] 4. 运行单元测试..."
 # 直接运行测试 (不包含 #[ignore] 测试)
 cargo test --all-targets --all-features -- --color=always
-echo "✅ 单元测试通过"
+echo "[OK] 单元测试通过"
 
-# 🐳 5. x86 Docker CI模拟测试（跨平台验证）
+# [DOCKER] 5. x86 Docker CI模拟测试（跨平台验证）
 echo ""
-echo "🐳 5. x86 Docker CI模拟测试 (强制运行)..."
+echo "[DOCKER] 5. x86 Docker CI模拟测试 (强制运行)..."
 
 if [[ "${SKIP_DOCKER_TESTS:-0}" == "1" ]]; then
-    echo "⚠️  SKIP_DOCKER_TESTS=1 已设置，跳过 Docker 模拟阶段"
+    echo "[WARN] SKIP_DOCKER_TESTS=1 已设置，跳过 Docker 模拟阶段"
 else
 DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-macinmeter-ci:standalone}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
 
 if ! command -v docker >/dev/null 2>&1; then
-    echo "❌ 未检测到Docker，请安装后重试"
+    echo "[FAIL] 未检测到Docker，请安装后重试"
     exit 1
 fi
 
 if ! docker images "$DOCKER_IMAGE_TAG" -q | grep -q .; then
-    echo "❌ 需要Docker镜像 '$DOCKER_IMAGE_TAG'，但未找到。" 
-    echo "💡 提示: 使用以下任一方式准备镜像后重试："
+    echo "[FAIL] 需要Docker镜像 '$DOCKER_IMAGE_TAG'，但未找到。"
+    echo "[TIP] 提示: 使用以下任一方式准备镜像后重试："
     echo "   1) docker pull $DOCKER_IMAGE_TAG"
     echo "   2) 设定 DOCKER_IMAGE_TAG 指向本地镜像标签"
     echo "   3) 如有镜像文件： docker load -i /path/to/macinmeter-ci_standalone.tar"
@@ -63,12 +63,12 @@ fi
 DESIRED_ARCH="$(echo "$DOCKER_PLATFORM" | cut -d'/' -f2)"
 IMG_ARCH="$(docker image inspect "$DOCKER_IMAGE_TAG" --format '{{.Architecture}}' 2>/dev/null || echo '')"
 if [ -n "$IMG_ARCH" ] && [ "$IMG_ARCH" != "$DESIRED_ARCH" ]; then
-    echo "⚠️  本地镜像架构为 '$IMG_ARCH'，与期望 '$DESIRED_ARCH' 不一致。尝试使用 buildx 以 $DOCKER_PLATFORM 重建镜像..."
+    echo "[WARN] 本地镜像架构为 '$IMG_ARCH'，与期望 '$DESIRED_ARCH' 不一致。尝试使用 buildx 以 $DOCKER_PLATFORM 重建镜像..."
     if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; then
         docker buildx build --platform "$DOCKER_PLATFORM" -t "$DOCKER_IMAGE_TAG" -f scripts/ci/Dockerfile.standalone . --load
     else
-        echo "❌ 缺少 buildx，无法自动重建 x86 镜像。"
-        echo "💡 手动执行: docker buildx build --platform $DOCKER_PLATFORM -t $DOCKER_IMAGE_TAG -f scripts/ci/Dockerfile.standalone . --load"
+        echo "[FAIL] 缺少 buildx，无法自动重建 x86 镜像。"
+        echo "[TIP] 手动执行: docker buildx build --platform $DOCKER_PLATFORM -t $DOCKER_IMAGE_TAG -f scripts/ci/Dockerfile.standalone . --load"
         exit 1
     fi
 fi
@@ -93,12 +93,12 @@ fi
 
 DOCKER_END=$(date +%s)
 DOCKER_TIME=$((DOCKER_END - DOCKER_START))
-echo "✅ x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
+echo "[OK] x86 Docker CI测试通过 (用时: ${DOCKER_TIME}秒)"
 fi
 
-# 🛡️ 6. 安全审计 (可选，如果安装了cargo-audit)
+# [AUDIT] 6. 安全审计 (可选，如果安装了cargo-audit)
 echo ""
-echo "🛡️ 6. 安全审计..."
+echo "[AUDIT] 6. 安全审计..."
 if command -v cargo-audit &> /dev/null; then
     if ! cargo audit \
         --ignore RUSTSEC-2025-0009 \
@@ -107,29 +107,29 @@ if command -v cargo-audit &> /dev/null; then
         --ignore RUSTSEC-2024-0388 \
         --ignore RUSTSEC-2025-0010 \
         --ignore RUSTSEC-2024-0408; then
-        echo "⚠️  安全审计发现依赖问题（可能是已知的songbird依赖）"
-        echo "💡 运行 'cargo audit' 查看详情，或继续提交"
+        echo "[WARN] 安全审计发现依赖问题（可能是已知的songbird依赖）"
+        echo "[TIP] 运行 'cargo audit' 查看详情，或继续提交"
     else
-        echo "✅ 安全审计通过"
+        echo "[OK] 安全审计通过"
     fi
 else
-    echo "⚠️  cargo-audit未安装，跳过安全审计"
-    echo "💡 运行 'cargo install cargo-audit' 安装"
+    echo "[WARN] cargo-audit未安装，跳过安全审计"
+    echo "[TIP] 运行 'cargo install cargo-audit' 安装"
 fi
 
-# 🎉 所有检查通过
+# [DONE] 所有检查通过
 echo ""
-echo "🎉 所有检查通过！可以安全提交"
+echo "[DONE] 所有检查通过！可以安全提交"
 echo "======================================"
 
-# 📊 显示一些有用的信息
+# [INFO] 显示一些有用的信息
 echo ""
-echo "📊 提交前信息:"
-echo "  📁 工作目录: $(pwd)"
-echo "  🦀 Rust版本: $(rustc --version)"
-echo "  📦 Cargo版本: $(cargo --version)"
-echo "  🔧 目标平台: $(rustc -vV | grep host | cut -d' ' -f2)"
+echo "[INFO] 提交前信息:"
+echo "  [DIR] 工作目录: $(pwd)"
+echo "  [RUST] Rust版本: $(rustc --version)"
+echo "  [CARGO] Cargo版本: $(cargo --version)"
+echo "  [TARGET] 目标平台: $(rustc -vV | grep host | cut -d' ' -f2)"
 
 echo ""
-echo "💡 提示: 这个钩子与GitHub Actions CI保持同步"
+echo "[TIP] 提示: 这个钩子与GitHub Actions CI保持同步"
 echo "   如果本地检查通过，远程CI也应该能通过"

@@ -3,7 +3,7 @@ name = "macinmeter-dr-tool"
 version = "0.1.0"
 edition = "2024"
 authors = ["MacinMeter Team"]
-description = "基于foobar2000 DR Meter官方规范的高精度音频动态范围分析工具 - 致敬Janne Hyvärinen"
+description = "High-precision audio dynamic range analyzer / 高精度音频动态范围分析工具"
 
 [[bin]]
 name = "MacinMeter-DynamicRange-Tool-foo_dr"
@@ -39,6 +39,7 @@ rayon = "1.10"
 crossbeam-channel = "0.5"  # 高性能MPMC通道，替代std::sync::mpsc
 thread-priority = "1.2"  # 线程优先级控制，Intel混合架构P-core优先
 unicode-width = "0.1"
+comfy-table = "7"  # 表格格式化
 
 # 时间处理 - 恢复chrono（虽然增加35KiB，但保证时间准确性）
 chrono = { version = "0.4", features = ["serde"] }

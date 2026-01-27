@@ -276,8 +276,8 @@ pub mod app_info {
     /// 应用程序完整名称
     pub const APP_NAME: &str = "MacinMeter DR Tool";
 
-    /// 应用程序版本后缀
-    pub const VERSION_SUFFIX: &str = "(foobar2000兼容版)";
+    /// 应用程序版本后缀（已简化，不再显示兼容性说明）
+    pub const VERSION_SUFFIX: &str = "";
 
     /// 输出报告的兼容性标识
     ///

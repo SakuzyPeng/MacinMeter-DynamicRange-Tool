@@ -252,14 +252,17 @@ fn process_single_mode(config: &AppConfig) -> Result<(), AudioError> {
     let (results, format, trim_report, silence_report) =
         tools::process_single_audio_file(&config.input_path, config)?;
 
-    // 输出结果（如果用户未指定输出文件，则自动保存）
+    // 输出结果
+    // - 无参数启动（双击）：自动保存报告文件
+    // - 有参数启动：只输出控制台，除非用 -o 指定输出文件
+    let auto_save = config.auto_launched && config.output_path.is_none();
     tools::output_results(
         &results,
         config,
         &format,
         trim_report,
         silence_report,
-        config.output_path.is_none(),
+        auto_save,
     )
 }
 

@@ -124,6 +124,14 @@ pub struct AppConfig {
     /// 是否在结果中显示 RMS/Peak 诊断信息
     pub show_rms_peak: bool,
 
+    /// 是否使用紧凑输出格式（单文件模式）
+    pub compact_output: bool,
+
+    /// 是否为无参数启动（双击启动模式）
+    /// true = 无参数启动，自动保存报告
+    /// false = 有参数启动，只输出控制台（除非指定 -o）
+    pub auto_launched: bool,
+
     /// DSD → PCM 的目标采样率（Hz）。
     /// 可选：88200 / 176400 / 352800 / 384000。
     /// None 表示使用默认值（352800）。
@@ -240,6 +248,13 @@ pub fn parse_args() -> AppConfig {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("compact")
+                .long("compact")
+                .short('c')
+                .help("Use compact output format (~12 lines vs ~32 lines) for single-file mode / 使用紧凑输出格式（~12行 vs ~32行），仅对单文件模式生效")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("dsd-pcm-rate")
                 .long("dsd-pcm-rate")
                 .help(
@@ -314,12 +329,12 @@ pub fn parse_args() -> AppConfig {
         .get_matches();
 
     // 确定输入路径（智能路径处理）
-    let input_path = match matches.get_one::<PathBuf>("INPUT") {
-        Some(input) => input.clone(),
+    let (input_path, auto_launched) = match matches.get_one::<PathBuf>("INPUT") {
+        Some(input) => (input.clone(), false), // 有参数启动
         None => {
             // 双击启动模式：使用可执行文件所在目录
             let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-            get_parent_dir(&exe_path).to_path_buf()
+            (get_parent_dir(&exe_path).to_path_buf(), true) // 无参数启动
         }
     };
 
@@ -378,6 +393,8 @@ pub fn parse_args() -> AppConfig {
         edge_trim_min_run_ms,
         exclude_lfe: matches.get_flag("exclude-lfe"),
         show_rms_peak: matches.get_flag("show-rms-peak"),
+        compact_output: matches.get_flag("compact"),
+        auto_launched,
         // 默认 352.8 kHz；用户可通过 --dsd-pcm-rate 覆盖
         dsd_pcm_rate: matches
             .get_one::<u32>("dsd-pcm-rate")
@@ -398,11 +415,7 @@ pub fn parse_args() -> AppConfig {
 
 /// 显示程序启动信息
 pub fn show_startup_info(config: &AppConfig) {
-    println!(
-        "{} {} v{VERSION}",
-        constants::app_info::APP_NAME,
-        constants::app_info::VERSION_SUFFIX
-    );
+    println!("{} v{VERSION}", constants::app_info::APP_NAME);
     println!("{DESCRIPTION}");
     if config.verbose {
         println!(

@@ -9,6 +9,7 @@ use crate::{
     AudioError, AudioFormat, AudioResult, DrResult,
     processing::{EdgeTrimReport, SilenceFilterReport},
 };
+use comfy_table::{CellAlignment, Table, presets::ASCII_MARKDOWN};
 
 // 引入symphonia编解码器类型用于精确判断
 use symphonia::core::codecs::{
@@ -242,116 +243,43 @@ pub fn create_output_header(
     output
 }
 
-/// 格式化单声道DR结果
-pub fn format_mono_results(result: &DrResult, show_rms_peak: bool) -> String {
+/// 格式化单声道DR结果（使用 comfy-table 自动对齐）
+pub fn format_mono_results(result: &DrResult, format: &AudioFormat, show_rms_peak: bool) -> String {
     let mut output = String::new();
-    output.push_str("                 单声道 / Mono\n\n");
-    let dr_value = format!("{:.2} dB", result.dr_value);
-    output.push_str(&utils::table::format_cols_line(
-        &["DR通道 / DR Channel:", &dr_value],
-        &[28, 14],
-        "",
-    ));
 
+    // DR 结果表格
+    output.push_str(&create_dr_table(&[result.clone()], format));
+
+    // 可选：RMS/Peak 诊断表格
     if show_rms_peak {
-        // 诊断：RMS与Peak（以dBFS显示）
         output.push('\n');
-        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-        let label_widths = [22, 14];
-        let rms_db = format!("{} dB", utils::linear_to_db_string(result.rms));
-        let peak_sel_db = format!("{} dB", utils::linear_to_db_string(result.peak));
-        let peak1_db = format!("{} dB", utils::linear_to_db_string(result.primary_peak));
-        let peak2_db = format!("{} dB", utils::linear_to_db_string(result.secondary_peak));
-
-        output.push_str(&utils::table::format_cols_line(
-            &["RMS(20%):", &rms_db],
-            &label_widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Peak(选用/selected):", &peak_sel_db],
-            &label_widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Primary Peak:", &peak1_db],
-            &label_widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Secondary Peak:", &peak2_db],
-            &label_widths,
-            "",
-        ));
-        output.push('\n');
-    } else {
-        output.push('\n');
+        output.push_str(&create_diagnostics_table(&[result.clone()], format));
     }
 
     output
 }
 
-/// 格式化立体声DR结果
-pub fn format_stereo_results(results: &[DrResult], show_rms_peak: bool) -> String {
+/// 格式化立体声DR结果（使用 comfy-table 自动对齐）
+pub fn format_stereo_results(
+    results: &[DrResult],
+    format: &AudioFormat,
+    show_rms_peak: bool,
+) -> String {
     let mut output = String::new();
-    output.push_str("                         左声道 / Left      右声道 / Right\n\n");
-    let left_value = format!("{:.2} dB", results[0].dr_value);
-    let right_value = format!("{:.2} dB", results[1].dr_value);
-    output.push_str(&utils::table::format_cols_line(
-        &["DR通道 / DR Channel:", &left_value, &right_value],
-        &[28, 14, 14],
-        "",
-    ));
 
+    // DR 结果表格
+    output.push_str(&create_dr_table(results, format));
+
+    // 可选：RMS/Peak 诊断表格
     if show_rms_peak {
         output.push('\n');
-        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-        let widths = [18, 14, 14];
-        let l_rms = format!("{} dB", utils::linear_to_db_string(results[0].rms));
-        let r_rms = format!("{} dB", utils::linear_to_db_string(results[1].rms));
-        let l_peak = format!("{} dB", utils::linear_to_db_string(results[0].peak));
-        let r_peak = format!("{} dB", utils::linear_to_db_string(results[1].peak));
-        let l_p1 = format!("{} dB", utils::linear_to_db_string(results[0].primary_peak));
-        let r_p1 = format!("{} dB", utils::linear_to_db_string(results[1].primary_peak));
-        let l_p2 = format!(
-            "{} dB",
-            utils::linear_to_db_string(results[0].secondary_peak)
-        );
-        let r_p2 = format!(
-            "{} dB",
-            utils::linear_to_db_string(results[1].secondary_peak)
-        );
-
-        output.push_str(&utils::table::format_cols_line(
-            &["RMS(20%):", &l_rms, &r_rms],
-            &widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Peak(选用/sel):", &l_peak, &r_peak],
-            &widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Primary Peak:", &l_p1, &r_p1],
-            &widths,
-            "",
-        ));
-        output.push_str(&utils::table::format_cols_line(
-            &["Secondary Peak:", &l_p2, &r_p2],
-            &widths,
-            "",
-        ));
-        output.push('\n');
-    } else {
-        output.push('\n');
+        output.push_str(&create_diagnostics_table(results, format));
     }
 
     output
 }
 
-/// 格式化中等多声道DR结果（3+声道）
-/// 单文件模式使用列表格式便于查看，多文件模式使用简化格式
+/// 格式化中等多声道DR结果（3-8声道，使用 comfy-table 自动对齐）
 pub fn format_medium_multichannel_results(
     results: &[DrResult],
     format: &AudioFormat,
@@ -359,96 +287,25 @@ pub fn format_medium_multichannel_results(
 ) -> String {
     let mut output = String::new();
 
-    // 表头采用与批量列表风格一致的两列固定宽度
+    // 声道明细标题
     output.push_str(&format!(
         "声道明细 / Channel breakdown ({} channels):\n",
         results.len()
     ));
-    // 头部也使用统一对齐逻辑，确保列首字符对齐
-    let header_line =
-        utils::table::format_two_cols_line("Official DR", "Precise DR", "通道 / Channel");
-    output.push_str(&header_line);
-    // 下方补一条等宽'='分割线，匹配表头宽度
-    let header_sep = utils::table::separator_from(&header_line);
-    output.push_str(&header_sep);
 
-    // 识别 LFE 位置（优先容器元数据，其次标准布局）
-    let lfe_channels: Vec<usize> =
-        if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
-            format
-                .lfe_indices
-                .iter()
-                .copied()
-                .filter(|&idx| idx < results.len())
-                .collect()
-        } else {
-            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
-                .into_iter()
-                .filter(|&idx| idx < results.len())
-                .collect()
-        };
+    // DR 结果表格
+    output.push_str(&create_dr_table(results, format));
 
-    for (i, result) in results.iter().enumerate() {
-        let dr_rounded = result.dr_value_rounded();
-        let col_official = format!("DR{dr_rounded}");
-        let col_precise = format!("{:.2} dB", result.dr_value);
-
-        let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
-            || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
-        let is_lfe = lfe_channels.contains(&i);
-        // 通道编号宽度2，右对齐，避免 1 位与 2 位编号导致轻微视觉跳动
-        let mut label = format!("通道 / Channel {:>2}", i + 1);
-        if is_lfe {
-            label.push_str("  [LFE]");
-        } else if is_silent {
-            label.push_str("  [Silent / 静音]");
-        }
-        output.push_str(&utils::table::format_two_cols_line(
-            &col_official,
-            &col_precise,
-            &label,
-        ));
-    }
-
+    // 可选：RMS/Peak 诊断表格
     if show_rms_peak {
-        // 附加 RMS/Peak 诊断表（每通道）
         output.push('\n');
-        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-        let header =
-            utils::table::format_two_cols_line("RMS(20%)", "Peak(选用/sel)", "通道 / Channel");
-        output.push_str(&header);
-        let sep = utils::table::separator_from(&header);
-        output.push_str(&sep);
-        for (i, r) in results.iter().enumerate() {
-            let col_rms = format!("{} dB", utils::linear_to_db_string(r.rms));
-            let col_peak = format!("{} dB", utils::linear_to_db_string(r.peak));
-            let mut label = format!("通道 / Channel {:>2}", i + 1);
-            // 附注：静音/LFE保持一致
-            let is_silent = r.peak <= constants::dr_analysis::DR_ZERO_EPS
-                || r.rms <= constants::dr_analysis::DR_ZERO_EPS;
-            let lfe_channels: Vec<usize> =
-                if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
-                    format.lfe_indices.clone()
-                } else {
-                    crate::audio::channel_layout::fallback_lfe_indices(format.channels)
-                };
-            if lfe_channels.contains(&i) {
-                label.push_str("  [LFE]");
-            } else if is_silent {
-                label.push_str("  [Silent / 静音]");
-            }
-            output.push_str(&utils::table::format_two_cols_line(
-                &col_rms, &col_peak, &label,
-            ));
-        }
-    } else {
-        output.push('\n');
+        output.push_str(&create_diagnostics_table(results, format));
     }
 
     output
 }
 
-/// 格式化大量多声道DR结果（9+声道）
+/// 格式化大量多声道DR结果（9+声道，使用 comfy-table 自动对齐）
 pub fn format_large_multichannel_results(
     results: &[DrResult],
     format: &AudioFormat,
@@ -456,18 +313,16 @@ pub fn format_large_multichannel_results(
 ) -> String {
     let mut output = String::new();
 
-    // 与批量风格一致：两列固定宽度 + 尾字段
+    // 声道明细标题
     output.push_str(&format!(
         "声道明细 / Channel breakdown ({} channels):\n",
         results.len()
     ));
-    let header_line =
-        utils::table::format_two_cols_line("Official DR", "Precise DR", "通道 / Channel");
-    output.push_str(&header_line);
-    let header_sep = utils::table::separator_from(&header_line);
-    output.push_str(&header_sep);
 
-    // 识别 LFE（优先容器元数据）
+    // DR 结果表格
+    output.push_str(&create_dr_table(results, format));
+
+    // 识别 LFE（用于下方说明）
     let lfe_channels: Vec<usize> =
         if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
             format
@@ -483,37 +338,8 @@ pub fn format_large_multichannel_results(
                 .collect()
         };
 
-    for (i, result) in results.iter().enumerate() {
-        let dr_rounded = result.dr_value_rounded();
-        let col_official = format!("DR{dr_rounded}");
-        let col_precise = if result.peak > constants::dr_analysis::DR_ZERO_EPS
-            && result.rms > constants::dr_analysis::DR_ZERO_EPS
-        {
-            format!("{:.2} dB", result.dr_value)
-        } else {
-            "0.00 dB".to_string()
-        };
-
-        let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
-            || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
-        let is_lfe = lfe_channels.contains(&i);
-        let mut label = format!("通道 / Channel {:>2}", i + 1);
-        if is_lfe {
-            label.push_str("  [LFE]");
-        } else if is_silent {
-            label.push_str("  [Silent / 静音]");
-        }
-
-        output.push_str(&utils::table::format_two_cols_line(
-            &col_official,
-            &col_precise,
-            &label,
-        ));
-    }
-
-    // 添加LFE声道说明
+    // 添加 LFE 声道说明（9+声道特有）
     if !lfe_channels.is_empty() {
-        output.push('\n');
         let format_name = match format.channels {
             3 => "2.1",
             4 => "3.1",
@@ -546,32 +372,10 @@ pub fn format_large_multichannel_results(
         ));
     }
 
+    // 可选：RMS/Peak 诊断表格
     if show_rms_peak {
-        // 附加 RMS/Peak 诊断表（每通道）
         output.push('\n');
-        output.push_str("RMS/Peak 诊断 / RMS/Peak Diagnostics\n");
-        let header =
-            utils::table::format_two_cols_line("RMS(20%)", "Peak(选用/sel)", "通道 / Channel");
-        output.push_str(&header);
-        let sep = utils::table::separator_from(&header);
-        output.push_str(&sep);
-        for (i, r) in results.iter().enumerate() {
-            let col_rms = format!("{} dB", utils::linear_to_db_string(r.rms));
-            let col_peak = format!("{} dB", utils::linear_to_db_string(r.peak));
-            let mut label = format!("通道 / Channel {:>2}", i + 1);
-            if lfe_channels.contains(&i) {
-                label.push_str("  [LFE]");
-            } else if r.peak <= constants::dr_analysis::DR_ZERO_EPS
-                || r.rms <= constants::dr_analysis::DR_ZERO_EPS
-            {
-                label.push_str("  [Silent / 静音]");
-            }
-            output.push_str(&utils::table::format_two_cols_line(
-                &col_rms, &col_peak, &label,
-            ));
-        }
-    } else {
-        output.push('\n');
+        output.push_str(&create_diagnostics_table(results, format));
     }
 
     output
@@ -994,6 +798,337 @@ pub fn format_audio_info(config: &AppConfig, format: &AudioFormat) -> String {
     output
 }
 
+// ============================================================================
+// 紧凑报告格式化函数（comfy-table 实现）
+// ============================================================================
+
+/// 获取声道标注（LFE/Silent）
+fn get_channel_note(
+    channel_index: usize,
+    result: &DrResult,
+    lfe_indices: &[usize],
+) -> &'static str {
+    let is_silent = result.peak <= constants::dr_analysis::DR_ZERO_EPS
+        || result.rms <= constants::dr_analysis::DR_ZERO_EPS;
+    let is_lfe = lfe_indices.contains(&channel_index);
+
+    if is_lfe {
+        "LFE"
+    } else if is_silent {
+        "Silent"
+    } else {
+        ""
+    }
+}
+
+/// 获取声道显示名称
+fn get_channel_name(channel_index: usize, total_channels: usize) -> String {
+    match total_channels {
+        1 => "Mono".to_string(),
+        2 => {
+            if channel_index == 0 {
+                "Left".to_string()
+            } else {
+                "Right".to_string()
+            }
+        }
+        _ => format!("Ch {}", channel_index + 1),
+    }
+}
+
+/// 创建紧凑头部（2行）
+///
+/// 格式：
+/// ```text
+/// MacinMeter DR Tool v0.1.0 | DR12 (12.16 dB)
+/// example.flac | 5:00 | 44100 Hz | 2ch | FLAC
+/// ```
+pub fn format_compact_header(
+    config: &AppConfig,
+    format: &AudioFormat,
+    official_dr: i32,
+    precise_dr: f64,
+) -> String {
+    let mut output = String::new();
+
+    // 第1行：工具版本 | DR值
+    output.push_str(&format!(
+        "MacinMeter DR Tool v{VERSION} | DR{official_dr} ({precise_dr:.2} dB)\n"
+    ));
+
+    // 第2行：文件名 | 时长 | 采样率 | 声道数 | 编码
+    let file_name = utils::extract_filename(&config.input_path);
+
+    // 时长格式化
+    let total_seconds = format.duration_seconds() as u32;
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+    let duration_display = if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    };
+
+    // 编码格式
+    let codec_display = if let Some(codec_type) = format.codec_type {
+        codec_type_to_string(codec_type).to_string()
+    } else {
+        utils::extract_extension_uppercase(&config.input_path)
+    };
+
+    output.push_str(&format!(
+        "{file_name} | {duration_display} | {} Hz | {}ch | {codec_display}\n",
+        format.sample_rate, format.channels
+    ));
+
+    output
+}
+
+/// 创建 DR 结果表格（comfy-table 实现）
+///
+/// 输出格式：
+/// ```text
+/// | Channel | DR        | Peak     |
+/// |---------|-----------|----------|
+/// | Left    | 12.34 dB  | -0.12 dB |
+/// | Right   | 11.98 dB  | -0.08 dB |
+/// ```
+pub fn create_dr_table(results: &[DrResult], format: &AudioFormat) -> String {
+    let mut table = Table::new();
+    table.load_preset(ASCII_MARKDOWN);
+
+    // 识别 LFE 位置
+    let lfe_indices: Vec<usize> =
+        if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
+            format
+                .lfe_indices
+                .iter()
+                .copied()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        } else {
+            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
+                .into_iter()
+                .filter(|&idx| idx < results.len())
+                .collect()
+        };
+
+    // 表头
+    if results.len() <= 2 {
+        // 简单模式：Channel | DR | Peak
+        table.set_header(vec!["Channel", "DR", "Peak"]);
+    } else {
+        // 多声道模式：Channel | DR | Peak | Note
+        table.set_header(vec!["Channel", "DR", "Peak", "Note"]);
+    }
+
+    // 设置所有列居中对齐
+    let col_count = if results.len() <= 2 { 3 } else { 4 };
+    for i in 0..col_count {
+        if let Some(col) = table.column_mut(i) {
+            col.set_cell_alignment(CellAlignment::Center);
+        }
+    }
+
+    // 数据行
+    for (i, result) in results.iter().enumerate() {
+        let channel_name = get_channel_name(i, results.len());
+        let dr_value = format!("{:.2} dB", result.dr_value);
+        let peak_value = format!("{} dB", utils::linear_to_db_string(result.peak));
+        let note = get_channel_note(i, result, &lfe_indices);
+
+        if results.len() <= 2 {
+            table.add_row(vec![channel_name, dr_value, peak_value]);
+        } else {
+            table.add_row(vec![channel_name, dr_value, peak_value, note.to_string()]);
+        }
+    }
+
+    format!("{table}\n")
+}
+
+/// 创建 RMS/Peak 诊断表格（comfy-table 实现）
+///
+/// 输出格式：
+/// ```text
+/// | Channel | RMS(20%)  | Peak     | Primary   | Secondary |
+/// |---------|-----------|----------|-----------|-----------|
+/// | Left    | -18.5 dB  | -0.12 dB | -0.12 dB  | -0.45 dB  |
+/// ```
+pub fn create_diagnostics_table(results: &[DrResult], format: &AudioFormat) -> String {
+    let mut table = Table::new();
+    table.load_preset(ASCII_MARKDOWN);
+
+    // 识别 LFE 位置
+    let lfe_indices: Vec<usize> =
+        if format.has_channel_layout_metadata && !format.lfe_indices.is_empty() {
+            format.lfe_indices.clone()
+        } else {
+            crate::audio::channel_layout::fallback_lfe_indices(format.channels)
+        };
+
+    // 表头
+    table.set_header(vec![
+        "Channel",
+        "RMS(20%)",
+        "Peak(sel)",
+        "Primary",
+        "Secondary",
+    ]);
+
+    // 设置所有列居中对齐
+    for i in 0..5 {
+        if let Some(col) = table.column_mut(i) {
+            col.set_cell_alignment(CellAlignment::Center);
+        }
+    }
+
+    // 数据行
+    for (i, result) in results.iter().enumerate() {
+        let mut channel_name = get_channel_name(i, results.len());
+        let note = get_channel_note(i, result, &lfe_indices);
+        if !note.is_empty() {
+            channel_name.push_str(&format!(" [{note}]"));
+        }
+
+        let rms_value = format!("{} dB", utils::linear_to_db_string(result.rms));
+        let peak_value = format!("{} dB", utils::linear_to_db_string(result.peak));
+        let primary_value = format!("{} dB", utils::linear_to_db_string(result.primary_peak));
+        let secondary_value = format!("{} dB", utils::linear_to_db_string(result.secondary_peak));
+
+        table.add_row(vec![
+            channel_name,
+            rms_value,
+            peak_value,
+            primary_value,
+            secondary_value,
+        ]);
+    }
+
+    let mut output = String::new();
+    output.push_str("RMS/Peak Diagnostics:\n");
+    output.push_str(&format!("{table}\n"));
+    output
+}
+
+/// 格式化实验性功能附加信息
+pub fn format_experimental_notes(
+    edge_trim_report: Option<&EdgeTrimReport>,
+    silence_filter_report: Option<&SilenceFilterReport>,
+    format: &AudioFormat,
+) -> String {
+    let mut output = String::new();
+
+    // 边缘裁切信息
+    if let Some(report) = edge_trim_report {
+        let total_sec = report.total_duration_sec(format.sample_rate, format.channels as usize);
+        output.push_str(&format!(
+            "[Experimental] Edge trimming: {total_sec:.1}s removed\n"
+        ));
+    }
+
+    // 静音过滤信息
+    if let Some(report) = silence_filter_report {
+        let total_filtered: usize = report.channels.iter().map(|c| c.filtered_windows).sum();
+        let total_windows: usize = report.channels.iter().map(|c| c.total_windows).sum();
+        if total_windows > 0 {
+            let percent = (total_filtered as f64 / total_windows as f64) * 100.0;
+            output.push_str(&format!(
+                "[Experimental] Silence filter: {total_filtered}/{total_windows} windows ({percent:.1}%)\n"
+            ));
+        }
+    }
+
+    output
+}
+
+/// 格式化边界风险预警（紧凑版）
+pub fn format_boundary_warning_compact(official_dr: i32, precise_dr: f64) -> String {
+    if let Some((risk_level, direction, distance)) =
+        detect_boundary_risk_level(official_dr, precise_dr)
+    {
+        let risk_str = match risk_level {
+            BoundaryRiskLevel::High => "High",
+            BoundaryRiskLevel::Medium => "Medium",
+            BoundaryRiskLevel::None => return String::new(),
+        };
+        let target_dr = match direction {
+            BoundaryDirection::Upper => official_dr + 1,
+            BoundaryDirection::Lower => (official_dr - 1).max(0),
+        };
+        format!(
+            "[!] Boundary Risk ({risk_str}): {precise_dr:.2} dB is {distance:.2} dB from DR{official_dr}/DR{target_dr} boundary\n"
+        )
+    } else {
+        String::new()
+    }
+}
+
+/// 生成紧凑报告（完整版）
+///
+/// 将报告从 ~32 行精简到 ~12 行
+pub fn generate_compact_report(
+    config: &AppConfig,
+    format: &AudioFormat,
+    results: &[DrResult],
+    show_rms_peak: bool,
+    edge_trim_report: Option<EdgeTrimReport>,
+    silence_filter_report: Option<SilenceFilterReport>,
+    exclude_lfe: bool,
+) -> String {
+    let mut output = String::new();
+
+    // 计算 DR 值
+    let (official_dr, precise_dr) = match compute_official_precise_dr(results, format, exclude_lfe)
+    {
+        Some((off, prec, _, _)) => (off, prec),
+        None => (0, 0.0),
+    };
+
+    // 紧凑头部（2行）
+    output.push_str(&format_compact_header(
+        config,
+        format,
+        official_dr,
+        precise_dr,
+    ));
+    output.push('\n');
+
+    // DR 结果表格
+    output.push_str(&create_dr_table(results, format));
+
+    // 可选：RMS/Peak 诊断表格
+    if show_rms_peak {
+        output.push('\n');
+        output.push_str(&create_diagnostics_table(results, format));
+    }
+
+    // 边界风险预警
+    let boundary_warning = format_boundary_warning_compact(official_dr, precise_dr);
+    if !boundary_warning.is_empty() {
+        output.push('\n');
+        output.push_str(&boundary_warning);
+    }
+
+    // 实验性功能信息
+    let experimental_notes = format_experimental_notes(
+        edge_trim_report.as_ref(),
+        silence_filter_report.as_ref(),
+        format,
+    );
+    if !experimental_notes.is_empty() {
+        output.push('\n');
+        output.push_str(&experimental_notes);
+    }
+
+    // 生成时间
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    output.push_str(&format!("\nGenerated: {now}\n"));
+
+    output
+}
+
 /// 根据声道数选择合适的格式化方法
 pub fn format_dr_results_by_channel_count(
     results: &[DrResult],
@@ -1014,8 +1149,8 @@ pub fn format_dr_results_by_channel_count(
     // 根据声道数选择格式化方法
     output.push_str(&match results.len() {
         0 => "ERROR: 无音频数据\n".to_string(),
-        1 => format_mono_results(&results[0], show_rms_peak),
-        2 => format_stereo_results(results, show_rms_peak),
+        1 => format_mono_results(&results[0], format, show_rms_peak),
+        2 => format_stereo_results(results, format, show_rms_peak),
         3..=8 => format_medium_multichannel_results(results, format, show_rms_peak),
         _ => format_large_multichannel_results(results, format, show_rms_peak),
     });

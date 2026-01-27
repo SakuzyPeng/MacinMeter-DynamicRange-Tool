@@ -758,42 +758,58 @@ pub fn output_results(
     silence_filter_report: Option<SilenceFilterReport>,
     auto_save: bool,
 ) -> AudioResult<()> {
-    // 使用模块化的方法组装输出内容
-    let mut output = String::new();
+    let output = if config.compact_output {
+        // 紧凑模式：~12 行输出
+        formatter::generate_compact_report(
+            config,
+            format,
+            results,
+            config.show_rms_peak,
+            edge_trim_report,
+            silence_filter_report,
+            config.exclude_lfe,
+        )
+    } else {
+        // 详细模式：~32 行输出（foobar2000 兼容格式）
+        let mut output = String::new();
 
-    // 1. 创建头部信息
-    output.push_str(&formatter::create_output_header(
-        config,
-        format,
-        edge_trim_report,
-        silence_filter_report,
-    ));
+        // 1. 创建头部信息
+        output.push_str(&formatter::create_output_header(
+            config,
+            format,
+            edge_trim_report,
+            silence_filter_report,
+        ));
 
-    // 2. 根据声道数格式化DR结果
-    output.push_str(&formatter::format_dr_results_by_channel_count(
-        results,
-        format,
-        config.show_rms_peak,
-    ));
+        // 2. 根据声道数格式化DR结果
+        output.push_str(&formatter::format_dr_results_by_channel_count(
+            results,
+            format,
+            config.show_rms_peak,
+        ));
 
-    // 3. 添加标准分隔线（长度与单文件标题一致）
-    let header_line =
-        crate::tools::constants::app_info::format_output_header(env!("CARGO_PKG_VERSION"));
-    let sep_dash = crate::tools::utils::table::separator_for_lines_with_char(&[&header_line], '-');
-    output.push_str(&sep_dash);
-    output.push('\n');
+        // 3. 添加标准分隔线（长度与单文件标题一致）
+        let header_line =
+            crate::tools::constants::app_info::format_output_header(env!("CARGO_PKG_VERSION"));
+        let sep_dash =
+            crate::tools::utils::table::separator_for_lines_with_char(&[&header_line], '-');
+        output.push_str(&sep_dash);
+        output.push('\n');
 
-    // 4. 计算并添加Official DR Value
-    output.push_str(&formatter::calculate_official_dr(
-        results,
-        format,
-        config.exclude_lfe,
-    ));
+        // 4. 计算并添加Official DR Value
+        output.push_str(&formatter::calculate_official_dr(
+            results,
+            format,
+            config.exclude_lfe,
+        ));
 
-    // 5. 添加音频技术信息
-    output.push_str(&formatter::format_audio_info(config, format));
+        // 5. 添加音频技术信息
+        output.push_str(&formatter::format_audio_info(config, format));
 
-    // 6. 写入输出（文件或控制台）
+        output
+    };
+
+    // 写入输出（文件或控制台）
     formatter::write_output(&output, config, auto_save)
 }
 
@@ -881,6 +897,8 @@ pub fn save_individual_result(
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: config.show_rms_peak,
+        compact_output: false, // 批量模式下单独文件使用详细格式
+        auto_launched: false,  // 批量模式下的单独文件始终自动保存
         dsd_pcm_rate: config.dsd_pcm_rate,
         dsd_gain_db: config.dsd_gain_db,
         dsd_filter: config.dsd_filter.clone(),
