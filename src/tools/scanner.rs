@@ -421,17 +421,22 @@ pub fn finalize_and_write_batch_output(
             error_stats,
         ));
 
-        let output_path = generate_batch_output_path(config);
-        std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
+        // 如果启用了 --no-save，只输出到控制台
+        if config.no_save {
+            print!("{batch_output}");
+        } else {
+            let output_path = generate_batch_output_path(config);
+            std::fs::write(&output_path, &batch_output).map_err(AudioError::IoError)?;
 
-        show_batch_completion_info(
-            &output_path,
-            processed_count,
-            audio_files.len(),
-            failed_count,
-            config,
-            is_single_file,
-        );
+            show_batch_completion_info(
+                &output_path,
+                processed_count,
+                audio_files.len(),
+                failed_count,
+                config,
+                is_single_file,
+            );
+        }
     } else {
         // 单文件模式：显示简单的完成信息
         if processed_count > 0 {

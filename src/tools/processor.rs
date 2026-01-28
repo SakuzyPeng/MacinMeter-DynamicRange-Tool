@@ -897,8 +897,9 @@ pub fn save_individual_result(
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: config.show_rms_peak,
-        compact_output: false, // 批量模式下单独文件使用详细格式
-        auto_launched: false,  // 批量模式下的单独文件始终自动保存
+        compact_output: false,   // 批量模式下单独文件使用详细格式
+        auto_launched: false,    // 批量模式下的单独文件始终自动保存
+        no_save: config.no_save, // 继承父配置的 no_save 设置
         dsd_pcm_rate: config.dsd_pcm_rate,
         dsd_gain_db: config.dsd_gain_db,
         dsd_filter: config.dsd_filter.clone(),

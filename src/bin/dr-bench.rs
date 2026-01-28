@@ -405,6 +405,7 @@ fn run_single(
     // 构建命令
     let mut cmd = Command::new(exe);
     cmd.arg(target);
+    cmd.arg("--no-save"); // 禁用结果文件保存
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::null());
 

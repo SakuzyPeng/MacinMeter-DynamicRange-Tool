@@ -1163,6 +1163,12 @@ pub fn format_dr_results_by_channel_count(
 
 /// 处理输出写入（文件或控制台）
 pub fn write_output(output: &str, config: &AppConfig, auto_save: bool) -> AudioResult<()> {
+    // 如果启用了 --no-save，只输出到控制台
+    if config.no_save {
+        print!("{output}");
+        return Ok(());
+    }
+
     match &config.output_path {
         Some(output_path) => {
             // 用户指定了输出文件路径

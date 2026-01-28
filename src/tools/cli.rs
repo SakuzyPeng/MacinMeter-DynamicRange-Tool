@@ -132,6 +132,9 @@ pub struct AppConfig {
     /// false = 有参数启动，只输出控制台（除非指定 -o）
     pub auto_launched: bool,
 
+    /// 禁用自动保存结果文件（用于脚本/benchmark场景）
+    pub no_save: bool,
+
     /// DSD → PCM 的目标采样率（Hz）。
     /// 可选：88200 / 176400 / 352800 / 384000。
     /// None 表示使用默认值（352800）。
@@ -185,6 +188,12 @@ pub fn parse_args() -> AppConfig {
                 .value_name("FILE")
                 .value_parser(clap::value_parser!(PathBuf))
                 .value_hint(clap::ValueHint::FilePath),
+        )
+        .arg(
+            Arg::new("no-save")
+                .long("no-save")
+                .help("Disable auto-save of result files (for scripts/benchmarks) / 禁用结果文件自动保存（用于脚本/基准测试）")
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("serial")
@@ -395,6 +404,7 @@ pub fn parse_args() -> AppConfig {
         show_rms_peak: matches.get_flag("show-rms-peak"),
         compact_output: matches.get_flag("compact"),
         auto_launched,
+        no_save: matches.get_flag("no-save"),
         // 默认 352.8 kHz；用户可通过 --dsd-pcm-rate 覆盖
         dsd_pcm_rate: matches
             .get_one::<u32>("dsd-pcm-rate")
