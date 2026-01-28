@@ -129,6 +129,62 @@ Compared to macOS M4 Pro (median 1.025 s / 1167.73 MB/s), the i9-13900H achieves
 
 ---
 
+## DSD/FFmpeg 管道优化（DSD/FFmpeg Pipe Optimization）
+
+### 测试数据集（Test Dataset）
+
+| 类别 / Category | 规模 / Size | 编码/声道 / Codec | 采样率 / Sample Rate | 备注 / Notes |
+| --- | --- | --- | --- | --- |
+| 10 首 DSD | 约 3.85 GB · 10 首 | DSF / 2ch | DSD128 (5.6 MHz) | 通过 FFmpeg 降采样至 352.8 kHz |
+| 10 DSD tracks | ~3.85 GB · 10 tracks | DSF / 2ch | DSD128 (5.6 MHz) | Downsampled to 352.8 kHz via FFmpeg |
+
+### 优化内容（Optimization Details）
+
+异步双缓冲架构（Async double-buffering architecture）：
+
+```
+FFmpeg → [管道/Pipe] → 读取线程(1MB BufReader) → [Channel 4×512KB] → 主线程
+```
+
+- BufReader 从 128KB 增大到 1MB
+- 新增异步读取线程持续预读数据
+- 通过 crossbeam-channel 传递数据块（容量 4 块 × 512KB）
+- 减少 FFmpeg 写端阻塞，改善 Windows 4KB 管道缓冲限制
+
+### macOS M4 Pro · DSD 基准（10 runs, `--serial`）
+
+| 版本 / Version | 平均时间 Avg Time (s) | 中位数 Median (s) | 最小 Min (s) | 最大 Max (s) | 提升 Improvement |
+| --- | ---:| ---:| ---:| ---:| ---:|
+| 优化前 / Before (no BufReader) | 17.914 | 17.927 | 17.274 | 18.919 | — |
+| **优化后 / After (async 1MB)** | **11.603** | **11.545** | **11.302** | **12.020** | **+35%** |
+
+### Windows · Intel i9-13900H · DSD 基准（10 runs, `--serial`）
+
+| 版本 / Version | 平均时间 Avg Time (s) | 中位数 Median (s) | 处理速度 Throughput (MB/s) | 提升 Improvement |
+| --- | ---:| ---:| ---:| ---:|
+| 优化前 / Before (2025-11-04) | 245.815 | 244.557 | 15.68 | — |
+| **优化后 / After (2026-01-29)** | **16.824** | **16.793** | **229.07** | **14.6× faster** |
+
+| 版本 / Version | 峰值内存 Peak Memory (MB) | 平均内存 Avg Memory (MB) | CPU 平均 Avg CPU (%) | CPU 峰值 Peak CPU (%) |
+| --- | ---:| ---:| ---:| ---:|
+| 优化前 / Before (2025-11-04) | 201.41 | 153.46 | 22.48 | 26.93 |
+| **优化后 / After (2026-01-29)** | **316.45** | **197.69** | **10.70** | **14.22** |
+
+### 跨平台对比（Cross-Platform Comparison）
+
+优化后 macOS vs Windows 性能差距从 **13.7×** 缩小到 **1.45×**：
+
+| 平台 / Platform | 10 首 DSD 中位数 Median (s) | 处理速度 Throughput (MB/s) | 相对性能 Relative |
+| --- | ---:| ---:| ---:|
+| macOS M4 Pro | 11.545 | ~333 | 1.00× |
+| Windows i9-13900H | 16.793 | 229 | 0.69× |
+
+> Windows DSD 处理性能提升 **14.6 倍**，主要归功于异步双缓冲消除了 4KB 管道缓冲限制导致的 FFmpeg 写阻塞。
+>
+> Windows DSD processing improved **14.6×**, primarily due to async double-buffering eliminating FFmpeg write stalls caused by the 4KB pipe buffer limitation.
+
+---
+
 ## 性能建议（Performance Tips）
 
 - 建议优先使用 Release 构建；并行解码与 SIMD 可显著提升吞吐。
