@@ -4,9 +4,13 @@
 //! 支持格式：AC-3, E-AC-3, DTS, DSD (DSF/DFF)等。
 
 use crate::error::{AudioError, AudioResult};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
 
 /// 在 Windows 上隐藏子进程控制台窗口（用于 GUI 场景避免 FFmpeg 弹窗）
 #[cfg(target_os = "windows")]
@@ -42,18 +46,45 @@ Installation / 安装方法:
 Official site / 官方网站: https://ffmpeg.org/download.html
 "#;
 
-/// FFmpeg流式解码器
-///
-/// 通过子进程管道实现流式PCM解码，支持恒定内存处理大文件。
-/// 注意：此方案为串行解码（无packet级并行），但支持文件级并行。
-/// Windows 管道缓冲区较小（4KB），使用 BufReader 减少系统调用
-const PIPE_BUFFER_SIZE: usize = 128 * 1024; // 128KB
+// FFmpeg流式解码器（异步双缓冲架构）
+//
+// 通过子进程管道实现流式PCM解码，支持恒定内存处理大文件。
+// 采用异步双缓冲设计：后台线程持续读取管道，减少 FFmpeg 写阻塞。
+//
+// 架构：FFmpeg → [管道] → 读取线程(1MB BufReader) → [Channel] → 主线程
+//
+// Windows 管道内核缓冲区仅 4KB，通过异步预读减少写端阻塞。
+
+/// BufReader 缓冲区大小（读取端优化）
+const PIPE_BUFFER_SIZE: usize = 1024 * 1024; // 1MB - 约 370ms @352.8kHz 立体声
+
+/// 每个数据块的目标大小（用于 channel 传输）
+const CHUNK_TARGET_BYTES: usize = 512 * 1024; // 512KB - 约 185ms @352.8kHz 立体声
+
+/// Channel 容量（预读块数）- 约 740ms 预读缓冲
+const CHANNEL_CAPACITY: usize = 4;
+
+/// 读取线程发送的数据块
+enum ReaderMessage {
+    /// 包含原始字节数据的块
+    Data(Vec<u8>),
+    /// 流结束
+    Eof,
+    /// 读取错误
+    Error(String),
+}
 
 pub struct FFmpegDecoder {
     /// FFmpeg子进程
     child: Child,
-    /// 带缓冲的 stdout 读取器（减少 Windows 管道系统调用）
-    stdout_reader: Option<BufReader<ChildStdout>>,
+    /// 数据接收端（从读取线程接收）
+    receiver: Option<Receiver<ReaderMessage>>,
+    /// 读取线程句柄
+    reader_handle: Option<JoinHandle<()>>,
+    /// 停止信号（通知读取线程退出）
+    stop_signal: Arc<AtomicBool>,
+    /// 未处理完的字节缓冲（跨 chunk 边界）
+    pending_bytes: Vec<u8>,
     /// FFmpeg可执行路径（用于reset重启）
     ffmpeg_path: PathBuf,
     /// 启动参数（用于reset重启）
@@ -763,18 +794,27 @@ impl FFmpegDecoder {
             AudioError::DecodingError(format!("Failed to spawn FFmpeg / 无法启动FFmpeg: {e}"))
         })?;
 
-        // 用 BufReader 包装 stdout，减少 Windows 管道系统调用
+        // 获取 stdout 用于异步读取线程
         let stdout = child.stdout.take().ok_or_else(|| {
             AudioError::DecodingError(
                 "FFmpeg stdout not available / FFmpeg标准输出不可用".to_string(),
             )
         })?;
-        let stdout_reader = Some(BufReader::with_capacity(PIPE_BUFFER_SIZE, stdout));
+
+        // 创建 channel 和停止信号
+        let (sender, receiver) = bounded::<ReaderMessage>(CHANNEL_CAPACITY);
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        let stop_signal_clone = Arc::clone(&stop_signal);
+
+        // 启动异步读取线程
+        let reader_handle = thread::spawn(move || {
+            Self::reader_thread_main(stdout, sender, stop_signal_clone);
+        });
 
         let total_samples = format.sample_count; // 提前保存，避免move后使用
 
         eprintln!(
-            "[INFO] FFmpeg decoder initialized / FFmpeg解码器已初始化: {} channels, {}Hz, format={}",
+            "[INFO] FFmpeg async decoder initialized / FFmpeg异步解码器已初始化: {} channels, {}Hz, format={}, buf={}KB",
             format.channels,
             format.sample_rate,
             if use_f32 {
@@ -783,12 +823,16 @@ impl FFmpegDecoder {
                 "S32LE"
             } else {
                 "S16LE"
-            }
+            },
+            PIPE_BUFFER_SIZE / 1024
         );
 
         Ok(Self {
             child,
-            stdout_reader,
+            receiver: Some(receiver),
+            reader_handle: Some(reader_handle),
+            stop_signal,
+            pending_bytes: Vec::new(),
             ffmpeg_path,
             spawn_args: args.clone(),
             input_path: path.to_path_buf(),
@@ -801,6 +845,45 @@ impl FFmpegDecoder {
             use_f32,
             last_stderr: String::new(),
         })
+    }
+
+    /// 读取线程主函数 - 持续从管道读取数据并发送到 channel
+    fn reader_thread_main(
+        stdout: ChildStdout,
+        sender: Sender<ReaderMessage>,
+        stop_signal: Arc<AtomicBool>,
+    ) {
+        // 使用大缓冲区包装 stdout
+        let mut reader = BufReader::with_capacity(PIPE_BUFFER_SIZE, stdout);
+        let mut buffer = vec![0u8; CHUNK_TARGET_BYTES];
+
+        loop {
+            // 检查停止信号
+            if stop_signal.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // 读取数据块
+            match reader.read(&mut buffer) {
+                Ok(0) => {
+                    // EOF
+                    let _ = sender.send(ReaderMessage::Eof);
+                    break;
+                }
+                Ok(n) => {
+                    // 发送数据块
+                    let data = buffer[..n].to_vec();
+                    if sender.send(ReaderMessage::Data(data)).is_err() {
+                        // 接收端已关闭
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let _ = sender.send(ReaderMessage::Error(e.to_string()));
+                    break;
+                }
+            }
+        }
     }
 
     /// S16LE字节转f32样本（小端序）
@@ -841,90 +924,76 @@ impl StreamingDecoder for FFmpegDecoder {
             return Ok(None);
         }
 
-        // 计算自适应分块大小（按字节上限而非固定时长）
-        // 约束：8-16MB每块，适应不同声道数和采样率
-        const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024; // 16MB上限
-        const MIN_CHUNK_BYTES: usize = 64 * 1024; // 64KB下限
         let channels = self.format.channels as usize;
-        // 按实际输出位宽选择样本字节数
         let bytes_per_sample = if self.use_f32 || self.use_s32 { 4 } else { 2 };
-        let default_chunk_bytes =
-            self.format.sample_rate as usize * channels * bytes_per_sample * 3; // 目标≈3秒
-        let bytes_per_chunk = default_chunk_bytes.clamp(MIN_CHUNK_BYTES, MAX_CHUNK_BYTES);
-        // 向下对齐到整帧（channels样本边界）
-        let bytes_per_chunk =
-            (bytes_per_chunk / (channels * bytes_per_sample)) * (channels * bytes_per_sample);
+        let frame_size = channels * bytes_per_sample;
 
-        let mut buffer = vec![0u8; bytes_per_chunk];
-        let mut accumulated = Vec::new(); // 积累不足一帧的数据
+        // 目标：每个 chunk 约 3 秒数据
+        let target_bytes = self.format.sample_rate as usize * channels * bytes_per_sample * 3;
+        let target_bytes = target_bytes.clamp(64 * 1024, 16 * 1024 * 1024);
 
-        let reader = self.stdout_reader.as_mut().ok_or_else(|| {
+        let receiver = self.receiver.as_ref().ok_or_else(|| {
             AudioError::DecodingError(
-                "FFmpeg stdout not available / FFmpeg标准输出不可用".to_string(),
+                "FFmpeg receiver not available / FFmpeg接收器不可用".to_string(),
             )
         })?;
 
-        // 填满式读取循环，直到获得完整帧数或EOF
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => {
-                    // EOF
+        // 从 channel 接收数据，直到达到目标大小或 EOF
+        while self.pending_bytes.len() < target_bytes {
+            match receiver.recv() {
+                Ok(ReaderMessage::Data(data)) => {
+                    self.pending_bytes.extend(data);
+                }
+                Ok(ReaderMessage::Eof) => {
                     self.eof_reached = true;
-                    if accumulated.is_empty() {
-                        return Ok(None);
-                    }
-                    break; // 处理积累的不足一帧的数据
+                    break;
                 }
-                Ok(bytes_read) => {
-                    accumulated.extend_from_slice(&buffer[..bytes_read]);
-                    // 计算字节大小（S16LE=2字节，S32LE/F32LE=4字节）
-                    let bytes_per_complete_sample =
-                        if self.use_f32 || self.use_s32 { 4 } else { 2 };
-                    // 检查是否有完整帧
-                    let complete_frames = (accumulated.len()
-                        / (channels * bytes_per_complete_sample))
-                        * (channels * bytes_per_complete_sample);
-                    if complete_frames > 0 {
-                        // 有完整帧，返回
-                        let data = accumulated.drain(..complete_frames).collect::<Vec<_>>();
-                        let samples = if self.use_f32 {
-                            Self::convert_f32le_to_f32(&data)
-                        } else if self.use_s32 {
-                            Self::convert_s32le_to_f32(&data)
-                        } else {
-                            Self::convert_s16le_to_f32(&data)
-                        };
-                        let samples_per_channel = samples.len() / channels;
-                        self.current_position += samples_per_channel as u64;
-                        self.chunk_stats.add_chunk(samples.len());
-                        return Ok(Some(samples));
-                    }
-                    // 否则继续读取以积累完整帧
-                }
-                Err(e) => {
+                Ok(ReaderMessage::Error(e)) => {
                     return Err(AudioError::DecodingError(format!(
-                        "Failed to read from FFmpeg / FFmpeg读取失败: {e}"
+                        "FFmpeg read error / FFmpeg读取错误: {e}"
                     )));
+                }
+                Err(_) => {
+                    // Channel 关闭
+                    self.eof_reached = true;
+                    break;
                 }
             }
         }
 
-        // 处理EOF时积累的不足一帧的数据（符合P0实现：尾块直接参与计算）
-        if !accumulated.is_empty() {
-            let samples = if self.use_f32 {
-                Self::convert_f32le_to_f32(&accumulated)
-            } else if self.use_s32 {
-                Self::convert_s32le_to_f32(&accumulated)
-            } else {
-                Self::convert_s16le_to_f32(&accumulated)
-            };
-            let samples_per_channel = samples.len() / channels;
-            self.current_position += samples_per_channel as u64;
-            self.chunk_stats.add_chunk(samples.len());
-            Ok(Some(samples))
-        } else {
-            Ok(None)
+        // 检查是否有数据可处理
+        if self.pending_bytes.is_empty() {
+            return Ok(None);
         }
+
+        // 对齐到完整帧边界
+        let complete_bytes = (self.pending_bytes.len() / frame_size) * frame_size;
+        if complete_bytes == 0 {
+            // 不足一帧，等待更多数据或 EOF
+            if self.eof_reached {
+                // EOF 时丢弃不完整帧
+                self.pending_bytes.clear();
+            }
+            return Ok(None);
+        }
+
+        // 提取完整帧数据
+        let data: Vec<u8> = self.pending_bytes.drain(..complete_bytes).collect();
+
+        // 转换为 f32 样本
+        let samples = if self.use_f32 {
+            Self::convert_f32le_to_f32(&data)
+        } else if self.use_s32 {
+            Self::convert_s32le_to_f32(&data)
+        } else {
+            Self::convert_s16le_to_f32(&data)
+        };
+
+        let samples_per_channel = samples.len() / channels;
+        self.current_position += samples_per_channel as u64;
+        self.chunk_stats.add_chunk(samples.len());
+
+        Ok(Some(samples))
     }
 
     fn format(&self) -> AudioFormat {
@@ -942,6 +1011,20 @@ impl StreamingDecoder for FFmpegDecoder {
     }
 
     fn reset(&mut self) -> AudioResult<()> {
+        // 停止现有读取线程
+        self.stop_signal.store(true, Ordering::Relaxed);
+
+        // 清空 receiver 以解除读取线程的阻塞
+        if let Some(ref receiver) = self.receiver {
+            while receiver.try_recv().is_ok() {}
+        }
+        self.receiver = None;
+
+        // 等待读取线程结束
+        if let Some(handle) = self.reader_handle.take() {
+            let _ = handle.join();
+        }
+
         // 终止现有FFmpeg进程
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -956,15 +1039,25 @@ impl StreamingDecoder for FFmpegDecoder {
             AudioError::DecodingError(format!("Failed to respawn FFmpeg / 无法重启FFmpeg: {e}"))
         })?;
 
-        // 重新创建 BufReader
+        // 获取新的 stdout
         let stdout = self.child.stdout.take().ok_or_else(|| {
             AudioError::DecodingError(
                 "FFmpeg stdout not available after reset / 重启后FFmpeg标准输出不可用".to_string(),
             )
         })?;
-        self.stdout_reader = Some(BufReader::with_capacity(PIPE_BUFFER_SIZE, stdout));
+
+        // 创建新的 channel 和读取线程
+        let (sender, receiver) = bounded::<ReaderMessage>(CHANNEL_CAPACITY);
+        self.stop_signal = Arc::new(AtomicBool::new(false));
+        let stop_signal_clone = Arc::clone(&self.stop_signal);
+
+        self.reader_handle = Some(thread::spawn(move || {
+            Self::reader_thread_main(stdout, sender, stop_signal_clone);
+        }));
+        self.receiver = Some(receiver);
 
         // 重置内部状态
+        self.pending_bytes.clear();
         self.current_position = 0;
         self.eof_reached = false;
         self.chunk_stats = ChunkSizeStats::new();
@@ -979,6 +1072,20 @@ impl StreamingDecoder for FFmpegDecoder {
 
 impl Drop for FFmpegDecoder {
     fn drop(&mut self) {
+        // 通知读取线程停止
+        self.stop_signal.store(true, Ordering::Relaxed);
+
+        // 清空 receiver 以解除读取线程可能的阻塞
+        if let Some(ref receiver) = self.receiver {
+            while receiver.try_recv().is_ok() {}
+        }
+
+        // 等待读取线程结束（带超时保护）
+        if let Some(handle) = self.reader_handle.take() {
+            // 不阻塞太久，读取线程应该很快退出
+            let _ = handle.join();
+        }
+
         // 确保FFmpeg进程被清理
         let _ = self.child.kill();
         let _ = self.child.wait();
