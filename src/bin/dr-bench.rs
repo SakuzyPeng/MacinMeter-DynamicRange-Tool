@@ -218,23 +218,48 @@ fn find_project_root() -> Option<PathBuf> {
     }
 }
 
+/// 获取 dr-bench 自身所在目录
+fn get_self_dir() -> Option<PathBuf> {
+    env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
+}
+
 /// 自动发现可执行文件
 fn auto_discover_executable() -> Option<PathBuf> {
-    let root = find_project_root()?;
-
-    // 优先查找 target/release
-    for name in EXECUTABLE_NAMES {
-        let path = root.join("target/release").join(name);
-        if path.exists() && path.is_file() {
-            return Some(path);
+    // 1. 优先查找当前工作目录
+    if let Ok(cwd) = env::current_dir() {
+        for name in EXECUTABLE_NAMES {
+            let path = cwd.join(name);
+            if path.exists() && path.is_file() {
+                return Some(path);
+            }
         }
     }
 
-    // 其次查找 target/debug
-    for name in EXECUTABLE_NAMES {
-        let path = root.join("target/debug").join(name);
-        if path.exists() && path.is_file() {
-            return Some(path);
+    // 2. 查找 dr-bench 自身所在目录
+    if let Some(self_dir) = get_self_dir() {
+        for name in EXECUTABLE_NAMES {
+            let path = self_dir.join(name);
+            if path.exists() && path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+
+    // 3. 查找项目根目录（开发环境）
+    if let Some(root) = find_project_root() {
+        // target/release
+        for name in EXECUTABLE_NAMES {
+            let path = root.join("target/release").join(name);
+            if path.exists() && path.is_file() {
+                return Some(path);
+            }
+        }
+        // target/debug
+        for name in EXECUTABLE_NAMES {
+            let path = root.join("target/debug").join(name);
+            if path.exists() && path.is_file() {
+                return Some(path);
+            }
         }
     }
 
@@ -243,15 +268,39 @@ fn auto_discover_executable() -> Option<PathBuf> {
 
 /// 自动发现测试数据目录
 fn auto_discover_test_data() -> Option<PathBuf> {
-    let root = find_project_root()?;
-
-    for dir in TEST_DATA_DIRS {
-        let path = root.join(dir);
-        if path.exists() && path.is_dir() {
-            // 检查是否包含音频文件
-            if has_audio_files(&path) {
+    // 1. 检查当前工作目录是否直接包含音频文件
+    if let Ok(cwd) = env::current_dir() {
+        if has_audio_files(&cwd) {
+            return Some(cwd);
+        }
+        // 检查当前目录下的子目录
+        for dir in TEST_DATA_DIRS {
+            let path = cwd.join(dir);
+            if path.exists() && path.is_dir() && has_audio_files(&path) {
                 return Some(path);
             }
+        }
+    }
+
+    // 2. 检查 dr-bench 所在目录
+    if let Some(self_dir) = get_self_dir() {
+        if has_audio_files(&self_dir) {
+            return Some(self_dir);
+        }
+        for dir in TEST_DATA_DIRS {
+            let path = self_dir.join(dir);
+            if path.exists() && path.is_dir() && has_audio_files(&path) {
+                return Some(path);
+            }
+        }
+    }
+
+    // 3. 检查项目根目录（开发环境）
+    let root = find_project_root()?;
+    for dir in TEST_DATA_DIRS {
+        let path = root.join(dir);
+        if path.exists() && path.is_dir() && has_audio_files(&path) {
+            return Some(path);
         }
     }
 
@@ -761,7 +810,48 @@ fn output_compare_json(compare: &CompareReport) {
 // 主函数
 // ============================================================================
 
+/// 等待用户按回车（双击启动时使用）
+fn wait_for_enter() {
+    use std::io::{self, BufRead};
+    eprintln!("\nPress Enter to exit / 按回车键退出...");
+    let _ = io::stdin().lock().lines().next();
+}
+
+/// 检测是否为无参数启动（双击模式）
+fn is_no_args_launch() -> bool {
+    // 如果没有命令行参数（只有程序名），则为双击启动
+    env::args().len() <= 1
+}
+
+/// 显示使用说明
+fn show_usage_hint() {
+    eprintln!("\n使用说明 / Usage:");
+    eprintln!("  1. 将 dr-bench 和 MacinMeter-DynamicRange-Tool-foo_dr 放在同一目录");
+    eprintln!("     Place dr-bench and MacinMeter-DynamicRange-Tool-foo_dr in the same directory");
+    eprintln!("  2. 将测试音频文件放在同一目录或 audio/ 子目录");
+    eprintln!("     Place test audio files in the same directory or audio/ subdirectory");
+    eprintln!("  3. 双击运行 dr-bench 或使用命令行:");
+    eprintln!("     Double-click dr-bench or use command line:");
+    eprintln!("       dr-bench -e <可执行文件> -p <音频目录>");
+    eprintln!("       dr-bench -e <executable> -p <audio_directory>");
+}
+
 fn main() -> Result<()> {
+    let no_args = is_no_args_launch();
+    let result = run_main();
+
+    if let Err(ref e) = result {
+        eprintln!("\n[ERROR] {e}");
+        show_usage_hint();
+        if no_args {
+            wait_for_enter();
+        }
+    }
+
+    result
+}
+
+fn run_main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -811,15 +901,15 @@ fn main() -> Result<()> {
         }
         None => {
             // 默认模式
-            let exe = cli
-                .exe
-                .or_else(auto_discover_executable)
-                .context("No executable found / 未找到可执行文件，请用 -e 指定或先运行 cargo build --release")?;
+            let exe = cli.exe.or_else(auto_discover_executable).context(
+                "No executable found / 未找到可执行文件\n\
+                 Expected: MacinMeter-DynamicRange-Tool-foo_dr in current directory or alongside dr-bench",
+            )?;
 
-            let target = cli
-                .path
-                .or_else(auto_discover_test_data)
-                .context("No test data found / 未找到测试数据，请用 -p 指定")?;
+            let target = cli.path.or_else(auto_discover_test_data).context(
+                "No test data found / 未找到测试数据\n\
+                 Expected: audio files in current directory or audio/ subdirectory",
+            )?;
 
             eprintln!(
                 "Benchmarking / 基准测试:\n  Executable: {}\n  Target: {}\n  Runs: {}\n",
