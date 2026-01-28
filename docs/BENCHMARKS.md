@@ -158,7 +158,7 @@ FFmpeg → [管道/Pipe] → 读取线程(1MB BufReader) → [Channel 4×512KB] 
 | 优化前 / Before (no BufReader) | 17.914 | 17.927 | 17.274 | 18.919 | — |
 | **优化后 / After (async 1MB)** | **11.603** | **11.545** | **11.302** | **12.020** | **+35%** |
 
-### Windows · Intel i9-13900H · DSD 基准（10 runs, `--serial`）
+### Windows 10 · Intel i7-11800H · DSD 基准（10 runs, `--serial`）
 
 | 版本 / Version | 平均时间 Avg Time (s) | 中位数 Median (s) | 处理速度 Throughput (MB/s) | 提升 Improvement |
 | --- | ---:| ---:| ---:| ---:|
@@ -177,7 +177,7 @@ FFmpeg → [管道/Pipe] → 读取线程(1MB BufReader) → [Channel 4×512KB] 
 | 平台 / Platform | 10 首 DSD 中位数 Median (s) | 处理速度 Throughput (MB/s) | 相对性能 Relative |
 | --- | ---:| ---:| ---:|
 | macOS M4 Pro | 11.545 | ~333 | 1.00× |
-| Windows i9-13900H | 16.793 | 229 | 0.69× |
+| Windows i7-11800H | 16.793 | 229 | 0.69× |
 
 > Windows DSD 处理性能提升 **14.6 倍**，主要归功于异步双缓冲消除了 4KB 管道缓冲限制导致的 FFmpeg 写阻塞。
 >
