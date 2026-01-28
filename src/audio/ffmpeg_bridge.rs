@@ -4,9 +4,9 @@
 //! 支持格式：AC-3, E-AC-3, DTS, DSD (DSF/DFF)等。
 
 use crate::error::{AudioError, AudioResult};
-use std::io::Read;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
 
 /// 在 Windows 上隐藏子进程控制台窗口（用于 GUI 场景避免 FFmpeg 弹窗）
 #[cfg(target_os = "windows")]
@@ -46,9 +46,14 @@ Official site / 官方网站: https://ffmpeg.org/download.html
 ///
 /// 通过子进程管道实现流式PCM解码，支持恒定内存处理大文件。
 /// 注意：此方案为串行解码（无packet级并行），但支持文件级并行。
+/// Windows 管道缓冲区较小（4KB），使用 BufReader 减少系统调用
+const PIPE_BUFFER_SIZE: usize = 128 * 1024; // 128KB
+
 pub struct FFmpegDecoder {
     /// FFmpeg子进程
     child: Child,
+    /// 带缓冲的 stdout 读取器（减少 Windows 管道系统调用）
+    stdout_reader: Option<BufReader<ChildStdout>>,
     /// FFmpeg可执行路径（用于reset重启）
     ffmpeg_path: PathBuf,
     /// 启动参数（用于reset重启）
@@ -754,9 +759,17 @@ impl FFmpegDecoder {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         configure_creation_flags(&mut cmd);
-        let child = cmd.spawn().map_err(|e| {
+        let mut child = cmd.spawn().map_err(|e| {
             AudioError::DecodingError(format!("Failed to spawn FFmpeg / 无法启动FFmpeg: {e}"))
         })?;
+
+        // 用 BufReader 包装 stdout，减少 Windows 管道系统调用
+        let stdout = child.stdout.take().ok_or_else(|| {
+            AudioError::DecodingError(
+                "FFmpeg stdout not available / FFmpeg标准输出不可用".to_string(),
+            )
+        })?;
+        let stdout_reader = Some(BufReader::with_capacity(PIPE_BUFFER_SIZE, stdout));
 
         let total_samples = format.sample_count; // 提前保存，避免move后使用
 
@@ -775,6 +788,7 @@ impl FFmpegDecoder {
 
         Ok(Self {
             child,
+            stdout_reader,
             ffmpeg_path,
             spawn_args: args.clone(),
             input_path: path.to_path_buf(),
@@ -844,7 +858,7 @@ impl StreamingDecoder for FFmpegDecoder {
         let mut buffer = vec![0u8; bytes_per_chunk];
         let mut accumulated = Vec::new(); // 积累不足一帧的数据
 
-        let stdout = self.child.stdout.as_mut().ok_or_else(|| {
+        let reader = self.stdout_reader.as_mut().ok_or_else(|| {
             AudioError::DecodingError(
                 "FFmpeg stdout not available / FFmpeg标准输出不可用".to_string(),
             )
@@ -852,7 +866,7 @@ impl StreamingDecoder for FFmpegDecoder {
 
         // 填满式读取循环，直到获得完整帧数或EOF
         loop {
-            match stdout.read(&mut buffer) {
+            match reader.read(&mut buffer) {
                 Ok(0) => {
                     // EOF
                     self.eof_reached = true;
@@ -941,6 +955,14 @@ impl StreamingDecoder for FFmpegDecoder {
         self.child = cmd.spawn().map_err(|e| {
             AudioError::DecodingError(format!("Failed to respawn FFmpeg / 无法重启FFmpeg: {e}"))
         })?;
+
+        // 重新创建 BufReader
+        let stdout = self.child.stdout.take().ok_or_else(|| {
+            AudioError::DecodingError(
+                "FFmpeg stdout not available after reset / 重启后FFmpeg标准输出不可用".to_string(),
+            )
+        })?;
+        self.stdout_reader = Some(BufReader::with_capacity(PIPE_BUFFER_SIZE, stdout));
 
         // 重置内部状态
         self.current_position = 0;
