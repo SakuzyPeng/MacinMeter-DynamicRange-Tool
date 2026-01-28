@@ -11,8 +11,7 @@ foobar2000_plugin/*.so
 foobar2000_plugin/*.component
 foobar2000_plugin/compile_commands.json
 
-# 文档和音频文件不上传
-/docs
+# 音频文件不上传
 /audio
 /benchmark_samples
 /dr14_t.meter
