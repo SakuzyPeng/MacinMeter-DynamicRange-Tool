@@ -9,6 +9,10 @@ description = "High-precision audio dynamic range analyzer / 高精度音频动�
 name = "MacinMeter-DynamicRange-Tool-foo_dr"
 path = "src/main.rs"
 
+[[bin]]
+name = "dr-bench"
+path = "src/bin/dr-bench.rs"
+
 [dependencies]
 # 音频文件解码
 hound = "3.5"
@@ -44,8 +48,8 @@ comfy-table = "7"  # 表格格式化
 # 时间处理 - 恢复chrono（虽然增加35KiB，但保证时间准确性）
 chrono = { version = "0.4", features = ["serde"] }
 
-# 系统信息监控 - 未使用，已移除（节省~20KiB）
-# sysinfo = "0.30"
+# 系统信息监控 - 用于 dr-bench 性能基准工具
+sysinfo = "0.30"
 
 # 全局静态变量支持 - 未使用，已移除（节省~5KiB）
 # lazy_static = "1.4"

@@ -381,6 +381,10 @@ jobs:
 
         # 直接构建，依赖GitHub Actions的runner原生支持
         cargo build --release --verbose
+
+        # 构建 dr-bench 基准测试工具
+        echo "[BUILD] Building dr-bench benchmark tool..."
+        cargo build --release --bin dr-bench --verbose
       shell: bash
     # 准备二进制文件 - Windows
     - name: "[BINARY] Prepare Binary with Timestamp (Windows)"
@@ -409,6 +413,14 @@ jobs:
         Copy-Item $source_path $binary_name
         echo "binary_name=$binary_name" >> $env:GITHUB_OUTPUT
         echo "binary_path=$binary_name" >> $env:GITHUB_OUTPUT
+
+        # 准备 dr-bench
+        $bench_name = "dr-bench-${{ steps.timestamp-windows.outputs.timestamp }}-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        $bench_native = "target/release/dr-bench${{ matrix.extension }}"
+        if (Test-Path $bench_native) {
+          Copy-Item $bench_native $bench_name
+          echo "bench_name=$bench_name" >> $env:GITHUB_OUTPUT
+        }
       shell: pwsh
 
     # 准备二进制文件 - Unix
@@ -439,6 +451,15 @@ jobs:
         chmod +x "$binary_name"  # 确保可执行权限
         echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
         echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
+
+        # 准备 dr-bench
+        bench_name="dr-bench-${{ steps.timestamp-unix.outputs.timestamp }}-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
+        bench_native="target/release/dr-bench${{ matrix.extension }}"
+        if [ -f "$bench_native" ]; then
+          cp "$bench_native" "$bench_name"
+          chmod +x "$bench_name"
+          echo "bench_name=$bench_name" >> $GITHUB_OUTPUT
+        fi
       shell: bash
 
     # 统一二进制输出 - Windows
@@ -510,6 +531,24 @@ jobs:
         path: ${{ matrix.os == 'windows-latest' && steps.binary-windows.outputs.binary_path || steps.compress.outputs.compressed_path }}
         retention-days: 14  # 私有仓库优化：减少存储成本
         compression-level: ${{ matrix.os == 'windows-latest' && '9' || '0' }}  # Windows压缩，Unix已压缩
+
+    - name: "[UPLOAD] Upload dr-bench (Windows)"
+      if: matrix.os == 'windows-latest' && steps.binary-windows.outputs.bench_name != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.binary-windows.outputs.bench_name }}
+        path: ${{ steps.binary-windows.outputs.bench_name }}
+        retention-days: 14
+        compression-level: 9
+
+    - name: "[UPLOAD] Upload dr-bench (Unix)"
+      if: matrix.os != 'windows-latest' && steps.binary-unix.outputs.bench_name != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.binary-unix.outputs.bench_name }}
+        path: ${{ steps.binary-unix.outputs.bench_name }}
+        retention-days: 14
+        compression-level: 9
 
     - name: "[CLEANUP] Cleanup workspace (Windows)"
       if: always() && matrix.os == 'windows-latest'

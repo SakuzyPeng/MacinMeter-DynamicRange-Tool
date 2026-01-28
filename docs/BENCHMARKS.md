@@ -151,14 +151,14 @@ FFmpeg → [管道/Pipe] → 读取线程(1MB BufReader) → [Channel 4×512KB] 
 - 通过 crossbeam-channel 传递数据块（容量 4 块 × 512KB）
 - 减少 FFmpeg 写端阻塞，改善 Windows 4KB 管道缓冲限制
 
-### macOS M4 Pro · DSD 基准（10 runs, `--serial`）
+### macOS M4 Pro · DSD 基准（10 runs）
 
 | 版本 / Version | 平均时间 Avg Time (s) | 中位数 Median (s) | 最小 Min (s) | 最大 Max (s) | 提升 Improvement |
 | --- | ---:| ---:| ---:| ---:| ---:|
 | 优化前 / Before (no BufReader) | 17.914 | 17.927 | 17.274 | 18.919 | — |
 | **优化后 / After (async 1MB)** | **11.603** | **11.545** | **11.302** | **12.020** | **+35%** |
 
-### Windows 10 · Intel i7-11800H · DSD 基准（10 runs, `--serial`）
+### Windows 10 · Intel i7-11800H · DSD 基准（10 runs）
 
 | 版本 / Version | 平均时间 Avg Time (s) | 中位数 Median (s) | 处理速度 Throughput (MB/s) | 提升 Improvement |
 | --- | ---:| ---:| ---:| ---:|
