@@ -1,8 +1,22 @@
 # Release Notes / 发布说明
 
-## v0.1.1 (2025-11-08-12-18) – LFE Detection Fix / LFE检测修复
+## v0.1.1 (2026-01-29) – Documentation & LFE Fix / 文档重构与LFE修复
+
+- Documentation / 文档
+  - Separated English and Chinese README: `README.md` (EN) + `README_CN.md` (CN).
+    分离中英文 README：`README.md`（英文）+ `README_CN.md`（中文）。
+  - Extracted detailed docs to `docs/`: `SUPPORTED_FORMATS.md`, `BENCHMARKS.md`, `LEGAL.md` with language variants.
+    详细文档分离至 `docs/`：`SUPPORTED_FORMATS.md`、`BENCHMARKS.md`、`LEGAL.md`，均有中英文版本。
+  - Streamlined batch report format using Markdown tables (comfy-table).
+    批量报告改用 Markdown 表格格式（comfy-table）。
+  - Added `--no-save` option to output results to console only.
+    新增 `--no-save` 参数，仅输出到控制台不保存文件。
+  - Added `*` (LFE excluded) and `†` (silent channels excluded) markers in batch reports.
+    批量报告新增 `*`（LFE 已剔除）和 `†`（静音声道已剔除）标记。
 
 - Added / 新增
+  - Cross-platform benchmark tool `dr-bench` (Rust): replaces bash/PowerShell scripts.
+    跨平台基准测试工具 `dr-bench`（Rust 实现）：替代原 bash/PowerShell 脚本。
   - Created `channel_layout.rs` module based on Apple CoreAudio AudioChannelLayoutTag specification.
     创建 `channel_layout.rs` 模块，基于 Apple CoreAudio AudioChannelLayoutTag 规范。
   - Support for multiple standard layouts: MPEG 5.1/6.1/7.1, EAC3, Dolby Atmos (5.1.2/5.1.4/7.1.2/7.1.4/9.1.6), DTS 7.1, and common formats (2.1/3.1).
