@@ -155,6 +155,9 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
     // 收集边界风险预警
     let mut batch_warnings = Vec::new();
 
+    // 排除标记统计（用于脚注）
+    let mut exclusion_stats = tools::BatchExclusionStats::default();
+
     // 逐个处理音频文件
     for (index, audio_file) in audio_files.iter().enumerate() {
         // 进度提示：verbose模式显示详细信息，静默模式仅显示基本进度
@@ -189,6 +192,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
                         &format,
                         audio_file,
                         config.exclude_lfe,
+                        &mut exclusion_stats,
                     ) {
                         batch_warnings.push(warning);
                     }
@@ -244,6 +248,7 @@ fn process_batch_serial(config: &AppConfig, audio_files: &[PathBuf]) -> Result<(
         &snapshot.error_stats,
         is_single_file,
         batch_warnings,
+        &exclusion_stats,
     )
 }
 

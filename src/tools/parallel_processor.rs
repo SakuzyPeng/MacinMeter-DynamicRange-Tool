@@ -4,7 +4,7 @@
 
 use super::cli::AppConfig;
 use super::{
-    ParallelBatchStats, add_failed_to_batch_output, add_to_batch_output,
+    BatchExclusionStats, ParallelBatchStats, add_failed_to_batch_output, add_to_batch_output,
     create_batch_output_header, finalize_and_write_batch_output, process_single_audio_file,
     processor::AnalysisOutput, save_individual_result, utils,
 };
@@ -155,8 +155,9 @@ pub fn process_batch_parallel(
         String::new()
     };
 
-    // 收集边界风险预警
+    // 收集边界风险预警和排除统计
     let mut batch_warnings = Vec::new();
+    let mut exclusion_stats = BatchExclusionStats::default();
 
     for ordered_result in sorted_results {
         match ordered_result.result {
@@ -178,6 +179,7 @@ pub fn process_batch_parallel(
                         &format,
                         &ordered_result.file_path,
                         config.exclude_lfe,
+                        &mut exclusion_stats,
                     ) {
                         batch_warnings.push(warning);
                     }
@@ -202,5 +204,6 @@ pub fn process_batch_parallel(
         &snapshot.error_stats,
         is_single_file,
         batch_warnings,
+        &exclusion_stats,
     )
 }

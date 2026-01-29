@@ -5,6 +5,7 @@
 use super::cli::AppConfig;
 use super::utils;
 use crate::{AudioError, AudioResult};
+use comfy_table::{CellAlignment, ContentArrangement, Table, presets::ASCII_MARKDOWN};
 use std::path::PathBuf;
 
 /// 获取支持的音频格式扩展名
@@ -102,88 +103,43 @@ pub fn show_scan_results(config: &AppConfig, audio_files: &[PathBuf]) {
     println!();
 }
 
-/// 生成批量输出的头部信息
+/// 生成批量输出的头部信息（精简版，使用 comfy-table）
 pub fn create_batch_output_header(config: &AppConfig, audio_files: &[PathBuf]) -> String {
-    use super::constants::app_info;
-    let mut batch_output = String::new();
+    let mut output = String::new();
 
-    // 动态标题与分割线（按显示宽度自适配），并应用可配置左右留白
-    let title_main = {
-        use crate::tools::constants::formatting::{HEADER_TITLE_LEFT_PAD, HEADER_TITLE_RIGHT_PAD};
-        let base = "MacinMeter DR Analysis Report / MacinMeter DR分析报告";
-        crate::tools::utils::table::pad_title_spaces(
-            base,
-            HEADER_TITLE_LEFT_PAD,
-            HEADER_TITLE_RIGHT_PAD,
-        )
-    };
-    let title_sub = {
-        use crate::tools::constants::formatting::{SUBTITLE_LEFT_PAD, SUBTITLE_RIGHT_PAD};
-        let base = "批量分析结果 / Batch Analysis Results".to_string();
-        crate::tools::utils::table::pad_title_spaces(&base, SUBTITLE_LEFT_PAD, SUBTITLE_RIGHT_PAD)
-    };
-    let top_sep = crate::tools::utils::table::separator_for_lines(&[&title_main, &title_sub]);
-    batch_output.push_str(&top_sep);
-    batch_output.push_str(&title_main);
-    batch_output.push('\n');
-    batch_output.push_str(&title_sub);
-    batch_output.push('\n');
-    let bottom_sep = crate::tools::utils::table::separator_for_lines(&[&title_main, &title_sub]);
-    batch_output.push_str(&bottom_sep);
+    // 标题
+    output.push_str("## MacinMeter DR Batch Report\n\n");
 
-    // 在头部下方添加日志时间（与单文件报告保持一致位置）
+    // 元数据（精简为一行）
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    batch_output.push_str(&format!("日志时间 / Log date: {now}\n\n"));
-
-    // 添加标准信息到输出（使用共享常量）
-    batch_output.push_str(&format!(
-        "Git分支 / Git Branch: {}\n",
-        app_info::BRANCH_INFO
-    ));
-    batch_output.push_str(&format!("{}\n", app_info::BASE_DESCRIPTION));
-    batch_output.push_str(&format!("{}\n", app_info::CALCULATION_MODE));
-    batch_output.push_str(&format!(
-        "扫描目录 / Scanned Directory: {}\n",
+    output.push_str(&format!(
+        "**Generated**: {} | **Files**: {} | **Directory**: {}\n\n",
+        now,
+        audio_files.len(),
         config.input_path.display()
     ));
-    batch_output.push_str(&format!(
-        "处理文件数 / Files to Process: {}\n\n",
-        audio_files.len()
-    ));
 
-    // 全局注记：DSD 文件（DSF/DFF）将按配置的 PCM 采样率降采样处理
+    // DSD 注释（精简为一行）
     let has_dsd = audio_files.iter().any(|p| {
         p.extension()
             .and_then(|s| s.to_str())
-            .map(|e| e.eq_ignore_ascii_case("dsf") || e.eq_ignore_ascii_case("dff"))
-            .unwrap_or(false)
+            .is_some_and(|e| e.eq_ignore_ascii_case("dsf") || e.eq_ignore_ascii_case("dff"))
     });
     if has_dsd {
         let rate = config.dsd_pcm_rate.unwrap_or(352_800);
-        batch_output.push_str(&format!(
-            "注 / Note: DSD (DSF/DFF) files are downsampled to {rate} Hz for PCM analysis.\n"
+        output.push_str(&format!(
+            "> DSD files downsampled to {rate} Hz for analysis\n\n"
         ));
-        batch_output.push_str(
-            "      foobar2000 may show 384 kHz (device/output resampling); default here is 352.8 kHz (44.1k integer ratio).\n",
-        );
-        batch_output
-            .push_str("      可用 --dsd-pcm-rate 调整（支持 88200/176400/352800/384000）。\n\n");
     }
 
-    // 添加结果表头（使用固定宽度确保对齐）
-    let header_line = crate::tools::utils::table::format_two_cols_line(
-        "Official DR",
-        "Precise DR",
-        "文件名 / File Name",
-    );
-    batch_output.push_str(&header_line);
-    let sep = crate::tools::utils::table::separator_from(&header_line);
-    batch_output.push_str(&sep);
+    // Markdown 表头
+    output.push_str("| DR | Precise | File |\n");
+    output.push_str("|----|---------|------|\n");
 
-    batch_output
+    output
 }
 
-/// 生成批量输出的统计信息
+/// 生成批量输出的统计信息（精简版，使用 comfy-table）
 pub fn create_batch_output_footer(
     audio_files: &[PathBuf],
     processed_count: usize,
@@ -194,67 +150,55 @@ pub fn create_batch_output_footer(
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     let mut output = String::new();
 
-    // 添加统计信息
-    output.push('\n');
-    let stats_title = "批量处理统计 / Batch Processing Statistics:";
-    let stats_sep = crate::tools::utils::table::separator_for_lines(&[stats_title]);
-    output.push_str(&stats_sep);
-    output.push_str(stats_title);
-    output.push('\n');
-    output.push_str(&format!(
-        "   总文件数 / Total Files: {}\n",
-        audio_files.len()
-    ));
-    output.push_str(&format!(
-        "   成功处理 / Processed Successfully: {processed_count}\n"
-    ));
-    output.push_str(&format!("   处理失败 / Failed: {failed_count}\n"));
-    output.push_str(&format!(
-        "   处理成功率 / Success Rate: {:.1}%\n",
+    // 统计表格
+    output.push_str("### Summary\n\n");
+
+    let success_rate = if audio_files.is_empty() {
+        0.0
+    } else {
         processed_count as f64 / audio_files.len() as f64 * 100.0
-    ));
+    };
 
-    // 错误分类统计（仅在有失败时显示）
+    let mut table = Table::new();
+    table
+        .load_preset(ASCII_MARKDOWN)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec!["Metric", "Value"]);
+
+    table.add_row(vec!["Total", &audio_files.len().to_string()]);
+    table.add_row(vec![
+        "Success",
+        &format!("{processed_count} ({success_rate:.0}%)"),
+    ]);
+    if failed_count > 0 {
+        table.add_row(vec!["Failed", &failed_count.to_string()]);
+    }
+
+    output.push_str(&table.to_string());
+    output.push('\n');
+
+    // 错误分类（仅在有失败时显示）
     if !error_stats.is_empty() {
-        output.push('\n');
-        output.push_str("错误分类统计:\n");
+        output.push_str("\n**Errors**:\n");
 
-        // 按错误类别排序以确保输出稳定
         let mut sorted_stats: Vec<_> = error_stats.iter().collect();
         sorted_stats.sort_by_key(|(category, files)| {
             (std::cmp::Reverse(files.len()), format!("{category:?}"))
         });
 
         for (category, files) in sorted_stats {
-            output.push_str(&format!(
-                "   {}: {} 个文件\n",
-                category.display_name(),
-                files.len()
-            ));
-
-            // 如果失败文件少于等于5个，列出所有文件名
-            if files.len() <= 5 {
-                for filename in files {
-                    output.push_str(&format!("      - {filename}\n"));
-                }
-            } else {
-                // 如果失败文件超过5个，只显示前3个和后2个
-                for filename in files.iter().take(3) {
-                    output.push_str(&format!("      - {filename}\n"));
-                }
-                output.push_str(&format!("      ... (省略{}个文件) ...\n", files.len() - 5));
-                for filename in files.iter().skip(files.len() - 2) {
-                    output.push_str(&format!("      - {filename}\n"));
-                }
+            output.push_str(&format!("- {}: {}\n", category.display_name(), files.len()));
+            // 最多显示 3 个文件名
+            for filename in files.iter().take(3) {
+                output.push_str(&format!("  - {filename}\n"));
+            }
+            if files.len() > 3 {
+                output.push_str(&format!("  - ... (+{})\n", files.len() - 3));
             }
         }
     }
 
-    output.push('\n');
-    output.push_str(&format!(
-        "生成工具 / Generated by: {} v{VERSION}\n",
-        app_info::APP_NAME
-    ));
+    output.push_str(&format!("\n---\n*{} v{}*\n", app_info::APP_NAME, VERSION));
 
     output
 }
@@ -284,20 +228,7 @@ pub fn generate_batch_output_path(config: &AppConfig) -> PathBuf {
     })
 }
 
-/// 统一处理批量输出收尾工作
-///
-/// 将批量输出内容追加统计信息、写入文件，并显示完成提示。
-/// 这个函数消除了串行和并行处理器中的重复代码。
-///
-/// # 参数
-///
-/// * `config` - 应用配置
-/// * `audio_files` - 处理的音频文件列表
-/// * `batch_output` - 批量输出内容(取所有权)
-/// * `processed_count` - 成功处理的文件数
-/// * `failed_count` - 处理失败的文件数
-/// * `error_stats` - 错误分类统计
-/// * `is_single_file` - 是否为单文件模式
+/// 统一处理批量输出收尾工作（精简版，使用 comfy-table）
 #[allow(clippy::too_many_arguments)]
 pub fn finalize_and_write_batch_output(
     config: &AppConfig,
@@ -308,13 +239,26 @@ pub fn finalize_and_write_batch_output(
     error_stats: &std::collections::HashMap<crate::error::ErrorCategory, Vec<String>>,
     is_single_file: bool,
     mut batch_warnings: Vec<super::processor::BatchWarningInfo>,
+    exclusion_stats: &super::processor::BatchExclusionStats,
 ) -> AudioResult<()> {
     if !is_single_file {
         // 多文件模式：生成批量输出文件
 
-        // 添加边界风险预警汇总（在footer之前）
+        // 添加排除标记脚注（在表格结束后、警告之前）
+        if exclusion_stats.has_lfe_excluded || exclusion_stats.has_silent_excluded {
+            batch_output.push('\n');
+            if exclusion_stats.has_lfe_excluded && exclusion_stats.has_silent_excluded {
+                batch_output.push_str("*LFE excluded / †Silent channels excluded\n");
+            } else if exclusion_stats.has_lfe_excluded {
+                batch_output.push_str("*LFE excluded\n");
+            } else {
+                batch_output.push_str("†Silent channels excluded\n");
+            }
+        }
+
+        // 边界风险预警（精简为 5 列）
         if !batch_warnings.is_empty() {
-            // 按风险等级（高 → 中 → 低）和距离（升序）排序，保证输出稳定
+            // 按风险等级（高 → 中 → 低）和距离（升序）排序
             batch_warnings.sort_by(|a, b| {
                 use super::formatter::BoundaryRiskLevel::{High, Medium, None};
                 let priority = |level: super::formatter::BoundaryRiskLevel| match level {
@@ -331,87 +275,50 @@ pub fn finalize_and_write_batch_output(
                     })
             });
 
-            batch_output.push('\n');
-            let warnings_title = {
-                use crate::tools::constants::formatting::{
-                    WARNINGS_TITLE_LEFT_PAD, WARNINGS_TITLE_RIGHT_PAD,
-                };
-                let base = "边界风险警告 / Boundary Risk Warnings";
-                crate::tools::utils::table::pad_title_spaces(
-                    base,
-                    WARNINGS_TITLE_LEFT_PAD,
-                    WARNINGS_TITLE_RIGHT_PAD,
-                )
-            };
-            let warnings_sep = crate::tools::utils::table::separator_for_lines(&[&warnings_title]);
-            batch_output.push_str(&warnings_sep);
-            batch_output.push_str(&warnings_title);
-            batch_output.push('\n');
-            batch_output.push_str(&warnings_sep);
-            batch_output.push('\n');
-            batch_output
-                .push_str("以下文件的DR值接近四舍五入边界，可能与foobar2000结果相差±1级：\n");
-            batch_output.push_str("The following files have DR values near rounding boundaries and may differ from foobar2000 by ±1 level:\n\n");
+            batch_output.push_str(&format!(
+                "### Boundary Warnings ({})\n\n",
+                batch_warnings.len()
+            ));
 
-            // 使用统一列对齐：6列定宽 + 文件名尾字段
-            let header_cols = [
-                "Official DR",
-                "Precise DR",
-                "风险等级 / Risk",
-                "边界方向 / Boundary",
-                "Δ距离 / ΔDistance",
-                "foobar2000 可能值 / May Report",
-            ];
-            let base_widths = [13usize, 13, 23, 23, 21, 25];
-            let eff_widths =
-                crate::tools::utils::table::effective_widths(&header_cols, &base_widths);
+            let mut table = Table::new();
+            table
+                .load_preset(ASCII_MARKDOWN)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_header(vec!["DR", "Precise", "Risk", "Potential", "File"]);
 
-            // 为特定列增加视觉右移1字符（仅影响表头，不改变列宽），解决个别终端下表头与数据行相差1字符的问题。
-            let mut shifted_header_cols = header_cols;
-            // Δ距离 / ΔDistance 列（索引4）与 foobar2000 可能值 / May Report 列（索引5）
-            shifted_header_cols[4] = " Δ距离 / ΔDistance";
-            shifted_header_cols[5] = " foobar2000 可能值 / May Report";
-            let header = crate::tools::utils::table::format_cols_line(
-                &shifted_header_cols,
-                &eff_widths,
-                " 文件名 / File Name",
-            );
-            batch_output.push_str(&header);
-            let warn_sep = crate::tools::utils::table::separator_from(&header);
-            batch_output.push_str(&warn_sep);
+            // 设置数值列右对齐
+            table
+                .column_mut(0)
+                .expect("DR column exists")
+                .set_cell_alignment(CellAlignment::Right);
+            table
+                .column_mut(1)
+                .expect("Precise column exists")
+                .set_cell_alignment(CellAlignment::Right);
 
             for warning in &batch_warnings {
-                let risk_label = match warning.risk_level {
-                    super::formatter::BoundaryRiskLevel::High => "高风险 / High",
-                    super::formatter::BoundaryRiskLevel::Medium => "中风险 / Medium",
-                    super::formatter::BoundaryRiskLevel::None => "低风险 / Low",
+                let risk = match warning.risk_level {
+                    super::formatter::BoundaryRiskLevel::High => "High",
+                    super::formatter::BoundaryRiskLevel::Medium => "Medium",
+                    super::formatter::BoundaryRiskLevel::None => "Low",
                 };
 
-                let (direction_label, potential_dr) = match warning.direction {
-                    super::formatter::BoundaryDirection::Upper => {
-                        ("上边界 / Upper", warning.official_dr + 1)
-                    }
-                    super::formatter::BoundaryDirection::Lower => {
-                        ("下边界 / Lower", (warning.official_dr - 1).max(0))
-                    }
+                let potential = match warning.direction {
+                    super::formatter::BoundaryDirection::Upper => warning.official_dr + 1,
+                    super::formatter::BoundaryDirection::Lower => (warning.official_dr - 1).max(0),
                 };
 
-                let line = crate::tools::utils::table::format_cols_line(
-                    &[
-                        &format!("DR{}", warning.official_dr),
-                        &format!("{:.2} dB", warning.precise_dr),
-                        risk_label,
-                        direction_label,
-                        &format!("Δ{:.2} dB", warning.distance),
-                        &format!("DR{potential_dr}"),
-                    ],
-                    &eff_widths,
-                    &warning.file_name,
-                );
-                batch_output.push_str(&line);
+                table.add_row(vec![
+                    format!("{}", warning.official_dr),
+                    format!("{:.2}", warning.precise_dr),
+                    risk.to_string(),
+                    format!("DR{potential}"),
+                    warning.file_name.clone(),
+                ]);
             }
 
-            batch_output.push('\n');
+            batch_output.push_str(&table.to_string());
+            batch_output.push_str("\n\n");
         }
 
         batch_output.push_str(&create_batch_output_footer(
@@ -438,46 +345,31 @@ pub fn finalize_and_write_batch_output(
             );
         }
     } else {
-        // 单文件模式：显示简单的完成信息
+        // 单文件模式
         if processed_count > 0 {
-            println!("单文件处理完成 / Single file processing completed");
+            println!("Processing completed");
         } else {
-            println!("单文件处理失败 / Single file processing failed");
+            println!("Processing failed");
         }
     }
 
     Ok(())
 }
 
-/// 显示批量处理完成信息
+/// 显示批量处理完成信息（精简版）
 pub fn show_batch_completion_info(
     output_path: &std::path::Path,
     processed_count: usize,
     total_count: usize,
     failed_count: usize,
-    config: &AppConfig,
-    is_single_file: bool,
+    _config: &AppConfig,
+    _is_single_file: bool,
 ) {
     println!();
-    println!("批量处理完成 / Batch processing completed!");
-    println!(
-        "   成功处理 / Successfully processed: {processed_count} / {total_count} 文件 / files"
-    );
     if failed_count > 0 {
-        println!("   失败文件 / Failed files: {failed_count}");
+        println!("Completed: {processed_count}/{total_count} files ({failed_count} failed)");
+    } else {
+        println!("Completed: {processed_count}/{total_count} files");
     }
-
-    println!();
-    println!("生成的文件 / Generated files:");
-    println!("   批量汇总 / Batch summary: {}", output_path.display());
-
-    // 修正提示逻辑：只在单文件目录且处理成功时显示单独结果文件
-    if is_single_file && processed_count > 0 {
-        println!("   单独结果 / Individual result: 1 *_DR_Analysis.txt file");
-        if config.verbose {
-            println!(
-                "   单文件目录自动生成单独DR结果文件 / Single-file directory auto-generates individual DR result file"
-            );
-        }
-    }
+    println!("Report: {}", output_path.display());
 }

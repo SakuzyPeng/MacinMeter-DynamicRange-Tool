@@ -33,6 +33,7 @@ fn default_test_config() -> AppConfig {
         dsd_pcm_rate: Some(352_800),
         dsd_gain_db: 6.0,
         dsd_filter: "teac".to_string(),
+        no_save: false,
     }
 }
 

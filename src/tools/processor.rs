@@ -825,29 +825,43 @@ pub struct BatchWarningInfo {
     pub distance: f64,
 }
 
+/// 批量输出的排除标记统计
+#[derive(Debug, Default)]
+pub struct BatchExclusionStats {
+    pub has_lfe_excluded: bool,
+    pub has_silent_excluded: bool,
+}
+
 pub fn add_to_batch_output(
     batch_output: &mut String,
     results: &[DrResult],
     format: &AudioFormat,
     file_path: &std::path::Path,
     exclude_lfe: bool,
+    exclusion_stats: &mut BatchExclusionStats,
 ) -> Option<BatchWarningInfo> {
     let file_name = utils::extract_filename_lossy(file_path);
 
-    // 使用统一的DR聚合函数（修复：与单文件口径一致，排除LFE+静音）
+    // 使用统一的DR聚合函数
     match formatter::compute_official_precise_dr(results, format, exclude_lfe) {
-        Some((official_dr, precise_dr, _excluded_count, excluded_lfe)) => {
-            // 使用统一两列对齐风格，尾字段包含文件名与注记
-            let col1 = format!("DR{official_dr}");
-            let col2 = format!("{precise_dr:.2} dB");
-            let tail = if excluded_lfe > 0 {
-                format!("{file_name} [LFE excluded / 已剔除LFE]")
-            } else if exclude_lfe && !format.has_channel_layout_metadata && format.channels > 2 {
-                format!("{file_name} [LFE requested, layout missing / 请求LFE剔除，未检测布局]")
-            } else {
-                file_name.clone()
-            };
-            batch_output.push_str(&utils::table::format_two_cols_line(&col1, &col2, &tail));
+        Some((official_dr, precise_dr, excluded_count, excluded_lfe_count)) => {
+            // 计算静音排除数量
+            let excluded_silent = excluded_count.saturating_sub(excluded_lfe_count);
+
+            // 构建标记：* = LFE, † = Silent
+            let mut note = String::new();
+            if excluded_lfe_count > 0 {
+                note.push_str(" *");
+                exclusion_stats.has_lfe_excluded = true;
+            }
+            if excluded_silent > 0 {
+                note.push('†');
+                exclusion_stats.has_silent_excluded = true;
+            }
+
+            batch_output.push_str(&format!(
+                "| {official_dr} | {precise_dr:.2} | {file_name}{note} |\n"
+            ));
 
             // 检测边界风险
             formatter::detect_boundary_risk_level(official_dr, precise_dr).map(
@@ -862,7 +876,7 @@ pub fn add_to_batch_output(
             )
         }
         None => {
-            batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "无有效声道", file_name));
+            batch_output.push_str(&format!("| - | - | {file_name} (failed) |\n"));
             None
         }
     }
@@ -871,8 +885,7 @@ pub fn add_to_batch_output(
 /// 批量处理失败文件的结果添加到批量输出
 pub fn add_failed_to_batch_output(batch_output: &mut String, file_path: &std::path::Path) {
     let file_name = utils::extract_filename_lossy(file_path);
-    // 使用固定宽度对齐（与成功结果格式一致）
-    batch_output.push_str(&format!("{:<17}{:<17}{}\n", "-", "处理失败", file_name));
+    batch_output.push_str(&format!("| - | - | {file_name} (failed) |\n"));
 }
 
 /// 为单个文件生成独立的DR结果文件

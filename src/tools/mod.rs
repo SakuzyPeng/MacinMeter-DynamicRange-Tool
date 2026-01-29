@@ -37,8 +37,8 @@ pub use cli::{AppConfig, parse_args, show_completion_info, show_startup_info};
 
 // --- 核心处理函数 ---
 pub use processor::{
-    add_failed_to_batch_output, add_to_batch_output, output_results, process_single_audio_file,
-    process_streaming_decoder, save_individual_result,
+    BatchExclusionStats, add_failed_to_batch_output, add_to_batch_output, output_results,
+    process_single_audio_file, process_streaming_decoder, save_individual_result,
 };
 
 // --- DR 计算（测试和插件使用）---

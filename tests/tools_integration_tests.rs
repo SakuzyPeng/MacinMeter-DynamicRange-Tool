@@ -32,6 +32,7 @@ fn base_config() -> AppConfig {
         dsd_pcm_rate: Some(352_800),
         dsd_gain_db: 6.0,
         dsd_filter: "teac".to_string(),
+        no_save: false,
     }
 }
 
@@ -300,11 +301,11 @@ fn test_batch_output_header_generation() {
 
     let header = tools::create_batch_output_header(&config, &audio_files);
 
-    // 验证头部包含关键信息
-    assert!(header.contains("MacinMeter DR Analysis Report"));
-    assert!(header.contains("foobar2000"));
-    assert!(header.contains("Official DR"));
-    assert!(header.contains("Precise DR"));
+    // 验证头部包含关键信息（精简版 Markdown 格式）
+    assert!(header.contains("MacinMeter DR Batch Report"));
+    assert!(header.contains("Generated"));
+    assert!(header.contains("Files"));
+    assert!(header.contains("| DR | Precise | File |")); // Markdown 表头
     assert!(header.contains(&format!("{}", audio_files.len())));
 
     log(
@@ -342,13 +343,12 @@ fn test_batch_output_footer_with_errors() {
         &error_stats,
     );
 
-    // 验证底部包含统计信息
-    assert!(footer.contains("批量处理统计"));
-    assert!(footer.contains("总文件数") && footer.contains("3")); // 双语化后格式为"总文件数 / Total Files: 3"
-    assert!(footer.contains("成功处理") && footer.contains("2")); // 双语化后格式为"成功处理 / Processed Successfully: 2"
-    assert!(footer.contains("处理失败") && footer.contains("1")); // 双语化后格式为"处理失败 / Failed: 1"
-    assert!(footer.contains("错误分类统计"));
-    assert!(footer.contains("格式错误"));
+    // 验证底部包含统计信息（精简版 Markdown 格式）
+    assert!(footer.contains("Summary"));
+    assert!(footer.contains("Total") && footer.contains("3"));
+    assert!(footer.contains("Success") && footer.contains("2"));
+    assert!(footer.contains("Failed") && footer.contains("1"));
+    assert!(footer.contains("Errors"));
     assert!(footer.contains("test3.mp3"));
 
     log(
