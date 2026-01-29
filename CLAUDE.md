@@ -377,6 +377,53 @@ Symphonia不支持DSD解码。FFmpeg提供成熟的DSD→PCM转换，降采样�
 
 ---
 
+## 发布流程
+
+### 自动发布（推送 Tag）
+
+```bash
+git tag v0.1.x
+git push origin v0.1.x
+```
+
+CI 会自动构建并创建 Release（需要代码变更触发构建）。
+
+### 手动发布（从 Actions 产物）
+
+```bash
+# 1. 下载最新成功构建的产物
+gh run list --limit 5                    # 查看最近的 workflow runs
+gh run download <run-id> --dir artifacts # 下载产物
+
+# 2. 准备发布文件（解压 .gz，重命名，打包 .zip）
+cd artifacts
+# CLI: gunzip → chmod +x → zip
+# GUI: 直接使用 .dmg / .exe
+
+# 3. 创建 Release
+gh release create v0.1.x \
+  --title "v0.1.x – 标题" \
+  --notes-file release-notes.md \
+  file1.zip file2.zip ...
+```
+
+### 发布资产命名规范
+
+- CLI: `MacinMeter-DR-Tool-v{版本}-{平台}.zip`
+  - 平台: `windows-x64`, `macos-intel`, `macos-arm64`, `linux-x64`
+- GUI: `MacinMeter-DR-GUI-v{版本}-{平台}.{ext}`
+  - macOS: `.dmg`, Windows: `.exe`
+
+### Release Notes 模板
+
+参考 RELEASE_NOTES.md 对应版本章节，包含：
+- CLI / 命令行变更
+- GUI / 图形界面变更
+- 平台产物列表
+- macOS 未签名提示
+
+---
+
 ## 文档维护策略
 
 ### 文档职责分工
