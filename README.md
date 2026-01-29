@@ -81,34 +81,16 @@ MacinMeter DR Tool learns and implements the algorithm principles of foobar2000 
 - When trimming/filtering is enabled, configuration and statistics (trimmed samples, filtered windows) appear in the header.
 
 ### 单文件输出示例 / Single File Output Example
-```
-MacinMeter DR Tool v0.1.0 / Dynamic Range Meter (foobar2000 compatible)
-日志时间 / Log date: 2025-10-30 23:41:09
+```markdown
+MacinMeter DR Tool vX.X.X | DR15 (15.51 dB)
+audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
 
---------------------------------------------------------------------------------
-统计对象 / Statistics for: audio.flac
-样本总数 / Number of samples: 20256768
-时长 / Duration: 7:02
---------------------------------------------------------------------------------
+| Channel | DR       | Peak     |
+|---------|----------|----------|
+|  Left   | 14.57 dB | -0.12 dB |
+|  Right  | 16.46 dB | -0.08 dB |
 
-                         左声道 / Left      右声道 / Right
-
-DR通道 / DR Channel:      14.57 dB   ---    16.46 dB
---------------------------------------------------------------------------------
-
-Official DR Value: DR16
-Precise DR Value: 15.51 dB
-
-边界风险（高） / Boundary Risk (High)
-Precise DR 15.51 dB 距离 DR15/DR16 下边界 0.01 dB
-建议 / Recommendation: 使用 foobar2000 DR Meter 交叉验证
-
-采样率 / Sample rate:    48000 Hz
-声道数 / Channels:       2
-位深 / Bits per sample: 24
-比特率 / Bitrate:        2304 kbps
-编码 / Codec:           FLAC
-================================================================================
+> Boundary Risk (High): 15.51 dB is 0.01 dB from DR15/DR16 boundary
 ```
 
 ## 输出策略（Output File Policy）
@@ -120,43 +102,39 @@ Precise DR 15.51 dB 距离 DR15/DR16 下边界 0.01 dB
 - Custom output path: supply `--output <file>` (works for batch mode).
 
 ### 批量输出示例 / Batch Output Example
+```markdown
+## MacinMeter DR Batch Report
+
+**Generated**: 2025-01-29 12:00:00 | **Files**: 5 | **Directory**: /path/to/album
+
+| DR | Precise | File |
+|----|---------|------|
+| 11 | 10.71 | track01.flac |
+| 12 | 12.15 | track02.flac |
+| 13 | 12.64 | track03.flac * |
+| 16 | 15.51 | track04.flac |
+| 15 | 15.19 | track05.flac |
+
+*LFE excluded
+
+### Boundary Warnings (1)
+
+| DR | Precise | Risk | Potential | File |
+|----|---------|------|-----------|------|
+| 16 |   15.51 | High | DR15      | track04.flac |
+
+### Summary
+
+| Metric  | Value      |
+|---------|------------|
+| Total   | 5          |
+| Success | 5 (100%)   |
+
+---
+*MacinMeter DR Tool vX.X.X*
 ```
-====================================================================================
-   MacinMeter DR Analysis Report / MacinMeter DR分析报告
-   批量分析结果 (foobar2000兼容版) / Batch Analysis Results (foobar2000 Compatible)
-====================================================================================
 
-Git分支 / Git Branch: main (默认批处理模式)
-基于foobar2000 DR Meter逆向分析 (Measuring_DR_ENv3规范)
-扫描目录 / Scanned Directory: /path/to/audio
-处理文件数 / Files to Process: 106
-
-Official DR      Precise DR        文件名 / File Name
-================================================================================
-DR11             10.71 dB         track01.flac
-DR12             12.15 dB         track02.flac
-DR13             12.64 dB         track03.flac
-DR16             16.16 dB         track04.flac
-DR15             15.19 dB         track05.flac
-...
-
-=====================================
-   边界风险警告 / Boundary Risk Warnings
-=====================================
-
-以下文件的DR值接近四舍五入边界，可能与foobar2000结果相差±1级：
-
-Official DR  Precise DR   风险等级           边界方向         Δ距离        foobar2000 可能值
-==============================================================================================
-DR11         11.49 dB     高风险 / High     上边界 / Upper   Δ0.01 dB     DR12
-DR16         15.51 dB     高风险 / High     下边界 / Lower   Δ0.01 dB     DR15
-
-批量处理统计 / Batch Processing Statistics:
-   总文件数 / Total Files: 106
-   成功处理 / Processed Successfully: 106
-   处理失败 / Failed: 0
-   处理成功率 / Success Rate: 100.0%
-```
+**标记说明 / Markers**: `*` = LFE excluded · `†` = Silent channels excluded
 
 ## 并行模式简介（Parallel Modes）
 - 解码并行：默认针对单文件执行多线程解码 / 窗口处理；提升吞吐而内存占用较小。可使用 `--serial` 禁用。
@@ -215,154 +193,28 @@ For detailed benchmark data, see [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## 支持的音频格式（Supported Audio Formats）
 
-### 解码器路由（Decoder Routing）
+详细文档请参见 [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md)。
 
-工具采用智能自动路由，优先使用 Symphonia，必要时自动切换 FFmpeg：
-
-**Symphonia 原生支持 / Native Symphonia Support**:
-- **无损格式 / Lossless**: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM
-- **有损格式 / Lossy**: AAC, OGG Vorbis, MP1 (MPEG Layer I)
-- **容器格式 / Containers**: MP4/M4A（仅限 Symphonia 支持的编码），MKV/WebM
-
-**专用解码器 / Dedicated Decoders**:
-- **Opus**: 通过songbird专用解码器 (Discord音频库) / Via songbird decoder (Discord audio library)
-- **MP3**: 有状态解码格式，强制串行处理 / Stateful format, forced serial decoding
-
-**FFmpeg 自动回退 / Auto Fallback to FFmpeg**:
-- 当 Symphonia 无法支持时，工具会自动切换到 FFmpeg 进行解码。
-- When Symphonia cannot decode a format, the tool automatically falls back to FFmpeg.
-- 典型场景 / Typical cases:
-  - 扩展名为 `.ac3`、`.ec3`、`.eac3`、`.dts`、`.dsf`、`.dff` → 直接使用 FFmpeg
-  - For extensions `.ac3`, `.ec3/.eac3`, `.dts`, `.dsf`, `.dff` → use FFmpeg directly
-  - MP4/M4A 容器包含 AC‑3、E‑AC‑3（含 Dolby Atmos）、DTS → 自动切换 FFmpeg
-  - MP4/M4A containers with AC‑3/E‑AC‑3 (incl. Atmos) or DTS → auto‑switch to FFmpeg
-  - 其他容器（部分 MKV/MP4 变体）内的不兼容编码 → 自动回退 FFmpeg
-  - Incompatible codecs inside containers (some MKV/MP4 variants) → auto fallback to FFmpeg
-
-### FFmpeg 安装（FFmpeg Installation）
-
-如需使用 FFmpeg 功能，请确保系统已安装 `ffmpeg` 和 `ffprobe`：
-To use FFmpeg features, make sure both `ffmpeg` and `ffprobe` are installed:
-
-- **macOS**: `brew install ffmpeg`
-- macOS: `brew install ffmpeg`
-- **Windows**: `winget install Gyan.FFmpeg`（或通过 Chocolatey、其他发行渠道）
-- Windows: `winget install Gyan.FFmpeg` (or Chocolatey / other channels)
-- **Linux**:
-  - Ubuntu/Debian: `sudo apt install ffmpeg`
-  - Fedora/RHEL: `sudo dnf install ffmpeg`
-  - Arch: `sudo pacman -S ffmpeg`
-  - Linux: install via your distro’s package manager (examples above)
-
-验证安装：`ffmpeg -version` 与 `ffprobe -version` 应返回版本号；工具会自动检测 PATH 中的二者。
-Verify: both `ffmpeg -version` and `ffprobe -version` should print a version; the tool auto‑detects them from PATH.
-
-### 多声道与 LFE 支持（Multichannel & LFE Support）
-
-- **多声道分析**：支持 3‑32 声道音频，每声道独立计算 DR，输出详细的 per‑channel 结果
-- Multichannel analysis: supports 3–32 channels; per‑channel DR is computed and listed.
-- **Official DR 聚合**：对所有“非静音”声道的 DR 值进行算术平均并四舍五入（foobar2000 口径）
-- Official aggregation: arithmetic mean of all non‑silent channel DRs, rounded (foobar2000 style).
-- **LFE 识别**：
-  - 通过 Symphonia：自动检测声道布局元数据（如 WAV WAVEFORMATEXTENSIBLE 掩码、部分 MP4/MKV）
-  - Via Symphonia: auto‑detects layout metadata (e.g., WAV WAVEFORMATEXTENSIBLE masks, some MP4/MKV).
-  - 通过 FFmpeg：读取 ffprobe JSON 标签序列（如 `FL+FR+FC+LFE+…`），精确定位 LFE 位置
-  - Via FFmpeg: parses ffprobe JSON label sequences (e.g., `FL+FR+FC+LFE+…`) to locate LFE accurately.
-- **LFE 剔除（可选）**：使用 `--exclude-lfe` 在最终聚合中排除 LFE；单声道 DR 明细仍保持输出
-- LFE exclusion (optional): enable `--exclude-lfe` to drop LFE from the aggregate; per‑channel DR lines remain.
-
-### DSD Processing / DSD 处理
-
-- Flags / 开关：
-  - `--dsd-pcm-rate` = 88200 | 176400 | 352800 | 384000（默认 352800 / default 352800）
-  - `--dsd-gain-db` 线性增益（默认 +6.0 dB；设 0 关闭 / default +6.0 dB; set 0 to disable）
-  - `--dsd-filter` = teac | studio | off（默认 teac / default teac）
-    - teac（TEAC Narrow）：
-      - DSD64→39 kHz；DSD128→78 kHz；DSD256→156 kHz；DSD512→312 kHz；DSD1024→624 kHz
-      - 并按 0.45×Fs（目标采样率）限顶 / capped at 0.45×Fs (target rate)
-    - studio：
-      - 固定 20 kHz（仅可听带宽）/ fixed 20 kHz (audible‑band only)
-    - off：
-      - 关闭低通（仅诊断；超声噪声进入 RMS 可能降低 DR；与 +6 dB 同用时存在削顶风险）
-      - no extra low‑pass (diagnostic; ultrasonics enter RMS and may reduce DR; clipping risk with +6 dB)
-
-- Output format / 输出格式：
-  - 统一输出 32‑bit float（F32LE），便于后续计算与一致性 / unified F32LE output for consistency and easy processing
-  - 报告显示 DSD 源：“原生一位采样率与档位 → 处理采样率”，位深显示为“1 (DSD 1‑bit, processed as f32)”
-  - Reports show “native 1‑bit rate & tier → processed rate”; bit depth printed as “1 (DSD 1‑bit, processed as f32)”
-
-### 总计（Summary）
-
-**12+种主流音频格式** / 12+ mainstream formats，覆盖 90%+ 用户需求：
+For detailed format documentation, see [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md).
 
 | 分类 / Category | 格式 / Formats | 解码器 / Decoder |
-| --- | --- | --- |
+|-----------------|----------------|------------------|
 | 无损 Lossless | FLAC, ALAC, WAV, AIFF, PCM | Symphonia |
-| 有损 Lossy | AAC, OGG Vorbis, MP1 | Symphonia |
-| 音乐编码 Proprietary | MP3 | Symphonia (串行 Serial) |
-| 音乐编码 Proprietary | Opus | songbird (专用 Dedicated) |
-| 影音编码 Video Codec | AC-3, E-AC-3, DTS, DSD | FFmpeg (自动回退 Auto) |
-| 容器 Containers | MP4/M4A, MKV, WebM | Symphonia / FFmpeg (智能路由 Smart) |
+| 有损 Lossy | AAC, OGG Vorbis, MP1, MP3, Opus | Symphonia / songbird |
+| 影音编码 Video | AC-3, E-AC-3, DTS, DSD | FFmpeg (自动回退) |
+| 容器 Containers | MP4/M4A, MKV, WebM | 智能路由 Smart routing |
 
-**并行性能**：MP3 采用串行处理（有状态格式），其他格式均支持并行加速；多声道使用零拷贝跨步优化，3+ 声道性能提升 8-16 倍。
-
-MP3 uses serial decoding (stateful format); other formats support parallel acceleration. Multichannel uses zero-copy strided optimization with 8–16× performance gain for 3+ channels.
+**FFmpeg 安装 / Installation**: macOS `brew install ffmpeg` · Windows `winget install Gyan.FFmpeg` · Linux 包管理器
 
 ---
 
-## 致敬与合规声明（Legal Compliance）
+## 许可证与致谢（License & Acknowledgements）
 
-### 原作者授权确认 / Author Authorization
-**2025年9月8日 / September 8, 2025**:
-- Janne Hyvärinen（原作者）同意使用MIT许可证进行项目开发 / Author agreed to MIT license development
-- 原作者不介意对foobar2000 DR Meter进行学习研究 / Author has no objection to studying foobar2000 DR Meter
-- 提供了DR测量的技术规范文档 / Provided technical specification document for DR measurement
-- 规范文档 / Specification: [Measuring DR ENv3 (官方PDF)](https://web.archive.org/web/20131206121248/http://www.dynamicrange.de/sites/default/files/Measuring%20DR%20ENv3.pdf)
+**MIT License** - 查看 [LICENSE](LICENSE) 了解详情 / See [LICENSE](LICENSE) for details.
 
-非常感谢原作者的支持和理解！/ Special thanks to the original author for support and understanding!
+致敬与合规声明、第三方许可、免责声明请参见 [docs/LEGAL.md](docs/LEGAL.md)。
 
-### 实现方式 / Implementation Approach
-- 完全使用Rust重新编写（原版为C++）/ Completely rewritten in Rust (original in C++)
-- 独立的模块化设计和代码结构 / Independent modular design and code structure
-- 基于数学公式的原创实现 / Original implementation based on mathematical formulas
-- 通过输入/输出对比验证算法正确性 / Algorithm verified through input/output comparison
-
-### 智能助力 / AI Collaboration
-- 感谢 Anthropic Claude 4.5 系列模型（Sonnet / Haiku）完成了项目的大部分代码编写
-  Thanks to Anthropic Claude 4.5 models (Sonnet / Haiku) for implementing the majority of the codebase
-- 感谢 OpenAI GPT-5 与 Codex 模型协助补充部分代码并负责大部分审阅与改进建议
-  Thanks to OpenAI GPT-5 and Codex models for contributing additional code and providing the bulk of reviews & refinements
-
-### 逆向工程合法性 / Reverse Engineering Legality
-根据相关法律判例，以下行为通常被认为是合法的 / Based on legal precedents, the following are generally legal:
-- 为了互操作性目的的逆向分析 / Reverse analysis for interoperability
-- 理解算法逻辑用于独立实现 / Understanding algorithms for independent implementation
-- 通过合法工具进行技术研究 / Technical research using legal tools
-
-本项目严格避免 / This project strictly avoids:
-- 直接复制或使用原始源代码 / Direct copying or use of original source code
-- 侵犯商标或品牌标识 / Trademark or brand infringement
-- 恶意商业竞争行为 / Malicious commercial competition
-
----
-
-## 许可证（License）
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 第三方许可与声明（Third‑Party Notices & Licenses）
-
-- 本项目的二进制发行物包含第三方依赖，均遵循其各自许可证条款，以下列出对归属与许可文本的致谢。
-- The binary distribution of this tool includes third‑party components under their respective licenses. Acknowledgements and license texts are provided below.
-
-- songbird — ISC License
-  - Copyright © respective authors and contributors.
-  - 许可证 / License: ISC（已在仓库中附带完整文本，见 `THIRD_PARTY_NOTICES.md`）。
-  - The full license text is included in `THIRD_PARTY_NOTICES.md`.
+For legal compliance, third-party notices, and disclaimer, see [docs/LEGAL.md](docs/LEGAL.md).
 
 ---
 
@@ -377,11 +229,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
   - **foobar2000 组件作者 / foobar2000 Component Author**: Soerin Jokhan
 
 ---
-
-## 免责声明（Disclaimer）
-
-本项目仅供技术研究和学习使用。所有逆向工程活动均符合相关法律法规。如有法律疑问，建议咨询专业律师。
-
-This project is for technical research and educational purposes only. All reverse engineering activities comply with relevant laws and regulations. For legal questions, please consult a professional lawyer.
 
 **为专业音频制作而生 / Built for Professional Audio Production**
