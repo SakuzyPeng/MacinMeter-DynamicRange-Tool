@@ -117,7 +117,7 @@ audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
 
 ## 性能概要
 
-详细基准数据请参见 [docs/BENCHMARKS.md](docs/BENCHMARKS.md)。
+详细基准数据请参见 [docs/BENCHMARKS_CN.md](docs/BENCHMARKS_CN.md)。
 
 | 平台 | 数据集 | 吞吐 |
 |------|--------|-----:|
@@ -131,7 +131,7 @@ audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
 
 ## 支持的音频格式
 
-详细文档请参见 [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md)。
+详细文档请参见 [docs/SUPPORTED_FORMATS_CN.md](docs/SUPPORTED_FORMATS_CN.md)。
 
 | 分类 | 格式 | 解码器 |
 |------|------|--------|
@@ -148,7 +148,7 @@ audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
 
 **MIT License** - 查看 [LICENSE](LICENSE) 了解详情。
 
-致敬与合规声明、第三方许可、免责声明请参见 [docs/LEGAL.md](docs/LEGAL.md)。
+致敬与合规声明、第三方许可、免责声明请参见 [docs/LEGAL_CN.md](docs/LEGAL_CN.md)。
 
 ---
 
