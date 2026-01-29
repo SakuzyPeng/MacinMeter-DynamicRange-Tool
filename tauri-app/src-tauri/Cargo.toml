@@ -1,6 +1,6 @@
 [package]
 name = "macinmeter-dr-gui"
-version = "0.1.0"
+version = "0.1.2"
 description = "MacinMeter Dynamic Range GUI (Tauri wrapper)"
 authors = ["MacinMeter Team"]
 edition = "2024"

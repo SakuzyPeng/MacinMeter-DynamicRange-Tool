@@ -127,6 +127,9 @@ pub struct AppConfig {
     /// 是否使用紧凑输出格式（单文件模式）
     pub compact_output: bool,
 
+    /// 是否使用 JSON 输出格式
+    pub json_output: bool,
+
     /// 是否为无参数启动（双击启动模式）
     /// true = 无参数启动，自动保存报告
     /// false = 有参数启动，只输出控制台（除非指定 -o）
@@ -261,7 +264,16 @@ pub fn parse_args() -> AppConfig {
                 .long("compact")
                 .short('c')
                 .help("Use compact output format (~12 lines vs ~32 lines) for single-file mode / 使用紧凑输出格式（~12行 vs ~32行），仅对单文件模式生效")
-                .action(clap::ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("json"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .short('j')
+                .help("Output results in JSON format / 以 JSON 格式输出结果")
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("compact"),
         )
         .arg(
             Arg::new("dsd-pcm-rate")
@@ -403,6 +415,7 @@ pub fn parse_args() -> AppConfig {
         exclude_lfe: matches.get_flag("exclude-lfe"),
         show_rms_peak: matches.get_flag("show-rms-peak"),
         compact_output: matches.get_flag("compact"),
+        json_output: matches.get_flag("json"),
         auto_launched,
         no_save: matches.get_flag("no-save"),
         // 默认 352.8 kHz；用户可通过 --dsd-pcm-rate 覆盖

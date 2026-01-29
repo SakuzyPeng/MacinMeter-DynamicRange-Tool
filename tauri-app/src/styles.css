@@ -1,5 +1,6 @@
 :root {
-  font-family: "Inter", "PingFang SC", "Segoe UI", sans-serif;
+  /* CJK 字体支持：日文/中文/通用 */
+  font-family: "Inter", "Hiragino Sans", "Hiragino Kaku Gothic Pro", "PingFang SC", "Yu Gothic", "Meiryo", "Microsoft YaHei", "Noto Sans CJK JP", "Noto Sans CJK SC", "Segoe UI", system-ui, sans-serif;
   font-size: 15px;
   color: #0f172a;
   background-color: #f4f6fb;
@@ -36,8 +37,45 @@ body {
 }
 
 .panel h2 {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 1.05rem;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.lang-switch {
+  display: flex;
+  gap: 4px;
+}
+
+.lang-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 6px;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.lang-btn:hover {
+  background: #e2e8f0;
+  transform: none;
+  box-shadow: none;
+}
+
+.lang-btn.active {
+  background: linear-gradient(120deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border-color: transparent;
 }
 
 .path-row {

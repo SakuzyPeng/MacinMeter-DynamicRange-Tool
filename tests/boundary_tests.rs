@@ -36,6 +36,7 @@ fn default_test_config() -> AppConfig {
         exclude_lfe: false,
         show_rms_peak: false,
         compact_output: false,
+        json_output: false,
         auto_launched: false,
         dsd_pcm_rate: Some(352_800),
         dsd_gain_db: 6.0,

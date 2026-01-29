@@ -758,7 +758,10 @@ pub fn output_results(
     silence_filter_report: Option<SilenceFilterReport>,
     auto_save: bool,
 ) -> AudioResult<()> {
-    let output = if config.compact_output {
+    let output = if config.json_output {
+        // JSON 模式
+        formatter::generate_json_report(config, format, results, config.exclude_lfe)
+    } else if config.compact_output {
         // 紧凑模式：~12 行输出
         formatter::generate_compact_report(
             config,
@@ -911,6 +914,7 @@ pub fn save_individual_result(
         exclude_lfe: false,
         show_rms_peak: config.show_rms_peak,
         compact_output: false,   // 批量模式下单独文件使用详细格式
+        json_output: false,      // 批量模式下单独文件不使用 JSON 格式
         auto_launched: false,    // 批量模式下的单独文件始终自动保存
         no_save: config.no_save, // 继承父配置的 no_save 设置
         dsd_pcm_rate: config.dsd_pcm_rate,

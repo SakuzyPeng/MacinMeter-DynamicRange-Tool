@@ -1,6 +1,28 @@
 # Release Notes / 发布说明
 
-## v0.1.2 (2026-01-29) – Documentation Refactor / 文档重构
+## v0.1.2 (2026-01-29) – JSON Export & GUI i18n / JSON导出与GUI国际化
+
+- CLI / 命令行
+  - Added `--json` / `-j` option: output results in JSON format (mutually exclusive with `--compact`).
+    新增 `--json` / `-j` 参数：以 JSON 格式输出结果（与 `--compact` 互斥）。
+  - Added `--no-save` option to output results to console only.
+    新增 `--no-save` 参数，仅输出到控制台不保存文件。
+  - Exported `VERSION` constant from core library for unified version management.
+    核心库导出 `VERSION` 常量，统一版本管理。
+
+- GUI / 图形界面
+  - Added i18next internationalization: Chinese/English language switching with localStorage persistence.
+    新增 i18next 国际化：中英文切换，语言偏好保存至 localStorage。
+  - Unified single/multi-file rendering logic (removed ~70 lines of redundant code).
+    统一单文件/多文件渲染逻辑（减少约70行重复代码）。
+  - Fixed language switch clearing analysis results.
+    修复语言切换后分析结果被清空的问题。
+  - Fixed single-file mode missing individual MD/PNG copy buttons.
+    修复单文件模式缺少单独 MD/PNG 复制按钮的问题。
+  - Improved CJK font support in image export (Japanese/Chinese characters).
+    改善图片导出中的 CJK 字体支持（日文/中文字符）。
+  - Added version sync script: auto-syncs version from main Cargo.toml on build.
+    新增版本同步脚本：构建时自动从主 Cargo.toml 同步版本。
 
 - Documentation / 文档
   - Separated English and Chinese README: `README.md` (EN) + `README_CN.md` (CN).
@@ -9,8 +31,6 @@
     详细文档分离至 `docs/`：`SUPPORTED_FORMATS.md`、`BENCHMARKS.md`、`LEGAL.md`，均有中英文版本。
   - Streamlined batch report format using Markdown tables (comfy-table).
     批量报告改用 Markdown 表格格式（comfy-table）。
-  - Added `--no-save` option to output results to console only.
-    新增 `--no-save` 参数，仅输出到控制台不保存文件。
   - Added `*` (LFE excluded) and `†` (silent channels excluded) markers in batch reports.
     批量报告新增 `*`（LFE 已剔除）和 `†`（静音声道已剔除）标记。
 

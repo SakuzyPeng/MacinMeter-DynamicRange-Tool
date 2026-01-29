@@ -157,6 +157,7 @@ struct ScannedFile {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MetadataResponse {
+    version: String,
     supported_formats: Vec<String>,
 }
 
@@ -368,6 +369,7 @@ fn cancel_analysis() -> Result<(), AnalyzeCommandError> {
 #[tauri::command]
 fn load_app_metadata() -> MetadataResponse {
     MetadataResponse {
+        version: macinmeter_dr_tool::VERSION.to_string(),
         supported_formats: supported_formats_list(),
     }
 }
@@ -799,10 +801,12 @@ impl UiAnalyzeOptions {
             exclude_lfe: self.exclude_lfe,
             show_rms_peak: self.show_rms_peak,
             compact_output: false,
+            json_output: false,
             auto_launched: false,
             dsd_pcm_rate: Some(352_800),
             dsd_gain_db: 6.0,
             dsd_filter: "teac".to_string(),
+            no_save: true,
         }
     }
 }

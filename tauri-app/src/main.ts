@@ -4,6 +4,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, writeFile } from "@tauri-apps/plugin-fs";
 import { toPng, toSvg } from "html-to-image";
+import {
+  t,
+  changeLanguage,
+  updateStaticTexts,
+  updateLanguageButtons,
+  type SupportedLanguage,
+} from "./i18n";
 
 type UiAnalyzeOptions = {
   parallelDecoding: boolean;
@@ -160,6 +167,7 @@ let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
 let aggregateExcludeLfe = false;
 let hidePath = false;
 let singlePanel!: AnalysisPanel;
+let appVersion = "0.1.0";
 
 const decimals = (value: number, digits = 2): string =>
   Number.isFinite(value) ? value.toFixed(digits) : "-";
@@ -217,7 +225,7 @@ const formatSingleResultAsMd = (response: AnalyzeResponse): string => {
   // 边界风险用斜体
   if (aggregate.boundaryWarning) {
     const w = aggregate.boundaryWarning;
-    md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+    md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
   }
 
   return md;
@@ -274,7 +282,7 @@ const formatDirectoryResultsAsMd = (
       // 边界风险
       if (aggregate.boundaryWarning) {
         const w = aggregate.boundaryWarning;
-        md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+        md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
       }
 
       md += "\n";
@@ -327,7 +335,7 @@ const formatEntryAsMd = (entry: DirectoryAnalysisEntry, hidePath = false): strin
 
   if (aggregate.boundaryWarning) {
     const w = aggregate.boundaryWarning;
-    md += `\n*边界风险 (${w.level}): 距${w.direction}边界 ${w.distanceDb.toFixed(2)} dB*\n`;
+    md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
   }
 
   return md;
@@ -336,7 +344,7 @@ const formatEntryAsMd = (entry: DirectoryAnalysisEntry, hidePath = false): strin
 // 格式化为JSON（用于导出）
 const formatResultAsJson = (): object => {
   const timestamp = getTimestamp();
-  const version = "0.1.0"; // TODO: 从app metadata获取
+  const version = appVersion;
 
   const formatChannelInfo = (ch: DrChannelResult, lfeIndices: number[]) => {
     const isSilent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
@@ -431,7 +439,7 @@ const exportJsonToFile = async () => {
   const data = formatResultAsJson();
   if (Object.keys(data).length === 0) return;
 
-  const defaultName = `MacinMeter_v0.1.0_${getFileTimestamp()}.json`;
+  const defaultName = `MacinMeter_v${appVersion}_${getFileTimestamp()}.json`;
 
   const filePath = await save({
     defaultPath: defaultName,
@@ -446,18 +454,17 @@ const exportJsonToFile = async () => {
 // 显示格式选择对话框
 const showFormatDialog = (): Promise<"png" | "svg" | null> => {
   return new Promise((resolve) => {
-    // 创建模态对话框
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
 
     const dialog = document.createElement("div");
     dialog.className = "modal-dialog";
     dialog.innerHTML = `
-      <h3>选择导出格式</h3>
+      <h3>${t("dialog.formatTitle")}</h3>
       <div class="modal-buttons">
         <button type="button" data-format="png">PNG</button>
         <button type="button" data-format="svg">SVG</button>
-        <button type="button" data-format="cancel" class="ghost">取消</button>
+        <button type="button" data-format="cancel" class="ghost">${t("dialog.cancel")}</button>
       </div>
     `;
 
@@ -505,7 +512,7 @@ const exportImageToFile = async () => {
   if (!resultPanel) return;
 
   const ext = format === "svg" ? "svg" : "png";
-  const defaultName = `MacinMeter_v0.1.0_${getFileTimestamp()}.${ext}`;
+  const defaultName = `MacinMeter_v${appVersion}_${getFileTimestamp()}.${ext}`;
 
   const filePath = await save({
     defaultPath: defaultName,
@@ -563,6 +570,11 @@ const exportImageToFile = async () => {
         // 固定内部像素比为 1，全部缩放由 canvasWidth/Height 控制
         pixelRatio: 1,
         skipAutoScale: true,
+        style: {
+          // CJK 字体支持：macOS/Windows/Linux
+          fontFamily: "'Hiragino Sans', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', 'Microsoft YaHei', 'Noto Sans CJK JP', 'Noto Sans CJK SC', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        },
+        skipFonts: true,
       });
       const base64 = dataUrl.split(",")[1];
       const binaryString = atob(base64);
@@ -623,7 +635,7 @@ const setStatusWithProgress = (
   analysisTotal = total;
 
   const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-  panel.statusEl.innerHTML = `<span class="status-text">分析中... ${current}/${total}</span><div class="progress-fill" style="width: ${percent}%"></div>`;
+  panel.statusEl.innerHTML = `<span class="status-text">${t("status.analyzingProgress", { current, total })}</span><div class="progress-fill" style="width: ${percent}%"></div>`;
   panel.statusEl.classList.remove("error");
 };
 
@@ -642,7 +654,7 @@ const clearOutput = () => {
     resultExcludeLfeBtn.disabled = true;
   }
   updateCopyButtons();
-  setStatus(singlePanel, "请选择音频文件后运行分析。");
+  setStatus(singlePanel, t("status.ready"));
 };
 
 const cleanupAnalysisListeners = () => {
@@ -669,7 +681,7 @@ const cleanupDeepScanListeners = () => {
 
 const updateAnalyzeButton = () => {
   if (!analyzeButton) return;
-  analyzeButton.textContent = analyzing ? "取消分析" : "开始分析";
+  analyzeButton.textContent = analyzing ? t("btn.cancelAnalyze") : t("btn.analyze");
 };
 
 const createAnalysisPanelElement = (): AnalysisPanel => {
@@ -750,10 +762,10 @@ const updateSelectedPath = (
 
 const renderScanResults = (result: ScanResult) => {
   if (!result.files.length) {
-    scanResultsEl.innerHTML = `<p>目录 ${result.directory} 中未发现受支持的音频文件。</p>`;
+    scanResultsEl.innerHTML = `<p>${t("scan.noFiles", { path: result.directory })}</p>`;
   } else {
     scanResultsEl.innerHTML = `
-      <p>在 <strong>${result.directory}</strong> 中找到 ${result.files.length} 个文件，可点击“开始分析”执行批量处理。</p>
+      <p>${t("scan.foundFiles", { path: `<strong>${result.directory}</strong>`, count: result.files.length })}</p>
     `;
   }
   scanResultsEl.classList.remove("hidden");
@@ -772,7 +784,7 @@ const renderDrTable = (
 ) => {
   const channels = response.drResults;
   if (!channels.length) {
-    panel.tableEl.innerHTML = "<p>未产生有效声道结果。</p>";
+    panel.tableEl.innerHTML = `<p>${t("table.noResults")}</p>`;
     return;
   }
   const lfeSet = new Set(response.format.lfeIndices ?? []);
@@ -808,9 +820,9 @@ const renderDrTable = (
       <table>
         <thead>
           <tr>
-            <th>通道</th>
-            <th>Official</th>
-            <th>Precise</th>
+            <th>${t("table.channel")}</th>
+            <th>${t("table.official")}</th>
+            <th>${t("table.precise")}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -828,9 +840,11 @@ const renderWarnings = (
   if (aggregate.boundaryWarning) {
     const warning = aggregate.boundaryWarning;
     notes.push(
-      `边界风险 (${warning.level}): 距 ${warning.direction} 边界 ${warning.distanceDb.toFixed(
-        2,
-      )} dB。`,
+      t("warning.boundary", {
+        level: warning.level,
+        direction: warning.direction,
+        distance: warning.distanceDb.toFixed(2),
+      }),
     );
   }
   if (aggregate.warningText) {
@@ -838,7 +852,7 @@ const renderWarnings = (
   }
   if (response.format.partialAnalysis) {
     notes.push(
-      `警告：解码时跳过 ${response.format.skippedPackets} 个损坏包，结果仅供参考。`,
+      t("warning.partialAnalysis", { count: response.format.skippedPackets }),
     );
   }
   if (!notes.length) {
@@ -866,7 +880,7 @@ const updateAggregateView = () => {
   }
 
   if (!hasRendered) {
-    setStatus(singlePanel, "请选择音频文件后运行分析。");
+    setStatus(singlePanel, t("status.ready"));
   }
 };
 
@@ -877,13 +891,13 @@ const renderTrimReport = (panel: AnalysisPanel, report?: TrimReport | null) => {
   }
   panel.trimEl.innerHTML = `
     <div class="warning-card">
-      <strong>首尾静音裁切</strong>
-      <p>阈值 ${report.thresholdDb.toFixed(1)} dBFS，最小时长 ${report.minRunMs.toFixed(
-        0,
-      )} ms。</p>
-      <p>裁切 ${report.totalSamplesTrimmed} 个样本（首部 ${decimals(
-        report.leadingSeconds,
-      )}s / 尾部 ${decimals(report.trailingSeconds)}s）。</p>
+      <strong>${t("trim.title")}</strong>
+      <p>${t("trim.threshold", { db: report.thresholdDb.toFixed(1), ms: report.minRunMs.toFixed(0) })}</p>
+      <p>${t("trim.result", {
+        samples: report.totalSamplesTrimmed,
+        leading: decimals(report.leadingSeconds),
+        trailing: decimals(report.trailingSeconds),
+      })}</p>
     </div>
   `;
 };
@@ -909,12 +923,12 @@ const renderSilenceReport = (
     .join("");
   panel.silenceEl.innerHTML = `
     <div class="dr-table">
-      <strong>静音窗口过滤（阈值 ${report.thresholdDb.toFixed(1)} dBFS）</strong>
+      <strong>${t("silence.title", { db: report.thresholdDb.toFixed(1) })}</strong>
       <table>
         <thead>
           <tr>
-            <th>通道</th>
-            <th>Filtered</th>
+            <th>${t("table.channel")}</th>
+            <th>${t("table.filtered")}</th>
             <th>%</th>
           </tr>
         </thead>
@@ -944,7 +958,7 @@ const renderDirectoryResults = (
   }
   if (!response.files.length) {
     const empty = document.createElement("p");
-    empty.textContent = "目录中未找到可分析的音频文件。";
+    empty.textContent = t("noAudioInDirectory");
     directoryResultsEl.appendChild(empty);
     return;
   }
@@ -1022,6 +1036,11 @@ const renderDirectoryResults = (
           const dataUrl = await toPng(card, {
             backgroundColor: "#ffffff",
             pixelRatio: 2,
+            style: {
+              // CJK 字体支持：macOS/Windows/Linux
+              fontFamily: "'Hiragino Sans', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', 'Microsoft YaHei', 'Noto Sans CJK JP', 'Noto Sans CJK SC', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            },
+            skipFonts: true,
           });
 
           // 恢复显示
@@ -1086,7 +1105,7 @@ const renderDirectoryResults = (
       const err = document.createElement("div");
       err.className = "warning-card";
       const suggestion = entry.error.suggestion
-        ? ` 建议：${entry.error.suggestion}`
+        ? t("error.suggestion", { suggestion: entry.error.suggestion })
         : "";
       err.textContent = `${entry.error.message}${suggestion}`;
       card.appendChild(err);
@@ -1112,31 +1131,43 @@ const renderAnalysisPanelContent = (
   renderTrimReport(panel, response.trimReport);
   renderSilenceReport(panel, response.silenceReport);
   if (aggregate.officialDr !== null && aggregate.preciseDr !== null) {
-    const modeLabel = aggregateExcludeLfe ? "（排除 LFE）" : "";
+    const modeLabel = aggregateExcludeLfe ? t("label.excludeLfeMode") : "";
     setStatus(
       panel,
-      `Official DR ${aggregate.officialDr}${modeLabel} · Precise ${decimals(aggregate.preciseDr)} dB`,
+      t("status.officialDr", {
+        dr: aggregate.officialDr,
+        mode: modeLabel,
+        precise: decimals(aggregate.preciseDr),
+      }),
     );
   } else {
     setStatus(
       panel,
       aggregateExcludeLfe
-        ? "没有有效声道（排除 LFE）"
-        : "没有有效声道参与计算。",
+        ? t("status.noChannelsExcludeLfe")
+        : t("status.noChannels"),
     );
   }
 };
 
 const renderAnalysis = (response: AnalyzeResponse) => {
-  lastResponse = response;
-  lastDirectoryResponse = null;
-  directoryResultsEl.innerHTML = "";
-  if (resultExcludeLfeBtn) {
-    resultExcludeLfeBtn.disabled = false;
-    resultExcludeLfeBtn.classList.toggle("active", aggregateExcludeLfe);
-  }
-  renderAnalysisPanelContent(singlePanel, response);
-  updateCopyButtons();
+  // 单文件也用 renderDirectoryResults 渲染，统一逻辑
+  // 清空 lastResponse，只用 lastDirectoryResponse 管理状态
+  lastResponse = null;
+
+  const fileName = response.sourcePath.split("/").pop() || response.sourcePath;
+  const entry: DirectoryAnalysisEntry = {
+    path: response.sourcePath,
+    fileName,
+    analysis: response,
+  };
+  const dirResponse: DirectoryAnalysisResponse = {
+    directory: response.sourcePath,
+    files: [entry],
+  };
+  renderDirectoryResults(dirResponse);
+
+  // 单文件时隐藏排序和搜索
   if (sortModeSelect) {
     sortModeSelect.disabled = true;
     sortModeSelect.value = "none";
@@ -1177,12 +1208,12 @@ const parseInvokeError = (error: unknown): CommandError => {
       return { message: (error as { message: string }).message };
     }
   }
-  return { message: "未知错误" };
+  return { message: t("error.unknown") };
 };
 
 const handleAnalyze = async () => {
   if (!selectedPath) {
-    setStatus(singlePanel, "请先选择音频文件。", true);
+    setStatus(singlePanel, t("error.selectFileFirst"), true);
     return;
   }
   if (selectedKind === "directory") {
@@ -1198,14 +1229,14 @@ const handleAnalyze = async () => {
 
 const startSingleFileAnalyze = async () => {
   if (!selectedPath) {
-    setStatus(singlePanel, "请先选择音频文件。", true);
+    setStatus(singlePanel, t("error.selectFileFirst"), true);
     return;
   }
   const token = ++analysisToken;
   analyzing = true;
   updateAnalyzeButton();
   clearOutput();
-  setStatus(singlePanel, "分析中...", false);
+  setStatus(singlePanel, t("status.analyzing"), false);
   try {
     const options = gatherOptions();
     const response = await invoke<AnalyzeResponse>("analyze_audio", {
@@ -1229,14 +1260,12 @@ const startSingleFileAnalyze = async () => {
     setStatus(
       singlePanel,
       detail.suggestion
-        ? `${detail.message}（建议：${detail.suggestion}）`
+        ? `${detail.message}${t("error.suggestion", { suggestion: detail.suggestion })}`
         : detail.message,
       true,
     );
     if (detail.supportedFormats?.length) {
-      singlePanel.warningsEl.innerHTML = `<div class="warning-card">支持格式：${detail.supportedFormats.join(
-        ", ",
-      )}</div>`;
+      singlePanel.warningsEl.innerHTML = `<div class="warning-card">${t("error.supportedFormats", { formats: detail.supportedFormats.join(", ") })}</div>`;
     }
   } finally {
     if (token === analysisToken) {
@@ -1248,7 +1277,7 @@ const startSingleFileAnalyze = async () => {
 
 const startDirectoryAnalyze = async () => {
   if (!selectedPath) {
-    setStatus(singlePanel, "请先选择目录。", true);
+    setStatus(singlePanel, t("error.selectDirFirst"), true);
     return;
   }
   const token = ++analysisToken;
@@ -1303,7 +1332,7 @@ const startDirectoryAnalyze = async () => {
       renderDirectoryResults(event.payload);
       setStatus(
         singlePanel,
-        `目录分析完成，共 ${event.payload.files.length} 个结果。`,
+        t("status.directoryComplete", { count: event.payload.files.length }),
       );
       analyzing = false;
       updateAnalyzeButton();
@@ -1325,7 +1354,7 @@ const startDirectoryAnalyze = async () => {
     setStatus(
       singlePanel,
       detail.suggestion
-        ? `${detail.message}（建议：${detail.suggestion}）`
+        ? `${detail.message}${t("error.suggestion", { suggestion: detail.suggestion })}`
         : detail.message,
       true,
     );
@@ -1337,7 +1366,7 @@ const startDirectoryAnalyze = async () => {
 
 const startSelectedFilesAnalyze = async (files: string[]) => {
   if (!files.length) {
-    setStatus(singlePanel, "请选择至少一个音频文件。", true);
+    setStatus(singlePanel, t("error.selectAtLeastOne"), true);
     return;
   }
   const token = ++analysisToken;
@@ -1384,7 +1413,7 @@ const startSelectedFilesAnalyze = async (files: string[]) => {
       renderDirectoryResults(event.payload);
       setStatus(
         singlePanel,
-        `多文件分析完成，共 ${event.payload.files.length} 个结果。`,
+        t("status.multiFileComplete", { count: event.payload.files.length }),
       );
       analyzing = false;
       updateAnalyzeButton();
@@ -1406,7 +1435,7 @@ const startSelectedFilesAnalyze = async (files: string[]) => {
     setStatus(
       singlePanel,
       detail.suggestion
-        ? `${detail.message}（建议：${detail.suggestion}）`
+        ? `${detail.message}${t("error.suggestion", { suggestion: detail.suggestion })}`
         : detail.message,
       true,
     );
@@ -1451,7 +1480,7 @@ const handleScanDir = async () => {
     path: dir,
   });
   updateSelectedPath(dir, "directory");
-  setStatus(singlePanel, `目录 ${dir} 已选，可点击“开始分析”执行批量处理。`);
+  setStatus(singlePanel, t("status.directorySelected", { path: dir }));
   lastDirectoryResponse = null;
   directoryResultsEl.innerHTML = "";
   renderScanResults(result);
@@ -1461,14 +1490,13 @@ const handleDeepScanDir = async () => {
   const button = document.querySelector<HTMLButtonElement>("#deep-scan-dir");
   if (!button) return;
 
-  // 如果正在深度扫描，则此次点击视为“取消递归”
   if (deepScanning) {
     deepScanCancelled = true;
-    setStatus(singlePanel, "正在请求取消深度扫描...", false);
+    setStatus(singlePanel, t("status.cancellingDeepScan"), false);
     try {
       await invoke("cancel_deep_scan");
     } catch {
-      // 忽略取消失败，后端扫描函数会在下次调用时重置状态
+      // ignore
     }
     return;
   }
@@ -1482,14 +1510,12 @@ const handleDeepScanDir = async () => {
   }
 
   const confirmed = await confirm(
-    `将对目录及其所有子目录执行递归扫描：\n${dir}\n\n` +
-      "在包含大量文件的目录上，这可能会非常缓慢，并占用较高的磁盘与CPU资源。\n" +
-      "建议仅对主要存放音频文件的专用目录使用此功能，避免选择整个磁盘或用户主目录。",
+    t("dialog.deepScanMessage", { path: dir }),
     {
-      title: "深度扫描目录（递归）风险提示",
+      title: t("dialog.deepScanTitle"),
       kind: "warning",
-      okLabel: "继续深度扫描",
-      cancelLabel: "取消",
+      okLabel: t("dialog.deepScanConfirm"),
+      cancelLabel: t("dialog.cancel"),
     },
   );
 
@@ -1499,14 +1525,14 @@ const handleDeepScanDir = async () => {
 
   deepScanning = true;
   deepScanCancelled = false;
-  button.textContent = "取消递归扫描";
+  button.textContent = t("btn.cancelDeepScan");
 
   cleanupDeepScanListeners();
   scanResultsEl.classList.remove("hidden");
-  scanResultsEl.innerHTML = `<p>正在递归扫描目录 <strong>${dir}</strong> ...</p>`;
+  scanResultsEl.innerHTML = `<p>${t("status.deepScanning", { path: `<strong>${dir}</strong>` })}</p>`;
   setStatus(
     singlePanel,
-    `正在递归扫描目录 ${dir} ... 这可能需要一段时间。`,
+    t("status.deepScanning", { path: dir }),
     false,
   );
 
@@ -1514,7 +1540,7 @@ const handleDeepScanDir = async () => {
     "deep-scan-progress",
     (event) => {
       const count = event.payload ?? 0;
-      scanResultsEl.innerHTML = `<p>正在递归扫描目录 <strong>${dir}</strong> ... 已发现 ${count} 个音频文件。</p>`;
+      scanResultsEl.innerHTML = `<p>${t("status.deepScanProgress", { path: `<strong>${dir}</strong>`, count })}</p>`;
     },
   );
 
@@ -1528,17 +1554,17 @@ const handleDeepScanDir = async () => {
     selectedKind = selectedFiles.length > 1 ? "files" : "file";
     inputPathEl.value =
       selectedFiles.length > 1
-        ? `${selectedFiles.length} 个文件（递归）`
+        ? t("status.filesRecursive", { count: selectedFiles.length })
         : selectedFiles[0];
 
     const summaryText =
       result.files.length > 0
         ? deepScanCancelled
-          ? `深度扫描已取消：在 ${result.directory} 及其子目录中已发现 ${result.files.length} 个音频文件。`
-          : `深度扫描完成：在 ${result.directory} 及其子目录中找到 ${result.files.length} 个音频文件，可点击“开始分析”执行批量处理。`
+          ? t("status.deepScanCancelledWithFiles", { path: result.directory, count: result.files.length })
+          : t("status.deepScanComplete", { path: result.directory, count: result.files.length })
         : deepScanCancelled
-          ? `深度扫描已取消：在 ${result.directory} 及其子目录中未发现可分析的音频文件。`
-          : `深度扫描完成：在 ${result.directory} 及其子目录中未找到可分析的音频文件。`;
+          ? t("status.deepScanCancelledEmpty", { path: result.directory })
+          : t("status.deepScanEmpty", { path: result.directory });
     setStatus(singlePanel, summaryText);
 
     lastDirectoryResponse = null;
@@ -1549,7 +1575,7 @@ const handleDeepScanDir = async () => {
     setStatus(
       singlePanel,
       detail.suggestion
-        ? `${detail.message}（建议：${detail.suggestion}）`
+        ? `${detail.message}${t("error.suggestion", { suggestion: detail.suggestion })}`
         : detail.message,
       true,
     );
@@ -1557,7 +1583,7 @@ const handleDeepScanDir = async () => {
     cleanupDeepScanListeners();
     deepScanning = false;
     deepScanCancelled = false;
-    button.textContent = "深度扫描目录";
+    button.textContent = t("btn.deepScan");
   }
 };
 
@@ -1573,10 +1599,10 @@ const handleSinglePathSelection = async (path: string) => {
       renderScanResults(result);
       setStatus(
         singlePanel,
-        `目录 ${path} 已选，可点击“开始分析”执行批量处理。`,
+        t("status.directorySelected", { path }),
       );
     } else {
-      setStatus(singlePanel, `目录 ${path} 无法读取。`, true);
+      setStatus(singlePanel, t("status.directoryReadError", { path }), true);
     }
     lastDirectoryResponse = null;
     directoryResultsEl.innerHTML = "";
@@ -1585,7 +1611,7 @@ const handleSinglePathSelection = async (path: string) => {
     updateSelectedPath(path, "file");
     lastDirectoryResponse = null;
     directoryResultsEl.innerHTML = "";
-    setStatus(singlePanel, `已选择 ${path}`);
+    setStatus(singlePanel, t("status.fileSelected", { path }));
     scanResultsEl.classList.add("hidden");
   }
 };
@@ -1607,7 +1633,7 @@ const handleMultiFileSelection = async (paths: string[]) => {
   if (!filePaths.length) {
     setStatus(
       singlePanel,
-      "所选项目均为目录，请使用“选择目录（批量分析）”按钮或仅选择音频文件。",
+      t("status.allDirectoriesError"),
       true,
     );
     return;
@@ -1615,15 +1641,15 @@ const handleMultiFileSelection = async (paths: string[]) => {
   selectedFiles = filePaths;
   selectedKind = filePaths.length > 1 ? "files" : "file";
   inputPathEl.value =
-    filePaths.length > 1 ? `${filePaths.length} 个文件` : filePaths[0];
+    filePaths.length > 1 ? t("status.filesCount", { count: filePaths.length }) : filePaths[0];
   selectedPath = filePaths[0];
   lastDirectoryResponse = null;
   directoryResultsEl.innerHTML = "";
-  const extra =
-    ignoredDirs > 0
-      ? `（忽略了 ${ignoredDirs} 个目录，目录分析请使用“扫描目录”按钮）`
-      : "";
-  setStatus(singlePanel, `已选择 ${filePaths.length} 个文件${extra}`);
+  if (ignoredDirs > 0) {
+    setStatus(singlePanel, t("status.filesSelectedWithIgnored", { count: filePaths.length, ignored: ignoredDirs }));
+  } else {
+    setStatus(singlePanel, t("status.filesSelected", { count: filePaths.length }));
+  }
   scanResultsEl.classList.add("hidden");
 };
 
@@ -1637,7 +1663,7 @@ const handleDroppedPaths = async (paths: string[]) => {
   }
   const filePaths = await collectFilesFromPaths(paths);
   if (!filePaths.length) {
-    setStatus(singlePanel, "拖入的项目中未发现可分析的音频文件。", true);
+    setStatus(singlePanel, t("status.noAudioInDropped"), true);
     return;
   }
   await handleMultiFileSelection(filePaths);
@@ -1675,6 +1701,17 @@ document.addEventListener("DOMContentLoaded", () => {
     silenceEl: document.querySelector<HTMLElement>("#silence-report")!,
   };
 
+  // 从 Tauri 获取应用版本号
+  invoke<{ version: string }>("load_app_metadata")
+    .then((meta) => {
+      if (meta?.version) {
+        appVersion = meta.version;
+      }
+    })
+    .catch(() => {
+      // 保持默认版本号
+    });
+
   document
     .querySelector<HTMLButtonElement>("#pick-file")
     ?.addEventListener("click", handlePickFile);
@@ -1692,7 +1729,7 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedPath = null;
       selectedKind = null;
       inputPathEl.value = "";
-      setStatus(singlePanel, "已清除输入路径。");
+      setStatus(singlePanel, t("status.pathCleared"));
       clearOutput();
       scanResultsEl.classList.add("hidden");
     });
@@ -1706,7 +1743,7 @@ document.addEventListener("DOMContentLoaded", () => {
         analyzing = false;
         updateAnalyzeButton();
         cleanupAnalysisListeners();
-        setStatus(singlePanel, "正在取消分析...");
+        setStatus(singlePanel, t("status.cancelling"));
 
         // 如果已有部分结果，启用相关按钮
         if (currentDirectoryEntries.length > 0) {
@@ -1724,14 +1761,14 @@ document.addEventListener("DOMContentLoaded", () => {
           .then(() => {
             const count = currentDirectoryEntries.length;
             setStatus(singlePanel, count > 0
-              ? `已取消分析，已完成 ${count} 个文件。`
-              : "已取消当前分析。");
+              ? t("status.cancelledWithCount", { count })
+              : t("status.cancelled"));
           })
           .catch(() => {
             const count = currentDirectoryEntries.length;
             setStatus(singlePanel, count > 0
-              ? `已取消分析，已完成 ${count} 个文件。`
-              : "已取消当前分析。");
+              ? t("status.cancelledWithCount", { count })
+              : t("status.cancelled"));
           });
         return;
       }
@@ -1746,8 +1783,8 @@ document.addEventListener("DOMContentLoaded", () => {
       setStatus(
         singlePanel,
         value.length
-          ? `已设置自定义 ffmpeg 路径：${value}`
-          : "已清除自定义 ffmpeg 路径，将使用系统默认 PATH。",
+          ? t("status.ffmpegSet", { path: value })
+          : t("status.ffmpegCleared"),
         false,
       );
     } catch (error) {
@@ -1755,7 +1792,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setStatus(
         singlePanel,
         detail.suggestion
-          ? `${detail.message}（建议：${detail.suggestion}）`
+          ? `${detail.message}${t("error.suggestion", { suggestion: detail.suggestion })}`
           : detail.message,
         true,
       );
@@ -1796,7 +1833,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return name.includes(lowered) || path.includes(lowered);
     });
     if (!matches.length) {
-      setStatus(singlePanel, `未找到包含「${query}」的结果。`, true);
+      setStatus(singlePanel, t("status.searchNotFound", { query }), true);
       lastSearchQuery = query;
       lastSearchIndex = -1;
       return;
@@ -1839,4 +1876,28 @@ document.addEventListener("DOMContentLoaded", () => {
       void handleDroppedPaths(event.payload.paths);
     }
   });
+
+  // 语言切换初始化
+  const langZhBtn = document.getElementById("lang-zh");
+  const langEnBtn = document.getElementById("lang-en");
+
+  const handleLanguageChange = (lng: SupportedLanguage) => {
+    changeLanguage(lng).then(() => {
+      updateStaticTexts();
+      updateLanguageButtons();
+      // 更新动态内容
+      if (lastResponse || lastDirectoryResponse) {
+        updateAggregateView();
+      } else {
+        setStatus(singlePanel, t("status.ready"));
+      }
+    });
+  };
+
+  langZhBtn?.addEventListener("click", () => handleLanguageChange("zh-CN"));
+  langEnBtn?.addEventListener("click", () => handleLanguageChange("en-US"));
+
+  // 初始化语言状态
+  updateStaticTexts();
+  updateLanguageButtons();
 });

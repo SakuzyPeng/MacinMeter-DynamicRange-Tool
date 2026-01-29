@@ -4,69 +4,78 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MacinMeter DR GUI</title>
+    <title data-i18n="title">MacinMeter DR GUI</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
   <body>
     <main class="app">
       <section class="panel">
-        <h2>文件选择 / 分析</h2>
+        <div class="panel-header">
+          <h2 data-i18n="section.fileSelect">文件选择 / 分析</h2>
+          <div class="lang-switch">
+            <button id="lang-zh" type="button" class="lang-btn active">中</button>
+            <button id="lang-en" type="button" class="lang-btn">EN</button>
+          </div>
+        </div>
         <div class="path-row">
           <input
             type="text"
             id="input-path"
+            data-i18n-placeholder="input.noFile"
             placeholder="尚未选择音频文件"
             readonly
           />
           <div class="path-actions">
-            <button id="pick-file" type="button">选择文件</button>
-            <button id="scan-dir" type="button">选择目录</button>
-            <button id="deep-scan-dir" type="button" class="ghost danger">
+            <button id="pick-file" type="button" data-i18n="btn.pickFile">选择文件</button>
+            <button id="scan-dir" type="button" data-i18n="btn.scanDir">选择目录</button>
+            <button id="deep-scan-dir" type="button" class="ghost danger" data-i18n="btn.deepScan">
               深度扫描目录
             </button>
-            <button id="clear-path" type="button" class="ghost">清除</button>
-            <button id="analyze-btn" type="button">开始分析</button>
+            <button id="clear-path" type="button" class="ghost" data-i18n="btn.clear">清除</button>
+            <button id="analyze-btn" type="button" data-i18n="btn.analyze">开始分析</button>
           </div>
         </div>
         <div class="custom-ffmpeg">
           <input
             type="text"
             id="ffmpeg-path"
+            data-i18n-placeholder="input.ffmpegPlaceholder"
             placeholder="自定义 ffmpeg 路径（留空 = 使用默认）"
           />
-          <button type="button" id="apply-ffmpeg">应用 FFmpeg 路径</button>
+          <button type="button" id="apply-ffmpeg" data-i18n="btn.applyFfmpeg">应用 FFmpeg 路径</button>
         </div>
         <div id="scan-results" class="scan-results hidden"></div>
       </section>
 
       <section class="panel">
-        <h2>分析结果</h2>
+        <h2 data-i18n="section.results">分析结果</h2>
         <div class="result-options">
           <div class="copy-actions">
-            <button id="result-exclude-lfe-btn" type="button" class="copy-btn toggle-btn">排除 LFE</button>
-            <button id="export-hide-path-btn" type="button" class="copy-btn toggle-btn">隐藏路径</button>
-            <button id="copy-md" type="button" class="copy-btn" disabled>Copy MD</button>
-            <button id="copy-json" type="button" class="copy-btn" disabled>Export JSON</button>
-            <button id="export-image" type="button" class="copy-btn" disabled>Export Image</button>
+            <button id="result-exclude-lfe-btn" type="button" class="copy-btn toggle-btn" data-i18n="btn.excludeLfe">排除 LFE</button>
+            <button id="export-hide-path-btn" type="button" class="copy-btn toggle-btn" data-i18n="btn.hidePath">隐藏路径</button>
+            <button id="copy-md" type="button" class="copy-btn" disabled data-i18n="btn.copyMd">Copy MD</button>
+            <button id="copy-json" type="button" class="copy-btn" disabled data-i18n="btn.exportJson">Export JSON</button>
+            <button id="export-image" type="button" class="copy-btn" disabled data-i18n="btn.exportImage">Export Image</button>
             <select id="sort-mode" class="sort-select" disabled>
-              <option value="none">原顺序</option>
-              <option value="dr-asc">DR 精细值 ↑</option>
-              <option value="dr-desc">DR 精细值 ↓</option>
+              <option value="none" data-i18n="sort.none">原顺序</option>
+              <option value="dr-asc" data-i18n="sort.drAsc">DR 精细值 ↑</option>
+              <option value="dr-desc" data-i18n="sort.drDesc">DR 精细值 ↓</option>
             </select>
             <div class="search-actions">
               <input
                 type="text"
                 id="result-search"
+                data-i18n-placeholder="input.searchPlaceholder"
                 placeholder="搜索"
                 autocomplete="off"
               />
-              <button id="result-search-next" type="button" class="copy-btn" disabled>跳转</button>
+              <button id="result-search-next" type="button" class="copy-btn" disabled data-i18n="btn.jump">跳转</button>
             </div>
           </div>
         </div>
         <div id="single-analysis" class="analysis-panel">
-          <div id="status" class="status">请选择音频文件后运行分析。</div>
+          <div id="status" class="status" data-i18n="status.ready">请选择音频文件后运行分析。</div>
           <div id="dr-table"></div>
           <div id="warnings"></div>
           <div id="trim-report"></div>

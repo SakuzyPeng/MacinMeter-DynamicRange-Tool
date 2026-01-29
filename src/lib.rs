@@ -16,6 +16,9 @@ pub mod error;
 pub mod processing;
 pub mod tools;
 
+/// 核心库版本号（与 CLI 同步）
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // 重新导出核心类型
 pub use audio::AudioFormat; // 音频格式信息（从 audio 模块直接导出）
 pub use core::dr_calculator::DrResult;

@@ -10,6 +10,7 @@ use crate::{
     processing::{EdgeTrimReport, SilenceFilterReport},
 };
 use comfy_table::{CellAlignment, Table, presets::ASCII_MARKDOWN};
+use serde::Serialize;
 
 // 引入symphonia编解码器类型用于精确判断
 use symphonia::core::codecs::{
@@ -1159,6 +1160,158 @@ pub fn format_dr_results_by_channel_count(
     });
 
     output
+}
+
+// ============================================================================
+// JSON 输出格式
+// ============================================================================
+
+/// JSON 输出中的声道信息
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonChannelResult {
+    pub channel: usize,
+    pub dr_official: i32,
+    pub dr_precise: f64,
+    pub peak_db: f64,
+    pub rms_db: f64,
+    pub is_silent: bool,
+    pub is_lfe: bool,
+    pub is_excluded: bool,
+}
+
+/// JSON 输出中的边界风险信息
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonBoundaryWarning {
+    pub level: String,
+    pub direction: String,
+    pub distance_db: f64,
+}
+
+/// JSON 输出中的音频格式信息
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonAudioFormat {
+    pub sample_rate: u32,
+    pub channels: usize,
+    pub bits_per_sample: u32,
+    pub codec: String,
+    pub duration_seconds: f64,
+}
+
+/// JSON 输出的完整结构
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonReport {
+    pub tool: String,
+    pub version: String,
+    pub timestamp: String,
+    pub file_path: String,
+    pub format: JsonAudioFormat,
+    pub official_dr: Option<i32>,
+    pub precise_dr: Option<f64>,
+    pub boundary_warning: Option<JsonBoundaryWarning>,
+    pub exclude_lfe: bool,
+    pub channels: Vec<JsonChannelResult>,
+}
+
+/// 计算 Official DR 和 Precise DR 值（用于 JSON 输出）
+fn calculate_official_dr_values(
+    results: &[DrResult],
+    format: &AudioFormat,
+    exclude_lfe: bool,
+) -> (Option<i32>, Option<f64>) {
+    compute_official_precise_dr(results, format, exclude_lfe)
+        .map(|(official, precise, _, _)| (Some(official), Some(precise)))
+        .unwrap_or((None, None))
+}
+
+/// 生成 JSON 格式报告
+pub fn generate_json_report(
+    config: &AppConfig,
+    format: &AudioFormat,
+    results: &[DrResult],
+    exclude_lfe: bool,
+) -> String {
+    let lfe_set: std::collections::HashSet<usize> = format.lfe_indices.iter().copied().collect();
+
+    // 计算 Official DR
+    let (official_dr, precise_dr) = calculate_official_dr_values(results, format, exclude_lfe);
+
+    // 边界风险检测
+    let boundary_warning = if let (Some(off), Some(prec)) = (official_dr, precise_dr) {
+        detect_boundary_risk_level(off, prec).map(|(level, direction, distance)| {
+            JsonBoundaryWarning {
+                level: match level {
+                    BoundaryRiskLevel::High => "high".to_string(),
+                    BoundaryRiskLevel::Medium => "medium".to_string(),
+                    BoundaryRiskLevel::None => "none".to_string(),
+                },
+                direction: match direction {
+                    BoundaryDirection::Upper => "upper".to_string(),
+                    BoundaryDirection::Lower => "lower".to_string(),
+                },
+                distance_db: distance,
+            }
+        })
+    } else {
+        None
+    };
+
+    // 声道结果
+    let channels: Vec<JsonChannelResult> = results
+        .iter()
+        .map(|ch| {
+            let is_silent = ch.peak <= 1e-6 || ch.rms <= 1e-6;
+            let is_lfe = lfe_set.contains(&ch.channel);
+            let is_excluded = is_silent || (exclude_lfe && is_lfe);
+
+            JsonChannelResult {
+                channel: ch.channel + 1,
+                dr_official: ch.dr_value_rounded(),
+                dr_precise: ch.dr_value,
+                peak_db: if ch.peak > 0.0 {
+                    20.0 * ch.peak.log10()
+                } else {
+                    f64::NEG_INFINITY
+                },
+                rms_db: if ch.rms > 0.0 {
+                    20.0 * ch.rms.log10()
+                } else {
+                    f64::NEG_INFINITY
+                },
+                is_silent,
+                is_lfe,
+                is_excluded,
+            }
+        })
+        .collect();
+
+    let report = JsonReport {
+        tool: "MacinMeter DR Tool".to_string(),
+        version: VERSION.to_string(),
+        timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        file_path: config.input_path.display().to_string(),
+        format: JsonAudioFormat {
+            sample_rate: format.sample_rate,
+            channels: format.channels as usize,
+            bits_per_sample: format.bits_per_sample as u32,
+            codec: format
+                .codec_type
+                .map(codec_type_to_string)
+                .unwrap_or("Unknown")
+                .to_string(),
+            duration_seconds: format.duration_seconds(),
+        },
+        official_dr,
+        precise_dr,
+        boundary_warning,
+        exclude_lfe,
+        channels,
+    };
+
+    serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// 处理输出写入（文件或控制台）
