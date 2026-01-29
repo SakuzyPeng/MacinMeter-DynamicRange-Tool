@@ -1,6 +1,6 @@
 # Release Notes / 发布说明
 
-## v0.1.1 (2026-01-29) – Documentation & LFE Fix / 文档重构与LFE修复
+## v0.1.2 (2026-01-29) – Documentation Refactor / 文档重构
 
 - Documentation / 文档
   - Separated English and Chinese README: `README.md` (EN) + `README_CN.md` (CN).
@@ -17,6 +17,18 @@
 - Added / 新增
   - Cross-platform benchmark tool `dr-bench` (Rust): replaces bash/PowerShell scripts.
     跨平台基准测试工具 `dr-bench`（Rust 实现）：替代原 bash/PowerShell 脚本。
+
+- Cleanup / 清理
+  - Removed obsolete scripts from root directory (moved to `scripts/`).
+    移除根目录过时脚本（已移至 `scripts/`）。
+  - Removed `PERFORMANCE_OPTIMIZATION_PLAN.md` (completed).
+    移除 `PERFORMANCE_OPTIMIZATION_PLAN.md`（已完成）。
+
+---
+
+## v0.1.1 (2025-11-08) – LFE Detection Fix / LFE检测修复
+
+- Added / 新增
   - Created `channel_layout.rs` module based on Apple CoreAudio AudioChannelLayoutTag specification.
     创建 `channel_layout.rs` 模块，基于 Apple CoreAudio AudioChannelLayoutTag 规范。
   - Support for multiple standard layouts: MPEG 5.1/6.1/7.1, EAC3, Dolby Atmos (5.1.2/5.1.4/7.1.2/7.1.4/9.1.6), DTS 7.1, and common formats (2.1/3.1).
