@@ -800,6 +800,7 @@ impl UiAnalyzeOptions {
             edge_trim_min_run_ms: None,
             exclude_lfe: self.exclude_lfe,
             show_rms_peak: self.show_rms_peak,
+            hide_boundary_risk: false,
             compact_output: false,
             json_output: false,
             auto_launched: false,
