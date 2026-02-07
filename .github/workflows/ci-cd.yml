@@ -713,6 +713,50 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && (needs.changes.outputs.rust == 'true' || true)  # 在版本tag推送时总是触发（允许tag绕过paths-filter）
 
     steps:
+    - name: "[CHECKOUT] Checkout Repository for Release Notes"
+      uses: actions/checkout@v4
+
+    - name: "[EXTRACT] Extract Release Notes from RELEASE_NOTES.md"
+      id: extract-notes
+      shell: bash
+      run: |
+        # 从 tag 名称提取版本号（例如 v0.1.3）
+        version="${{ github.ref_name }}"
+
+        # 使用 awk 提取对应版本的 release notes
+        release_body=$(awk "
+          /^## $version / {
+            found=1
+            next
+          }
+          found && /^## v[0-9]/ {
+            exit
+          }
+          found {
+            print
+          }
+        " RELEASE_NOTES.md | sed '$d')  # 移除最后的空行
+
+        # 将多行内容保存到输出
+        {
+          echo 'body<<EOF'
+          echo "$release_body"
+          echo ""
+          echo "---"
+          echo "### 📦 Available Downloads / 可用下载"
+          echo "- **Windows x64**: \`MacinMeter-DR-Tool-*-windows-x64.exe\`"
+          echo "- **macOS Intel**: \`MacinMeter-DR-Tool-*-macos-intel\`"
+          echo "- **macOS Apple Silicon**: \`MacinMeter-DR-Tool-*-macos-arm64\`"
+          echo "- **Linux x64**: \`MacinMeter-DR-Tool-*-linux-x64\`"
+          echo ""
+          echo "### 🖥️ GUI (Experimental / 实验版)"
+          echo "- **macOS**: \`MacinMeter-DR-GUI-*.dmg\`"
+          echo "- **Windows**: \`MacinMeter-DR-GUI-*.exe\`"
+          echo ""
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/blob/main/RELEASE_NOTES.md"
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
     - name: "[DOWNLOAD] Download All Artifacts"
       uses: actions/download-artifact@v4
 
@@ -721,32 +765,9 @@ jobs:
       with:
         draft: false
         prerelease: contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc')
-        generate_release_notes: true
+        generate_release_notes: false
         files: |
           MacinMeter-DR-Tool-*/MacinMeter-DR-Tool-*
-        body: |
-          ## MacinMeter DR Tool Release
-
-          ### Features
-          - [OK] 基于foobar2000 DR Meter的衍生实现
-          - [OK] 基于IDA Pro逆向工程的算法研究与独立实现
-          - [OK] SIMD加速和多线程支持
-          - [OK] 批量处理模式（双击启动）
-          - [OK] 支持多种音频格式 (WAV, FLAC, MP3, AAC, OGG)
-          - [OK] 兼容foobar2000格式的详细分析报告
-
-          ### Available Platforms
-          - **Windows x64**: `MacinMeter-DR-Tool-*-windows-x64.exe`
-          - **macOS Intel**: `MacinMeter-DR-Tool-*-macos-intel`
-          - **macOS Apple Silicon**: `MacinMeter-DR-Tool-*-macos-arm64`
-          - **Linux x64**: `MacinMeter-DR-Tool-*-linux-x64`
-
-          ### Quick Start
-          1. Download the binary for your platform
-          2. Place in a folder with audio files
-          3. Double-click to run (or use command line)
-          4. Results saved to `DR_Analysis_Results_*.txt`
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}
+        body: ${{ steps.extract-notes.outputs.body }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
