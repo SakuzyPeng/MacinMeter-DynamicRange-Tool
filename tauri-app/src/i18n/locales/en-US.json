@@ -13,6 +13,7 @@
   "btn.applyFfmpeg": "Apply FFmpeg Path",
   "btn.excludeLfe": "Exclude LFE",
   "btn.hidePath": "Hide Path",
+  "btn.hideBoundaryRisk": "Hide Boundary Risk",
   "btn.copyMd": "Copy MD",
   "btn.exportJson": "Export JSON",
   "btn.exportImage": "Export Image",

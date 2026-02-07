@@ -155,6 +155,7 @@ let scanResultsEl!: HTMLElement;
 let analyzeButton!: HTMLButtonElement;
 let resultExcludeLfeBtn!: HTMLButtonElement;
 let exportHidePathBtn!: HTMLButtonElement;
+let exportHideBoundaryBtn!: HTMLButtonElement;
 let directoryResultsEl!: HTMLElement;
 let ffmpegPathInput!: HTMLInputElement;
 let applyFfmpegBtn!: HTMLButtonElement;
@@ -166,6 +167,7 @@ let lastResponse: AnalyzeResponse | null = null;
 let lastDirectoryResponse: DirectoryAnalysisResponse | null = null;
 let aggregateExcludeLfe = false;
 let hidePath = false;
+let hideBoundaryRisk = false;
 let singlePanel!: AnalysisPanel;
 let appVersion = "0.1.0";
 
@@ -222,8 +224,8 @@ const formatSingleResultAsMd = (response: AnalyzeResponse): string => {
     md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
   }
 
-  // 边界风险用斜体
-  if (aggregate.boundaryWarning) {
+  // 边界风险用斜体（如果未隐藏）
+  if (!hideBoundaryRisk && aggregate.boundaryWarning) {
     const w = aggregate.boundaryWarning;
     md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
   }
@@ -243,9 +245,9 @@ const formatDirectoryResultsAsMd = (
         ? entry.analysis.aggregates.excludeLfe
         : entry.analysis.aggregates.includeLfe;
       const lfeSet = new Set(entry.analysis.format.lfeIndices ?? []);
-      const hasBoundaryWarning = aggregate.boundaryWarning !== null;
+      const hasBoundaryWarning = !hideBoundaryRisk && aggregate.boundaryWarning !== null;
 
-      // 文件名：有边界风险用斜体
+      // 文件名：有边界风险用斜体（如果未隐藏）
       const fileTitle = hasBoundaryWarning
         ? `*${entry.fileName}*`
         : entry.fileName;
@@ -279,8 +281,8 @@ const formatDirectoryResultsAsMd = (
         md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
       }
 
-      // 边界风险
-      if (aggregate.boundaryWarning) {
+      // 边界风险（如果未隐藏）
+      if (!hideBoundaryRisk && aggregate.boundaryWarning) {
         const w = aggregate.boundaryWarning;
         md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
       }
@@ -333,7 +335,7 @@ const formatEntryAsMd = (entry: DirectoryAnalysisEntry, hidePath = false): strin
     md += `\n**Official DR${aggregate.officialDr}${mode}** · Precise ${decimals(aggregate.preciseDr)} dB\n`;
   }
 
-  if (aggregate.boundaryWarning) {
+  if (!hideBoundaryRisk && aggregate.boundaryWarning) {
     const w = aggregate.boundaryWarning;
     md += `\n*${t("md.boundaryRisk", { level: w.level, direction: w.direction, distance: w.distanceDb.toFixed(2) })}*\n`;
   }
@@ -373,7 +375,7 @@ const formatResultAsJson = (): object => {
           path: entry.path,
           officialDr: aggregate.officialDr,
           preciseDr: aggregate.preciseDr,
-          boundaryWarning: aggregate.boundaryWarning
+          boundaryWarning: (!hideBoundaryRisk && aggregate.boundaryWarning)
             ? {
                 level: aggregate.boundaryWarning.level,
                 direction: aggregate.boundaryWarning.direction,
@@ -418,7 +420,7 @@ const formatResultAsJson = (): object => {
       path: lastResponse.sourcePath,
       officialDr: aggregate.officialDr,
       preciseDr: aggregate.preciseDr,
-      boundaryWarning: aggregate.boundaryWarning
+      boundaryWarning: (!hideBoundaryRisk && aggregate.boundaryWarning)
         ? {
             level: aggregate.boundaryWarning.level,
             direction: aggregate.boundaryWarning.direction,
@@ -837,7 +839,7 @@ const renderWarnings = (
   aggregate: AggregateView,
 ) => {
   const notes: string[] = [];
-  if (aggregate.boundaryWarning) {
+  if (!hideBoundaryRisk && aggregate.boundaryWarning) {
     const warning = aggregate.boundaryWarning;
     notes.push(
       t("warning.boundary", {
@@ -847,7 +849,7 @@ const renderWarnings = (
       }),
     );
   }
-  if (aggregate.warningText) {
+  if (!hideBoundaryRisk && aggregate.warningText) {
     notes.push(aggregate.warningText.trim());
   }
   if (response.format.partialAnalysis) {
@@ -1678,6 +1680,9 @@ document.addEventListener("DOMContentLoaded", () => {
   exportHidePathBtn = document.querySelector<HTMLButtonElement>(
     "#export-hide-path-btn",
   )!;
+  exportHideBoundaryBtn = document.querySelector<HTMLButtonElement>(
+    "#export-hide-boundary-btn",
+  )!;
   analyzeButton = document.querySelector<HTMLButtonElement>("#analyze-btn")!;
   directoryResultsEl =
     document.querySelector<HTMLElement>("#directory-results")!;
@@ -1809,6 +1814,12 @@ document.addEventListener("DOMContentLoaded", () => {
   exportHidePathBtn.addEventListener("click", () => {
     hidePath = !hidePath;
     exportHidePathBtn.classList.toggle("active", hidePath);
+    updateAggregateView();
+  });
+
+  exportHideBoundaryBtn.addEventListener("click", () => {
+    hideBoundaryRisk = !hideBoundaryRisk;
+    exportHideBoundaryBtn.classList.toggle("active", hideBoundaryRisk);
     updateAggregateView();
   });
 

@@ -13,6 +13,7 @@
   "btn.applyFfmpeg": "应用 FFmpeg 路径",
   "btn.excludeLfe": "排除 LFE",
   "btn.hidePath": "隐藏路径",
+  "btn.hideBoundaryRisk": "隐藏边界风险",
   "btn.copyMd": "Copy MD",
   "btn.exportJson": "Export JSON",
   "btn.exportImage": "Export Image",
