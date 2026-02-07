@@ -17,6 +17,7 @@ pub mod processing;
 pub mod tools;
 
 /// 核心库版本号（与 CLI 同步）
+/// Current version: 0.1.3
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // 重新导出核心类型
