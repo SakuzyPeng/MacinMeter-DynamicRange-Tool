@@ -88,7 +88,7 @@ jobs:
   quality-check:
     name: Code Quality & Security Audit
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     env:
       # CI环境专用设置 - 质量检查使用原生目标，避免跨编译复杂性
@@ -207,7 +207,7 @@ jobs:
     name: Build (${{ matrix.platform }}-${{ matrix.arch }})
     needs: [changes, quality-check]  # 依赖变更检测和质量检查
     # 私有仓库优化：条件构建
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       max-parallel: 2  # 私有仓库优化：限制并发以避免资源争用
@@ -573,7 +573,7 @@ jobs:
     name: Build Summary & Release Preparation
     needs: [changes, quality-check, build]
     runs-on: ubuntu-latest
-    if: always() && (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch')  # 只在有代码变更或手动触发时运行
+    if: always() && (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))  # 只在有代码变更或手动触发或tag推送时运行
 
     steps:
     - name: "[DOWNLOAD] Download All Artifacts"
@@ -643,7 +643,7 @@ jobs:
   gui-build:
     name: Build Tauri GUI (${{ matrix.os }})
     needs: [changes, quality-check]
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
@@ -705,7 +705,7 @@ jobs:
     name: Create Release
     needs: [changes, quality-check, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') && needs.changes.outputs.rust == 'true'  # 仅在版本tag且有代码变更时触发
+    if: startsWith(github.ref, 'refs/tags/v') && (needs.changes.outputs.rust == 'true' || true)  # 在版本tag推送时总是触发（允许tag绕过paths-filter）
 
     steps:
     - name: "[DOWNLOAD] Download All Artifacts"
