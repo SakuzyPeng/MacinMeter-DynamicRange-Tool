@@ -124,6 +124,9 @@ pub struct AppConfig {
     /// 是否在结果中显示 RMS/Peak 诊断信息
     pub show_rms_peak: bool,
 
+    /// 是否隐藏边界风险警告
+    pub hide_boundary_risk: bool,
+
     /// 是否使用紧凑输出格式（单文件模式）
     pub compact_output: bool,
 
@@ -257,6 +260,12 @@ pub fn parse_args() -> AppConfig {
             Arg::new("show-rms-peak")
                 .long("show-rms-peak")
                 .help("Display RMS/Peak diagnostics table in DR reports / 在DR报告中显示 RMS/Peak 诊断表")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("hide-boundary-risk")
+                .long("hide-boundary-risk")
+                .help("Hide boundary risk warnings in output / 隐藏边界风险警告")
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
@@ -414,6 +423,7 @@ pub fn parse_args() -> AppConfig {
         edge_trim_min_run_ms,
         exclude_lfe: matches.get_flag("exclude-lfe"),
         show_rms_peak: matches.get_flag("show-rms-peak"),
+        hide_boundary_risk: matches.get_flag("hide-boundary-risk"),
         compact_output: matches.get_flag("compact"),
         json_output: matches.get_flag("json"),
         auto_launched,

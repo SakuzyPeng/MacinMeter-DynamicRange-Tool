@@ -621,6 +621,7 @@ pub fn calculate_official_dr(
     results: &[DrResult],
     format: &AudioFormat,
     exclude_lfe: bool,
+    hide_boundary_risk: bool,
 ) -> String {
     let mut output = String::new();
 
@@ -630,8 +631,10 @@ pub fn calculate_official_dr(
             output.push_str(&format!("Official DR Value: DR{official_dr}\n"));
             output.push_str(&format!("Precise DR Value: {precise_dr:.2} dB\n"));
 
-            // 边界风险预警（四舍五入跨级检测）
-            if let Some(warning) = detect_dr_boundary_warning(official_dr, precise_dr) {
+            // 边界风险预警（如果未隐藏）
+            if !hide_boundary_risk
+                && let Some(warning) = detect_dr_boundary_warning(official_dr, precise_dr)
+            {
                 output.push('\n');
                 output.push_str(&warning);
             }
@@ -1108,11 +1111,13 @@ pub fn generate_compact_report(
         output.push_str(&create_diagnostics_table(results, format));
     }
 
-    // 边界风险预警
-    let boundary_warning = format_boundary_warning_compact(official_dr, precise_dr);
-    if !boundary_warning.is_empty() {
-        output.push('\n');
-        output.push_str(&boundary_warning);
+    // 边界风险预警（如果未隐藏）
+    if !config.hide_boundary_risk {
+        let boundary_warning = format_boundary_warning_compact(official_dr, precise_dr);
+        if !boundary_warning.is_empty() {
+            output.push('\n');
+            output.push_str(&boundary_warning);
+        }
     }
 
     // 实验性功能信息
@@ -1239,22 +1244,26 @@ pub fn generate_json_report(
     // 计算 Official DR
     let (official_dr, precise_dr) = calculate_official_dr_values(results, format, exclude_lfe);
 
-    // 边界风险检测
-    let boundary_warning = if let (Some(off), Some(prec)) = (official_dr, precise_dr) {
-        detect_boundary_risk_level(off, prec).map(|(level, direction, distance)| {
-            JsonBoundaryWarning {
-                level: match level {
-                    BoundaryRiskLevel::High => "high".to_string(),
-                    BoundaryRiskLevel::Medium => "medium".to_string(),
-                    BoundaryRiskLevel::None => "none".to_string(),
-                },
-                direction: match direction {
-                    BoundaryDirection::Upper => "upper".to_string(),
-                    BoundaryDirection::Lower => "lower".to_string(),
-                },
-                distance_db: distance,
-            }
-        })
+    // 边界风险检测（如果未隐藏）
+    let boundary_warning = if !config.hide_boundary_risk {
+        if let (Some(off), Some(prec)) = (official_dr, precise_dr) {
+            detect_boundary_risk_level(off, prec).map(|(level, direction, distance)| {
+                JsonBoundaryWarning {
+                    level: match level {
+                        BoundaryRiskLevel::High => "high".to_string(),
+                        BoundaryRiskLevel::Medium => "medium".to_string(),
+                        BoundaryRiskLevel::None => "none".to_string(),
+                    },
+                    direction: match direction {
+                        BoundaryDirection::Upper => "upper".to_string(),
+                        BoundaryDirection::Lower => "lower".to_string(),
+                    },
+                    distance_db: distance,
+                }
+            })
+        } else {
+            None
+        }
     } else {
         None
     };

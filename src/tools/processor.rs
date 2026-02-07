@@ -804,6 +804,7 @@ pub fn output_results(
             results,
             format,
             config.exclude_lfe,
+            config.hide_boundary_risk,
         ));
 
         // 5. 添加音频技术信息
@@ -913,6 +914,7 @@ pub fn save_individual_result(
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: config.show_rms_peak,
+        hide_boundary_risk: config.hide_boundary_risk,
         compact_output: false,   // 批量模式下单独文件使用详细格式
         json_output: false,      // 批量模式下单独文件不使用 JSON 格式
         auto_launched: false,    // 批量模式下的单独文件始终自动保存

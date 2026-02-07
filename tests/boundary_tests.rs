@@ -35,6 +35,7 @@ fn default_test_config() -> AppConfig {
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: false,
+        hide_boundary_risk: false,
         compact_output: false,
         json_output: false,
         auto_launched: false,

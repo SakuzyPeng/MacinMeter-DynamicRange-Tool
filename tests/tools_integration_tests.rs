@@ -27,6 +27,7 @@ fn base_config() -> AppConfig {
         edge_trim_min_run_ms: None,
         exclude_lfe: false,
         show_rms_peak: false,
+        hide_boundary_risk: false,
         compact_output: false,
         json_output: false,
         auto_launched: false,
@@ -279,7 +280,7 @@ fn test_official_dr_formatting() {
 
     let format = AudioFormat::new(44100, 2, 16, 176400);
 
-    let output = tools::calculate_official_dr(&results, &format, false);
+    let output = tools::calculate_official_dr(&results, &format, false, false);
 
     // 验证输出包含关键信息
     assert!(output.contains("Official DR Value: DR"));
