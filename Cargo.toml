@@ -60,7 +60,13 @@ symphonia-core = "0.5.4"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 
 # 可选CPU火焰图分析（仅在设置环境变量 DR_FLAME=1 时启用，默认无开销）
-pprof = { version = "0.13", features = ["flamegraph"], optional = true }
+pprof = { version = "0.14", features = ["flamegraph"], optional = true }
+
+# 安全漏洞修复：强制更新间接依赖的最低版本
+# RUSTSEC-2026-0007: bytes整数溢出漏洞修复
+bytes = "1.11.1"
+# RUSTSEC-2026-0009: time拒绝服务漏洞修复
+time = "0.3.47"
 
 [features]
 default = []
@@ -72,7 +78,7 @@ simd-perf-tests = []
 [dev-dependencies]
 fs2 = "0.4"
 
-# 📝 安全警告说明：
+# 安全警告说明：
 # songbird的Discord依赖存在已知安全问题，但不影响我们的使用场景：
 # - ring/rustls: TLS问题，我们无网络通信
 # - tungstenite: WebSocket攻击，我们只处理本地文件
