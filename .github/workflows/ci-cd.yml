@@ -320,8 +320,8 @@ jobs:
         # CI专用环境变量 - RUSTFLAGS在脚本中动态设置
         CI_TARGET: ${{ matrix.target }}
         MATRIX_OS: ${{ matrix.os }}
-        # 修复audiopus_sys CMake版本兼容性问题（仅macOS需要）
-        CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(matrix.os, 'macos') && '3.5' || '' }}
+        # audiopus_sys 内嵌的旧 Opus 工程需要显式兼容 CMake 4+
+        CMAKE_POLICY_VERSION_MINIMUM: "3.5"
       run: |
         echo "[BUILD] Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
         echo "[INFO] Build environment info:"
@@ -359,13 +359,6 @@ jobs:
         # 统一使用原生构建策略避免跨编译复杂性
         echo "[BUILD] Building for target: ${{ matrix.target }}"
         echo "[TIP] Using GitHub Actions native runner for ${{ matrix.target }}"
-
-        # macOS特定的CMake兼容性处理
-        if [[ "$MATRIX_OS" == macos* ]]; then
-          echo "[MACOS] macOS detected: Setting CMake compatibility flags for audiopus_sys"
-          export CMAKE_POLICY_VERSION_MINIMUM=3.5
-          export CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-        fi
 
         # 直接构建，依赖GitHub Actions的runner原生支持
         cargo build --release --verbose
@@ -665,9 +658,8 @@ jobs:
     - name: "[BUILD] Build Tauri app"
       working-directory: tauri-app
       env:
-        # macOS 上为 audiopus_sys 旧 CMakeLists 启用兼容策略
-        CMAKE_POLICY_VERSION_MINIMUM: ${{ startsWith(matrix.os, 'macos') && '3.5' || '' }}
-        CMAKE_ARGS: ${{ startsWith(matrix.os, 'macos') && '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' || '' }}
+        # audiopus_sys 内嵌的旧 Opus 工程需要显式兼容 CMake 4+
+        CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         # 为 aarch64-apple-darwin 显式开启 ring 期望的 CPU 特性，避免编译期断言失败
         RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C target-feature=+neon,+aes,+sha2' || '' }}
       run: npm run tauri build -- --ci
