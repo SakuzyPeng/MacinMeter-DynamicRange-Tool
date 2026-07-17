@@ -477,10 +477,11 @@ mod tests {
 
     #[test]
     fn test_fixture_generation() {
+        // Use the same one-time initializer as fixture consumers. This module
+        // is embedded in multiple integration-test binaries, and its own test
+        // may run concurrently with tests that are reading the fixture files.
+        ensure_fixtures_generated();
         let fixtures = AudioTestFixtures::new();
-
-        // 生成所有固件
-        fixtures.generate_all();
 
         // 验证文件存在
         assert!(fixtures.get_path("zero_length.wav").exists());

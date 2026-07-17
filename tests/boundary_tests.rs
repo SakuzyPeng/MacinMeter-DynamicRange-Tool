@@ -4,7 +4,7 @@
 
 mod audio_test_fixtures;
 
-use audio_test_fixtures::AudioTestFixtures;
+use audio_test_fixtures::{AudioTestFixtures, ensure_fixtures_generated};
 use macinmeter_dr_tool::AudioError;
 use macinmeter_dr_tool::tools::{AppConfig, processor::process_audio_file_streaming};
 use std::path::PathBuf;
@@ -15,9 +15,10 @@ fn log(msg_zh: impl AsRef<str>, msg_en: impl AsRef<str>) {
 
 /// 测试前生成所有固件
 fn setup_fixtures() -> AudioTestFixtures {
-    let fixtures = AudioTestFixtures::new();
-    fixtures.generate_all();
-    fixtures
+    // Tests in this binary run concurrently. Rewriting the shared WAV files for
+    // every test lets one test observe a file while another is recreating it.
+    ensure_fixtures_generated();
+    AudioTestFixtures::new()
 }
 
 /// 创建默认测试配置

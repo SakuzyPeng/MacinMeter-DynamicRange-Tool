@@ -34,6 +34,10 @@ on:
         type: string
         default: 'all'
 
+# 默认只读；发布任务单独提升权限
+permissions:
+  contents: read
+
 # [CONCURRENCY] 私有仓库优化：并发限制和资源管理
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -67,7 +71,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: "[FILTER] Check for Rust Code Changes"
-      uses: dorny/paths-filter@v2
+      uses: dorny/paths-filter@v4
       id: changes
       with:
         filters: |
@@ -88,20 +92,14 @@ jobs:
   quality-check:
     name: Code Quality & Security Audit
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     env:
       # CI环境专用设置 - 质量检查使用原生目标，避免跨编译复杂性
       RUSTFLAGS: '-C opt-level=3'  # 简化编译标志避免特性冲突
 
     steps:
-    - name: "[DISK] Disk usage (preflight - Windows)"
-      if: matrix.os == 'windows-latest'
-      run: |
-        Write-Host "Filesystem usage before build (Windows):"
-        Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
-    - name: "[DISK] Disk usage (preflight - Unix)"
-      if: matrix.os != 'windows-latest'
+    - name: "[DISK] Disk usage (preflight)"
       shell: bash
       run: |
         echo "Filesystem usage before build:"
@@ -177,10 +175,7 @@ jobs:
     - name: "[AUDIT] Security Audit"
       run: |
         echo "[AUDIT] Running security audit (stale DB to reduce writes)..."
-        cargo audit --stale \
-          --ignore RUSTSEC-2025-0009 --ignore RUSTSEC-2024-0336 \
-          --ignore RUSTSEC-2023-0065 --ignore RUSTSEC-2025-0055 \
-          --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2025-0010
+        cargo audit --stale
 
     - name: "[TEST] Run Unit Tests"
       if: ${{ !github.event.inputs.skip_tests }}
@@ -207,7 +202,7 @@ jobs:
     name: Build (${{ matrix.platform }}-${{ matrix.arch }})
     needs: [changes, quality-check]  # 依赖变更检测和质量检查
     # 私有仓库优化：条件构建
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       max-parallel: 2  # 私有仓库优化：限制并发以避免资源争用
@@ -252,14 +247,6 @@ jobs:
       with:
         targets: ${{ matrix.target }}
 
-    # 显式安装交叉编译目标 (确保可靠性)
-    - name: "[TARGET] Install Cross-compilation Target"
-      run: |
-        echo "[TARGET] Installing target: ${{ matrix.target }}"
-        rustup target add ${{ matrix.target }}
-        rustup target list --installed | grep ${{ matrix.target }} || (echo "[FAIL] Target installation failed" && exit 1)
-        echo "[OK] Target ${{ matrix.target }} successfully installed"
-
     # 多层缓存策略优化 - 私有仓库友好
     - name: "[CACHE] Platform Cache - Cargo Registry"
       uses: actions/cache@v4
@@ -298,8 +285,8 @@ jobs:
       id: timestamp-unix
       run: |
         timestamp=$(date -u +"%Y-%m-%d-%H-%M-%S-UTC")
-        echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
-        echo "date_tag=$timestamp" >> $GITHUB_OUTPUT
+        echo "timestamp=$timestamp" >> "$GITHUB_OUTPUT"
+        echo "date_tag=$timestamp" >> "$GITHUB_OUTPUT"
       shell: bash
 
     # 统一时间戳输出 - Windows
@@ -316,8 +303,8 @@ jobs:
       if: matrix.os != 'windows-latest'
       id: timestamp-nix
       run: |
-        echo "timestamp=${{ steps.timestamp-unix.outputs.timestamp }}" >> $GITHUB_OUTPUT
-        echo "date_tag=${{ steps.timestamp-unix.outputs.date_tag }}" >> $GITHUB_OUTPUT
+        echo "timestamp=${{ steps.timestamp-unix.outputs.timestamp }}" >> "$GITHUB_OUTPUT"
+        echo "date_tag=${{ steps.timestamp-unix.outputs.date_tag }}" >> "$GITHUB_OUTPUT"
       shell: bash
 
     # 统一时间戳ID输出
@@ -332,8 +319,9 @@ jobs:
       env:
         # CI专用环境变量 - RUSTFLAGS在脚本中动态设置
         CI_TARGET: ${{ matrix.target }}
-        # 修复audiopus_sys CMake版本兼容性问题（仅macOS需要）
-        CMAKE_POLICY_VERSION_MINIMUM: ${{ contains(matrix.os, 'macos') && '3.5' || '' }}
+        MATRIX_OS: ${{ matrix.os }}
+        # audiopus_sys 内嵌的旧 Opus 工程需要显式兼容 CMake 4+
+        CMAKE_POLICY_VERSION_MINIMUM: "3.5"
       run: |
         echo "[BUILD] Building release binary for ${{ matrix.platform }}-${{ matrix.arch }}..."
         echo "[INFO] Build environment info:"
@@ -371,13 +359,6 @@ jobs:
         # 统一使用原生构建策略避免跨编译复杂性
         echo "[BUILD] Building for target: ${{ matrix.target }}"
         echo "[TIP] Using GitHub Actions native runner for ${{ matrix.target }}"
-
-        # macOS特定的CMake兼容性处理
-        if [[ "${{ matrix.os }}" == macos* ]]; then
-          echo "[MACOS] macOS detected: Setting CMake compatibility flags for audiopus_sys"
-          export CMAKE_POLICY_VERSION_MINIMUM=3.5
-          export CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-        fi
 
         # 直接构建，依赖GitHub Actions的runner原生支持
         cargo build --release --verbose
@@ -449,8 +430,8 @@ jobs:
 
         cp "$source_path" "$binary_name"
         chmod +x "$binary_name"  # 确保可执行权限
-        echo "binary_name=$binary_name" >> $GITHUB_OUTPUT
-        echo "binary_path=$binary_name" >> $GITHUB_OUTPUT
+        echo "binary_name=$binary_name" >> "$GITHUB_OUTPUT"
+        echo "binary_path=$binary_name" >> "$GITHUB_OUTPUT"
 
         # 准备 dr-bench
         bench_name="dr-bench-${{ steps.timestamp-unix.outputs.timestamp }}-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.extension }}"
@@ -458,7 +439,7 @@ jobs:
         if [ -f "$bench_native" ]; then
           cp "$bench_native" "$bench_name"
           chmod +x "$bench_name"
-          echo "bench_name=$bench_name" >> $GITHUB_OUTPUT
+          echo "bench_name=$bench_name" >> "$GITHUB_OUTPUT"
         fi
       shell: bash
 
@@ -476,8 +457,8 @@ jobs:
       if: matrix.os != 'windows-latest'
       id: binary-nix
       run: |
-        echo "binary_name=${{ steps.binary-unix.outputs.binary_name }}" >> $GITHUB_OUTPUT
-        echo "binary_path=${{ steps.binary-unix.outputs.binary_path }}" >> $GITHUB_OUTPUT
+        echo "binary_name=${{ steps.binary-unix.outputs.binary_name }}" >> "$GITHUB_OUTPUT"
+        echo "binary_path=${{ steps.binary-unix.outputs.binary_path }}" >> "$GITHUB_OUTPUT"
       shell: bash
 
     # 统一二进制ID输出
@@ -521,7 +502,7 @@ jobs:
       run: |
         echo "[COMPRESS] Compressing binary to save storage..."
         gzip -9 "${{ steps.binary-unix.outputs.binary_path }}"
-        echo "compressed_path=${{ steps.binary-unix.outputs.binary_path }}.gz" >> $GITHUB_OUTPUT
+        echo "compressed_path=${{ steps.binary-unix.outputs.binary_path }}.gz" >> "$GITHUB_OUTPUT"
       id: compress
 
     - name: "[UPLOAD] Upload Build Artifacts"
@@ -552,6 +533,7 @@ jobs:
 
     - name: "[CLEANUP] Cleanup workspace (Windows)"
       if: always() && matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
         Write-Host "Cleaning target/ and cargo registries to free disk (Windows)..."
         Remove-Item -Path target -Recurse -Force -ErrorAction SilentlyContinue
@@ -573,7 +555,7 @@ jobs:
     name: Build Summary & Release Preparation
     needs: [changes, quality-check, build]
     runs-on: ubuntu-latest
-    if: always() && (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch')  # 只在有代码变更或手动触发时运行
+    if: always() && (needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))  # 只在有代码变更或手动触发或tag推送时运行
 
     steps:
     - name: "[DOWNLOAD] Download All Artifacts"
@@ -632,7 +614,7 @@ jobs:
           echo ""
           echo "---"
           echo "*Generated by MacinMeter DR Tool CI/CD Pipeline*"
-        } >> $GITHUB_STEP_SUMMARY
+        } >> "$GITHUB_STEP_SUMMARY"
 
     - name: "[DONE] Summary Generated"
       run: |
@@ -643,7 +625,7 @@ jobs:
   gui-build:
     name: Build Tauri GUI (${{ matrix.os }})
     needs: [changes, quality-check]
-    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
@@ -676,9 +658,8 @@ jobs:
     - name: "[BUILD] Build Tauri app"
       working-directory: tauri-app
       env:
-        # macOS 上为 audiopus_sys 旧 CMakeLists 启用兼容策略
-        CMAKE_POLICY_VERSION_MINIMUM: ${{ startsWith(matrix.os, 'macos') && '3.5' || '' }}
-        CMAKE_ARGS: ${{ startsWith(matrix.os, 'macos') && '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' || '' }}
+        # audiopus_sys 内嵌的旧 Opus 工程需要显式兼容 CMake 4+
+        CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         # 为 aarch64-apple-darwin 显式开启 ring 期望的 CPU 特性，避免编译期断言失败
         RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C target-feature=+neon,+aes,+sha2' || '' }}
       run: npm run tauri build -- --ci
@@ -703,45 +684,58 @@ jobs:
   # [RELEASE] 自动发布 (仅在tag推送时)
   release:
     name: Create Release
-    needs: [changes, quality-check, build]
+    needs: [changes, quality-check, build, gui-build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') && needs.changes.outputs.rust == 'true'  # 仅在版本tag且有代码变更时触发
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
+    - name: "[CHECKOUT] Checkout Repository for Release Notes"
+      uses: actions/checkout@v4
+
+    - name: "[EXTRACT] Extract Release Notes from RELEASE_NOTES.md"
+      id: extract-notes
+      shell: bash
+      env:
+        RELEASE_VERSION: ${{ github.ref_name }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        release_body="$(scripts/extract-release-notes.sh "$RELEASE_VERSION")"
+        delimiter="release_notes_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+
+        # 将多行内容保存到输出
+        {
+          printf 'body<<%s\n' "$delimiter"
+          printf '%s\n\n' "$release_body"
+          printf '%s\n' "---"
+          printf '%s\n' "### 📦 Available Downloads / 可用下载"
+          printf '%s\n' "- **Windows x64**: \`MacinMeter-DR-Tool-*-windows-x64.exe\`"
+          printf '%s\n' "- **macOS Intel**: \`MacinMeter-DR-Tool-*-macos-intel.gz\`"
+          printf '%s\n' "- **macOS Apple Silicon**: \`MacinMeter-DR-Tool-*-macos-arm64.gz\`"
+          printf '%s\n\n' "- **Linux x64**: \`MacinMeter-DR-Tool-*-linux-x64.gz\`"
+          printf '%s\n' "### 🖥️ GUI (Experimental / 实验版)"
+          printf '%s\n' "- **macOS**: \`MacinMeter-DR-GUI-*.dmg\`"
+          printf '%s\n\n' "- **Windows**: \`MacinMeter-DR-GUI-*.exe\`"
+          printf '**Full Changelog**: https://github.com/%s/blob/%s/RELEASE_NOTES.md\n' \
+            "$REPOSITORY" "$RELEASE_VERSION"
+          printf '%s\n' "$delimiter"
+        } >> "$GITHUB_OUTPUT"
+
     - name: "[DOWNLOAD] Download All Artifacts"
       uses: actions/download-artifact@v4
 
     - name: "[RELEASE] Create Release"
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         draft: false
         prerelease: contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc')
-        generate_release_notes: true
+        generate_release_notes: false
         files: |
           MacinMeter-DR-Tool-*/MacinMeter-DR-Tool-*
-        body: |
-          ## MacinMeter DR Tool Release
-
-          ### Features
-          - [OK] 基于foobar2000 DR Meter的衍生实现
-          - [OK] 基于IDA Pro逆向工程的算法研究与独立实现
-          - [OK] SIMD加速和多线程支持
-          - [OK] 批量处理模式（双击启动）
-          - [OK] 支持多种音频格式 (WAV, FLAC, MP3, AAC, OGG)
-          - [OK] 兼容foobar2000格式的详细分析报告
-
-          ### Available Platforms
-          - **Windows x64**: `MacinMeter-DR-Tool-*-windows-x64.exe`
-          - **macOS Intel**: `MacinMeter-DR-Tool-*-macos-intel`
-          - **macOS Apple Silicon**: `MacinMeter-DR-Tool-*-macos-arm64`
-          - **Linux x64**: `MacinMeter-DR-Tool-*-linux-x64`
-
-          ### Quick Start
-          1. Download the binary for your platform
-          2. Place in a folder with audio files
-          3. Double-click to run (or use command line)
-          4. Results saved to `DR_Analysis_Results_*.txt`
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}
+          MacinMeter-DR-GUI-macos/**/*.dmg
+          MacinMeter-DR-GUI-windows/**/*.exe
+        body: ${{ steps.extract-notes.outputs.body }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

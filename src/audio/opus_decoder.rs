@@ -59,8 +59,8 @@ impl SongbirdOpusDecoder {
         rt.block_on(async {
             input
                 .make_playable_async(
-                    &songbird::input::codecs::CODEC_REGISTRY,
-                    &songbird::input::codecs::PROBE,
+                    songbird::input::codecs::get_codec_registry(),
+                    songbird::input::codecs::get_probe(),
                 )
                 .await
         })
