@@ -1,5 +1,44 @@
 # Release Notes / 发布说明
 
+## v0.1.3 (2026-02-07) – Boundary Risk Control & Security Fixes / 边界风险控制与安全修复
+
+### Features / 新功能
+- GUI / 图形界面
+  - Added "Hide Boundary Risk" toggle button: control visibility of DR boundary warnings in UI and exports.
+    新增"隐藏边界风险"按钮：控制边界风险警告在UI及导出中的显示。
+  - Boundary risk setting persists across single/multi-file exports (MD, JSON, PNG).
+    边界风险设置跨越单文件/多文件导出保持一致（MD、JSON、PNG）。
+
+- CLI / 命令行
+  - Added `--hide-boundary-risk` flag: suppress boundary risk warnings in text/JSON output.
+    新增 `--hide-boundary-risk` 参数：隐藏文本/JSON 输出中的边界风险警告。
+  - Behavior: warning is excluded from both compact and JSON reports when flag is set.
+    行为：设置后警告从紧凑格式和 JSON 报告中排除。
+
+### Fixed / 修复
+- **Security**: Fixed RUSTSEC-2026-0007 (bytes integer overflow) by enforcing `bytes >= 1.11.1`.
+  **安全**：通过强制 `bytes >= 1.11.1` 修复 RUSTSEC-2026-0007（bytes 整数溢出）。
+- **Security**: Fixed RUSTSEC-2026-0009 (time DoS vulnerability) by enforcing `time >= 0.3.47`.
+  **安全**：通过强制 `time >= 0.3.47` 修复 RUSTSEC-2026-0009（time 拒绝服务漏洞）。
+- **Security**: Updated pprof from 0.13.0 to 0.14 (fixes unsound memory usage).
+  **安全**：将 pprof 从 0.13.0 升级至 0.14（修复不安全的内存使用）。
+- **Build**: Fixed Tauri GUI compilation errors when building with updated dependencies.
+  **构建**：修复更新依赖后 Tauri GUI 编译错误。
+- **CI/CD**: Fixed GitHub Actions `paths-filter` issue where tag push to same commit as main was ignored.
+  **CI/CD**：修复 GitHub Actions paths-filter 在 tag 推送到与 main 同一 commit 时被忽略的问题。
+
+### Changed / 变更
+- All boundary risk diagnostics are now opt-in via GUI toggle or CLI flag (default: show warnings).
+  所有边界风险诊断现通过 GUI 按钮或 CLI 参数可选（默认：显示警告）。
+
+### Testing / 测试验证
+- All 205 unit tests passed, zero compiler warnings.
+  所有 205 个单元测试通过，零编译警告。
+- Verified feature parity between GUI and CLI boundary risk hiding.
+  验证了 GUI 和 CLI 边界风险隐藏功能的一致性。
+
+---
+
 ## v0.1.2 (2026-01-29) – JSON Export & GUI i18n / JSON导出与GUI国际化
 
 - CLI / 命令行

@@ -4,6 +4,7 @@ version = "0.1.3"
 edition = "2024"
 authors = ["MacinMeter Team"]
 description = "High-precision audio dynamic range analyzer / 高精度音频动态范围分析工具"
+# CI/CD: Build trigger for v0.1.3 release (ensuring paths-filter detection)
 
 [[bin]]
 name = "MacinMeter-DynamicRange-Tool-foo_dr"
