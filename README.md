@@ -6,19 +6,21 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)
 ![Branch](https://img.shields.io/badge/branch-main-green.svg?style=for-the-badge)
 
-**A foobar2000-compatible implementation aiming for better experience**
+**An independent DR analysis implementation under active reference validation**
 
 *Tribute to Janne Hyvärinen's pioneering work*
 
-MacinMeter DR Tool learns and implements the algorithm principles of foobar2000 DR Meter 1.0.3 (foo_dr_meter, by Janne Hyvärinen), striving to provide **accurate DR analysis results** and **faster processing speed**. With streaming architecture design, we hope to bring convenience to users. Performance benchmarks are compared against Dynamic Range Meter 1.1.1 (foo_dynamic_range).
+MacinMeter DR Tool is an independent Rust implementation informed by foobar2000 DR Meter 1.0.3 (`foo_dr_meter`, by Janne Hyvärinen). The project is undergoing architecture remediation and renewed behavioral/reverse-engineering alignment. The current algorithm has known systematic deviations from the reference plugin, so its results are not yet certified as reference-equivalent.
 
 ---
 
 ## Introduction
 
-- Follows the foobar2000 DR Meter specification, returning both Official DR (rounded) and Precise DR values with SIMD and parallel optimisations.
-- Supports 12+ mainstream audio formats (FLAC, WAV, AAC, MP3, Opus, etc.) with automatic fallback to FFmpeg when needed. See "Supported Audio Formats" section for details.
-- Precise DR typically differs from foobar2000 by ±0.02–0.05 dB (window selection & rounding). A few tracks may drift by ~0.1 dB (e.g., tail-window participation in the top-20% selection or masters with different leading/trailing samples). The tool surfaces boundary warnings so you can cross-check with foobar2000 when results matter.
+- Provides streaming DR analysis with rounded aggregate and decimal diagnostic outputs. Existing reports call these fields `Official DR` and `Precise DR`; the names do not currently certify reference parity.
+- Declares decoding routes for 12+ common formats (FLAC, WAV, AAC, MP3, Opus, etc.), using FFmpeg for selected external/fallback paths. Runtime availability and correctness vary by backend.
+- Reference compatibility is being re-established from reproducible observations and renewed reverse engineering. Current output must not be treated as interchangeable with `foo_dr_meter`.
+
+> **Compatibility warning:** Known correctness issues affect some multichannel, parallel-decoding, DSD and experimental preprocessing paths. Cross-check consequential results with the reference plugin and see the [remediation and realignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md).
 
 ## Build & Run
 
@@ -31,7 +33,7 @@ cargo test                                                         # Test
 
 ## Tauri GUI
 
-The `tauri-app/` directory provides a Tauri 2 GUI that reuses the same DR engine. Select audio via system dialog and view Official/Precise DR, silence filtering and trim reports.
+The `tauri-app/` directory provides a Tauri 2 GUI that reuses the same DR engine. Select audio via system dialog and view rounded/decimal DR fields plus experimental silence-filtering and trim reports.
 
 Run with `cd tauri-app && npm install && npm run tauri dev`. Build release with `npm run tauri build`. See `docs/tauri_wrapper.md` for details.
 
@@ -55,17 +57,19 @@ Run with `cd tauri-app && npm install && npm run tauri dev`. Build release with 
 - `--parallel-files <N>` / `--no-parallel-files`: concurrent files (default 4) / disable
 - `--serial`: disable decode parallelism
 
+> **Current reliability note:** The packet-parallel decoder has known EOF and error-propagation risks. Use `--serial` for results that matter until roadmap items `COR-001` and `COR-002` are closed.
+
 **Output control**: `--output <file>` for single-file reports; batch mode writes to target directory by default.
 
 **Experimental features** (disabled by default):
-- `--trim-edges[=<DB>]`: edge trimming, default −60 dBFS; `--trim-min-run <MS>` (default 60 ms)
+- `--trim-edges[=<DB>]`: edge trimming, default −60 dBFS; `--trim-min-run <MS>` (default 60 ms). This path has known state-machine defects and should not be used for trusted analysis yet.
 - `--filter-silence[=<DB>]`: window-level silence filtering, default −70 dBFS
-- `--exclude-lfe`: exclude LFE channels from final DR aggregation
+- `--exclude-lfe`: exclude LFE channels from final DR aggregation. Layout confidence and fallback behavior are under review.
 - `--show-rms-peak`: append RMS/Peak diagnostics table in single-file reports
 
 ## Output Format
 
-Reports list DR per channel, Official DR, Precise DR, plus audio metadata (sample rate, channels, bit depth, bitrate, codec).
+Reports list DR per channel, fields currently named Official DR and Precise DR, plus audio metadata (sample rate, channels, bit depth, bitrate, codec). These field names describe the existing report schema, not verified reference compatibility.
 
 ### Single File Example
 ```markdown
@@ -109,15 +113,17 @@ audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
 
 **Markers**: `*` = LFE excluded · `†` = Silent channels excluded
 
-## Accuracy & Compatibility
+## Current Accuracy & Compatibility Status
 
-- Multichannel (≥3 ch) supported; aggregation matches foobar2000: arithmetic mean of per-channel DR over all non-silent channels, rounded to nearest integer.
-- Optional LFE exclusion (`--exclude-lfe`): effective only with channel layout metadata. Per-channel DRs are still listed.
-- AAC converted from WAV often raises Precise DR by ≈0.01–0.05 dB; other lossy codecs generally decrease or match.
+- Reference parity has not yet been re-established. Known differences are systemic and cannot be characterized as a small universal floating-point tolerance.
+- The current 3+ channel path has a known tail-window finalization defect; multichannel results should not be relied on until `ALG-001` is closed.
+- Optional LFE exclusion (`--exclude-lfe`) is experimental while channel-layout confidence and unknown-layout behavior are being corrected.
+- Codec-to-codec output differences are not evidence of algorithm compatibility because decoding and resampling may alter the PCM presented to the analyzer.
+- For the evidence plan, acceptance criteria and tracked fixes, see the [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md).
 
 ## Performance Summary
 
-For detailed benchmarks, see [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+For historical benchmark data, see [docs/BENCHMARKS.md](docs/BENCHMARKS.md). The methodology and affected parallel paths are being revalidated; these figures are not a correctness guarantee or current performance commitment.
 
 | Platform | Dataset | Throughput |
 |----------|---------|----------:|
@@ -125,13 +131,15 @@ For detailed benchmarks, see [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 | macOS · M4 Pro | 69 FLACs (1.17 GB) | ~1168 MB/s |
 | Windows · i9-13900H | 69 FLACs (1.17 GB) | ~568 MB/s |
 
-**Tips**: Use release builds; tune `--parallel-threads` and `--parallel-batch` for large files.
+**Current guidance**: Use release builds and prefer `--serial` when result integrity matters. Re-tune parallel settings only after the parallel decoder contract is repaired and revalidated.
 
 ---
 
-## Supported Audio Formats
+## Declared Audio Format Coverage
 
 For details, see [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md).
+
+The table below records intended routing, not a verified capability guarantee. FFmpeg fallback, Opus and container-specific codec paths are part of the decoder reliability audit.
 
 | Category | Formats | Decoder |
 |----------|---------|---------|
@@ -154,7 +162,8 @@ For legal compliance, third-party notices, and disclaimer, see [docs/LEGAL.md](d
 
 ## Related Links
 
-- **Reference Implementation**: foobar2000 DR Meter 1.0.3 (foo_dr_meter)
+- **Project Roadmap**: [Architecture remediation and reference-plugin realignment (Chinese)](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
+- **Reference Target**: foobar2000 DR Meter 1.0.3 (foo_dr_meter)
   - **Author**: Janne Hyvärinen
   - **Official**: https://foobar.hyv.fi/?view=foo_dr_meter
 - **Performance Benchmark**: Dynamic Range Meter 1.1.1 (foo_dynamic_range)
@@ -162,4 +171,4 @@ For legal compliance, third-party notices, and disclaimer, see [docs/LEGAL.md](d
 
 ---
 
-**Built for Professional Audio Production**
+**Independent audio-analysis research and engineering project**
