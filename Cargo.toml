@@ -55,7 +55,11 @@ sysinfo = "0.30"
 # lazy_static = "1.4"
 
 # Opus音频支持
-songbird = { version = "0.4", default-features = false, features = ["driver", "rustls"] }
+songbird = { version = "0.5", default-features = false, features = [
+    "driver",
+    "rustls",
+    "tungstenite",
+] }
 symphonia-core = "0.5.4"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 
