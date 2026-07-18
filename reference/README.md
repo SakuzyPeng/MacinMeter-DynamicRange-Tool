@@ -26,10 +26,17 @@
 x64 runtime 对其中 39 项 safe master 的首次导出已登记为
 [`OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718`](observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/observation.json)。
 MacinMeter 改用 finite interleaved f64 主链后，对同一 observation 的公开可比
-核心字段达到整数 track DR 39/39、每声道两位 DR token 62/62；完整差分边界见
+DR 字段达到整数 track DR 39/39、每声道两位 DR token 62/62；这份 schema-v2
+历史差分见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
-这份有限 conformance 记录不会把 candidate 升级为 accepted，也不改变
-`Unverified` 状态。
+
+schema v3 将 report metrics 与 DR diagnostics 分离后，新的固定比较又得到
+overall primary peak 39/39、overall RMS 39/39、channel overall RMS 62/62，
+同时保持 track DR 39/39、channel DR 62/62；见
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)。
+两份记录边界独立，旧产物不因 schema 升级被改写。有限 conformance 不会把
+candidate 升级为 accepted，也不改变 `Unverified` 状态；album-focused playlist
+尚未导出，album 公式仍只有 E1 静态证据。
 
 ## 五类事实
 

@@ -1,7 +1,7 @@
 use crate::{AnalysisError, AnalysisReport, BatchReport};
 use serde::{Deserialize, Serialize};
 
-pub const WIRE_SCHEMA_VERSION: u32 = 2;
+pub const WIRE_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "data", rename_all = "snake_case")]

@@ -44,10 +44,28 @@
   exit codes, clean stdout/stderr separation, and atomic explicit output.
   新增显式 `macinmeter analyze` / `macinmeter batch` 命令、稳定退出码、
   stdout/stderr 分离与显式原子输出。
-- CLI JSON and Tauri now share schema version 2 and the same application report,
-  errors, cancellation, and progress model.
-  CLI JSON 与 Tauri 共用 schema v2，以及同一 application report、错误、取消和
-  进度模型。
+- CLI JSON and Tauri now share schema version 3 and the same application
+  report, errors, cancellation, and progress model. Schema v3 separates
+  channel/track report metrics from DR-state diagnostics, preserves exact
+  decoded duration, and rejects non-finite public values through validated
+  wrappers.
+  CLI JSON 与 Tauri 共用 schema v3，以及同一 application report、错误、取消和
+  进度模型。schema v3 将 channel/track report metrics 与 DR 状态诊断分开，保留
+  精确 decoded duration，并通过受验证 wrapper 拒绝非有限公开数值。
+- `AnalyzerSession::finish` is now fallible. DR diagnostics use
+  `drSelectedPeak`, `drPrimaryPeak`, and nullable `drSecondaryPeak`; independent
+  report fields expose public-f32 channel overall RMS/primary peak and
+  reference-shaped track RMS/peak.
+  `AnalyzerSession::finish` 现在可失败。DR 诊断使用 `drSelectedPeak`、
+  `drPrimaryPeak` 与可空的 `drSecondaryPeak`；独立 report 字段公开
+  public-f32 channel overall RMS/primary peak，以及按参考形状聚合的 track
+  RMS/peak。
+- Added an explicit `AlbumAggregator` library API. Batch execution is not an
+  album operation: callers opt into official public-f32 track arithmetic or
+  exact-decoded-duration weighting, and numeric DR0 tracks remain included.
+  新增显式 `AlbumAggregator` 库 API。批处理不会自动成为 album：调用方显式选择
+  public-f32 track official 算术平均或精确 decoded-duration weighting，数值
+  DR0 track 仍会纳入。
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
 
@@ -57,12 +75,15 @@
   API/CLI parity checks, CLI black-box tests, and independent GUI job tests.
   新增分析边界/属性测试、严格解码契约测试、Rust API/CLI 一致性、CLI 黑盒测试与
   GUI job 隔离测试。
-- Recorded a fixed x64 1.0.8 safe-master observation and scoped conformance:
-  39/39 integer track DR and 62/62 two-decimal channel DR tokens match after
-  the f64 PCM correction. The profile remains `Unverified`.
-  登记固定 x64 1.0.8 safe-master observation 与受限 conformance；f64 PCM
-  修正后整数 track DR 为 39/39、每声道两位 DR token 为 62/62，但 profile
-  仍保持 `Unverified`。
+- Recorded a fixed x64 1.0.8 safe-master observation and scoped conformance.
+  The schema-v3 implementation matches 39/39 integer track DR, 62/62
+  two-decimal channel DR, 39/39 overall peak, 39/39 overall RMS, and 62/62
+  channel RMS tokens. Album-focused playlists were not exported and album
+  behavior remains E1; the profile remains `Unverified`.
+  登记固定 x64 1.0.8 safe-master observation 与受限 conformance。schema-v3
+  实现匹配整数 track DR 39/39、每声道两位 DR 62/62、overall peak 39/39、
+  overall RMS 39/39 与 channel RMS 62/62。album-focused playlist 尚未导出，
+  album 行为仍为 E1；profile 继续保持 `Unverified`。
 - CI is intentionally manual-only during M0; the local pre-commit hook performs
   only format and workspace compile checks.
   M0 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。

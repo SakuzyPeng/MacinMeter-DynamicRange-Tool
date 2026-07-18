@@ -227,7 +227,7 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
         .expect("valid fixture should analyze");
     let envelope = WireEnvelope::analysis(report);
 
-    assert_eq!(WIRE_SCHEMA_VERSION, 2);
+    assert_eq!(WIRE_SCHEMA_VERSION, 3);
     assert_eq!(envelope.schema_version, WIRE_SCHEMA_VERSION);
     assert_eq!(envelope.tool_version, macinmeter::VERSION);
     assert!(matches!(envelope.payload, WirePayload::Analysis(_)));
@@ -244,12 +244,25 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     let measurement = &value["data"]["analysis"]["channels"][0]["outcome"]["measurement"];
     assert!(measurement.get("loudWindowRms").is_some());
     assert!(measurement.get("loudRms").is_none());
+    assert!(measurement.get("drSelectedPeak").is_some());
+    assert!(measurement.get("selectedPeak").is_none());
+    let channel_report = &value["data"]["analysis"]["channels"][0]["report"];
+    assert!(channel_report["overallRmsLinear"].is_number());
+    assert!(
+        channel_report["overallRmsDbfs"].is_number() || channel_report["overallRmsDbfs"].is_null()
+    );
+    assert!(channel_report["primaryPeakLinear"].is_number());
     let aggregates = &value["data"]["analysis"]["aggregates"];
     assert!(aggregates.get("track").is_some());
     assert!(aggregates["track"].get("drDb").is_some());
     assert!(aggregates["track"].get("contributingChannels").is_some());
     assert!(aggregates.get("allChannels").is_none());
     assert!(aggregates.get("withoutLfe").is_none());
+    let report_metrics = &value["data"]["analysis"]["report"];
+    assert!(report_metrics["overallRmsLinear"].is_number());
+    assert!(report_metrics["primaryPeakLinear"].is_number());
+    assert_eq!(report_metrics["duration"]["decodedFrames"], 441);
+    assert_eq!(report_metrics["duration"]["sampleRate"], 44_100);
     assert_json_contract(&value);
 
     let batch = run_batch(vec![

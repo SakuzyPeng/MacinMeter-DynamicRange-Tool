@@ -213,19 +213,19 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     for channel in &report.analysis.channels {
         match &channel.outcome {
             ChannelOutcome::Measured { measurement } => output.push_str(&format!(
-                "CH {}: DR{} ({:.4} dB), loud-window RMS {:.8}, selected DR peak {:.8}\n",
+                "CH {}: DR{} ({:.4} dB), overall RMS {} dBFS, selected DR peak {:.8}\n",
                 channel.channel_index + 1,
                 measurement.rounded_dr,
                 measurement.dr_db,
-                measurement.loud_window_rms,
-                measurement.selected_peak
+                format_dbfs(channel.report.overall_rms_dbfs),
+                measurement.dr_selected_peak
             )),
             ChannelOutcome::Silent {
                 frames,
                 valid_windows,
             } => output.push_str(&format!(
-                "CH {}: silent — DR0 contribution ({frames} frames, {valid_windows} windows)\n",
-                channel.channel_index + 1
+                "CH {}: silent — DR0 contribution, overall RMS -inf dBFS ({frames} frames, {valid_windows} windows)\n",
+                channel.channel_index + 1,
             )),
             ChannelOutcome::InsufficientData { frames } => output.push_str(&format!(
                 "CH {}: insufficient data ({frames} frames)\n",
@@ -235,17 +235,38 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     }
 
     let aggregate = &report.analysis.aggregates.track;
+    let report_metrics = &report.analysis.report;
     if let (Some(rounded_dr), Some(dr_db)) = (aggregate.rounded_dr, aggregate.dr_db) {
         output.push_str(&format!(
-            "\nTrack aggregate: DR{} ({:.4} dB; {} contributing channels)\n",
+            "\nTrack aggregate: DR{} ({:.4} dB; {} contributing channels)\nReport levels: peak {} dBFS, RMS {} dBFS\n",
             rounded_dr,
             dr_db,
-            aggregate.contributing_channels.len()
+            aggregate.contributing_channels.len(),
+            format_dbfs(report_metrics.primary_peak_dbfs),
+            format_dbfs(report_metrics.overall_rms_dbfs),
         ));
     } else {
         output.push_str("\nTrack aggregate: unavailable\n");
     }
     Ok(output)
+}
+
+fn format_dbfs(value: Option<macinmeter::FiniteF32>) -> String {
+    match value {
+        None => "-inf".to_string(),
+        Some(value) => {
+            let mut dbfs = value.get();
+            if dbfs > -0.01 && dbfs < 0.01 {
+                let rounded_centi_db = (dbfs * 100.0).round();
+                dbfs = if rounded_centi_db == 0.0 {
+                    0.0
+                } else {
+                    rounded_centi_db / 100.0
+                };
+            }
+            format!("{dbfs:.2}")
+        }
+    }
 }
 
 fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
@@ -344,5 +365,18 @@ fn error_code_name(code: ErrorCode) -> &'static str {
         ErrorCode::OutputFailed => "output_failed",
         ErrorCode::Cancelled => "cancelled",
         ErrorCode::Internal => "internal",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_dbfs;
+    use macinmeter::FiniteF32;
+
+    #[test]
+    fn dbfs_formatter_normalizes_negative_zero_after_reference_centi_rounding() {
+        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.004).unwrap())), "0.00");
+        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.006).unwrap())), "-0.01");
+        assert_eq!(format_dbfs(None), "-inf");
     }
 }

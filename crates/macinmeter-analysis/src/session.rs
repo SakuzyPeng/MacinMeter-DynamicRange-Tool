@@ -5,8 +5,9 @@ use crate::profile::{
 };
 use macinmeter_domain::{
     AggregateResults, AlgorithmDescriptor, AnalysisError, AnalysisProfile, AnalysisResult,
-    AnalysisStage, ChannelMeasurement, ChannelOutcome, ChannelResult, ErrorCode, ExcludedChannel,
-    ExclusionReason, StreamSpec, TrackAggregate,
+    AnalysisStage, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics, ChannelResult,
+    DecodedDuration, ErrorCode, ExcludedChannel, ExclusionReason, FiniteF32, FiniteF64, StreamSpec,
+    TrackAggregate, TrackReportMetrics,
 };
 
 /// A one-pass analysis session for a single PCM stream.
@@ -127,6 +128,7 @@ impl AnalyzerSession {
 
         for (channel_index, channel) in self.channels.iter().enumerate() {
             let mut sum_squares = channel.current_sum_squares;
+            let mut sum_window_rms2 = channel.sum_window_rms2;
             let mut frames_in_window = self.frames_in_window;
 
             for sample in samples.iter().skip(channel_index).step_by(channel_count) {
@@ -146,13 +148,20 @@ impl AnalyzerSession {
                 }
 
                 frames_in_window += 1;
-                if !window_rms(sum_squares, frames_in_window).is_finite() {
+                let rms2 = window_rms_squared(sum_squares, frames_in_window);
+                if !rms2.is_finite() {
                     return Err(analysis_error(format!(
                         "PCM window RMS in channel {channel_index} exceeds the finite f64 range"
                     )));
                 }
 
                 if frames_in_window == self.window_frames {
+                    sum_window_rms2 += rms2;
+                    if !sum_window_rms2.is_finite() {
+                        return Err(analysis_error(format!(
+                            "overall RMS accumulation in channel {channel_index} exceeds the finite f64 range"
+                        )));
+                    }
                     sum_squares = 0.0;
                     frames_in_window = 0;
                 }
@@ -163,30 +172,48 @@ impl AnalyzerSession {
     }
 
     /// Finalizes every non-empty tail window and returns the complete analysis.
-    pub fn finish(mut self) -> AnalysisResult {
+    pub fn finish(mut self) -> Result<AnalysisResult, AnalysisError> {
         if self.frames_in_window >= MINIMUM_TAIL_FRAMES {
+            self.validate_tail_numeric_safety()?;
             self.finalize_current_window();
         }
 
         let mut channel_results = Vec::with_capacity(self.channels.len());
         let mut aggregate_drs = Vec::with_capacity(self.channels.len());
         for (channel_index, channel) in self.channels.into_iter().enumerate() {
-            let finalized = channel.into_outcome(self.frames_seen);
+            let finalized = channel.into_outcome(self.frames_seen)?;
             channel_results.push(ChannelResult {
                 channel_index,
+                report: finalized.report,
                 outcome: finalized.outcome,
             });
             aggregate_drs.push(finalized.aggregate_dr_db);
         }
 
         let track = aggregate(&channel_results, &aggregate_drs);
-        AnalysisResult {
+        let report = track_report(&channel_results, self.frames_seen, self.stream.sample_rate)?;
+        Ok(AnalysisResult {
             algorithm: self.algorithm,
             stream: self.stream,
             frames_seen: self.frames_seen,
             channels: channel_results,
             aggregates: AggregateResults { track },
+            report,
+        })
+    }
+
+    fn validate_tail_numeric_safety(&self) -> Result<(), AnalysisError> {
+        debug_assert!(self.frames_in_window > 0);
+        for (channel_index, channel) in self.channels.iter().enumerate() {
+            let rms2 = window_rms_squared(channel.current_sum_squares, self.frames_in_window);
+            let total = channel.sum_window_rms2 + rms2;
+            if !total.is_finite() {
+                return Err(analysis_error(format!(
+                    "overall RMS accumulation in channel {channel_index} exceeds the finite f64 range"
+                )));
+            }
         }
+        Ok(())
     }
 
     fn finalize_current_window(&mut self) {
@@ -202,6 +229,7 @@ impl AnalyzerSession {
 #[derive(Debug)]
 struct ChannelAccumulator {
     current_sum_squares: f64,
+    sum_window_rms2: f64,
     current_peak: f64,
     saw_nonzero_sample: bool,
     histogram: Vec<u64>,
@@ -219,6 +247,7 @@ impl ChannelAccumulator {
 
         Ok(Self {
             current_sum_squares: 0.0,
+            sum_window_rms2: 0.0,
             current_peak: 0.0,
             saw_nonzero_sample: false,
             histogram,
@@ -235,8 +264,11 @@ impl ChannelAccumulator {
     }
 
     fn finalize_window(&mut self, frames: usize) {
-        let rms = window_rms(self.current_sum_squares, frames);
+        let rms2 = window_rms_squared(self.current_sum_squares, frames);
+        let rms = rms2.sqrt();
         debug_assert!(rms.is_finite());
+        self.sum_window_rms2 += rms2;
+        debug_assert!(self.sum_window_rms2.is_finite());
         if rms != 0.0 {
             self.histogram[rms_histogram_bin(rms)] += 1;
         }
@@ -249,38 +281,49 @@ impl ChannelAccumulator {
         self.current_peak = 0.0;
     }
 
-    fn into_outcome(self, frames: u64) -> FinalizedChannel {
+    fn into_outcome(self, frames: u64) -> Result<FinalizedChannel, AnalysisError> {
+        let (primary_peak, secondary_peak) = self.peaks.values();
+        let overall_rms = if self.valid_windows == 0 {
+            0.0
+        } else {
+            (self.sum_window_rms2 / self.valid_windows as f64).sqrt()
+        };
+        let report = channel_report(overall_rms, primary_peak)?;
+
         if self.valid_windows == 0 {
-            return FinalizedChannel {
+            return Ok(FinalizedChannel {
                 outcome: ChannelOutcome::InsufficientData { frames },
                 aggregate_dr_db: None,
-            };
+                report,
+            });
         }
         if !self.saw_nonzero_sample {
-            return FinalizedChannel {
+            return Ok(FinalizedChannel {
                 outcome: ChannelOutcome::Silent {
                     frames,
                     valid_windows: self.valid_windows,
                 },
                 aggregate_dr_db: Some(SILENT_CHANNEL_DR_DB),
-            };
+                report,
+            });
         }
 
         let Some(loud_window_rms) = loud_window_rms(&self.histogram, self.valid_windows) else {
-            return FinalizedChannel {
+            return Ok(FinalizedChannel {
                 outcome: ChannelOutcome::InsufficientData { frames },
                 aggregate_dr_db: None,
-            };
+                report,
+            });
         };
-        let (primary_peak, secondary_peak) = self.peaks.values();
         let mut selected_peak = secondary_peak
             .filter(|peak| *peak > 0.0)
             .unwrap_or(primary_peak);
         if selected_peak == 0.0 || primary_peak == 0.0 || loud_window_rms == 0.0 {
-            return FinalizedChannel {
+            return Ok(FinalizedChannel {
                 outcome: ChannelOutcome::InsufficientData { frames },
                 aggregate_dr_db: None,
-            };
+                report,
+            });
         }
 
         let mut dr_db = dr_for_peak(loud_window_rms, selected_peak);
@@ -290,33 +333,35 @@ impl ChannelAccumulator {
         }
         let public_dr_db = dr_db as f32;
 
-        FinalizedChannel {
+        Ok(FinalizedChannel {
             outcome: ChannelOutcome::Measured {
                 measurement: ChannelMeasurement {
                     dr_db: public_dr_db,
                     rounded_dr: rounded_display_dr(public_dr_db),
                     loud_window_rms,
-                    selected_peak,
-                    primary_peak,
-                    secondary_peak,
+                    dr_selected_peak: selected_peak,
+                    dr_primary_peak: primary_peak,
+                    dr_secondary_peak: secondary_peak,
                     valid_windows: self.valid_windows,
                     frames,
                 },
             },
             aggregate_dr_db: Some(dr_db),
-        }
+            report,
+        })
     }
 }
 
-fn window_rms(sum_squares: f64, frames: usize) -> f64 {
+fn window_rms_squared(sum_squares: f64, frames: usize) -> f64 {
     debug_assert!(frames > 0);
-    (RMS_SUM_MULTIPLIER * sum_squares / frames as f64).sqrt()
+    RMS_SUM_MULTIPLIER * sum_squares / frames as f64
 }
 
 #[derive(Debug)]
 struct FinalizedChannel {
     outcome: ChannelOutcome,
     aggregate_dr_db: Option<f64>,
+    report: ChannelReportMetrics,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -408,6 +453,94 @@ fn rounded_display_dr(dr_db: f32) -> u32 {
     (dr_db + 0.5).trunc() as u32
 }
 
+fn channel_report(
+    overall_rms: f64,
+    primary_peak: f64,
+) -> Result<ChannelReportMetrics, AnalysisError> {
+    let overall_rms_linear = finite_f32_narrow(overall_rms, "channel overall RMS")?;
+    let primary_peak_linear = finite_f32_narrow(primary_peak, "channel primary peak")?;
+    Ok(ChannelReportMetrics {
+        overall_rms_linear,
+        overall_rms_dbfs: report_dbfs(
+            f64::from(overall_rms_linear.get()),
+            "channel overall RMS dBFS",
+        )?,
+        primary_peak_linear,
+    })
+}
+
+fn track_report(
+    channels: &[ChannelResult],
+    decoded_frames: u64,
+    sample_rate: macinmeter_domain::SampleRate,
+) -> Result<TrackReportMetrics, AnalysisError> {
+    if channels.is_empty() {
+        return Err(analysis_error(
+            "track report requires at least one configured channel",
+        ));
+    }
+
+    let mut rms_power_sum = 0.0_f64;
+    let mut primary_peak = 0.0_f32;
+    for channel in channels {
+        let channel_rms = channel.report.overall_rms_linear.get();
+        let channel_rms_squared = channel_rms * channel_rms;
+        if !channel_rms_squared.is_finite() {
+            return Err(analysis_error(format!(
+                "public overall RMS square in channel {} exceeds the finite f32 range",
+                channel.channel_index
+            )));
+        }
+        rms_power_sum += f64::from(channel_rms_squared);
+        if !rms_power_sum.is_finite() {
+            return Err(analysis_error(
+                "track overall RMS accumulation exceeds the finite f64 range",
+            ));
+        }
+        primary_peak = primary_peak.max(channel.report.primary_peak_linear.get());
+    }
+
+    let overall_rms = (rms_power_sum / channels.len() as f64).sqrt();
+    let overall_rms_linear = finite_f64(overall_rms, "track overall RMS")?;
+    let primary_peak_linear = FiniteF32::new(primary_peak)
+        .map_err(|_| analysis_error("track primary peak is not finite"))?;
+
+    Ok(TrackReportMetrics {
+        overall_rms_linear,
+        overall_rms_dbfs: report_dbfs(overall_rms, "track overall RMS dBFS")?,
+        primary_peak_linear,
+        primary_peak_dbfs: report_dbfs(
+            f64::from(primary_peak_linear.get()),
+            "track primary peak dBFS",
+        )?,
+        duration: DecodedDuration::new(decoded_frames, sample_rate),
+    })
+}
+
+fn finite_f32_narrow(value: f64, label: &str) -> Result<FiniteF32, AnalysisError> {
+    if !value.is_finite() {
+        return Err(analysis_error(format!("{label} is not finite")));
+    }
+    FiniteF32::new(value as f32)
+        .map_err(|_| analysis_error(format!("{label} cannot be represented as finite f32")))
+}
+
+fn finite_f64(value: f64, label: &str) -> Result<FiniteF64, AnalysisError> {
+    FiniteF64::new(value).map_err(|_| analysis_error(format!("{label} is not finite")))
+}
+
+fn report_dbfs(linear: f64, label: &str) -> Result<Option<FiniteF32>, AnalysisError> {
+    if !linear.is_finite() || linear < 0.0 {
+        return Err(analysis_error(format!(
+            "{label} requires a finite non-negative linear value"
+        )));
+    }
+    if linear == 0.0 {
+        return Ok(None);
+    }
+    finite_f32_narrow(20.0 * linear.log10(), label).map(Some)
+}
+
 fn aggregate(channels: &[ChannelResult], aggregate_drs: &[Option<f64>]) -> TrackAggregate {
     debug_assert_eq!(channels.len(), aggregate_drs.len());
     let mut contributing_channels = Vec::new();
@@ -463,6 +596,19 @@ mod tests {
         AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1).unwrap()
     }
 
+    fn report_only_channel(index: usize, overall_rms: f32, primary_peak: f32) -> ChannelResult {
+        ChannelResult {
+            channel_index: index,
+            report: ChannelReportMetrics {
+                overall_rms_linear: FiniteF32::new(overall_rms).unwrap(),
+                overall_rms_dbfs: report_dbfs(f64::from(overall_rms), "test channel overall RMS")
+                    .unwrap(),
+                primary_peak_linear: FiniteF32::new(primary_peak).unwrap(),
+            },
+            outcome: ChannelOutcome::InsufficientData { frames: 0 },
+        }
+    }
+
     #[test]
     fn histogram_shape_is_fixed_per_channel() {
         let stream = StreamSpec::new(48_000, 6, macinmeter_domain::ChannelLayout::Unknown).unwrap();
@@ -512,17 +658,23 @@ mod tests {
 
     #[test]
     fn track_aggregate_uses_internal_f64_channel_values() {
+        let report = ChannelReportMetrics {
+            overall_rms_linear: FiniteF32::new(0.1).unwrap(),
+            overall_rms_dbfs: FiniteF32::new(-20.0).ok(),
+            primary_peak_linear: FiniteF32::new(1.0).unwrap(),
+        };
         let channels = [
             ChannelResult {
                 channel_index: 0,
+                report: report.clone(),
                 outcome: ChannelOutcome::Measured {
                     measurement: ChannelMeasurement {
                         dr_db: 1.0,
                         rounded_dr: 1,
                         loud_window_rms: 0.1,
-                        selected_peak: 1.0,
-                        primary_peak: 1.0,
-                        secondary_peak: None,
+                        dr_selected_peak: 1.0,
+                        dr_primary_peak: 1.0,
+                        dr_secondary_peak: None,
                         valid_windows: 1,
                         frames: 3,
                     },
@@ -530,14 +682,15 @@ mod tests {
             },
             ChannelResult {
                 channel_index: 1,
+                report,
                 outcome: ChannelOutcome::Measured {
                     measurement: ChannelMeasurement {
                         dr_db: 1.0,
                         rounded_dr: 1,
                         loud_window_rms: 0.1,
-                        selected_peak: 1.0,
-                        primary_peak: 1.0,
-                        secondary_peak: None,
+                        dr_selected_peak: 1.0,
+                        dr_primary_peak: 1.0,
+                        dr_secondary_peak: None,
                         valid_windows: 1,
                         frames: 3,
                     },
@@ -548,6 +701,28 @@ mod tests {
         let track = aggregate(&channels, &[Some(10.0), Some(20.0)]);
         assert_eq!(track.dr_db, Some(15.0));
         assert_eq!(track.rounded_dr, Some(15));
+    }
+
+    #[test]
+    fn track_report_squares_public_f32_rms_before_widening() {
+        let channels = [
+            report_only_channel(0, 0.1, 0.25),
+            report_only_channel(1, 0.3, 0.75),
+        ];
+        let sample_rate = macinmeter_domain::SampleRate::new(48_000).unwrap();
+        let report = track_report(&channels, 96_000, sample_rate).unwrap();
+
+        let expected = ((f64::from(0.1_f32 * 0.1_f32) + f64::from(0.3_f32 * 0.3_f32)) / 2.0).sqrt();
+        let square_after_widening =
+            ((f64::from(0.1_f32).powi(2) + f64::from(0.3_f32).powi(2)) / 2.0).sqrt();
+
+        assert_ne!(expected.to_bits(), square_after_widening.to_bits());
+        assert_eq!(
+            report.overall_rms_linear.get().to_bits(),
+            expected.to_bits()
+        );
+        assert_eq!(report.primary_peak_linear.get(), 0.75);
+        assert_eq!(report.duration.seconds(), 2.0);
     }
 
     #[test]

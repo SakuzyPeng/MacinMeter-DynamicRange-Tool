@@ -25,10 +25,16 @@ Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch
 directory walk.
 
-Analysis and batch responses use schema 2 of the same versioned `WireEnvelope`
-as CLI JSON. The analysis payload exposes `analysis.aggregates.track`; silent
-channels remain visibly silent while contributing DR0 to that track aggregate.
-Rendering preferences stay in TypeScript and never enter the analysis request.
+Analysis and batch responses use schema 3 of the same versioned `WireEnvelope`
+as CLI JSON. The analysis payload exposes `analysis.aggregates.track`, separate
+channel/track `report` metrics, exact decoded duration, and DR diagnostics named
+`drSelectedPeak`, `drPrimaryPeak`, and `drSecondaryPeak`. Zero-level dBFS is
+`null`; other public report values are finite by construction.
+
+Silent channels remain visibly silent while contributing DR0 to the track
+aggregate. A batch remains a list of independent reports: the library's
+explicit `AlbumAggregator` is not invoked by Tauri commands. Rendering
+preferences stay in TypeScript and never enter the analysis request.
 
 ## Development
 
@@ -51,4 +57,7 @@ look for FFmpeg, use a global cancel flag, or create a Rayon batch pool.
 
 Current GUI results are always labelled
 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This identifies the evidence
-target and candidate revision; it is not a claim of reference parity.
+target and candidate revision. The fixed schema-v3 safe-master comparison
+matches the five exported DR/report field groups, but excludes footer,
+reference duration rendering, album-focused runs, internal state, and arbitrary
+audio; it is not a claim of full reference parity.

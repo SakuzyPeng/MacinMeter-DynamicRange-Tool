@@ -51,6 +51,10 @@ macinmeter analyze FILE [--format human|json] [--output PATH]
 macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 ```
 
+Human `analyze` output includes channel overall RMS plus track report peak/RMS.
+`batch` returns independent per-track reports and does not perform album
+aggregation.
+
 Standard output contains only the requested result. Progress and diagnostics go
 to standard error. Output files are replaced atomically through a temporary
 file in the destination directory.
@@ -65,28 +69,63 @@ Exit codes:
 | `3` | batch completed with both successes and failures |
 | `130` | cancelled |
 
-JSON and Tauri use the same envelope:
+JSON and Tauri use the same schema-v3 envelope. This abridged analysis example
+shows the report/diagnostic split:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "toolVersion": "0.2.0",
   "kind": "analysis",
-  "data": {}
+  "data": {
+    "analysis": {
+      "channels": [{
+        "report": {
+          "overallRmsLinear": 0.5,
+          "overallRmsDbfs": -6.0206,
+          "primaryPeakLinear": 1.0
+        },
+        "outcome": {
+          "status": "measured",
+          "measurement": {
+            "loudWindowRms": 0.25,
+            "drSelectedPeak": 0.5,
+            "drPrimaryPeak": 1.0,
+            "drSecondaryPeak": 0.5
+          }
+        }
+      }],
+      "report": {
+        "overallRmsLinear": 0.5,
+        "overallRmsDbfs": -6.0206,
+        "primaryPeakLinear": 1.0,
+        "primaryPeakDbfs": 0.0,
+        "duration": { "decodedFrames": 48000, "sampleRate": 48000 }
+      }
+    }
+  }
 }
 ```
 
-The payload contains no timestamp. Non-finite values are never emitted as JSON
-numbers.
+The payload contains no timestamp. `FiniteF32`/`FiniteF64` wrappers make
+non-finite report values unrepresentable; zero-amplitude dBFS values are
+explicit `null`. Each channel has independent public-f32 overall RMS and
+primary-peak report metrics. Track RMS follows the reference public-f32-square
+then f64-accumulation path, while track peak is the maximum public primary peak.
+`DecodedDuration` preserves the exact decoded-frame/sample-rate pair instead of
+storing a rounded seconds value.
 
-The diagnostic fields `loudWindowRms` and `selectedPeak` expose the values used
-by the candidate DR calculation. They are not replicas of the reference text
-report's overall RMS and primary peak fields. Decoders normalize supported
-inputs to finite interleaved `f64`, matching the fixed x64 core's PCM width.
-This closed two source-f64 boundary differences: on the current 39-track
-safe-master observation, integer track DR matches 39/39 and two-decimal channel
-DR matches 62/62. That limited comparison does not cover the unexposed
-intermediate state, all report fields, isolated host-edge inputs, or arbitrary
+DR calculation diagnostics remain separate: `loudWindowRms`,
+`drSelectedPeak`, `drPrimaryPeak`, and nullable `drSecondaryPeak` describe the
+values used by the DR state machine. They must not be substituted for report
+metrics.
+
+Decoders normalize supported inputs to finite interleaved `f64`, matching the
+fixed x64 core's PCM width. On the fixed 39-track schema-v3 safe-master run,
+track DR matched 39/39, channel DR 62/62, overall peak 39/39, overall RMS
+39/39, and channel RMS 62/62. This exact token comparison still excludes
+unobservable intermediate state, footer/text parity, reference duration
+rendering, isolated host-edge inputs, album-focused exports, and arbitrary
 audio, so the profile remains `Unverified`.
 
 ## Library
@@ -112,12 +151,34 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
     let mut session =
         AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1)?;
     session.push_interleaved(&[0.25, -0.25, 0.5, -0.5])?;
-    let _result = session.finish();
+    let _result = session.finish()?;
     Ok(())
 }
 ```
 
-`finish` consumes the session. Samples must be finite and frame-aligned.
+`finish` consumes the session and is fallible so numeric/resource failures
+cannot leak non-finite output. Samples must be finite and frame-aligned.
+
+Album aggregation is an explicit library operation, never an implicit property
+of a batch:
+
+```rust
+use macinmeter::{
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Analyzer,
+};
+
+fn main() -> Result<(), macinmeter::AnalysisError> {
+    let report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let track = AlbumTrackMetrics::try_from(&report)?;
+    let _album = AlbumAggregator::aggregate(&[track], AlbumWeighting::Unweighted)?;
+    Ok(())
+}
+```
+
+The official album value is the arithmetic mean of public-f32 track DR values,
+including numeric DR0 tracks. Optional duration weighting uses each track's
+exact decoded duration. Batch and GUI results remain collections of independent
+track reports unless a caller explicitly invokes this API.
 
 ## GUI
 
@@ -168,7 +229,7 @@ stored in this repository.
 That permission and attribution do not establish numerical compatibility.
 Target hashes, experiments, observations, and the candidate specification are
 recorded under `reference/`. The current
-[x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)
+[schema-v3 x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
 documents its exact scope and remaining gaps. The profile remains `Unverified`
 until broader evidence and review justify a stronger statement.
 

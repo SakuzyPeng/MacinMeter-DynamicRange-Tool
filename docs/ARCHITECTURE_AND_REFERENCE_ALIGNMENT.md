@@ -1,8 +1,9 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，foo_dr_meter 1.0.8 Candidate V1 已实施；首份
-> x64 safe-master conformance 的公开核心字段为 39/39、62/62，验收范围待扩充），
-> 作为整改、重构和逆向研究的主记录
+> 状态：执行中（M0：`DONE`，foo_dr_meter 1.0.8 Candidate V1 已实施；schema-v3
+> x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
+> overall RMS 39/39、channel RMS 62/62，验收范围待扩充），作为整改、重构和
+> 逆向研究的主记录
 >
 > 建立日期：2026-07-17
 >
@@ -78,8 +79,9 @@
 分析、x86 初始观测和 x64 complete-v2 safe-master 观测共同形成
 `FooDrMeter108CandidateV1`。x64 架构精度边界已达到 E2；产品 PCM 主链改为 f64
 后，同一 observation 的整数 track DR 为 39/39、每声道两位 DR token 为 62/62。
-这足以关闭当前 corpus 中已知的 source-f64 系统差分，但不等同于完整
-conformance；所有输出继续标记 `Unverified`。
+schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39/39
+与 channel RMS 62/62。这足以关闭当前 corpus 中公开同语义字段的已知系统差分，
+但不等同于完整 conformance；所有输出继续标记 `Unverified`。
 
 ## 3. 事实来源与术语
 
@@ -162,8 +164,8 @@ conformance；所有输出继续标记 `Unverified`。
 | REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项与 x64 39 项 safe master 已登记；isolated、重复性与外围范围待补 |
 | REF-006 | DOING | 开展静态与动态逆向 | x64/x86 核心、album/report、WAV decoder/metadata 已有静态记录；动态中间状态未跟踪 |
 | REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 E2 精度证据和 remaining unknown，保持未验证标记 |
-| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；当前公开核心字段 39/39、62/62，仍不宣称参考兼容 |
-| REF-009 | DOING | 建立参考 conformance suite | 首份 pre/post-f64 精确差分已登记；报告其他字段和中间状态待扩展 |
+| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的五组公开 DR/report 字段完全匹配，仍不宣称参考兼容 |
+| REF-009 | DOING | 建立参考 conformance suite | schema-v2 DR-only 与 schema-v3 report-metrics 记录均已登记；中间状态、footer、album-focused 待扩展 |
 | REF-010 | TODO | 修订兼容性声明 | 仅在验收通过后恢复明确的参考兼容承诺 |
 
 ### 5.4 P2：测试、发布、性能和维护
@@ -279,13 +281,14 @@ domain
 ├── AnalysisProfile / StreamSpec
 ├── SourceInfo / PcmStreamInfo
 ├── AnalysisReport / ChannelResult
+├── FiniteF32 / FiniteF64 / DecodedDuration
 ├── DecodeDiagnostics / BatchItemOutcome
 └── AnalysisError / ErrorCode
 
 analysis
 └── AnalyzerSession
     ├── push_interleaved()
-    └── finish()
+    └── finish() -> Result
 
 codecs
 ├── DecoderFactory
@@ -293,6 +296,7 @@ codecs
 
 application
 ├── analyze_file / serial BatchRunner
+├── explicit AlbumAggregator
 ├── progress / cancellation
 └── versioned WireEnvelope
 
@@ -442,8 +446,10 @@ Error
 - 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
 - 已将产品 PCM 入口改为 `f64`，关闭 complete-v2 暴露的两处 source-f64
-  量化边界差分；后续复刻参考报告所需的 overall channel RMS 与 primary
-  report peak；
+  量化边界差分；
+- schema v3 已分离并对齐公开 overall channel RMS、track RMS 与 primary peak；
+- 显式 `AlbumAggregator` 已实现 E1 静态公式，但不把 batch 自动解释成 album，
+  focused playlist 与 weighting 运行证据仍待补；
 - 建立 final + intermediate conformance suite；
 - 处理所有系统性残差和未解释边界；
 - 完成兼容性报告。
@@ -541,7 +547,7 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 - [x] `ProvisionalV1` 不作为生产兼容 profile 保留；
 - [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
 - [ ] Reference profile 的未导出中间状态如何观测，以及相应数值容差如何定义；
-- [x] Candidate 结果结构使用 wire schema v2；schema 版本只表示结构契约，不表示算法兼容。
+- [x] Candidate 结果结构使用 wire schema v3；schema 版本只表示结构契约，不表示算法兼容。
 
 ## 13. 完成定义
 

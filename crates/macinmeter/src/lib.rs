@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod album;
 mod application;
 mod batch;
 mod control;
 mod wire;
 
+pub use album::{AlbumAggregate, AlbumAggregator, AlbumTrackMetrics, AlbumWeighting};
 pub use application::{AnalyzeRequest, Analyzer};
 pub use batch::{
     BatchItem, BatchItemOutcome, BatchReport, BatchRequest, BatchRunner, BatchStatus, BatchSummary,

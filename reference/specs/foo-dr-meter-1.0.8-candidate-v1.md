@@ -143,15 +143,32 @@ histogram、peak key 或内部 binary64 DR。因此这些限制不能因 safe-ma
 
 固定 reference observation 与身份明确的 MacinMeter 产物之间的记录见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
+该记录固定的是 wire schema v2 时代的 DR-only pre/post-f64 比较，作为历史
+conformance artifact 保持不变。
+
 修正前整数 track DR 已为 39/39，但每声道两位 DR token 为 60/62；两处差分均由
 float64 WAV 在分析前窄化到 float32 造成。有效 PCM 主链改为 finite interleaved
 f64 后，同一 observation 与同一批输入得到 track DR 39/39、channel DR 62/62，
 差分数为 0。
 
-比较策略是公开 token 精确相等，不使用宽容差。reference report 的 overall
-primary peak、overall channel RMS、内部状态、三个 isolated 输入和更广输入空间
-未与产品同语义字段比较。因此这是一份有限 conformance 记录，不是 accepted
-规格、E3 证据或 reference parity 声明；profile 继续保持
+wire schema v3 随后增加了与参考报告同语义的独立 channel/track report
+metrics；固定产物与命令登记在
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)。
+对固定 39 项 safe master 的 schema-v3 实测继续采用公开 token 精确相等、零数值
+容差，得到：
+
+| 字段 | 结果 |
+| --- | ---: |
+| 整数 track DR | 39/39 |
+| 每声道两位 DR | 62/62 |
+| overall primary peak | 39/39 |
+| overall RMS | 39/39 |
+| 每声道 overall RMS | 62/62 |
+
+这次 follow-up 不改写 schema-v2 历史记录。它仍未比较内部状态、reference
+duration 文本、footer、三个 isolated 输入、album-focused playlist 或更广输入
+空间。因此这是一份有限实现复核，不是 accepted 规格、E3 证据、整份报告 parity
+或 reference compatibility 声明；profile 继续保持
 `FooDrMeter108CandidateV1 / Unverified`。
 
 ## 3. 数据与数值约定
@@ -430,6 +447,26 @@ display_dr = integer_cast(track_dr + 0.5)
 这不是通用的有符号 half-away-from-zero；核心有效路径已经把 DR 保持在非负
 范围。报告中的每声道 DR 保留 binary32 结果并格式化到两位小数。
 
+#### 4.7.1 当前 schema-v3 实现映射
+
+MacinMeter 现在把 report metrics 与 DR 计算诊断分开：
+
+- 每声道 `report.overallRmsLinear` 和 `report.primaryPeakLinear` 都在参考公开
+  窄化点保存为受验证的 finite binary32；零幅度的 dBFS 派生值使用 `null`；
+- track overall RMS 先对每个 public-f32 channel RMS 在 binary32 中平方，再把
+  各平方提升到 binary64 求和、除以声道数并开方；
+- track primary peak 取每声道 public-f32 primary peak 的最大值；
+- `DecodedDuration` 保存精确的 `decodedFrames` 与实际 PCM `sampleRate` 数对，
+  不把舍入后的秒数当作事实；
+- DR 状态机诊断使用 `loudWindowRms`、`drSelectedPeak`、`drPrimaryPeak` 和
+  可空的 `drSecondaryPeak`，不再用容易与 report primary peak 混淆的
+  `selectedPeak` 字段。
+
+公开 report/album 数值由经过验证的 `FiniteF32`/`FiniteF64` wrapper 承载；
+`AnalyzerSession::finish` 为 consuming、fallible API，结算时的数值或资源失败
+返回结构化错误，不生成包含 NaN/Inf 的成功结果。上述内容是当前实现状态，不改变
+第 5 节各参考规则的证据等级。
+
 ### 4.8 默认 album 聚合
 
 静音 track 在参考路径中是数值 DR 0，不是需要从 album 排除的离散状态。对于
@@ -467,6 +504,21 @@ integer_cast(album_dr_f32 + 0.5)
 因此 album 输入是精确 binary32 track DR，而不是已经整数化的显示值；算术平均
 和时长加权在 binary64 中累计，结果再独立窄化为 binary32。公式、DR0 纳入、
 窄化点和显示舍入均已由静态数据流固定。
+
+当前 application 门面通过显式 `AlbumAggregator::aggregate` 实现这条候选公式：
+
+- 输入是调用方明确构造的 `AlbumTrackMetrics`，不会把任意 `BatchRunner` 结果
+  自动解释为 album；
+- official 值对 public-f32 track DR（包含数值 DR0）提升到 binary64 后做算术
+  平均，再窄化到 finite binary32；
+- `DurationWeighted` 只在调用方显式请求时成为 effective 值，并使用每首 track
+  的 exact `DecodedDuration`；总时长为零时回退 official；
+- API 同时保留 official、可选 weighted、effective、track count 与总时长，
+  所有公开浮点结果必须 finite。
+
+这只是把已有 E1 静态公式落实为独立、可测试的产品 API。现有 x64 observation
+没有导出 album-focused playlist，因此不得把实现测试或 safe-master official
+footer 外推为 album conformance。
 
 ## 5. 逐规则证据等级
 
@@ -530,8 +582,13 @@ complete-v2 首次 conformance 暴露的两处系统差分都来自 source-f64 �
 safe master 上把 track DR 从 39/39 保持为 39/39、channel DR 从 60/62 修正为
 62/62。已保存的 pre/post 实现产物和精确 token 差分使这项处置可复核。
 
-这只关闭“当前 corpus 的公开 channel/track DR 中存在已知 f64 窄化偏差”这一项。
-它不关闭下面的外围边界，也不证明未导出中间状态、任意输入或整份报告已经一致。
+schema v3 又把独立 report metrics 加入产品模型；固定 safe-master follow-up
+得到 overall peak 39/39、overall RMS 39/39、channel RMS 62/62，同时保持 track
+DR 39/39、channel DR 62/62。这关闭了当前 corpus 中公开且同语义 report/DR
+token 的已知差分。
+
+这些结果不关闭下面的外围边界，也不证明未导出中间状态、reference duration
+文本、footer、album、任意输入或整份报告 byte-for-byte 一致。
 
 ### 6.3 真正剩余的边界
 
@@ -545,7 +602,8 @@ safe master 上把 track DR 从 39/39 保持为 39/39、channel DR 从 60/62 修
 | 宿主生成 channel mask、bitrate 和 codec metadata 的完整规则 | U | DLL 内部标签/格式化可静态读；`32761` 已确认不进入核心 DR，但外围 metadata-report 异常的精确根因仍未知。 |
 | 固定 Windows CRT/libm 的未覆盖最后一位边界 | H | 当前 x64 观测覆盖两个架构 precision fixture，但 bit-exact 目标仍须固定运行库并覆盖或动态跟踪更多半值；有限 62 个 token 不能证明所有边界。 |
 | safe-master 重复运行确定性 | U | 当前 x64 observation 只有一次运行；静态已解规则不要求重复人工采集，但 accepted 声明若依赖运行重复性仍需单独证据。 |
-| 整份参考报告与产品字段级 parity | U | 产品 wire 没有同语义的 overall primary peak、overall channel RMS 与 footer 字段；39/39、62/62 只覆盖公开可比核心 DR。 |
+| 整份参考报告与产品字段级 parity | U | schema v3 已有同语义的 overall primary peak、overall RMS 与 channel RMS，并在 safe master 上分别为 39/39、39/39、62/62；reference duration 文本、footer、布局标签及完整报告格式仍未比较。 |
+| album 聚合与 focused 动态验证 | E1 | 产品已有显式 `AlbumAggregator`，公式由静态数据流支持；focused playlist 未导出，batch 不自动充当 album observation，因此没有黑盒交叉验证或 parity 声明。 |
 | NaN、Inf、反常范围 PCM | U | 不属于有效 PCM 契约；目标异常数学行为不提升为产品契约。 |
 | histogram/窗口计数极限与溢出 | U | 不属于候选有效资源范围；若研究应做静态类型/指令审计，而不是生成数百年音频。 |
 
@@ -556,9 +614,12 @@ safe master 上把 track DR 从 39/39 保持为 39/39、channel DR 从 60/62 修
 
 - 实现不得把本规格命名成 `Compatible`、`ReferenceExact` 或类似 profile。
 - 按本规格修改算法时，必须保留来源标识和 `candidate / unverified` 状态。
-- 当前 MacinMeter wire 中的 `loudWindowRms` 是 loud histogram selection 的
-  RMS，`selectedPeak` 是计算 DR 时实际采用的 peak；它们不是第 4.7 节参考报告
-  中的 overall channel RMS 和 primary report peak。字段级报告复刻尚未实现。
+- 当前 MacinMeter wire schema v3 将第 4.7 节 report metrics 放在独立
+  `channel.report` 与 `analysis.report` 中；`loudWindowRms`、
+  `drSelectedPeak`、`drPrimaryPeak`、`drSecondaryPeak` 仍只是 DR 计算诊断，
+  不得和 report 字段互换。
+- batch 不具有 album 语义；只有调用方显式构造 `AlbumTrackMetrics` 并调用
+  `AlbumAggregator` 时才执行第 4.8 节候选聚合。
 - conformance 必须分别记录参考 observation 与实现结果，不能把本文伪代码本身
   当作 golden。
 - 修改量化、tail、peak tie、负值回退、静音或聚合规则时，应使用本实验 corpus
@@ -575,8 +636,9 @@ safe master 上把 track DR 从 39/39 保持为 39/39、channel DR 从 60/62 修
 2. 对关键边界至少补一类动态证据，或说明为何现有 E2 足够；当前没有 E3；
 3. 用一次生成的本地 corpus 覆盖多采样率、零 frame、RMS clamp、peak key 半值、
    album 公式和 x86/x64 精度判别；静态已确定的内部规则不要求重复人工导出；
-4. 把现有 39/39、62/62 的有限 reference-to-implementation conformance
-   扩展到验收范围，并明确处理未比较字段；
+4. 把现有 track DR 39/39、channel DR 62/62、overall peak 39/39、overall RMS
+   39/39、channel RMS 62/62 的有限 implementation comparison 扩展到验收范围，
+   并明确处理未比较字段；
 5. 明确只接受 x64、只接受 x86，还是分别提供两个数值 profile；不得再声明一个
    未限定架构的共同精度契约；
 6. 保留所有系统性差异，不使用宽容差掩盖整数边界错误。

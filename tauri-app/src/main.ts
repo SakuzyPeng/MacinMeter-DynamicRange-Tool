@@ -70,11 +70,17 @@ type Measurement = {
   drDb: number;
   roundedDr: number;
   loudWindowRms: number;
-  selectedPeak: number;
-  primaryPeak: number;
-  secondaryPeak: number | null;
+  drSelectedPeak: number;
+  drPrimaryPeak: number;
+  drSecondaryPeak: number | null;
   validWindows: number;
   frames: number;
+};
+
+type ChannelReportMetrics = {
+  overallRmsLinear: number;
+  overallRmsDbfs: number | null;
+  primaryPeakLinear: number;
 };
 
 type ChannelOutcome =
@@ -85,6 +91,7 @@ type ChannelOutcome =
 type ChannelResult = {
   channelIndex: number;
   outcome: ChannelOutcome;
+  report: ChannelReportMetrics;
 };
 
 type TrackAggregate = {
@@ -95,6 +102,17 @@ type TrackAggregate = {
     channelIndex: number;
     reason: "insufficient_data";
   }[];
+};
+
+type TrackReportMetrics = {
+  overallRmsLinear: number;
+  overallRmsDbfs: number | null;
+  primaryPeakLinear: number;
+  primaryPeakDbfs: number | null;
+  duration: {
+    decodedFrames: number;
+    sampleRate: number;
+  };
 };
 
 type AnalysisReport = {
@@ -137,6 +155,7 @@ type AnalysisReport = {
     stream: StreamSpec;
     framesSeen: number;
     channels: ChannelResult[];
+    report: TrackReportMetrics;
     aggregates: {
       track: TrackAggregate;
     };
@@ -163,19 +182,19 @@ type BatchReport = {
 
 type WireEnvelope =
   | {
-      schemaVersion: 2;
+      schemaVersion: 3;
       toolVersion: string;
       kind: "analysis";
       data: AnalysisReport;
     }
   | {
-      schemaVersion: 2;
+      schemaVersion: 3;
       toolVersion: string;
       kind: "batch";
       data: BatchReport;
     }
   | {
-      schemaVersion: 2;
+      schemaVersion: 3;
       toolVersion: string;
       kind: "error";
       data: PublicError;
@@ -254,6 +273,19 @@ const escapeHtml = (value: string): string => {
 const fileName = (path: string): string => {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : path;
+};
+
+const formatDbfs = (value: number | null): string => {
+  if (value === null) return "−∞ dBFS";
+  let corrected = value;
+  if (corrected > -0.01 && corrected < 0.01) {
+    const centi =
+      corrected >= 0
+        ? Math.floor(corrected * 100 + 0.5)
+        : Math.ceil(corrected * 100 - 0.5);
+    corrected = centi / 100;
+  }
+  return `${corrected.toFixed(2)} dBFS`;
 };
 
 const describeInvokeError = (error: unknown): string => {
@@ -350,8 +382,8 @@ const renderChannel = (channel: ChannelResult): string => {
       <td>${label}</td>
       <td class="dr">DR${value.roundedDr}</td>
       <td>${value.drDb.toFixed(4)} dB</td>
-      <td>${value.loudWindowRms.toFixed(8)}</td>
-      <td>${value.selectedPeak.toFixed(8)}</td>
+      <td>${formatDbfs(channel.report.overallRmsDbfs)}</td>
+      <td>${value.drSelectedPeak.toFixed(8)}</td>
     </tr>`;
   }
   if (channel.outcome.status === "silent") {
@@ -366,9 +398,12 @@ const renderChannel = (channel: ChannelResult): string => {
 
 const renderAnalysis = (report: AnalysisReport): string => {
   const aggregate = report.analysis.aggregates.track;
+  const reportMetrics = report.analysis.report;
+  const peakDbfs = formatDbfs(reportMetrics.primaryPeakDbfs);
+  const rmsDbfs = formatDbfs(reportMetrics.overallRmsDbfs);
   const aggregateHtml =
     aggregate.roundedDr !== null && aggregate.drDb !== null
-    ? `<div class="aggregate"><span>Track aggregate</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`
+    ? `<div class="aggregate"><span>Track aggregate · Peak ${peakDbfs} · RMS ${rmsDbfs}</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`
     : `<div class="aggregate unavailable">Track aggregate unavailable</div>`;
   return `<article class="report">
     <div class="report-header">
@@ -377,7 +412,7 @@ const renderAnalysis = (report: AnalysisReport): string => {
     </div>
     ${aggregateHtml}
     <div class="table-wrap"><table>
-      <thead><tr><th>Channel</th><th>Rounded</th><th>DR</th><th>Loud-window RMS</th><th>Selected DR peak</th></tr></thead>
+      <thead><tr><th>Channel</th><th>Rounded</th><th>DR</th><th>Overall RMS</th><th>Selected DR peak</th></tr></thead>
       <tbody>${report.analysis.channels.map(renderChannel).join("")}</tbody>
     </table></div>
   </article>`;

@@ -71,6 +71,8 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     assert!(stdout.starts_with("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n"));
     assert!(stdout.contains("PCM: 44100 Hz, 2 channels, 441 frames"));
     assert!(stdout.contains("Track aggregate: DR"));
+    assert!(stdout.contains("Report levels: peak "));
+    assert!(stdout.contains(", RMS "));
     assert!(!stdout.contains("[0]"));
     assert!(stderr.contains("[0] analyzing"));
     assert!(stderr.contains("[0] ok:"));
@@ -100,7 +102,7 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
 
     assert_code(&output, 0);
     let value = parse_stdout_json(&output);
-    assert_eq!(value["schemaVersion"], 2);
+    assert_eq!(value["schemaVersion"], 3);
     assert_eq!(value["toolVersion"], "0.2.0");
     assert_eq!(value["kind"], "analysis");
     assert_eq!(
@@ -114,12 +116,15 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert_eq!(value["data"]["analysis"]["framesSeen"], 441);
     assert!(
         value["data"]["analysis"]["aggregates"]["track"]["drDb"].is_number(),
-        "schema v2 exposes the track aggregate under analysis.aggregates.track"
+        "schema v3 exposes the track aggregate under analysis.aggregates.track"
     );
     assert!(
         value["data"]["analysis"]["channels"][0]["outcome"]["measurement"]["loudWindowRms"]
             .is_number()
     );
+    assert!(value["data"]["analysis"]["channels"][0]["report"]["overallRmsLinear"].is_number());
+    assert!(value["data"]["analysis"]["report"]["primaryPeakLinear"].is_number());
+    assert!(value["data"]["analysis"]["report"]["overallRmsLinear"].is_number());
     let api_report = macinmeter::Analyzer::new()
         .analyze_file(macinmeter::AnalyzeRequest::new(&input))
         .expect("the same fixture should analyze through the Rust API");

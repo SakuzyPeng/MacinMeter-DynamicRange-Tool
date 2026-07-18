@@ -1,6 +1,66 @@
 use crate::{AnalysisError, AnalysisStage, ErrorCode};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::num::{NonZeroU16, NonZeroU32};
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct FiniteF32(f32);
+
+impl FiniteF32 {
+    pub fn new(value: f32) -> Result<Self, AnalysisError> {
+        if value.is_finite() {
+            Ok(Self(value))
+        } else {
+            Err(AnalysisError::invalid(
+                "finite f32 value cannot be NaN or infinity",
+            ))
+        }
+    }
+
+    pub const fn get(self) -> f32 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for FiniteF32 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = f32::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct FiniteF64(f64);
+
+impl FiniteF64 {
+    pub fn new(value: f64) -> Result<Self, AnalysisError> {
+        if value.is_finite() {
+            Ok(Self(value))
+        } else {
+            Err(AnalysisError::invalid(
+                "finite f64 value cannot be NaN or infinity",
+            ))
+        }
+    }
+
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for FiniteF64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -265,11 +325,19 @@ pub struct ChannelMeasurement {
     pub dr_db: f32,
     pub rounded_dr: u32,
     pub loud_window_rms: f64,
-    pub selected_peak: f64,
-    pub primary_peak: f64,
-    pub secondary_peak: Option<f64>,
+    pub dr_selected_peak: f64,
+    pub dr_primary_peak: f64,
+    pub dr_secondary_peak: Option<f64>,
     pub valid_windows: u64,
     pub frames: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelReportMetrics {
+    pub overall_rms_linear: FiniteF32,
+    pub overall_rms_dbfs: Option<FiniteF32>,
+    pub primary_peak_linear: FiniteF32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -288,6 +356,7 @@ pub enum ChannelOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelResult {
     pub channel_index: usize,
+    pub report: ChannelReportMetrics,
     pub outcome: ChannelOutcome,
 }
 
@@ -319,6 +388,36 @@ pub struct AggregateResults {
     pub track: TrackAggregate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodedDuration {
+    pub decoded_frames: u64,
+    pub sample_rate: SampleRate,
+}
+
+impl DecodedDuration {
+    pub const fn new(decoded_frames: u64, sample_rate: SampleRate) -> Self {
+        Self {
+            decoded_frames,
+            sample_rate,
+        }
+    }
+
+    pub fn seconds(self) -> f64 {
+        self.decoded_frames as f64 / f64::from(self.sample_rate.get())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackReportMetrics {
+    pub overall_rms_linear: FiniteF64,
+    pub overall_rms_dbfs: Option<FiniteF32>,
+    pub primary_peak_linear: FiniteF32,
+    pub primary_peak_dbfs: Option<FiniteF32>,
+    pub duration: DecodedDuration,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisResult {
@@ -327,6 +426,7 @@ pub struct AnalysisResult {
     pub frames_seen: u64,
     pub channels: Vec<ChannelResult>,
     pub aggregates: AggregateResults,
+    pub report: TrackReportMetrics,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -372,5 +472,33 @@ mod tests {
                 .frames(),
             2
         );
+    }
+
+    #[test]
+    fn finite_floats_validate_construction_and_deserialization() {
+        assert_eq!(FiniteF32::new(-1.25).unwrap().get(), -1.25);
+        assert_eq!(FiniteF64::new(2.5).unwrap().get(), 2.5);
+        assert!(FiniteF32::new(f32::NAN).is_err());
+        assert!(FiniteF32::new(f32::INFINITY).is_err());
+        assert!(FiniteF64::new(f64::NEG_INFINITY).is_err());
+
+        let finite_f32: FiniteF32 = serde_json::from_str("0.5").unwrap();
+        let finite_f64: FiniteF64 = serde_json::from_str("-12.75").unwrap();
+        assert_eq!(finite_f32.get(), 0.5);
+        assert_eq!(finite_f64.get(), -12.75);
+        assert!(serde_json::from_str::<FiniteF32>("1e100").is_err());
+        assert!(serde_json::from_str::<FiniteF64>("1e999").is_err());
+
+        let nan = serde::de::value::F32Deserializer::<serde::de::value::Error>::new(f32::NAN);
+        let infinity =
+            serde::de::value::F64Deserializer::<serde::de::value::Error>::new(f64::INFINITY);
+        assert!(FiniteF32::deserialize(nan).is_err());
+        assert!(FiniteF64::deserialize(infinity).is_err());
+    }
+
+    #[test]
+    fn decoded_duration_uses_the_actual_pcm_rate() {
+        let duration = DecodedDuration::new(96_000, SampleRate::new(48_000).unwrap());
+        assert_eq!(duration.seconds(), 2.0);
     }
 }

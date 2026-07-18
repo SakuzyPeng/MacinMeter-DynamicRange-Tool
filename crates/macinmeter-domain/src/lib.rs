@@ -6,8 +6,9 @@ mod model;
 pub use error::{AnalysisError, AnalysisStage, ErrorCode};
 pub use model::{
     AggregateResults, AlgorithmDescriptor, AlgorithmParameters, AnalysisProfile, AnalysisReport,
-    AnalysisResult, ChannelCount, ChannelLayout, ChannelMeasurement, ChannelOutcome, ChannelResult,
-    ChannelRole, CompatibilityStatus, ContainerFormat, DecodeDiagnostics, DecodeProgress,
-    ExcludedChannel, ExclusionReason, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec, SourceInfo,
-    StreamSpec, TrackAggregate,
+    AnalysisResult, ChannelCount, ChannelLayout, ChannelMeasurement, ChannelOutcome,
+    ChannelReportMetrics, ChannelResult, ChannelRole, CompatibilityStatus, ContainerFormat,
+    DecodeDiagnostics, DecodeProgress, DecodedDuration, ExcludedChannel, ExclusionReason,
+    FiniteF32, FiniteF64, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec, SourceInfo, StreamSpec,
+    TrackAggregate, TrackReportMetrics,
 };

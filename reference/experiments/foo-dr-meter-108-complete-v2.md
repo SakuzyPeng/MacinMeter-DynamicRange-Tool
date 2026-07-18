@@ -65,8 +65,13 @@ host/decoder 研究协议。
 MacinMeter 的 reference-to-implementation 差分另见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
 产品 PCM 主链改为 finite interleaved f64 后，公开可比较核心字段达到 track DR
-39/39、channel DR 62/62。该有限结果不覆盖参考报告 overall peak/RMS、不可见
-中间状态、isolated 输入或更广输入空间，因此 profile 继续保持
+39/39、channel DR 62/62。
+
+后续 schema-v3 report-metrics 记录
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
+又得到 overall peak 39/39、overall RMS 39/39、channel RMS 62/62，并保持上述
+DR 结果。该有限结果不覆盖不可见中间状态、reference duration 文本、footer、
+isolated 输入、album-focused playlist 或更广输入空间，因此 profile 继续保持
 `FooDrMeter108CandidateV1 / Unverified`。
 
 ## Corpus 布局

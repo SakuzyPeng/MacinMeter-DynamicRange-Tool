@@ -46,6 +46,9 @@ macinmeter analyze FILE [--format human|json] [--output PATH]
 macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 ```
 
+human `analyze` 输出包含每声道 overall RMS 以及 track report peak/RMS。
+`batch` 返回相互独立的逐 track report，不执行 album 聚合。
+
 标准输出只包含请求的结果；进度与诊断写入标准错误。输出文件先写入目标目录内的临时
 文件，再原子替换目标。
 
@@ -59,25 +62,60 @@ macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 | `3` | 批处理部分成功 |
 | `130` | 已取消 |
 
-JSON 与 Tauri 共用同一封装：
+JSON 与 Tauri 共用 schema v3 封装。下面是突出 report/diagnostic 分层的精简
+analysis 示例：
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "toolVersion": "0.2.0",
   "kind": "analysis",
-  "data": {}
+  "data": {
+    "analysis": {
+      "channels": [{
+        "report": {
+          "overallRmsLinear": 0.5,
+          "overallRmsDbfs": -6.0206,
+          "primaryPeakLinear": 1.0
+        },
+        "outcome": {
+          "status": "measured",
+          "measurement": {
+            "loudWindowRms": 0.25,
+            "drSelectedPeak": 0.5,
+            "drPrimaryPeak": 1.0,
+            "drSecondaryPeak": 0.5
+          }
+        }
+      }],
+      "report": {
+        "overallRmsLinear": 0.5,
+        "overallRmsDbfs": -6.0206,
+        "primaryPeakLinear": 1.0,
+        "primaryPeakDbfs": 0.0,
+        "duration": { "decodedFrames": 48000, "sampleRate": 48000 }
+      }
+    }
+  }
 }
 ```
 
-payload 不含时间戳，非有限数值不会作为 JSON number 输出。
+payload 不含时间戳。`FiniteF32`/`FiniteF64` wrapper 使非有限 report 数值无法
+构造；零幅度的 dBFS 使用显式 `null`。每声道具有独立的 public-f32 overall RMS
+与 primary peak report metrics。track RMS 按参考路径先做 public-f32 平方、再以
+f64 累加，track peak 则取 public primary peak 的最大值。`DecodedDuration`
+保留精确的 decoded-frame/sample-rate 数对，而不是保存舍入后的秒数。
 
-诊断字段 `loudWindowRms` 与 `selectedPeak` 表示候选 DR 计算实际使用的值，并非
-参考文本报告中的 overall RMS 与 primary peak 字段复刻。解码器会把受支持输入
-统一为有限、交错的 `f64`，与固定 x64 核心的 PCM 宽度一致。这关闭了两处
-source-f64 边界偏差：当前 39-track safe-master observation 上，整数 track DR
-达到 39/39，每声道两位 DR 达到 62/62。该有限比较不覆盖不可见中间状态、全部
-报告字段、isolated host-edge 输入或任意音频，因此 profile 仍为 `Unverified`。
+DR 计算诊断与 report metrics 分离：`loudWindowRms`、`drSelectedPeak`、
+`drPrimaryPeak` 和可空的 `drSecondaryPeak` 只描述 DR 状态机实际使用的值，不能
+替代 report 字段。
+
+解码器会把受支持输入统一为有限、交错的 `f64`，与固定 x64 核心的 PCM 宽度
+一致。固定 39-track schema-v3 safe-master 实测中，track DR 为 39/39、channel
+DR 为 62/62、overall peak 为 39/39、overall RMS 为 39/39、channel RMS 为
+62/62。该精确 token 比较仍不覆盖不可见中间状态、footer/文本 parity、参考
+duration 渲染、isolated host-edge 输入、album-focused 导出或任意音频，因此
+profile 仍为 `Unverified`。
 
 ## 公共库
 
@@ -102,12 +140,32 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
     let mut session =
         AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1)?;
     session.push_interleaved(&[0.25, -0.25, 0.5, -0.5])?;
-    let _result = session.finish();
+    let _result = session.finish()?;
     Ok(())
 }
 ```
 
-`finish` 会消费 session；输入样本必须有限且按完整 frame 对齐。
+`finish` 会消费 session，并以可失败结果阻止数值/资源错误泄漏成非有限输出；输入
+样本必须有限且按完整 frame 对齐。
+
+Album 聚合是显式库操作，不会把 batch 隐式当成 album：
+
+```rust
+use macinmeter::{
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Analyzer,
+};
+
+fn main() -> Result<(), macinmeter::AnalysisError> {
+    let report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let track = AlbumTrackMetrics::try_from(&report)?;
+    let _album = AlbumAggregator::aggregate(&[track], AlbumWeighting::Unweighted)?;
+    Ok(())
+}
+```
+
+official album 值对 public-f32 track DR 做算术平均，并纳入数值 DR0 track；可选
+duration weighting 使用每首 track 的精确 decoded duration。除非调用方显式调用
+该 API，batch 与 GUI 结果始终只是相互独立的 track report 集合。
 
 ## GUI
 
@@ -154,7 +212,7 @@ Hyvärinen）。
 
 授权和致谢不代表数值兼容已经成立。目标 hash、实验、观测和候选规格记录在
 `reference/`；当前
-[x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)
+[schema-v3 x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
 明确列出精确比较范围与剩余缺口。只有更广泛的证据和审查支持更强结论后，profile
 才能脱离 `Unverified`。
 

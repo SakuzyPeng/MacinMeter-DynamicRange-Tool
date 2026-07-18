@@ -103,7 +103,7 @@ impl Analyzer {
         }
 
         ensure_not_cancelled(control)?;
-        let analysis = session.finish();
+        let analysis = session.finish()?;
         let diagnostics = opened.reader.diagnostics().clone();
         let report = AnalysisReport {
             source: opened.source,

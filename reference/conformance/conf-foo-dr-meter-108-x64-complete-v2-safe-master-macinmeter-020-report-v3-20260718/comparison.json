@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_report_metrics_conformance_comparison",
+  "reference": {
+    "normalizationSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "playlist": "00-safe-master",
+    "targetVersions": {
+      "foobar2000Version": "2.25.10",
+      "drMeterVersion": "1.0.8",
+      "reportedLogDate": "2026-07-18 17:54:55"
+    }
+  },
+  "implementation": {
+    "wireOutputSha256": "7e1bb26d2c4d88d39e87ec438507e4817dc6e599a4c2e2a79cb0a9311626214b",
+    "binarySha256": "ff249a3c3cdcd0f45f9bc91065f08259f2c690432f4677cb9216dc1692da399e",
+    "wireSchemaVersion": 3,
+    "toolVersion": "0.2.0",
+    "profile": "foo_dr_meter_1_0_8_candidate_v1",
+    "compatibility": "unverified"
+  },
+  "policy": {
+    "trackDr": "exact integer token",
+    "channelDrDb": "reference two-decimal token with near-zero centi-dB correction",
+    "trackPrimaryPeakDbfs": "reference two-decimal/-inf token",
+    "trackOverallRmsDbfs": "reference two-decimal/-inf token",
+    "channelOverallRmsDbfs": "reference two-decimal/-inf token",
+    "numericToleranceDb": 0.0,
+    "fixtureSetAndOrder": "exact unique fixture stems in reference order"
+  },
+  "summary": {
+    "status": "match",
+    "trackDrMatched": 39,
+    "trackDrTotal": 39,
+    "channelDrMatched": 62,
+    "channelDrTotal": 62,
+    "overallPeakMatched": 39,
+    "overallPeakTotal": 39,
+    "overallRmsMatched": 39,
+    "overallRmsTotal": 39,
+    "channelRmsMatched": 62,
+    "channelRmsTotal": 62,
+    "differenceCount": 0,
+    "fixtureSetExact": true,
+    "implementationOrderMatchesReference": true
+  },
+  "differences": [],
+  "notCompared": [
+    {
+      "fieldClass": "internal intermediate state",
+      "reason": "not observable in the exported reference report"
+    },
+    {
+      "referenceField": "durationToken",
+      "reason": "decoded duration is structured, but reference duration text rendering is outside this comparison"
+    },
+    {
+      "referenceFields": [
+        "footer",
+        "album focused aggregation"
+      ],
+      "reason": "footer metadata and album aggregation have separate evidence and contracts"
+    }
+  ]
+}

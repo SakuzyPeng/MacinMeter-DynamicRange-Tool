@@ -12,12 +12,17 @@ MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 - 稳定格式为 WAV（PCM integer / IEEE float）、FLAC 与 AIFF（PCM integer）。
 - 目录发现使用扩展名筛选；实际解码器仍按文件内容探测。
 - 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`。
-- 分析、批量和错误共用 schema version 2 的 `WireEnvelope`。
+- 分析、批量和错误共用 schema version 3 的 `WireEnvelope`；channel/track
+  report metrics、精确 decoded duration 与 DR diagnostics 分层保存。
 - 不包含 FFmpeg、DSD、Opus、预处理、文件级并行或环境变量修改。
 
 主窗口当前一次启动一个 job；后端注册表仍按 job 隔离，因此不同窗口或直接命令调用不会共享取消状态。
 前端 TypeScript 类型只描述这份共享 wire schema；后端没有第二套 Rust 结果 DTO，
 字段 tag/casing 由 Rust 契约测试固定。
+
+GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
+`drSelectedPeak`、`drPrimaryPeak`、`drSecondaryPeak`，不能替代 report 字段。
+批量结果仍只是 track report 列表；Tauri 不会隐式调用库层的 `AlbumAggregator`。
 
 ## 后端命令
 

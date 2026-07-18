@@ -23,7 +23,7 @@ fn analyze(
     for chunk in chunks {
         session.push_interleaved(&chunk).unwrap();
     }
-    session.finish()
+    session.finish().unwrap()
 }
 
 fn measurement(result: &macinmeter_domain::AnalysisResult, channel: usize) -> &ChannelMeasurement {
@@ -218,7 +218,7 @@ fn rejects_bad_chunks_atomically_and_accepts_empty_chunks() {
     assert_eq!(session.frames_seen(), 2);
 
     session.push_interleaved(&second).unwrap();
-    let after_errors = session.finish();
+    let after_errors = session.finish().unwrap();
 
     let mut combined = first;
     combined.extend(second);
@@ -248,7 +248,7 @@ fn rejects_finite_samples_that_overflow_f64_analysis_atomically() {
     assert_eq!(session.frames_seen(), 0);
 
     session.push_interleaved(&valid).unwrap();
-    assert_eq!(session.finish(), analyze(spec, [valid]));
+    assert_eq!(session.finish().unwrap(), analyze(spec, [valid]));
 }
 
 #[test]
@@ -278,12 +278,75 @@ fn rejects_cross_chunk_square_accumulation_overflow_without_losing_prior_state()
     assert_eq!(session.frames_seen(), 2);
 
     session.push_interleaved(&[0.0]).unwrap();
-    let after_error = session.finish();
-    let baseline = analyze(
-        spec,
-        [vec![near_accumulation_limit, -near_accumulation_limit, 0.0]],
-    );
-    assert_eq!(after_error, baseline);
+    let after_error = session.finish().unwrap_err();
+
+    let mut baseline =
+        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    baseline
+        .push_interleaved(&[near_accumulation_limit, -near_accumulation_limit, 0.0])
+        .unwrap();
+    assert_eq!(after_error, baseline.finish().unwrap_err());
+}
+
+#[test]
+fn rejects_completed_window_overall_rms_overflow_before_mutating_the_session() {
+    let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
+    let sample = (f64::MAX * 0.45).sqrt();
+    let rms2 = 2.0 * (sample * sample) / 3.0;
+    assert!(rms2.is_finite());
+    assert!((3.0 * rms2).is_finite());
+    assert!((4.0 * rms2).is_infinite());
+
+    let high_window = [sample, 0.0, 0.0];
+    let mut accepted = high_window.repeat(3);
+    let mut session =
+        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    session.push_interleaved(&accepted).unwrap();
+
+    let error = session.push_interleaved(&high_window).unwrap_err();
+    assert_eq!(error.code, ErrorCode::AnalysisFailed);
+    assert_eq!(error.stage, AnalysisStage::Analysis);
+    assert!(error.message.contains("overall RMS accumulation"));
+    assert_eq!(session.frames_seen(), 9);
+
+    session.push_interleaved(&[0.0; 3]).unwrap();
+    let after_error = session.finish().unwrap_err();
+
+    accepted.extend_from_slice(&[0.0; 3]);
+    let mut baseline =
+        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    baseline.push_interleaved(&accepted).unwrap();
+    assert_eq!(after_error, baseline.finish().unwrap_err());
+}
+
+#[test]
+fn finish_reports_tail_overall_rms_overflow_as_a_structured_error() {
+    let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
+    let sample = (f64::MAX * 0.45).sqrt();
+    let high_window = [sample, 0.0, 0.0];
+    let mut session =
+        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    session.push_interleaved(&high_window.repeat(3)).unwrap();
+    session.push_interleaved(&[sample]).unwrap();
+
+    let error = session.finish().unwrap_err();
+    assert_eq!(error.code, ErrorCode::AnalysisFailed);
+    assert_eq!(error.stage, AnalysisStage::Analysis);
+    assert!(error.message.contains("overall RMS accumulation"));
+}
+
+#[test]
+fn finish_rejects_report_values_that_cannot_be_narrowed_to_finite_f32() {
+    let sample = f64::from(f32::MAX) * 2.0;
+    let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
+    let mut session =
+        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    session.push_interleaved(&[sample; 3]).unwrap();
+
+    let error = session.finish().unwrap_err();
+    assert_eq!(error.code, ErrorCode::AnalysisFailed);
+    assert_eq!(error.stage, AnalysisStage::Analysis);
+    assert!(error.message.contains("finite f32"));
 }
 
 #[test]
@@ -291,8 +354,8 @@ fn accepts_moderately_overfull_finite_pcm_without_clamping() {
     let result = analyze_mono(vec![2.0, -4.0, 3.0]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.primary_peak, 4.0);
-    assert_eq!(channel.selected_peak, 4.0);
+    assert_eq!(channel.dr_primary_peak, 4.0);
+    assert_eq!(channel.dr_selected_peak, 4.0);
 }
 
 #[test]
@@ -303,8 +366,46 @@ fn preserves_f64_pcm_without_narrowing_before_accumulation() {
     let result = analyze_mono(vec![sample]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.primary_peak, sample);
-    assert_eq!(channel.selected_peak, sample);
+    assert_eq!(channel.dr_primary_peak, sample);
+    assert_eq!(channel.dr_selected_peak, sample);
+    assert_eq!(
+        result.channels[0].report.primary_peak_linear.get(),
+        sample as f32
+    );
+    assert_eq!(
+        result.channels[0].report.overall_rms_linear.get(),
+        (2.0_f64.sqrt() * sample) as f32
+    );
+    assert_ne!(
+        f64::from(result.channels[0].report.primary_peak_linear.get()),
+        channel.dr_primary_peak
+    );
+}
+
+#[test]
+fn overall_rms_is_the_equal_weighted_mean_of_unquantized_window_power() {
+    let result = analyze(
+        stream(1, 1, ChannelLayout::KnownNoLfe),
+        [vec![0.25, 0.25, 0.25, 0.5]],
+    );
+    let expected_channel_rms = ((0.125_f64 + 0.5) / 2.0).sqrt() as f32;
+
+    assert_eq!(
+        result.channels[0].report.overall_rms_linear.get(),
+        expected_channel_rms
+    );
+    assert_eq!(
+        result.channels[0].report.overall_rms_dbfs.unwrap().get(),
+        (20.0 * f64::from(expected_channel_rms).log10()) as f32
+    );
+    assert_eq!(
+        result.report.overall_rms_linear.get().to_bits(),
+        f64::from(expected_channel_rms * expected_channel_rms)
+            .sqrt()
+            .to_bits()
+    );
+    assert_eq!(result.report.duration.decoded_frames, 4);
+    assert_eq!(result.report.duration.seconds(), 4.0);
 }
 
 #[test]
@@ -340,8 +441,8 @@ fn every_nonempty_tail_is_submitted_and_no_virtual_window_is_added() {
     let exact_window = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 3]]);
     let exact = measurement(&exact_window, 0);
     assert_eq!(exact.valid_windows, 1);
-    assert_eq!(exact.primary_peak, 0.5);
-    assert_eq!(exact.secondary_peak, None);
+    assert_eq!(exact.dr_primary_peak, 0.5);
+    assert_eq!(exact.dr_secondary_peak, None);
 
     let exact_plus_one = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 4]]);
     assert_eq!(measurement(&exact_plus_one, 0).valid_windows, 2);
@@ -392,9 +493,9 @@ fn fixture_105_recomputes_negative_dr_with_the_primary_peak() {
     let result = analyze_mono(samples);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.primary_peak, 1.0);
-    assert_eq!(channel.secondary_peak, Some(0.1));
-    assert_eq!(channel.selected_peak, channel.primary_peak);
+    assert_eq!(channel.dr_primary_peak, 1.0);
+    assert_eq!(channel.dr_secondary_peak, Some(0.1));
+    assert_eq!(channel.dr_selected_peak, channel.dr_primary_peak);
     assert!(channel.dr_db > 1.9 && channel.dr_db < 2.0);
     assert_eq!(channel.rounded_dr, 2);
 }
@@ -460,14 +561,14 @@ fn fixtures_120_and_121_preserve_quantized_peak_arrival_order() {
 
     let low_then_high = analyze_mono(peak_order_case(low_peak_db, high_peak_db));
     let low_first = measurement(&low_then_high, 0);
-    assert_eq!(low_first.primary_peak, low_peak);
-    assert_eq!(low_first.secondary_peak, Some(high_peak));
+    assert_eq!(low_first.dr_primary_peak, low_peak);
+    assert_eq!(low_first.dr_secondary_peak, Some(high_peak));
     assert_eq!(low_first.rounded_dr, 13, "fixture 120");
 
     let high_then_low = analyze_mono(peak_order_case(high_peak_db, low_peak_db));
     let high_first = measurement(&high_then_low, 0);
-    assert_eq!(high_first.primary_peak, high_peak);
-    assert_eq!(high_first.secondary_peak, Some(low_peak));
+    assert_eq!(high_first.dr_primary_peak, high_peak);
+    assert_eq!(high_first.dr_secondary_peak, Some(low_peak));
     assert_eq!(high_first.rounded_dr, 12, "fixture 121");
 }
 
@@ -491,6 +592,13 @@ fn fixtures_201_to_203_cover_short_and_silent_inputs() {
     assert_eq!(silent.aggregates.track.rounded_dr, Some(0));
     assert_eq!(silent.aggregates.track.contributing_channels, vec![0]);
     assert!(silent.aggregates.track.excluded_channels.is_empty());
+    assert_eq!(silent.channels[0].report.overall_rms_linear.get(), 0.0);
+    assert_eq!(silent.channels[0].report.overall_rms_dbfs, None);
+    assert_eq!(silent.channels[0].report.primary_peak_linear.get(), 0.0);
+    assert_eq!(silent.report.overall_rms_linear.get(), 0.0);
+    assert_eq!(silent.report.overall_rms_dbfs, None);
+    assert_eq!(silent.report.primary_peak_linear.get(), 0.0);
+    assert_eq!(silent.report.primary_peak_dbfs, None);
 }
 
 #[test]
@@ -612,6 +720,8 @@ fn tiny_nonzero_signal_is_measured_and_serializes_as_finite_json() {
     assert_eq!(channel.loud_window_rms, 0.00001);
     assert_eq!(channel.rounded_dr, 0);
     assert!(channel.dr_db.is_finite());
-    assert!(channel.selected_peak.is_finite());
-    serde_json::to_string(&result).unwrap();
+    assert!(channel.dr_selected_peak.is_finite());
+    let json = serde_json::to_string(&result).unwrap();
+    let round_trip: macinmeter_domain::AnalysisResult = serde_json::from_str(&json).unwrap();
+    assert_eq!(round_trip, result);
 }
