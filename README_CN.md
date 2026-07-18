@@ -211,7 +211,8 @@ macinmeter-domain
 
 当前参考目标是 foobar2000 DR Meter 1.0.8（`foo_dr_meter`，作者 Janne
 Hyvärinen）。
-我们已经取得作者对逆向插件的许可；私人授权原文不存入本仓库。
+我们已经取得作者对逆向插件的许可；私人授权原文不存入本仓库，只保留
+[最小公开范围摘要](reference/authorization/README.md)。
 
 授权和致谢不代表数值兼容已经成立。目标 hash、实验、观测和候选规格记录在
 `reference/`；当前

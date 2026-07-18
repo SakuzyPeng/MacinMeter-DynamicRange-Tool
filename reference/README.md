@@ -7,6 +7,7 @@
 
 | 目录 | 内容 |
 | --- | --- |
+| [`authorization/`](authorization/README.md) | 公开的最小授权来源与边界摘要 |
 | [`targets/`](targets/README.md) | 参考二进制、宿主、平台、配置和哈希身份 |
 | [`experiments/`](experiments/README.md) | 可重复实验定义和输入生成参数 |
 | [`observations/`](observations/README.md) | 参考目标的原始输出和运行环境 |
@@ -80,5 +81,5 @@ Legacy snapshot 不得用作 correctness golden，当前实现的输出也不得
 - 不提交私人授权原文、受限制二进制、账号信息、绝对个人路径或机器秘密；
 - 大文件和不可公开 fixture 只提交生成说明、哈希和安全存放位置。
 
-授权与公开边界见 [`docs/LEGAL_CN.md`](../docs/LEGAL_CN.md)。该法律文档和本目录
-中的工程记录都不替代专业法律意见。
+授权来源摘要见 [`authorization/README.md`](authorization/README.md)，公开边界见
+[`docs/LEGAL_CN.md`](../docs/LEGAL_CN.md)。这些工程记录都不替代专业法律意见。

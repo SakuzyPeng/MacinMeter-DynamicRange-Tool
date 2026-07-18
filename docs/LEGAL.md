@@ -13,6 +13,13 @@ repository. Public engineering records should contain only the minimum
 permission summary needed to explain the research boundary; they must not
 publish private messages without separate consent.
 
+The public provenance and scope summary is recorded in
+[`reference/authorization/README.md`](../reference/authorization/README.md).
+The author's reply, displayed by the maintainer's mailbox on 2025-09-08,
+expressed no objection to reverse engineering the component or to this
+independent project choosing the MIT License. This does not place the original
+component under MIT or authorize its redistribution.
+
 Permission to study a target does not prove that this implementation matches
 it. MacinMeter reports
 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`, and the project makes no

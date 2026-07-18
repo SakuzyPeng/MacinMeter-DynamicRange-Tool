@@ -9,6 +9,12 @@ Hyvärinen 所著 foobar2000 DR Meter 1.0.8（`foo_dr_meter`）；
 项目维护者已经取得作者对逆向该插件的许可。私人通信保存在公开仓库之外。公开工程
 记录只应保留解释研究边界所需的最小授权摘要；未经另行同意，不应发布私人消息原文。
 
+公开的来源与范围摘要登记在
+[`reference/authorization/README.md`](../reference/authorization/README.md)。
+作者回复在维护者邮箱中显示为 2025-09-08；回复明确不反对逆向该 component，也不
+反对本独立项目选择 MIT License。这不表示原 component 本身改用 MIT，也不授权
+再分发原 component。
+
 获准研究目标不代表本实现已经与目标一致。MacinMeter 的结果状态为
 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`，项目不作参考兼容、认证、背书
 或“官方结果”声明。名称和版本只用于标识证据研究对象，不表示从属关系或结果对等。

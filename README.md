@@ -228,7 +228,8 @@ See:
 The current reference target is foobar2000 DR Meter 1.0.8
 (`foo_dr_meter`) by Janne Hyvärinen. Permission to reverse engineer the plugin
 has been obtained from its author. Private permission correspondence is not
-stored in this repository.
+stored in this repository; only a
+[minimal public scope summary](reference/authorization/README.md) is retained.
 
 That permission and attribution do not establish numerical compatibility.
 Target hashes, experiments, observations, and the candidate specification are
