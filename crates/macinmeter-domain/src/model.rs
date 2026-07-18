@@ -147,12 +147,12 @@ pub struct PcmStreamInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PcmBlock {
-    samples: Vec<f32>,
+    samples: Vec<f64>,
     frames: usize,
 }
 
 impl PcmBlock {
-    pub fn new(samples: Vec<f32>, channels: ChannelCount) -> Result<Self, AnalysisError> {
+    pub fn new(samples: Vec<f64>, channels: ChannelCount) -> Result<Self, AnalysisError> {
         if samples.is_empty() {
             return Err(AnalysisError::new(
                 ErrorCode::DecodeFailed,
@@ -178,7 +178,7 @@ impl PcmBlock {
         Ok(Self { samples, frames })
     }
 
-    pub fn samples(&self) -> &[f32] {
+    pub fn samples(&self) -> &[f64] {
         &self.samples
     }
 
@@ -219,9 +219,9 @@ pub struct DecodeDiagnostics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum AnalysisProfile {
-    ProvisionalV1,
+    #[serde(rename = "foo_dr_meter_1_0_8_candidate_v1")]
+    FooDrMeter108CandidateV1,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,10 +236,18 @@ pub struct AlgorithmParameters {
     pub window_duration_coefficient: f64,
     pub rms_sum_multiplier: f64,
     pub histogram_bins: usize,
-    pub minimum_nonzero_rms_bin: usize,
+    pub rms_histogram_min_db: f64,
+    pub rms_histogram_max_db: f64,
+    pub histogram_bin_width_db: f64,
+    pub peak_key_bin_width_db: f64,
     pub loud_fraction: f64,
     pub minimum_tail_frames: usize,
+    pub include_entire_boundary_bin: bool,
     pub exact_window_virtual_zero_peak: bool,
+    pub dr_floor_db: f64,
+    pub silent_channel_dr_db: f64,
+    pub includes_lfe_in_track_aggregate: bool,
+    pub result_precision_bits: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -254,9 +262,9 @@ pub struct AlgorithmDescriptor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelMeasurement {
-    pub dr_db: f64,
-    pub rounded_dr: i32,
-    pub loud_rms: f64,
+    pub dr_db: f32,
+    pub rounded_dr: u32,
+    pub loud_window_rms: f64,
     pub selected_peak: f64,
     pub primary_peak: f64,
     pub secondary_peak: Option<f64>,
@@ -286,9 +294,7 @@ pub struct ChannelResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExclusionReason {
-    Silent,
     InsufficientData,
-    Lfe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -301,17 +307,16 @@ pub struct ExcludedChannel {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackAggregate {
-    pub precise_dr_db: Option<f64>,
-    pub rounded_dr: Option<i32>,
-    pub included_channels: Vec<usize>,
+    pub dr_db: Option<f32>,
+    pub rounded_dr: Option<u32>,
+    pub contributing_channels: Vec<usize>,
     pub excluded_channels: Vec<ExcludedChannel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AggregateResults {
-    pub all_channels: TrackAggregate,
-    pub without_lfe: Option<TrackAggregate>,
+    pub track: TrackAggregate,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -358,9 +363,9 @@ mod tests {
         let channels = ChannelCount::new(2).unwrap();
         assert!(PcmBlock::new(Vec::new(), channels).is_err());
         assert!(PcmBlock::new(vec![0.0], channels).is_err());
-        assert!(PcmBlock::new(vec![0.0, f32::NAN], channels).is_err());
-        assert!(PcmBlock::new(vec![f32::INFINITY, 0.0], channels).is_err());
-        assert!(PcmBlock::new(vec![0.0, f32::NEG_INFINITY], channels).is_err());
+        assert!(PcmBlock::new(vec![0.0, f64::NAN], channels).is_err());
+        assert!(PcmBlock::new(vec![f64::INFINITY, 0.0], channels).is_err());
+        assert!(PcmBlock::new(vec![0.0, f64::NEG_INFINITY], channels).is_err());
         assert_eq!(
             PcmBlock::new(vec![0.0, 0.0, 0.5, -0.5], channels)
                 .unwrap()

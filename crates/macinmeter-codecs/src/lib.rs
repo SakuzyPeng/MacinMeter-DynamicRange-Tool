@@ -35,7 +35,7 @@ pub enum ReadOutcome {
     Eof,
 }
 
-/// A sequential source of finite, interleaved `f32` PCM blocks.
+/// A sequential source of finite, interleaved `f64` PCM blocks.
 pub trait PcmSource {
     /// Return the immutable format of PCM blocks produced by this source.
     fn stream_info(&self) -> &PcmStreamInfo;

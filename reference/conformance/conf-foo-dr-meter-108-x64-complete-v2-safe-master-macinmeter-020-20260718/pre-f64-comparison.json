@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_conformance_comparison",
+  "reference": {
+    "normalizationSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "playlist": "00-safe-master",
+    "targetVersions": {
+      "foobar2000Version": "2.25.10",
+      "drMeterVersion": "1.0.8",
+      "reportedLogDate": "2026-07-18 17:54:55"
+    }
+  },
+  "implementation": {
+    "wireOutputSha256": "c8d31e871609edf7b9807eaa28deb4e0af0d8b643eec3e65ff3b2a0f60863f97",
+    "binarySha256": "8b1683fa6923d4f2b616e002f949403ae6eb730f99a05831f930dc425395dd6d",
+    "wireSchemaVersion": 2,
+    "toolVersion": "0.2.0",
+    "profile": "foo_dr_meter_1_0_8_candidate_v1",
+    "compatibility": "unverified"
+  },
+  "policy": {
+    "trackDr": "exact integer token",
+    "channelDrDb": "exact exported two-decimal token",
+    "numericToleranceDb": 0.0,
+    "itemOrder": "compare by unique fixture stem"
+  },
+  "summary": {
+    "status": "systematic_difference",
+    "trackDrMatched": 39,
+    "trackDrTotal": 39,
+    "channelDrMatched": 60,
+    "channelDrTotal": 62,
+    "differenceCount": 2,
+    "fixtureSetExact": true,
+    "implementationOrderMatchesReference": false
+  },
+  "differences": [
+    {
+      "fixtureId": "rms-half-f64-stereo",
+      "stem": "410_rms_half_f64_stereo",
+      "field": "channelDrDbToken",
+      "channelIndex": 1,
+      "reference": "8.00",
+      "implementation": "8.01"
+    },
+    {
+      "fixtureId": "peak-half-f64-stereo",
+      "stem": "420_peak_half_f64_stereo",
+      "field": "channelDrDbToken",
+      "channelIndex": 0,
+      "reference": "18.99",
+      "implementation": "19.00"
+    }
+  ],
+  "notCompared": [
+    {
+      "referenceFields": [
+        "peakDbfsToken",
+        "rmsDbfsToken"
+      ],
+      "reason": "MacinMeter WireEnvelope does not expose the same report-level primary-peak and overall-channel-RMS fields"
+    },
+    {
+      "referenceField": "channelRmsDbfsTokens",
+      "reason": "MacinMeter loudWindowRms has different semantics from the reference report channel overall RMS"
+    },
+    {
+      "fieldClass": "internal intermediate state",
+      "reason": "not observable in the exported reference report"
+    }
+  ]
+}

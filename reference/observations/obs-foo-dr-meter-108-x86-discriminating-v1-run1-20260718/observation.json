@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_observation",
+  "factClass": "reference-observation",
+  "observationId": "OBS-foo-dr-meter-108-x86-discriminating-v1-run1-20260718",
+  "status": "preliminary_single_pass",
+  "targetId": "TARGET-foo-dr-meter-1.0.8-foobar2000-2.0-x86-win10-19045",
+  "experimentId": "EXP-foo-dr-meter-108-discriminating-v1",
+  "corpus": {
+    "id": "foo-dr-meter-108-discriminating-v1",
+    "manifestPath": "../../fixtures/foo-dr-meter-108-discriminating-v1.manifest.json",
+    "manifestSha256": "3be98e98ce9618e1ca1d20fde6158dfb70f6a55ef6af0dd784d51e33f975f1a6"
+  },
+  "run": {
+    "architecture": "x86",
+    "repeat": 1,
+    "procedure": "foobar2000 GUI Measure Dynamic Range followed by Copy Log",
+    "timezone": {
+      "name": "China Standard Time",
+      "utcOffset": "+08:00"
+    },
+    "settings": {
+      "automaticallySaveTags": {
+        "value": false,
+        "source": "operator_attested"
+      },
+      "stereoPerChannelStats": {
+        "value": true,
+        "source": "operator_attested_and_report_corroborated"
+      },
+      "albumLengthWeighting": {
+        "value": false,
+        "source": "operator_attested"
+      },
+      "multichannelLoudnessWeighting": {
+        "value": false,
+        "source": "operator_attested"
+      }
+    }
+  },
+  "rawReports": [
+    {
+      "group": "01-core",
+      "capturedAtLocal": "2026-07-18T15:11:37+08:00",
+      "path": "raw/x86-run1-01-core.txt",
+      "sha256": "80ad88ecf707d47755409450014f32d6dbcefd407aa89cef7701b9ce4d3d68f0",
+      "byteLength": 1397,
+      "encoding": "UTF-8",
+      "lineEndings": "CRLF",
+      "capturedVerbatim": true
+    },
+    {
+      "group": "02-degenerate",
+      "capturedAtLocal": "2026-07-18T15:12:45+08:00",
+      "path": "raw/x86-run1-02-degenerate.txt",
+      "sha256": "5534499c72a82c638fc2437e1ad6978bd23753807617a992061b567ba652baa9",
+      "byteLength": 939,
+      "encoding": "UTF-8",
+      "lineEndings": "CRLF",
+      "capturedVerbatim": true
+    },
+    {
+      "group": "03-multichannel",
+      "capturedAtLocal": "2026-07-18T15:13:41+08:00",
+      "path": "raw/x86-run1-03-multichannel.txt",
+      "sha256": "e10ffeda5fe3f91943328e4da00488de4c77856670eeefaa0e72483a450c73ae",
+      "byteLength": 1641,
+      "encoding": "UTF-8",
+      "lineEndings": "CRLF",
+      "capturedVerbatim": true
+    }
+  ],
+  "validation": {
+    "fixtureCount": 15,
+    "fixtureNamesExactlyOnce": true,
+    "reportGroupCounts": {
+      "01-core": 9,
+      "02-degenerate": 3,
+      "03-multichannel": 3
+    },
+    "repeatConsistency": "not_assessed"
+  },
+  "limitations": [
+    "Only one pass was captured.",
+    "No x64 cross-run was captured.",
+    "Only exported final report fields are observable.",
+    "Some settings depend on operator attestation.",
+    "The precise host locale was not separately captured."
+  ],
+  "claims": {
+    "scope": "exported report text only",
+    "compatibility": "none",
+    "appliesToVersion": "foo_dr_meter 1.0.8 x86 only"
+  }
+}

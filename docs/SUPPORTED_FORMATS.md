@@ -4,14 +4,21 @@
 
 MacinMeter 0.2.0 intentionally exposes a small, correctness-first decoder
 surface. Availability means that the route is part of the M0 contract; it does
-not imply compatibility with the reference DR plugin.
+not imply compatibility with foo_dr_meter 1.0.8. The current analysis profile
+is a candidate and remains `Unverified`.
 
 | Container | Accepted codec | PCM delivered to analysis |
 |---|---|---|
-| WAV / WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f32` |
-| WAV / WAVE | IEEE 32/64-bit float PCM | finite interleaved `f32` |
-| FLAC | FLAC | finite interleaved `f32` |
-| AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f32` |
+| WAV / WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
+| WAV / WAVE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
+| FLAC | FLAC | finite interleaved `f64` |
+| AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
+
+The fixed x64 1.0.8 reference core also consumes `f64`. Moving the product PCM
+path to `f64` closed the two source-f64 differences exposed by the current
+safe-master corpus, whose comparable core fields now match at 39/39 track DR
+and 62/62 channel DR tokens. This does not establish bit-identical decoder
+normalization for every host, container, runtime boundary, or input.
 
 The decoder probes file contents with no extension hint. Extensions
 `.wav`, `.wave`, `.flac`, `.aif`, and `.aiff` are used only to discover files
@@ -43,7 +50,9 @@ decoded frame counts are tracked separately, and M0 fails rather than silently
 skipping a damaged packet.
 
 Channel layout is never inferred from channel count. If the backend cannot
-establish a trustworthy layout, the report uses `unknown`; consequently no
-`without_lfe` aggregate is produced. Aggregate objects preserve every exclusion
-reason even when no channel is measurable; their DR values are then explicit
-`null`.
+establish a trustworthy layout, the report uses `unknown`. Candidate V1
+produces one `track` aggregate and, following the evidence-backed candidate
+rule, includes LFE rather than producing a separate `without_lfe` result.
+Silent channels visibly remain `silent` and contribute DR0; only insufficient
+data is excluded. If no channel can contribute, aggregate DR values are
+explicit `null`.

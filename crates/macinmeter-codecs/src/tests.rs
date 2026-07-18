@@ -79,7 +79,7 @@ fn decodes_pcm_wave_by_content_with_a_wrong_extension() {
 }
 
 #[test]
-fn decodes_float_wave_through_safe_f32_conversion() {
+fn decodes_float32_wave_to_f64_pcm() {
     let samples = [0.25_f32, -0.5, 1.0, -1.0];
     let file = TestFile::new("wav", &float32_wave(44_100, &samples));
     let mut opened = DecoderFactory::new().open(file.path()).unwrap();
@@ -90,13 +90,20 @@ fn decodes_float_wave_through_safe_f32_conversion() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
     };
-    assert_eq!(block.samples(), samples);
+    let expected: Vec<f64> = samples.iter().map(|sample| f64::from(*sample)).collect();
+    assert_eq!(block.samples(), expected);
     assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
 }
 
 #[test]
-fn decodes_float64_wave_through_safe_f32_conversion() {
-    let samples = [0.125_f64, -0.75, 1.0, -1.0];
+fn preserves_float64_wave_samples_without_f32_narrowing() {
+    let samples = [
+        0.125_f64 + f64::EPSILON,
+        -0.75 + f64::EPSILON,
+        1.0 - f64::EPSILON,
+        -1.0 + f64::EPSILON,
+    ];
+    assert_ne!(samples[0], f64::from(samples[0] as f32));
     let file = TestFile::new("wav", &float64_wave(96_000, &samples));
     let mut opened = DecoderFactory::new().open(file.path()).unwrap();
 
@@ -106,8 +113,7 @@ fn decodes_float64_wave_through_safe_f32_conversion() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
     };
-    let expected: Vec<f32> = samples.iter().map(|sample| *sample as f32).collect();
-    assert_eq!(block.samples(), expected);
+    assert_eq!(block.samples(), samples);
     assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
 }
 

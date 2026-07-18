@@ -1,0 +1,29 @@
+foobar2000 v2.0 / DR Meter v1.0.8
+log date: 2026-07-18 15:11:37
+
+--------------------------------------------------------------------------------
+Analyzed: ? / ?
+--------------------------------------------------------------------------------
+
+DR         Peak           RMS       Duration Track
+--------------------------------------------------------------------------------
+DR12       0.00 dBFS   -12.04 dBFS      0:03 ?-101_window_minus_one_control
+DR12       0.00 dBFS   -12.04 dBFS      0:03 ?-102_exact_window_control
+DR19       0.00 dBFS   -20.43 dBFS      0:06 ?-103_tail_pair_base
+DR2        0.00 dBFS    -7.63 dBFS      0:06 ?-104_tail_pair_plus_one
+DR2        0.00 dBFS    -4.93 dBFS      0:06 ?-105_negative_dr_fallback
+DR39     -20.00 dBFS   -59.77 dBFS      0:15 ?-110_histogram_db_domain
+DR12      -6.02 dBFS   -20.86 dBFS      0:30 ?-111_loud_boundary_bin_ties
+DR13      -2.00 dBFS   -14.50 dBFS      0:15 ?-120_peak_order_low_then_high
+DR12      -2.00 dBFS   -14.50 dBFS      0:15 ?-121_peak_order_high_then_low
+--------------------------------------------------------------------------------
+
+Number of tracks:  9
+Official DR value: DR14
+
+Samplerate:        8000 Hz
+Channels:          1
+Bits per sample:   32
+Bitrate:           256 kbps
+Codec:             PCM (浮点)
+================================================================================

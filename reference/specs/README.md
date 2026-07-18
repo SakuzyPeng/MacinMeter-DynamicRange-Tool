@@ -15,3 +15,7 @@
 当前规格：
 
 - [`provisional-v1.md`](provisional-v1.md)：M0 的可信边界和参考算法未知项。
+- [`foo-dr-meter-1.0.8-candidate-v1.md`](foo-dr-meter-1.0.8-candidate-v1.md)：
+  基于 1.0.8 x64/x86 静态分析、x86 初步观测和 x64 complete-v2 safe-master
+  观测的候选算法。当前 MacinMeter 的 f64 主链在有限公开字段上达到
+  39/39、62/62，但规格仍为 `candidate / unverified`，不声明通用 parity。

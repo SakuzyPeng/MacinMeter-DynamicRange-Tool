@@ -10,12 +10,26 @@
 | [`targets/`](targets/README.md) | 参考二进制、宿主、平台、配置和哈希身份 |
 | [`experiments/`](experiments/README.md) | 可重复实验定义和输入生成参数 |
 | [`observations/`](observations/README.md) | 参考目标的原始输出和运行环境 |
+| [`static-analysis/`](static-analysis/README.md) | 固定二进制的受控静态分析证据 |
 | [`fixtures/`](fixtures/README.md) | 可公开或可重复生成的实验输入 |
 | [`specs/`](specs/README.md) | 带版本和证据等级的算法规格 |
 | [`conformance/`](conformance/README.md) | 参考观测与实现结果的差分摘要 |
 
-当前起点是 [`specs/provisional-v1.md`](specs/provisional-v1.md)。它只定义 M0
-可以依赖的边界和未知项，不是 `foo_dr_meter` 行为的最终规格。
+当前生产候选规格是
+[`specs/foo-dr-meter-1.0.8-candidate-v1.md`](specs/foo-dr-meter-1.0.8-candidate-v1.md)。
+[`specs/provisional-v1.md`](specs/provisional-v1.md) 只保留为 M0 历史工程基线；
+两者都不是 accepted 兼容声明。
+
+当前一次性完整输入协议是
+[`experiments/foo-dr-meter-108-complete-v2.md`](experiments/foo-dr-meter-108-complete-v2.md)；
+它用于承载静态规则回归和剩余 host-edge 观察，不取代既有 v1 observation。固定
+x64 runtime 对其中 39 项 safe master 的首次导出已登记为
+[`OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718`](observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/observation.json)。
+MacinMeter 改用 finite interleaved f64 主链后，对同一 observation 的公开可比
+核心字段达到整数 track DR 39/39、每声道两位 DR token 62/62；完整差分边界见
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
+这份有限 conformance 记录不会把 candidate 升级为 accepted，也不改变
+`Unverified` 状态。
 
 ## 五类事实
 

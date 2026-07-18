@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_observation",
+  "factClass": "reference-observation",
+  "observationId": "OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718",
+  "status": "safe_master_single_pass",
+  "targetId": "TARGET-foo-dr-meter-1.0.8-foobar2000-2.25.10-x64-win10-19045",
+  "experimentId": "EXP-foo-dr-meter-108-complete-v2",
+  "corpus": {
+    "id": "foo-dr-meter-108-complete-v2",
+    "manifestPath": "../../fixtures/foo-dr-meter-108-complete-v2.manifest.json",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "filesSha256FileSha256": "b5692b3165d82d7d189c38573a48fd0b5dd24750e82aa706d6c9eb45ce5d7595",
+    "generatorPath": "../../tools/generate_foo_dr_meter_108_complete_v2.py",
+    "generatorSha256": "f83fdcd0b88f2f414c53f8aa52a5b03f4fd4c8ee25024c4dce603df9a2179054",
+    "playlist": "00-safe-master",
+    "safeFixtureCount": 39,
+    "totalFixtureCount": 42
+  },
+  "run": {
+    "architecture": "x86_64",
+    "repeat": 1,
+    "procedure": "foobar2000 GUI Measure Dynamic Range followed by Save Log",
+    "reportedLogDate": "2026-07-18 17:54:55",
+    "timezone": {
+      "name": "China Standard Time",
+      "utcOffset": "+08:00"
+    },
+    "settings": {
+      "automaticallySaveTags": {
+        "value": false,
+        "source": "operator_attested"
+      },
+      "stereoPerChannelStats": {
+        "value": true,
+        "source": "operator_attested_and_report_corroborated"
+      },
+      "albumLengthWeighting": {
+        "value": false,
+        "source": "operator_attested"
+      },
+      "multichannelLoudnessWeighting": {
+        "value": false,
+        "source": "operator_attested"
+      }
+    }
+  },
+  "inputVerification": {
+    "packageVerifyScript": "VERIFY.ps1",
+    "packageVerifyResult": "passed",
+    "manifestSha256OnTarget": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "wavCount": 42,
+    "safePlaylistCount": 39,
+    "safePlaylistIsolatedOverlap": 0
+  },
+  "rawReports": [
+    {
+      "group": "safe-master",
+      "path": "raw/x64-run1-safe-master.txt",
+      "sha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+      "byteLength": 12352,
+      "encoding": "US-ASCII",
+      "lineEndings": "CRLF",
+      "capturedVerbatim": true
+    }
+  ],
+  "normalization": {
+    "path": "normalized/safe-master.json",
+    "sha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "parserPath": "../../tools/normalize_foo_dr_meter_report.py",
+    "parserSha256": "b3bbf8a699f50ab5de9d2d8511841d719189a87018f8f0b325ec425d597e56d7",
+    "numericTokensPreservedAsText": true
+  },
+  "validation": {
+    "fixtureCount": 39,
+    "channelValueCount": 62,
+    "fixtureStemsExactlyOnce": true,
+    "manifestOrderExact": true,
+    "headerVersionsMatchTarget": true,
+    "footerTrackCount": 39,
+    "officialDrToken": "DR12",
+    "repeatConsistency": "not_assessed",
+    "isolatedFixtures": "not_collected_in_this_observation"
+  },
+  "uninterpretedReportFields": [
+    {
+      "field": "Bits per sample",
+      "rawValue": "8, 16, 24, 32, 32761, 32761",
+      "reason": "host metadata encoding is not established by this observation"
+    }
+  ],
+  "limitations": [
+    "Only one safe-master pass was captured.",
+    "The three isolated fixtures were intentionally not included in this observation.",
+    "Only exported final report fields are dynamically observable.",
+    "Three settings depend solely on operator attestation.",
+    "The precise host locale was not separately captured.",
+    "The fixed foobar2000 2.25.10 input component has not yet received its own static decoder analysis."
+  ],
+  "claims": {
+    "scope": "safe-master exported report text for this exact runtime target only",
+    "compatibility": "none",
+    "appliesToVersion": "foo_dr_meter 1.0.8 x64 under foobar2000 2.25.10 only"
+  }
+}

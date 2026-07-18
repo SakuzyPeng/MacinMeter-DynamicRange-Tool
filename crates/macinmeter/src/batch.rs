@@ -22,7 +22,7 @@ impl BatchRequest {
         Self {
             inputs,
             recursive,
-            profile: AnalysisProfile::ProvisionalV1,
+            profile: AnalysisProfile::FooDrMeter108CandidateV1,
         }
     }
 }

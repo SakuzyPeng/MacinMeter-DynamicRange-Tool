@@ -3,11 +3,11 @@
 ## v0.2.0 (M0) – Trusted trunk rebuild / 可信主干重建
 
 > Status: development branch. All analysis output is
-> `ProvisionalV1 / Unverified`; this release does not claim reference-plugin
-> compatibility.
+> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`; this release does not claim
+> reference-plugin compatibility.
 >
-> 状态：开发分支。所有分析结果均标记为 `ProvisionalV1 / Unverified`，本版本不
-> 声明已经兼容参考插件。
+> 状态：开发分支。所有分析结果均标记为
+> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`，本版本不声明已经兼容参考插件。
 
 ### Architecture / 架构
 
@@ -29,6 +29,10 @@
 
 - M0 supports content-probed WAV integer/float PCM, FLAC, and AIFF integer PCM.
   M0 只支持按内容探测的 WAV 整数/浮点 PCM、FLAC 与 AIFF 整数 PCM。
+- Supported decoders and the streaming analyzer share finite interleaved
+  `f64` PCM, preserving float64 WAV values until analysis.
+  受支持的解码器与流式分析器统一使用有限、交错的 `f64` PCM，float64 WAV
+  在进入分析前不再提前窄化。
 - AIFC, lossy codecs, Opus/Songbird, FFmpeg routes, DSD, preprocessing, and
   parallel execution are unavailable by design.
   AIFC、有损编码、Opus/Songbird、FFmpeg 路径、DSD、预处理和并行执行均有意
@@ -40,9 +44,9 @@
   exit codes, clean stdout/stderr separation, and atomic explicit output.
   新增显式 `macinmeter analyze` / `macinmeter batch` 命令、稳定退出码、
   stdout/stderr 分离与显式原子输出。
-- CLI JSON and Tauri now share schema version 1 and the same application report,
+- CLI JSON and Tauri now share schema version 2 and the same application report,
   errors, cancellation, and progress model.
-  CLI JSON 与 Tauri 共用 schema v1，以及同一 application report、错误、取消和
+  CLI JSON 与 Tauri 共用 schema v2，以及同一 application report、错误、取消和
   进度模型。
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
@@ -53,6 +57,12 @@
   API/CLI parity checks, CLI black-box tests, and independent GUI job tests.
   新增分析边界/属性测试、严格解码契约测试、Rust API/CLI 一致性、CLI 黑盒测试与
   GUI job 隔离测试。
+- Recorded a fixed x64 1.0.8 safe-master observation and scoped conformance:
+  39/39 integer track DR and 62/62 two-decimal channel DR tokens match after
+  the f64 PCM correction. The profile remains `Unverified`.
+  登记固定 x64 1.0.8 safe-master observation 与受限 conformance；f64 PCM
+  修正后整数 track DR 为 39/39、每声道两位 DR token 为 62/62，但 profile
+  仍保持 `Unverified`。
 - CI is intentionally manual-only during M0; the local pre-commit hook performs
   only format and workspace compile checks.
   M0 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。

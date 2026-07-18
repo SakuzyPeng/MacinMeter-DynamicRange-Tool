@@ -5,11 +5,12 @@ decoder, dual DR engines, packet/file parallelism, SIMD/unsafe conversion,
 EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes, and duplicate GUI DTOs
 have been removed. Do not reintroduce them as compatibility helpers.
 
-The current result profile is `ProvisionalV1` with compatibility status
-`Unverified`. Known reference-plugin deviations were systemic, so no generic
-“small floating-point tolerance” or compatibility percentage is valid. Future
-reference work must start from recorded target hashes, experiments, observations,
-and conformance evidence under `reference/`.
+The current result profile is `FooDrMeter108CandidateV1` with compatibility
+status `Unverified`. It follows the versioned candidate specification backed by
+the recorded 1.0.8 target hashes, static analysis, fixed x86/x64 observations,
+and scoped conformance records under `reference/`; it is not a claim of
+accepted conformance. No generic “small floating-point tolerance” or
+compatibility percentage is valid.
 
 ## Workspace
 
@@ -25,6 +26,8 @@ domain
 - `domain` owns valid stream/source/report/error types.
 - `analysis` owns the only frame-streaming `AnalyzerSession`.
 - `codecs` owns content probing and strict sequential PCM sources.
+- The shared PCM contract is finite interleaved `f64`; do not narrow float64
+  sources before analysis.
 - `macinmeter` composes decoding, analysis, discovery, cancellation, progress,
   serial batch execution, and the shared wire envelope.
 - CLI and GUI only parse, render, and adapt I/O.
@@ -49,5 +52,5 @@ pre-commit performs format and workspace compile checks without network audit.
 
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
-`reference/specs/provisional-v1.md` before changing architecture or algorithm
-behavior.
+`reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
+or algorithm behavior.

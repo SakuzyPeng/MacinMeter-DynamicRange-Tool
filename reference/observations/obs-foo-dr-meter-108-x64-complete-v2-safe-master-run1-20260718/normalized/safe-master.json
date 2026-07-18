@@ -1,0 +1,746 @@
+{
+  "schemaVersion": 1,
+  "kind": "foo_dr_meter_report_normalization",
+  "source": {
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "rawReportByteLength": 12352,
+    "encoding": "US-ASCII",
+    "lineEndings": "CRLF",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "playlist": "00-safe-master"
+  },
+  "header": {
+    "foobar2000Version": "2.25.10",
+    "drMeterVersion": "1.0.8",
+    "reportedLogDate": "2026-07-18 17:54:55"
+  },
+  "cases": [
+    {
+      "fixtureId": "window-minus-one-control",
+      "manifestOrder": 1,
+      "path": "01-core/101_window_minus_one_control.wav",
+      "stem": "101_window_minus_one_control",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-12.04",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "12.04"
+      ],
+      "channelRmsDbfsTokens": [
+        "-12.04"
+      ]
+    },
+    {
+      "fixtureId": "exact-window-control",
+      "manifestOrder": 2,
+      "path": "01-core/102_exact_window_control.wav",
+      "stem": "102_exact_window_control",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-12.04",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "12.04"
+      ],
+      "channelRmsDbfsTokens": [
+        "-12.04"
+      ]
+    },
+    {
+      "fixtureId": "tail-pair-base",
+      "manifestOrder": 3,
+      "path": "01-core/103_tail_pair_base.wav",
+      "stem": "103_tail_pair_base",
+      "channels": 1,
+      "trackDr": 19,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-20.43",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "19.08"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.43"
+      ]
+    },
+    {
+      "fixtureId": "tail-pair-plus-one",
+      "manifestOrder": 4,
+      "path": "01-core/104_tail_pair_plus_one.wav",
+      "stem": "104_tail_pair_plus_one",
+      "channels": 1,
+      "trackDr": 2,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-7.63",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "2.09"
+      ],
+      "channelRmsDbfsTokens": [
+        "-7.63"
+      ]
+    },
+    {
+      "fixtureId": "negative-dr-fallback",
+      "manifestOrder": 5,
+      "path": "01-core/105_negative_dr_fallback.wav",
+      "stem": "105_negative_dr_fallback",
+      "channels": 1,
+      "trackDr": 2,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-4.93",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "1.94"
+      ],
+      "channelRmsDbfsTokens": [
+        "-4.93"
+      ]
+    },
+    {
+      "fixtureId": "histogram-db-domain",
+      "manifestOrder": 6,
+      "path": "01-core/110_histogram_db_domain.wav",
+      "stem": "110_histogram_db_domain",
+      "channels": 1,
+      "trackDr": 39,
+      "peakDbfsToken": "-20.00",
+      "rmsDbfsToken": "-59.77",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "39.25"
+      ],
+      "channelRmsDbfsTokens": [
+        "-59.77"
+      ]
+    },
+    {
+      "fixtureId": "loud-boundary-bin-ties",
+      "manifestOrder": 7,
+      "path": "01-core/111_loud_boundary_bin_ties.wav",
+      "stem": "111_loud_boundary_bin_ties",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "-6.02",
+      "rmsDbfsToken": "-20.86",
+      "durationToken": "0:30",
+      "channelDrDbTokens": [
+        "11.94"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.86"
+      ]
+    },
+    {
+      "fixtureId": "peak-order-low-then-high",
+      "manifestOrder": 8,
+      "path": "01-core/120_peak_order_low_then_high.wav",
+      "stem": "120_peak_order_low_then_high",
+      "channels": 1,
+      "trackDr": 13,
+      "peakDbfsToken": "-2.00",
+      "rmsDbfsToken": "-14.50",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "12.50"
+      ],
+      "channelRmsDbfsTokens": [
+        "-14.50"
+      ]
+    },
+    {
+      "fixtureId": "peak-order-high-then-low",
+      "manifestOrder": 9,
+      "path": "01-core/121_peak_order_high_then_low.wav",
+      "stem": "121_peak_order_high_then_low",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "-2.00",
+      "rmsDbfsToken": "-14.50",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "12.50"
+      ],
+      "channelRmsDbfsTokens": [
+        "-14.50"
+      ]
+    },
+    {
+      "fixtureId": "one-frame-nonzero",
+      "manifestOrder": 10,
+      "path": "02-degenerate/201_one_frame_nonzero.wav",
+      "stem": "201_one_frame_nonzero",
+      "channels": 1,
+      "trackDr": 0,
+      "peakDbfsToken": "-6.02",
+      "rmsDbfsToken": "-3.01",
+      "durationToken": "0:00",
+      "channelDrDbTokens": [
+        "0.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-3.01"
+      ]
+    },
+    {
+      "fixtureId": "two-frame-negative",
+      "manifestOrder": 11,
+      "path": "02-degenerate/202_two_frame_constant.wav",
+      "stem": "202_two_frame_constant",
+      "channels": 1,
+      "trackDr": 0,
+      "peakDbfsToken": "-6.02",
+      "rmsDbfsToken": "-3.01",
+      "durationToken": "0:00",
+      "channelDrDbTokens": [
+        "0.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-3.01"
+      ]
+    },
+    {
+      "fixtureId": "silent-mono",
+      "manifestOrder": 12,
+      "path": "02-degenerate/203_silent_mono.wav",
+      "stem": "203_silent_mono",
+      "channels": 1,
+      "trackDr": 0,
+      "peakDbfsToken": "-inf",
+      "rmsDbfsToken": "-inf",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "0.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-inf"
+      ]
+    },
+    {
+      "fixtureId": "stereo-silent-channel",
+      "manifestOrder": 13,
+      "path": "03-multichannel/301_stereo_silent_channel.wav",
+      "stem": "301_stereo_silent_channel",
+      "channels": 2,
+      "trackDr": 6,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-15.01",
+      "durationToken": "0:30",
+      "channelDrDbTokens": [
+        "12.00",
+        "0.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-12.00",
+        "-inf"
+      ]
+    },
+    {
+      "fixtureId": "three-channel-arithmetic",
+      "manifestOrder": 14,
+      "path": "03-multichannel/302_three_channel_arithmetic.wav",
+      "stem": "302_three_channel_arithmetic",
+      "channels": 3,
+      "trackDr": 20,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-14.32",
+      "durationToken": "0:30",
+      "channelDrDbTokens": [
+        "10.00",
+        "20.00",
+        "30.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-10.00",
+        "-20.00",
+        "-30.00"
+      ]
+    },
+    {
+      "fixtureId": "six-channel-lfe",
+      "manifestOrder": 15,
+      "path": "03-multichannel/303_six_channel_lfe.wav",
+      "stem": "303_six_channel_lfe",
+      "channels": 6,
+      "trackDr": 15,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-10.89",
+      "durationToken": "0:30",
+      "channelDrDbTokens": [
+        "6.00",
+        "9.00",
+        "12.00",
+        "30.00",
+        "15.00",
+        "18.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-6.00",
+        "-9.00",
+        "-12.00",
+        "-30.00",
+        "-15.00",
+        "-18.00"
+      ]
+    },
+    {
+      "fixtureId": "histogram-lower-clamp",
+      "manifestOrder": 16,
+      "path": "04-numeric/401_histogram_lower_clamp.wav",
+      "stem": "401_histogram_lower_clamp",
+      "channels": 1,
+      "trackDr": 39,
+      "peakDbfsToken": "-60.00",
+      "rmsDbfsToken": "-100.93",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "39.34"
+      ],
+      "channelRmsDbfsTokens": [
+        "-100.93"
+      ]
+    },
+    {
+      "fixtureId": "loud-target-n9",
+      "manifestOrder": 17,
+      "path": "04-numeric/402_loud_target_n9.wav",
+      "stem": "402_loud_target_n9",
+      "channels": 1,
+      "trackDr": 8,
+      "peakDbfsToken": "-6.02",
+      "rmsDbfsToken": "-22.32",
+      "durationToken": "0:27",
+      "channelDrDbTokens": [
+        "7.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-22.32"
+      ]
+    },
+    {
+      "fixtureId": "sparse-nonzero-among-zero",
+      "manifestOrder": 18,
+      "path": "04-numeric/403_sparse_nonzero_among_zero.wav",
+      "stem": "403_sparse_nonzero_among_zero",
+      "channels": 1,
+      "trackDr": 20,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-30.00",
+      "durationToken": "0:30",
+      "channelDrDbTokens": [
+        "20.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-30.00"
+      ]
+    },
+    {
+      "fixtureId": "rms-half-f64-stereo",
+      "manifestOrder": 19,
+      "path": "04-numeric/410_rms_half_f64_stereo.wav",
+      "stem": "410_rms_half_f64_stereo",
+      "channels": 2,
+      "trackDr": 8,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-8.01",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.01",
+        "8.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-8.01",
+        "-8.01"
+      ]
+    },
+    {
+      "fixtureId": "rms-half-f32-stereo",
+      "manifestOrder": 20,
+      "path": "04-numeric/411_rms_half_f32_stereo.wav",
+      "stem": "411_rms_half_f32_stereo",
+      "channels": 2,
+      "trackDr": 8,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-8.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.01",
+        "8.01"
+      ],
+      "channelRmsDbfsTokens": [
+        "-8.01",
+        "-8.01"
+      ]
+    },
+    {
+      "fixtureId": "peak-half-f64-stereo",
+      "manifestOrder": 21,
+      "path": "04-numeric/420_peak_half_f64_stereo.wav",
+      "stem": "420_peak_half_f64_stereo",
+      "channels": 2,
+      "trackDr": 19,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "18.99",
+        "19.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00",
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "peak-half-f32-stereo",
+      "manifestOrder": 22,
+      "path": "04-numeric/421_peak_half_f32_stereo.wav",
+      "stem": "421_peak_half_f32_stereo",
+      "channels": 2,
+      "trackDr": 19,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:15",
+      "channelDrDbTokens": [
+        "19.00",
+        "19.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00",
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "sr-44100-w-minus-one",
+      "manifestOrder": 23,
+      "path": "05-samplerates/501_sr_44100_w_minus_one.wav",
+      "stem": "501_sr_44100_w_minus_one",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-12.04",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "12.04"
+      ],
+      "channelRmsDbfsTokens": [
+        "-12.04"
+      ]
+    },
+    {
+      "fixtureId": "sr-44100-w-plus-one",
+      "manifestOrder": 24,
+      "path": "05-samplerates/502_sr_44100_w_plus_one.wav",
+      "stem": "502_sr_44100_w_plus_one",
+      "channels": 1,
+      "trackDr": 3,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-5.93",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "3.01"
+      ],
+      "channelRmsDbfsTokens": [
+        "-5.93"
+      ]
+    },
+    {
+      "fixtureId": "sr-48000-w-minus-one",
+      "manifestOrder": 25,
+      "path": "05-samplerates/503_sr_48000_w_minus_one.wav",
+      "stem": "503_sr_48000_w_minus_one",
+      "channels": 1,
+      "trackDr": 12,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-12.04",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "12.04"
+      ],
+      "channelRmsDbfsTokens": [
+        "-12.04"
+      ]
+    },
+    {
+      "fixtureId": "sr-48000-w-plus-one",
+      "manifestOrder": 26,
+      "path": "05-samplerates/504_sr_48000_w_plus_one.wav",
+      "stem": "504_sr_48000_w_plus_one",
+      "channels": 1,
+      "trackDr": 3,
+      "peakDbfsToken": "0.00",
+      "rmsDbfsToken": "-5.93",
+      "durationToken": "0:03",
+      "channelDrDbTokens": [
+        "3.01"
+      ],
+      "channelRmsDbfsTokens": [
+        "-5.93"
+      ]
+    },
+    {
+      "fixtureId": "eight-channel-report-map",
+      "manifestOrder": 27,
+      "path": "06-precision-report/601_eight_channel_report_map.wav",
+      "stem": "601_eight_channel_report_map",
+      "channels": 8,
+      "trackDr": 18,
+      "peakDbfsToken": "-0.45",
+      "rmsDbfsToken": "-11.84",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "4.00",
+        "8.00",
+        "12.00",
+        "16.00",
+        "20.00",
+        "24.00",
+        "28.00",
+        "32.00"
+      ],
+      "channelRmsDbfsTokens": [
+        "-4.45",
+        "-9.41",
+        "-14.50",
+        "-19.74",
+        "-25.19",
+        "-30.94",
+        "-37.12",
+        "-44.04"
+      ]
+    },
+    {
+      "fixtureId": "album-10-49-a",
+      "manifestOrder": 28,
+      "path": "07-album/701_album_10_49_a.wav",
+      "stem": "701_album_10_49_a",
+      "channels": 1,
+      "trackDr": 10,
+      "peakDbfsToken": "-9.51",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "10.49"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "album-10-49-b",
+      "manifestOrder": 29,
+      "path": "07-album/702_album_10_49_b.wav",
+      "stem": "702_album_10_49_b",
+      "channels": 1,
+      "trackDr": 10,
+      "peakDbfsToken": "-9.51",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "10.49"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "album-11-49",
+      "manifestOrder": 30,
+      "path": "07-album/703_album_11_49.wav",
+      "stem": "703_album_11_49",
+      "channels": 1,
+      "trackDr": 11,
+      "peakDbfsToken": "-8.51",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "11.49"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "display-10-50",
+      "manifestOrder": 31,
+      "path": "07-album/704_display_10_50.wav",
+      "stem": "704_display_10_50",
+      "channels": 1,
+      "trackDr": 11,
+      "peakDbfsToken": "-9.50",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "10.50"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "aggregate-narrow-low",
+      "manifestOrder": 32,
+      "path": "06-precision-report/610_aggregate_narrow_low.wav",
+      "stem": "610_aggregate_narrow_low",
+      "channels": 3,
+      "trackDr": 12,
+      "peakDbfsToken": "-7.50",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "12.50",
+        "12.50",
+        "12.50"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00",
+        "-20.00",
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "aggregate-narrow-high",
+      "manifestOrder": 33,
+      "path": "06-precision-report/611_aggregate_narrow_high.wav",
+      "stem": "611_aggregate_narrow_high",
+      "channels": 3,
+      "trackDr": 13,
+      "peakDbfsToken": "-7.50",
+      "rmsDbfsToken": "-20.00",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "12.50",
+        "12.50",
+        "12.50"
+      ],
+      "channelRmsDbfsTokens": [
+        "-20.00",
+        "-20.00",
+        "-20.00"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-u8",
+      "manifestOrder": 34,
+      "path": "08-host-decode/801_host_decode_u8.wav",
+      "stem": "801_host_decode_u8",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-s16",
+      "manifestOrder": 35,
+      "path": "08-host-decode/802_host_decode_s16.wav",
+      "stem": "802_host_decode_s16",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-s24",
+      "manifestOrder": 36,
+      "path": "08-host-decode/803_host_decode_s24.wav",
+      "stem": "803_host_decode_s24",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-s32",
+      "manifestOrder": 37,
+      "path": "08-host-decode/804_host_decode_s32.wav",
+      "stem": "804_host_decode_s32",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-f32",
+      "manifestOrder": 38,
+      "path": "08-host-decode/805_host_decode_f32.wav",
+      "stem": "805_host_decode_f32",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    },
+    {
+      "fixtureId": "host-decode-f64",
+      "manifestOrder": 39,
+      "path": "08-host-decode/806_host_decode_f64.wav",
+      "stem": "806_host_decode_f64",
+      "channels": 1,
+      "trackDr": 9,
+      "peakDbfsToken": "-0.07",
+      "rmsDbfsToken": "-9.03",
+      "durationToken": "0:06",
+      "channelDrDbTokens": [
+        "8.96"
+      ],
+      "channelRmsDbfsTokens": [
+        "-9.03"
+      ]
+    }
+  ],
+  "footer": {
+    "numberOfTracksToken": "39",
+    "officialDrToken": "DR12",
+    "sampleRateToken": "8000, 44100, 48000 Hz",
+    "channelsToken": "1, 2, 3, 6, 8",
+    "bitsPerSampleToken": "8, 16, 24, 32, 32761, 32761",
+    "bitrateToken": "541 kbps",
+    "codecToken": "PCM, PCM (floating-point)"
+  },
+  "validation": {
+    "expectedTrackCount": 39,
+    "observedTrackCount": 39,
+    "expectedChannelValueCount": 62,
+    "observedChannelValueCount": 62,
+    "manifestStemsExactlyOnce": true,
+    "manifestOrderExact": true
+  }
+}

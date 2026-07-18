@@ -1,0 +1,1366 @@
+{
+  "cases": [
+    {
+      "alternativeHypotheses": [
+        "The tail is submitted and measured.",
+        "The tail is discarded or treated as insufficient."
+      ],
+      "byteLength": 96180,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "d4293e89d1a146e563560377444d348a8dc819b3c0abee7bc97eb5cfbfec502d",
+      "executionSet": "all-safe",
+      "fileSha256": "f635e1475fcdef6cbb8c9b2547e5d0ef564348a1a05d6e7cfe0aa2417f52cd27",
+      "frames": 24031,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24031,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.000000928a46fp-2"
+          }
+        ]
+      ],
+      "id": "window-minus-one-control",
+      "order": 1,
+      "path": "01-core/101_window_minus_one_control.wav",
+      "question": "Does a non-empty W-1 tail form one ordinary analysis window?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "frames": 24031,
+        "kind": "single-shaped-tail",
+        "peak": 1.0,
+        "targetRms": 0.25
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The complete window is finalized as an ordinary measured result.",
+        "The complete window produces no ordinary numeric result."
+      ],
+      "byteLength": 96184,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "09a94d890b6c103a47cf235dc58b173e709817aaa3c7d27fdceb9ee345050daf",
+      "executionSet": "all-safe",
+      "fileSha256": "05c18258fe7a062e167ae5e4eadaaa60e302d7315c29396daea37fd1dbfc05c4",
+      "frames": 24032,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0000001f43031p-2"
+          }
+        ]
+      ],
+      "id": "exact-window-control",
+      "order": 2,
+      "path": "01-core/102_exact_window_control.wav",
+      "question": "Does exactly one complete window produce an ordinary numeric control result? The exported report cannot distinguish internal virtual-zero behavior.",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "frames": 24032,
+        "kind": "single-shaped-window",
+        "peak": 1.0,
+        "targetRms": 0.25
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The paired input without a tail establishes the baseline.",
+        "The paired input is affected by an unrelated boundary rule."
+      ],
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "2cb76da026bc32fffa1f6990e2c629200f961228f2b333baad6138041d369b1c",
+      "executionSet": "all-safe",
+      "fileSha256": "c7ce1d1eebee758f95de50f1eba1ab3f0bfe3d5b9485350699ab7c900bdff472",
+      "frames": 48064,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.cccccc0000000p-1",
+            "rmsF64Hex": "0x1.70a3d6915321ep-4"
+          }
+        ]
+      ],
+      "id": "tail-pair-base",
+      "order": 3,
+      "path": "01-core/103_tail_pair_base.wav",
+      "question": "What is the control result before appending a one-frame tail?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "tail-pair-control",
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.1
+          },
+          {
+            "peak": 0.9,
+            "targetRms": 0.09
+          }
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The final 0.5 sample forms a third window.",
+        "The final one-frame tail is ignored and matches the paired control."
+      ],
+      "byteLength": 192316,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "ac0bd2001f8591eaa9bd3645e6ae64d1b7983a39d9982d058f22d9564b8db2e9",
+      "executionSet": "all-safe",
+      "fileSha256": "4c0bdf19cd0d206886c40bafe657091b652bde2ca2c5d215a724efcf62dd5229",
+      "frames": 48065,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.cccccc0000000p-1",
+            "rmsF64Hex": "0x1.70a3d6915321ep-4"
+          },
+          {
+            "frames": 1,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.6a09e667f3bcdp-1"
+          }
+        ]
+      ],
+      "id": "tail-pair-plus-one",
+      "order": 4,
+      "path": "01-core/104_tail_pair_plus_one.wav",
+      "question": "Does appending one nonzero frame create a third window?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "tail-pair-plus-one",
+        "tailSamples": [
+          0.5
+        ],
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.1
+          },
+          {
+            "peak": 0.9,
+            "targetRms": 0.09
+          }
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The primary peak is used for a positive recomputed result.",
+        "The negative result is directly clamped to zero.",
+        "The negative result is preserved."
+      ],
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "c921fd841c164c6b81e5a2fbccac4d5744ce6126223d0b308fe256721efef9f3",
+      "executionSet": "all-safe",
+      "fileSha256": "ef0a10555cb589625fdf1c712fefad00afd0abd695dd99f4efde630e962561f0",
+      "frames": 48064,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.999999c7106d6p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.9999990aadbf1p-5"
+          }
+        ]
+      ],
+      "id": "negative-dr-fallback",
+      "order": 5,
+      "path": "01-core/105_negative_dr_fallback.wav",
+      "question": "Is a negative secondary-peak DR recomputed with the primary peak?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.8
+          },
+          {
+            "peak": 0.1,
+            "targetRms": 0.05
+          }
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "RMS is rounded in the dB domain before reconstruction.",
+        "RMS is truncated in the linear domain."
+      ],
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "7a65c8304344935e1cd8443a682ad567c0a940da2c7edd87efe09dc8e65aa194",
+      "executionSet": "all-safe",
+      "fileSha256": "c342e1e4fae4487ba79208975edf5047a97691e56a16537cce81d966842309a1",
+      "frames": 120160,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.1dbca9811149fp-10"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.08c3f3c40dba0p-10"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.08c3f3c40dba0p-10"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.08c3f3c40dba0p-10"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.99999a0000000p-4",
+            "rmsF64Hex": "0x1.08c3f3c40dba0p-10"
+          }
+        ]
+      ],
+      "id": "histogram-db-domain",
+      "order": 6,
+      "path": "01-core/110_histogram_db_domain.wav",
+      "question": "Is RMS quantized in 0.01 dB bins or linear 0.0001 bins?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "count": 1,
+            "peak": 0.1,
+            "targetRms": 0.00109
+          },
+          {
+            "count": 4,
+            "peak": 0.1,
+            "targetRms": 0.00101
+          }
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The complete four-window boundary bin is included.",
+        "Only enough boundary-bin windows to reach floor(N/5) are used."
+      ],
+      "byteLength": 961336,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "a36efc37e9aeeb68e826cd8d0e86a0b1633cbd46ce4646c80e10bf07f6d204d4",
+      "executionSet": "all-safe",
+      "fileSha256": "5b21bb6f7f497657c5805dd118ad805c31bad6e9effa7a14506a938368edc34a",
+      "frames": 240320,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.99999863d4f33p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.99999a3c4b448p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.99999a3c4b448p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.99999a3c4b448p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.99999a3c4b448p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.47ae151a92b40p-6"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.47ae151a92b40p-6"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.47ae151a92b40p-6"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.47ae151a92b40p-6"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.47ae151a92b40p-6"
+          }
+        ]
+      ],
+      "id": "loud-boundary-bin-ties",
+      "order": 7,
+      "path": "01-core/111_loud_boundary_bin_ties.wav",
+      "question": "Are all ties in the loudest-20-percent boundary bin included?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "count": 1,
+            "peak": 0.5,
+            "targetRms": 0.2
+          },
+          {
+            "count": 4,
+            "peak": 0.5,
+            "targetRms": 0.1
+          },
+          {
+            "count": 5,
+            "peak": 0.5,
+            "targetRms": 0.02
+          }
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The later, slightly higher peak becomes the selected secondary peak.",
+        "Raw-amplitude order statistics select the lower peak."
+      ],
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "0379ca47e6bce0a53b8585d7486fb5bd6b8e7f1ed48403dc708d51533b4f5b8a",
+      "executionSet": "all-safe",
+      "fileSha256": "680ae1a7d9a480a5665330933be9e9b776a25e8726635163505094fa804d08ad",
+      "frames": 120160,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.96883e0000000p-1",
+            "rmsF64Hex": "0x1.81c5773e8547fp-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.96dc260000000p-1",
+            "rmsF64Hex": "0x1.81c5764ef7a73p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          }
+        ]
+      ],
+      "id": "peak-order-low-then-high",
+      "order": 8,
+      "path": "01-core/120_peak_order_low_then_high.wav",
+      "question": "When the two largest peaks share a 0.01 dB key, does their arrival order affect the selected second peak?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "equal-rms-quantized-peak-order",
+        "peakDbOrder": [
+          -2.0035,
+          -1.9965,
+          -3.0980391997148637,
+          -3.0980391997148637,
+          -3.0980391997148637
+        ],
+        "targetRmsDb": -14.5
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The selected secondary peak changes with arrival order.",
+        "The result is permutation invariant."
+      ],
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "14a5aed7324a9d9fe191cb70090da89647c4050f4e44a53ac1a725b4537acf66",
+      "executionSet": "all-safe",
+      "fileSha256": "f7884af7a53ffac8915b163fdeb49b01e069858ba2ccf0f9b32db717aebd0df3",
+      "frames": 120160,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.96dc260000000p-1",
+            "rmsF64Hex": "0x1.81c5764ef7a73p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.96883e0000000p-1",
+            "rmsF64Hex": "0x1.81c5773e8547fp-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.6666660000000p-1",
+            "rmsF64Hex": "0x1.81c5766c9bfc4p-3"
+          }
+        ]
+      ],
+      "id": "peak-order-high-then-low",
+      "order": 9,
+      "path": "01-core/121_peak_order_high_then_low.wav",
+      "question": "Does reversing only the first two quantized-equal peaks change the selected peak and rounded DR?",
+      "reportGroup": "01-core",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "equal-rms-quantized-peak-order",
+        "peakDbOrder": [
+          -1.9965,
+          -2.0035,
+          -3.0980391997148637,
+          -3.0980391997148637,
+          -3.0980391997148637
+        ],
+        "targetRmsDb": -14.5
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "One frame is finalized and reported.",
+        "The file has insufficient analysis data."
+      ],
+      "byteLength": 60,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+      "executionSet": "degenerate-manual",
+      "fileSha256": "9328c71b54bdcf658fb405a06c32b0ec4819b39ddc16a86a3b0616b07d48ba29",
+      "frames": 1,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 1,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.6a09e667f3bcdp-1"
+          }
+        ]
+      ],
+      "id": "one-frame-nonzero",
+      "order": 10,
+      "path": "02-degenerate/201_one_frame_nonzero.wav",
+      "question": "Can a one-frame nonzero file produce a completed DR result?",
+      "reportGroup": "02-degenerate",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "literal",
+        "samplesPerChannel": [
+          [
+            0.5
+          ]
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The result is clamped to DR0.",
+        "A negative DR is reported."
+      ],
+      "byteLength": 64,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "b3f689962d5d23d2c4d34e32885e60cb9af0119e64bbf4ce2446694c45d9cdb9",
+      "executionSet": "degenerate-manual",
+      "fileSha256": "950f035497a3068b4eb711cac1673b576662467abfd4407d21f7ce1148d29823",
+      "frames": 2,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 2,
+            "peakF64Hex": "0x1.0000000000000p-1",
+            "rmsF64Hex": "0x1.6a09e667f3bcdp-1"
+          }
+        ]
+      ],
+      "id": "two-frame-negative",
+      "order": 11,
+      "path": "02-degenerate/202_two_frame_constant.wav",
+      "question": "How is a two-frame constant signal with negative raw DR reported?",
+      "reportGroup": "02-degenerate",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "kind": "literal",
+        "samplesPerChannel": [
+          [
+            0.5,
+            0.5
+          ]
+        ]
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "Silence is represented as a numeric DR0.",
+        "Silence is excluded or reported as insufficient."
+      ],
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataChunkSha256": "ce6092dc0fb387d5ce68d4f032ea95711ff5aadac184a6446b0e64cbc1ef237b",
+      "executionSet": "degenerate-manual",
+      "fileSha256": "0d8b5999e67fc2b3491ef2b5bd319a670af5f7f30f03bcdb10b0764d6eecca3b",
+      "frames": 48064,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          }
+        ]
+      ],
+      "id": "silent-mono",
+      "order": 12,
+      "path": "02-degenerate/203_silent_mono.wav",
+      "question": "Does a silent channel become DR0 or an excluded state?",
+      "reportGroup": "02-degenerate",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "amplitude": 0.0,
+        "frames": 48064,
+        "kind": "constant"
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "The track value averages the measured channel with numeric zero.",
+        "The silent channel is excluded from aggregation."
+      ],
+      "byteLength": 1922616,
+      "channelMask": null,
+      "channels": 2,
+      "dataChunkSha256": "051220d0a926fba19ca44d15bafe447cd7e8ff570cac1468bdaa24ab556f8253",
+      "executionSet": "all-safe",
+      "fileSha256": "daa1e30fe6d68cca15d9eae35877caf01a97b49ce6069de63d8e111cb8dc0331",
+      "frames": 240320,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x0.0p+0",
+            "rmsF64Hex": "0x0.0p+0"
+          }
+        ]
+      ],
+      "id": "stereo-silent-channel",
+      "order": 13,
+      "path": "03-multichannel/301_stereo_silent_channel.wav",
+      "question": "Is a silent stereo channel included as DR0 in the track mean?",
+      "reportGroup": "03-multichannel",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 12.0
+          },
+          {
+            "constant": 0.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows"
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "Channel DR values are averaged arithmetically.",
+        "Channel loudness weights the track DR."
+      ],
+      "byteLength": 2883920,
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "dataChunkSha256": "47b2f7981c1e9346f9108e2952a6f66efe4c95ff7f9457313eee5b51ee8a7c7f",
+      "executionSet": "all-safe",
+      "fileSha256": "395d5b96f8f646b7f9400d123fb58175aee48fd7de08b004f28dcad88efa1aa5",
+      "frames": 240320,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.43d1366ec5f18p-2"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.99999964e1706p-4"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          }
+        ]
+      ],
+      "id": "three-channel-arithmetic",
+      "order": 14,
+      "path": "03-multichannel/302_three_channel_arithmetic.wav",
+      "question": "Is default three-channel aggregation an unweighted arithmetic mean?",
+      "reportGroup": "03-multichannel",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 10.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 20.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 30.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows"
+      }
+    },
+    {
+      "alternativeHypotheses": [
+        "All six channel DR values, including LFE, are averaged.",
+        "The LFE channel is excluded from the official value."
+      ],
+      "byteLength": 5767760,
+      "channelMask": "0x0000003f",
+      "channels": 6,
+      "dataChunkSha256": "b39bcd0be156d3913e36a5ec587352b02fadd68fc8ce2966d136de3b7ba848ba",
+      "executionSet": "all-safe",
+      "fileSha256": "aab3f7b406e9c136f5cad0a0f0d11f4754a171e3acd2e5ec84640fe36636e4ef",
+      "frames": 240320,
+      "generatedPcmWindowSummary": [
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.009b9c4224992p-1"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6b5434d894f46p-2"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.0137980225323p-2"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.030dc4726e444p-5"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.6c310e17e11b7p-3"
+          }
+        ],
+        [
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          },
+          {
+            "frames": 24032,
+            "peakF64Hex": "0x1.0000000000000p+0",
+            "rmsF64Hex": "0x1.01d3f26f478c9p-3"
+          }
+        ]
+      ],
+      "id": "six-channel-lfe",
+      "order": 15,
+      "path": "03-multichannel/303_six_channel_lfe.wav",
+      "question": "Does the official six-channel result include the LFE channel?",
+      "reportGroup": "03-multichannel",
+      "sampleFormat": "ieee-float32-le",
+      "sampleRateHz": 8000,
+      "seed": null,
+      "waveform": {
+        "channelOrder": [
+          "FL",
+          "FR",
+          "FC",
+          "LFE",
+          "BL",
+          "BR"
+        ],
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 6.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 9.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 12.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 30.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 15.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 18.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows",
+        "speakerMask": "0x0000003f"
+      }
+    }
+  ],
+  "corpusId": "foo-dr-meter-108-discriminating-v1",
+  "generator": {
+    "command": "python3 reference/tools/generate_foo_dr_meter_108_suite.py --output <OUTPUT>",
+    "git": {
+      "commit": "eff2140379b17d6ff418bd3761bc070900849bca",
+      "generatorPathDirty": true
+    },
+    "name": "generate_foo_dr_meter_108_suite.py",
+    "runtime": {
+      "implementation": "CPython",
+      "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+      "version": "3.13.2"
+    },
+    "sourceSha256": "e5bf003835a3603db044007c181d1618f8cd43e4c0199d926061ef9f3d391f2b",
+    "version": 1
+  },
+  "schemaVersion": 1,
+  "targetFamily": {
+    "compatibilityClaim": "none; observations have not yet been collected",
+    "component": "foo_dr_meter",
+    "version": "1.0.8"
+  },
+  "window": {
+    "durationCoefficientF64Hex": "0x1.8085bf37612cfp+1",
+    "frames": 24032,
+    "sampleRateHz": 8000
+  }
+}

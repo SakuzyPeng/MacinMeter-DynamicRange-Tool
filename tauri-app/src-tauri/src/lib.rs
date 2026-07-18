@@ -196,7 +196,7 @@ async fn run_batch(
         let batch_request = BatchRequest {
             inputs: request.inputs,
             recursive: request.recursive,
-            profile: AnalysisProfile::ProvisionalV1,
+            profile: AnalysisProfile::FooDrMeter108CandidateV1,
         };
         BatchRunner::new()
             .run(batch_request, &control)

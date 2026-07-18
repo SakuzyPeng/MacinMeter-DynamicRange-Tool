@@ -1,6 +1,8 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，参考对齐轨道待推进），作为整改、重构和逆向研究的主记录
+> 状态：执行中（M0：`DONE`，foo_dr_meter 1.0.8 Candidate V1 已实施；首份
+> x64 safe-master conformance 的公开核心字段为 39/39、62/62，验收范围待扩充），
+> 作为整改、重构和逆向研究的主记录
 >
 > 建立日期：2026-07-17
 >
@@ -8,7 +10,7 @@
 >
 > M0 目标版本：0.2.0
 >
-> 参考目标：foobar2000 DR Meter 1.0.3（`foo_dr_meter`）
+> 当前参考目标：foobar2000 DR Meter 1.0.8（`foo_dr_meter`）
 >
 > 相关授权与合规说明：[LEGAL_CN.md](LEGAL_CN.md)
 >
@@ -26,11 +28,14 @@
 
 本文档是路线图和事项总表，不是当前实现已经兼容参考插件的证明。
 
-## 2. 当前结论
+## 2. 审查结论与当前进展
+
+本节 2.1 与 2.2 保留项目启动整改时的审查结论。2.1 所列生产路径已由 M0
+重建关闭；2.2 所列算法问题不能以旧实现为答案，仍须由参考证据逐项解决。
 
 项目当前采用的几个大方向值得保留：
 
-- 解码后统一为交错 `f32`；
+- 解码后统一为有限、交错 `f64`；
 - 使用流式处理避免保存整份 PCM；
 - 使用在线窗口统计和直方图处理长音频；
 - CLI 和 Tauri GUI 共用 Rust 分析库；
@@ -67,7 +72,14 @@
 - 多声道逐声道处理与最终聚合；
 - 最终整数 DR 的舍入方式。
 
-在重新对齐完成前，当前输出应视为 provisional implementation，不应作为参考算法的 golden truth。
+在重新对齐完成前，当时的输出应视为 provisional implementation，不应作为参考算法的 golden truth。
+
+截至 2026-07-18，当前目标已固定为 foo_dr_meter 1.0.8：x64/x86 二进制静态
+分析、x86 初始观测和 x64 complete-v2 safe-master 观测共同形成
+`FooDrMeter108CandidateV1`。x64 架构精度边界已达到 E2；产品 PCM 主链改为 f64
+后，同一 observation 的整数 track DR 为 39/39、每声道两位 DR token 为 62/62。
+这足以关闭当前 corpus 中已知的 source-f64 系统差分，但不等同于完整
+conformance；所有输出继续标记 `Unverified`。
 
 ## 3. 事实来源与术语
 
@@ -111,7 +123,7 @@
 | COR-001 | DONE | 删除 Pending/EOF 混淆路径 | 旧包级并行解码器已删除 | `PcmSource` 只返回 `Data / Eof / Error` | EOF 与 terminal error 均 sticky |
 | COR-002 | DONE | 删除并行 worker 缺口路径 | worker/序号模型已从 M0 删除 | 坏包严格失败，不生成部分结果 | 损坏 FLAC/WAV sticky error 测试 |
 | ALG-001 | DONE | 统一窗口累计和最终结算 | 唯一 `AnalyzerSession` | `push_interleaved()` + consuming `finish()` | 1/2/3/6/8/16 声道和随机 chunk 切分一致 |
-| SAFE-001 | DONE | 删除不安全的泛型样本转换 | 旧转换层已删除 | Symphonia 安全 `SampleBuffer<f32>` | 所有第一方 crate `forbid(unsafe_code)` |
+| SAFE-001 | DONE | 删除不安全的泛型样本转换 | 旧转换层已删除 | Symphonia 安全 `SampleBuffer<f64>` | 所有第一方 crate `forbid(unsafe_code)` |
 | SAFE-002 | DONE | 删除手写 SIMD 包装 | 旧 SIMD 层已删除 | M0 只保留 safe scalar | 无裸指针或 target CPU 假设 |
 | META-001 | DONE | 分离实际 PCM stream 信息 | DSD/转码不属于 M0 | `PcmStreamInfo.spec` 只描述实际 PCM | 不猜测或混用源率 |
 | TRIM-001 | DONE | 从生产管线移除 EdgeTrimmer | 旧实现已删除 | 未来只能作为独立显式前处理重建 | M0 请求/结果无 trim 字段 |
@@ -143,15 +155,15 @@
 
 | ID | 状态 | 事项 | 交付物 |
 | --- | --- | --- | --- |
-| REF-001 | TODO | 固定参考目标身份 | 插件/宿主版本、平台、配置、二进制哈希 |
-| REF-002 | TODO | 建立授权与来源档案 | 公开摘要链接、私有原始授权保存位置、授权范围记录 |
-| REF-003 | TODO | 建立可重复的参考运行 harness | 固定输入、自动/半自动运行、结构化输出采集 |
-| REF-004 | TODO | 建立合成 PCM 实验生成器 | 可精确控制采样率、长度、声道、幅度、脉冲和分段 |
-| REF-005 | TODO | 完成黑盒行为矩阵 | 原始输入、参考输出、环境、实验参数、观察结论 |
-| REF-006 | TODO | 开展静态与动态逆向 | 函数/状态映射、关键常量、数据结构、控制流证据 |
-| REF-007 | TODO | 编写版本化算法规格 | 每条规则带证据等级、未决问题和反例 |
-| REF-008 | TODO | 实现 Reference profile | 独立、可测试的参考兼容实现 |
-| REF-009 | TODO | 建立参考 conformance suite | final 和中间状态双层对齐，无未解释系统偏差 |
+| REF-001 | DONE | 固定参考目标身份 | foo_dr_meter 1.0.8 x64/x86 hash、宿主与配置记录 |
+| REF-002 | DOING | 建立授权与来源档案 | 公开摘要链接、私有原始授权保存位置、授权范围记录 |
+| REF-003 | DOING | 建立可重复的参考运行 harness | 固定输入、半自动运行、原始输出采集 |
+| REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
+| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项与 x64 39 项 safe master 已登记；isolated、重复性与外围范围待补 |
+| REF-006 | DOING | 开展静态与动态逆向 | x64/x86 核心、album/report、WAV decoder/metadata 已有静态记录；动态中间状态未跟踪 |
+| REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 E2 精度证据和 remaining unknown，保持未验证标记 |
+| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；当前公开核心字段 39/39、62/62，仍不宣称参考兼容 |
+| REF-009 | DOING | 建立参考 conformance suite | 首份 pre/post-f64 精确差分已登记；报告其他字段和中间状态待扩展 |
 | REF-010 | TODO | 修订兼容性声明 | 仅在验收通过后恢复明确的参考兼容承诺 |
 
 ### 5.4 P2：测试、发布、性能和维护
@@ -159,7 +171,7 @@
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
-| TEST-002 | TODO | 建立参考 golden corpus | 只使用参考插件观测生成 correctness golden |
+| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track safe master 已固定并可规范化；isolated、重复性和 accepted oracle 待验收 |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
 | TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
@@ -170,7 +182,7 @@
 | RELEASE-001 | TODO | 增加制品验证 | smoke test、checksum；后续评估签名、SBOM、provenance |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | TODO | 重建 benchmark 方法 | 随机/交错 A/B、进程树监控、环境与二进制哈希 |
-| DOC-001 | DONE | 修正过度兼容性声明 | 所有输出与 README 标记 `ProvisionalV1 / Unverified` |
+| DOC-001 | DONE | 修正过度兼容性声明 | 所有当前输出标记 `foo_dr_meter 1.0.8 Candidate V1 / Unverified` |
 | DOC-002 | DONE | 清理陈旧文档和脚本 | Tauri、格式、MSRV、CLI、性能与法律文档已同步 |
 
 ## 6. 参考插件研究计划
@@ -235,6 +247,7 @@ reference/
 ├── targets/          # 版本、平台、哈希和宿主配置
 ├── experiments/      # 实验定义和输入生成参数
 ├── observations/     # 参考插件原始输出与环境信息
+├── static-analysis/  # 固定二进制的受控静态事实
 ├── fixtures/         # 可公开、可重复生成的测试输入
 ├── specs/            # 版本化算法规格和证据等级
 └── conformance/      # 参考结果和差分摘要
@@ -293,19 +306,20 @@ adapters
 
 ### 7.2 分析 profile
 
-初期建议至少区分：
+当前生产分析只保留一个 profile：
 
 ```text
-ProvisionalV1
-ReferenceFooDrMeter103
+FooDrMeter108CandidateV1
 ```
 
-名称可在参考目标最终固定后调整。
-
-- `ProvisionalV1` 明确表示当前尚未完成参考对齐；
-- `ReferenceFooDrMeter103` 只包含被证据支持的参考行为；
+- Rust 名称固定为 `FooDrMeter108CandidateV1`，wire 名称固定为
+  `foo_dr_meter_1_0_8_candidate_v1`；
+- `CandidateV1 / Unverified` 同时标识目标版本、候选规则修订和未完成的
+  conformance，不得简写成已经兼容；
+- 只有 conformance 出口条件全部满足后，才讨论增加或改名为稳定 Reference
+  profile；
 - Edge trim、静音过滤等作为显式 preprocessing pipeline，不伪装成另一套“官方”算法；
-- 是否长期保留 `Provisional`，在 Reference profile 完成后再决定。
+- 不保留原 `ProvisionalV1` 兼容别名，避免同一生产规则出现两个身份。
 
 ### 7.3 解码契约
 
@@ -382,10 +396,12 @@ Error
 
 ### M1：事实与证据基础
 
+状态：`DOING`。
+
 - 填充 reference 目标档案、实验生成器和运行 harness；
 - 保存第一批参考观测，不用当前实现反向生成 correctness golden；
 - 建立算法规格模板和证据等级；
-- 将当前输出仅保存为 legacy snapshot。
+- 将 M0 `ProvisionalV1` 输出仅保存为历史工程 snapshot。
 
 出口条件：
 
@@ -397,13 +413,13 @@ Error
 
 - 将剩余稳定 codec/backend 迁移到 M0 建立的共同 `PcmSource` 和 PCM 契约；
 - 扩充 chunk、声道、scalar/SIMD 和异常输入工程不变量；
-- 根据 reference 证据校正 provisional 算法，不用 legacy snapshot 反向定义正确性；
+- 根据 reference 证据校正 Candidate 算法，不用 legacy snapshot 反向定义正确性；
 - 如仍有产品需求，将 EdgeTrimmer 重写为独立、显式 preprocessing stage。
 
 出口条件：
 
 - 所有正式声明支持的 backend 满足共同契约；
-- chunk、声道和优化路径不影响 provisional 结果；
+- chunk、声道和优化路径不影响 Candidate 结果；
 - 新能力不绕过 M0 已建立的 application 和 wire 边界。
 
 ### M3：解码与应用层
@@ -423,8 +439,11 @@ Error
 
 ### M4：参考算法收口
 
-- 根据 REF 轨道证据实现 `ReferenceFooDrMeter103`；
+- 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
+- 已将产品 PCM 入口改为 `f64`，关闭 complete-v2 暴露的两处 source-f64
+  量化边界差分；后续复刻参考报告所需的 overall channel RMS 与 primary
+  report peak；
 - 建立 final + intermediate conformance suite；
 - 处理所有系统性残差和未解释边界；
 - 完成兼容性报告。
@@ -504,7 +523,7 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 | 决策 | 建议 |
 | --- | --- |
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
-| 默认算法 | 对齐完成前明确标记 provisional；对齐后默认使用 Reference profile |
+| 默认算法 | 当前使用 `FooDrMeter108CandidateV1 / Unverified`；只有完成 conformance 后才升级声明 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
 | 默认并发 | M0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
@@ -515,14 +534,14 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 
 ## 12. 待确认事项
 
-- [ ] 最终参考目标是否只锁定 `foo_dr_meter 1.0.3`，还是还要记录其他版本行为；
-- [ ] 参考宿主 foobar2000 的精确版本、架构和设置；
-- [ ] 是否能自动化参考插件运行，还是由 Windows 环境半自动采集；
-- [ ] 参考观测和 fixture 哪些可以公开提交；
-- [ ] 对齐完成后是否保留 `Provisional`/legacy profile；
+- [x] 当前参考目标锁定 `foo_dr_meter 1.0.8`；其他版本必须建立独立目标记录；
+- [x] 黑盒观测已分别记录 foobar2000 2.0 x86 与 2.25.10 x64、插件配置和目标 hash；
+- [x] 当前采用 Windows 环境半自动采集并保存原始报告；
+- [x] 可公开生成 fixture、v1/v2 manifest 与 x86/x64 observation 已按证据目录分层；
+- [x] `ProvisionalV1` 不作为生产兼容 profile 保留；
 - [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
-- [ ] `Reference` profile 的中间数值容差如何定义；
-- [ ] provisional JSON schema v1 在哪些证据和消费方验收完成后转为稳定。
+- [ ] Reference profile 的未导出中间状态如何观测，以及相应数值容差如何定义；
+- [x] Candidate 结果结构使用 wire schema v2；schema 版本只表示结构契约，不表示算法兼容。
 
 ## 13. 完成定义
 

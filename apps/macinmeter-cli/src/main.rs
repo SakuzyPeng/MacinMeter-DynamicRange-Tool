@@ -18,7 +18,7 @@ use std::{
 #[command(
     name = "macinmeter",
     version,
-    about = "Offline dynamic-range analysis (ProvisionalV1, unverified)"
+    about = "Offline dynamic-range analysis (foo_dr_meter 1.0.8 Candidate V1, unverified)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -113,7 +113,7 @@ fn run_analyze(
     let analyzer = macinmeter::Analyzer::new();
     let request = macinmeter::AnalyzeRequest {
         path: file,
-        profile: AnalysisProfile::ProvisionalV1,
+        profile: AnalysisProfile::FooDrMeter108CandidateV1,
     };
 
     match analyzer.analyze_file_with_control(request, control) {
@@ -139,7 +139,7 @@ fn run_batch(
     let request = BatchRequest {
         inputs,
         recursive,
-        profile: AnalysisProfile::ProvisionalV1,
+        profile: AnalysisProfile::FooDrMeter108CandidateV1,
     };
     match runner.run(request, control) {
         Ok(report) => {
@@ -201,7 +201,7 @@ fn render_json(envelope: &WireEnvelope) -> Result<String, AnalysisError> {
 
 fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     let mut output = String::new();
-    output.push_str("MacinMeter ProvisionalV1 — UNVERIFIED\n");
+    output.push_str("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n");
     output.push_str(&format!("Source: {}\n", report.source.display_path));
     output.push_str(&format!(
         "PCM: {} Hz, {} channels, {} frames\n\n",
@@ -213,18 +213,18 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     for channel in &report.analysis.channels {
         match &channel.outcome {
             ChannelOutcome::Measured { measurement } => output.push_str(&format!(
-                "CH {}: DR{} ({:.4} dB), RMS {:.8}, peak {:.8}\n",
+                "CH {}: DR{} ({:.4} dB), loud-window RMS {:.8}, selected DR peak {:.8}\n",
                 channel.channel_index + 1,
                 measurement.rounded_dr,
                 measurement.dr_db,
-                measurement.loud_rms,
+                measurement.loud_window_rms,
                 measurement.selected_peak
             )),
             ChannelOutcome::Silent {
                 frames,
                 valid_windows,
             } => output.push_str(&format!(
-                "CH {}: silent ({frames} frames, {valid_windows} windows)\n",
+                "CH {}: silent — DR0 contribution ({frames} frames, {valid_windows} windows)\n",
                 channel.channel_index + 1
             )),
             ChannelOutcome::InsufficientData { frames } => output.push_str(&format!(
@@ -234,30 +234,30 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
         }
     }
 
-    let aggregate = &report.analysis.aggregates.all_channels;
-    if let (Some(rounded_dr), Some(precise_dr_db)) = (aggregate.rounded_dr, aggregate.precise_dr_db)
-    {
+    let aggregate = &report.analysis.aggregates.track;
+    if let (Some(rounded_dr), Some(dr_db)) = (aggregate.rounded_dr, aggregate.dr_db) {
         output.push_str(&format!(
-            "\nAggregate: DR{} ({:.4} dB; {} measured channels)\n",
+            "\nTrack aggregate: DR{} ({:.4} dB; {} contributing channels)\n",
             rounded_dr,
-            precise_dr_db,
-            aggregate.included_channels.len()
+            dr_db,
+            aggregate.contributing_channels.len()
         ));
     } else {
-        output.push_str("\nAggregate: unavailable\n");
+        output.push_str("\nTrack aggregate: unavailable\n");
     }
     Ok(output)
 }
 
 fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
-    let mut output = String::from("MacinMeter ProvisionalV1 batch — UNVERIFIED\n\n");
+    let mut output =
+        String::from("MacinMeter batch — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n\n");
     for item in &report.items {
         match &item.outcome {
             BatchItemOutcome::Success { report } => {
-                let aggregate = &report.analysis.aggregates.all_channels;
-                let aggregate = match (aggregate.rounded_dr, aggregate.precise_dr_db) {
-                    (Some(rounded_dr), Some(precise_dr_db)) => {
-                        format!("DR{rounded_dr} ({precise_dr_db:.4} dB)")
+                let aggregate = &report.analysis.aggregates.track;
+                let aggregate = match (aggregate.rounded_dr, aggregate.dr_db) {
+                    (Some(rounded_dr), Some(dr_db)) => {
+                        format!("DR{rounded_dr} ({dr_db:.4} dB)")
                     }
                     _ => "unavailable".to_string(),
                 };

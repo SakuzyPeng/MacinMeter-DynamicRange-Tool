@@ -1,0 +1,23 @@
+foobar2000 v2.0 / DR Meter v1.0.8
+log date: 2026-07-18 15:13:41
+
+--------------------------------------------------------------------------------
+Analyzed: ? / ?
+--------------------------------------------------------------------------------
+
+DR         Peak           RMS       Duration Track                                    DR (FL)      DR (FR)      DR (FC)     DR (LFE)      DR (BL)      DR (BR)     RMS (FL)     RMS (FR)     RMS (FC)    RMS (LFE)     RMS (BL)     RMS (BR)
+--------------------------------------------------------------------------------
+DR6        0.00 dBFS   -15.01 dBFS      0:30 ?-301_stereo_silent_channel             12.00 dB      0.00 dB                                                      -12.00 dBFS    -inf dBFS                                                    
+DR20       0.00 dBFS   -14.32 dBFS      0:30 ?-302_three_channel_arithmetic          10.00 dB     20.00 dB     30.00 dB                                         -10.00 dBFS  -20.00 dBFS  -30.00 dBFS                                       
+DR15       0.00 dBFS   -10.89 dBFS      0:30 ?-303_six_channel_lfe                    6.00 dB      9.00 dB     12.00 dB     30.00 dB     15.00 dB     18.00 dB   -6.00 dBFS   -9.00 dBFS  -12.00 dBFS  -30.00 dBFS  -15.00 dBFS  -18.00 dBFS
+--------------------------------------------------------------------------------
+
+Number of tracks:  3
+Official DR value: DR14
+
+Samplerate:        8000 Hz
+Channels:          2, 3, 6
+Bits per sample:   32
+Bitrate:           939 kbps
+Codec:             PCM (浮点)
+================================================================================

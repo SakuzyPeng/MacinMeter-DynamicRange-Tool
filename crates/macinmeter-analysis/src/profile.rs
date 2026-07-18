@@ -6,16 +6,23 @@ pub(crate) const PROFILE_VERSION: u32 = 1;
 pub(crate) const WINDOW_DURATION_COEFFICIENT: f64 = 3.004_081_632_653_061_3;
 pub(crate) const RMS_SUM_MULTIPLIER: f64 = 2.0;
 pub(crate) const HISTOGRAM_BINS: usize = 10_001;
-pub(crate) const HISTOGRAM_SCALE: f64 = 10_000.0;
-pub(crate) const MINIMUM_NONZERO_RMS_BIN: usize = 1;
+pub(crate) const RMS_HISTOGRAM_MIN_DB: f64 = -100.0;
+pub(crate) const RMS_HISTOGRAM_MAX_DB: f64 = 0.0;
+pub(crate) const HISTOGRAM_BIN_WIDTH_DB: f64 = 0.01;
+pub(crate) const PEAK_KEY_BIN_WIDTH_DB: f64 = 0.01;
 pub(crate) const LOUD_FRACTION_DENOMINATOR: u64 = 5;
 pub(crate) const LOUD_FRACTION: f64 = 0.2;
-pub(crate) const MINIMUM_TAIL_FRAMES: usize = 2;
-pub(crate) const EXACT_WINDOW_VIRTUAL_ZERO_PEAK: bool = true;
+pub(crate) const MINIMUM_TAIL_FRAMES: usize = 1;
+pub(crate) const INCLUDE_ENTIRE_BOUNDARY_BIN: bool = true;
+pub(crate) const EXACT_WINDOW_VIRTUAL_ZERO_PEAK: bool = false;
+pub(crate) const DR_FLOOR_DB: f64 = 0.0;
+pub(crate) const SILENT_CHANNEL_DR_DB: f64 = 0.0;
+pub(crate) const INCLUDES_LFE_IN_TRACK_AGGREGATE: bool = true;
+pub(crate) const RESULT_PRECISION_BITS: u32 = 32;
 
 pub(crate) fn descriptor(profile: AnalysisProfile) -> AlgorithmDescriptor {
     match profile {
-        AnalysisProfile::ProvisionalV1 => AlgorithmDescriptor {
+        AnalysisProfile::FooDrMeter108CandidateV1 => AlgorithmDescriptor {
             profile,
             profile_version: PROFILE_VERSION,
             compatibility: CompatibilityStatus::Unverified,
@@ -23,10 +30,18 @@ pub(crate) fn descriptor(profile: AnalysisProfile) -> AlgorithmDescriptor {
                 window_duration_coefficient: WINDOW_DURATION_COEFFICIENT,
                 rms_sum_multiplier: RMS_SUM_MULTIPLIER,
                 histogram_bins: HISTOGRAM_BINS,
-                minimum_nonzero_rms_bin: MINIMUM_NONZERO_RMS_BIN,
+                rms_histogram_min_db: RMS_HISTOGRAM_MIN_DB,
+                rms_histogram_max_db: RMS_HISTOGRAM_MAX_DB,
+                histogram_bin_width_db: HISTOGRAM_BIN_WIDTH_DB,
+                peak_key_bin_width_db: PEAK_KEY_BIN_WIDTH_DB,
                 loud_fraction: LOUD_FRACTION,
                 minimum_tail_frames: MINIMUM_TAIL_FRAMES,
+                include_entire_boundary_bin: INCLUDE_ENTIRE_BOUNDARY_BIN,
                 exact_window_virtual_zero_peak: EXACT_WINDOW_VIRTUAL_ZERO_PEAK,
+                dr_floor_db: DR_FLOOR_DB,
+                silent_channel_dr_db: SILENT_CHANNEL_DR_DB,
+                includes_lfe_in_track_aggregate: INCLUDES_LFE_IN_TRACK_AGGREGATE,
+                result_precision_bits: RESULT_PRECISION_BITS,
             },
         },
     }

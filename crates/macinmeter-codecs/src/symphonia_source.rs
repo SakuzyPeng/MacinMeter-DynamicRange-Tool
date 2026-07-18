@@ -289,7 +289,7 @@ impl PcmSource for SymphoniaPcmSource {
                     return self.fail(error);
                 }
             };
-            let mut sample_buffer = SampleBuffer::<f32>::new(duration, *decoded.spec());
+            let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
             sample_buffer.copy_interleaved_ref(decoded);
             let block = match PcmBlock::new(sample_buffer.samples().to_vec(), self.channels) {
                 Ok(block) => block,

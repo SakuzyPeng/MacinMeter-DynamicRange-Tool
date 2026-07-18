@@ -68,13 +68,24 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     assert_code(&output, 0);
     let stdout = stdout(&output);
     let stderr = stderr(&output);
-    assert!(stdout.starts_with("MacinMeter ProvisionalV1 — UNVERIFIED\n"));
+    assert!(stdout.starts_with("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n"));
     assert!(stdout.contains("PCM: 44100 Hz, 2 channels, 441 frames"));
-    assert!(stdout.contains("Aggregate: DR"));
+    assert!(stdout.contains("Track aggregate: DR"));
     assert!(!stdout.contains("[0]"));
     assert!(stderr.contains("[0] analyzing"));
     assert!(stderr.contains("[0] ok:"));
-    assert!(!stderr.contains("Aggregate:"));
+    assert!(!stderr.contains("Track aggregate:"));
+}
+
+#[test]
+fn analyze_human_marks_silence_as_a_dr_zero_contribution() {
+    let input = fixture("silence.wav");
+    let output = run(["analyze".as_ref(), input.as_os_str()]);
+
+    assert_code(&output, 0);
+    let stdout = stdout(&output);
+    assert!(stdout.contains("silent — DR0 contribution"));
+    assert!(stdout.contains("Track aggregate: DR0 (0.0000 dB;"));
 }
 
 #[test]
@@ -89,23 +100,33 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
 
     assert_code(&output, 0);
     let value = parse_stdout_json(&output);
-    assert_eq!(value["schemaVersion"], 1);
+    assert_eq!(value["schemaVersion"], 2);
     assert_eq!(value["toolVersion"], "0.2.0");
     assert_eq!(value["kind"], "analysis");
     assert_eq!(
         value["data"]["analysis"]["algorithm"]["profile"],
-        "provisional_v1"
+        "foo_dr_meter_1_0_8_candidate_v1"
     );
     assert_eq!(
         value["data"]["analysis"]["algorithm"]["compatibility"],
         "unverified"
     );
     assert_eq!(value["data"]["analysis"]["framesSeen"], 441);
+    assert!(
+        value["data"]["analysis"]["aggregates"]["track"]["drDb"].is_number(),
+        "schema v2 exposes the track aggregate under analysis.aggregates.track"
+    );
+    assert!(
+        value["data"]["analysis"]["channels"][0]["outcome"]["measurement"]["loudWindowRms"]
+            .is_number()
+    );
     let api_report = macinmeter::Analyzer::new()
         .analyze_file(macinmeter::AnalyzeRequest::new(&input))
         .expect("the same fixture should analyze through the Rust API");
-    let api_value = serde_json::to_value(macinmeter::WireEnvelope::analysis(api_report))
+    let api_json = serde_json::to_vec(&macinmeter::WireEnvelope::analysis(api_report))
         .expect("Rust API report should serialize");
+    let api_value: Value =
+        serde_json::from_slice(&api_json).expect("serialized Rust API report should be valid JSON");
     assert_eq!(
         value, api_value,
         "CLI JSON and the Rust API must expose the exact same core report"

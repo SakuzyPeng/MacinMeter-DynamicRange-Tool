@@ -2,12 +2,14 @@
 
 > **Historical / superseded:** this file records 0.1.1-era behavior and claims.
 > It is not evidence that 0.2.0 matches the reference plugin. Current output is
-> `ProvisionalV1 / Unverified`; statements below such as “official,” “identical,”
-> or “proved correct” must be read only as historical assertions.
+> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`; statements below such as
+> “official,” “identical,” or “proved correct” must be read only as historical
+> assertions.
 >
 > **历史记录 / 已取代：** 本文只记录 0.1.1 当时的行为和说法，不能证明 0.2.0
-> 与参考插件一致。当前输出为 `ProvisionalV1 / Unverified`；下文“官方”“完全一致”
-> 或“证明正确”等措辞仅是历史陈述，不是现有证据。
+> 与参考插件一致。当前输出为
+> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`；下文“官方”“完全一致”或
+> “证明正确”等措辞仅是历史陈述，不是现有证据。
 
 ## 修复：FLAC/ALAC比特率显示错误 / Fix: FLAC/ALAC Bitrate Display Error
 

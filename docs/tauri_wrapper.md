@@ -25,9 +25,10 @@ Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch
 directory walk.
 
-Analysis and batch responses use the same schema-versioned `WireEnvelope` as
-CLI JSON. Rendering preferences stay in TypeScript and never enter the
-analysis request.
+Analysis and batch responses use schema 2 of the same versioned `WireEnvelope`
+as CLI JSON. The analysis payload exposes `analysis.aggregates.track`; silent
+channels remain visibly silent while contributing DR0 to that track aggregate.
+Rendering preferences stay in TypeScript and never enter the analysis request.
 
 ## Development
 
@@ -48,4 +49,6 @@ The backend performs blocking analysis through Tauri's blocking task facility,
 leaving the UI event loop responsive. It does not modify environment variables,
 look for FFmpeg, use a global cancel flag, or create a Rayon batch pool.
 
-M0 GUI results are always labelled `ProvisionalV1 / Unverified`.
+Current GUI results are always labelled
+`foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This identifies the evidence
+target and candidate revision; it is not a claim of reference parity.

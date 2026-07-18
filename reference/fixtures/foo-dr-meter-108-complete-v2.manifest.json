@@ -1,0 +1,1661 @@
+{
+  "budgets": {
+    "expectedSafeMasterEntries": 39,
+    "expectedWavFiles": 42,
+    "maximumSingleWavBytes": 6291456,
+    "maximumTotalWavBytes": 33554432
+  },
+  "cases": [
+    {
+      "alternativeHypotheses": [
+        "The tail is submitted and measured.",
+        "The tail is discarded or treated as insufficient."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 96180,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "d4293e89d1a146e563560377444d348a8dc819b3c0abee7bc97eb5cfbfec502d",
+      "discriminatorId": "v1:window-minus-one-control",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "f635e1475fcdef6cbb8c9b2547e5d0ef564348a1a05d6e7cfe0aa2417f52cd27",
+      "frames": 24031,
+      "id": "window-minus-one-control",
+      "order": 1,
+      "path": "01-core/101_window_minus_one_control.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Does a non-empty W-1 tail form one ordinary analysis window?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "frames": 24031,
+        "kind": "single-shaped-tail",
+        "peak": 1.0,
+        "targetRms": 0.25
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The complete window is finalized as an ordinary measured result.",
+        "The complete window produces no ordinary numeric result."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 96184,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "09a94d890b6c103a47cf235dc58b173e709817aaa3c7d27fdceb9ee345050daf",
+      "discriminatorId": "v1:exact-window-control",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "05c18258fe7a062e167ae5e4eadaaa60e302d7315c29396daea37fd1dbfc05c4",
+      "frames": 24032,
+      "id": "exact-window-control",
+      "order": 2,
+      "path": "01-core/102_exact_window_control.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Does exactly one complete window produce an ordinary numeric control result? The exported report cannot distinguish internal virtual-zero behavior.",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "frames": 24032,
+        "kind": "single-shaped-window",
+        "peak": 1.0,
+        "targetRms": 0.25
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The paired input without a tail establishes the baseline.",
+        "The paired input is affected by an unrelated boundary rule."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "2cb76da026bc32fffa1f6990e2c629200f961228f2b333baad6138041d369b1c",
+      "discriminatorId": "v1:tail-pair-base",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "c7ce1d1eebee758f95de50f1eba1ab3f0bfe3d5b9485350699ab7c900bdff472",
+      "frames": 48064,
+      "id": "tail-pair-base",
+      "order": 3,
+      "path": "01-core/103_tail_pair_base.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "What is the control result before appending a one-frame tail?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "tail-pair-control",
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.1
+          },
+          {
+            "peak": 0.9,
+            "targetRms": 0.09
+          }
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The final 0.5 sample forms a third window.",
+        "The final one-frame tail is ignored and matches the paired control."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 192316,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "ac0bd2001f8591eaa9bd3645e6ae64d1b7983a39d9982d058f22d9564b8db2e9",
+      "discriminatorId": "v1:tail-pair-plus-one",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "4c0bdf19cd0d206886c40bafe657091b652bde2ca2c5d215a724efcf62dd5229",
+      "frames": 48065,
+      "id": "tail-pair-plus-one",
+      "order": 4,
+      "path": "01-core/104_tail_pair_plus_one.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Does appending one nonzero frame create a third window?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "tail-pair-plus-one",
+        "tailSamples": [
+          0.5
+        ],
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.1
+          },
+          {
+            "peak": 0.9,
+            "targetRms": 0.09
+          }
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The primary peak is used for a positive recomputed result.",
+        "The negative result is directly clamped to zero.",
+        "The negative result is preserved."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "c921fd841c164c6b81e5a2fbccac4d5744ce6126223d0b308fe256721efef9f3",
+      "discriminatorId": "v1:negative-dr-fallback",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "ef0a10555cb589625fdf1c712fefad00afd0abd695dd99f4efde630e962561f0",
+      "frames": 48064,
+      "id": "negative-dr-fallback",
+      "order": 5,
+      "path": "01-core/105_negative_dr_fallback.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Is a negative secondary-peak DR recomputed with the primary peak?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "peak": 1.0,
+            "targetRms": 0.8
+          },
+          {
+            "peak": 0.1,
+            "targetRms": 0.05
+          }
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "RMS is rounded in the dB domain before reconstruction.",
+        "RMS is truncated in the linear domain."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "7a65c8304344935e1cd8443a682ad567c0a940da2c7edd87efe09dc8e65aa194",
+      "discriminatorId": "v1:histogram-db-domain",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "c342e1e4fae4487ba79208975edf5047a97691e56a16537cce81d966842309a1",
+      "frames": 120160,
+      "id": "histogram-db-domain",
+      "order": 6,
+      "path": "01-core/110_histogram_db_domain.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Is RMS quantized in 0.01 dB bins or linear 0.0001 bins?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "count": 1,
+            "peak": 0.1,
+            "targetRms": 0.00109
+          },
+          {
+            "count": 4,
+            "peak": 0.1,
+            "targetRms": 0.00101
+          }
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The complete four-window boundary bin is included.",
+        "Only enough boundary-bin windows to reach floor(N/5) are used."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 961336,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "a36efc37e9aeeb68e826cd8d0e86a0b1633cbd46ce4646c80e10bf07f6d204d4",
+      "discriminatorId": "v1:loud-boundary-bin-ties",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "5b21bb6f7f497657c5805dd118ad805c31bad6e9effa7a14506a938368edc34a",
+      "frames": 240320,
+      "id": "loud-boundary-bin-ties",
+      "order": 7,
+      "path": "01-core/111_loud_boundary_bin_ties.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Are all ties in the loudest-20-percent boundary bin included?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "ranked-shaped-windows",
+        "windows": [
+          {
+            "count": 1,
+            "peak": 0.5,
+            "targetRms": 0.2
+          },
+          {
+            "count": 4,
+            "peak": 0.5,
+            "targetRms": 0.1
+          },
+          {
+            "count": 5,
+            "peak": 0.5,
+            "targetRms": 0.02
+          }
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The later, slightly higher peak becomes the selected secondary peak.",
+        "Raw-amplitude order statistics select the lower peak."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "0379ca47e6bce0a53b8585d7486fb5bd6b8e7f1ed48403dc708d51533b4f5b8a",
+      "discriminatorId": "v1:peak-order-low-then-high",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "680ae1a7d9a480a5665330933be9e9b776a25e8726635163505094fa804d08ad",
+      "frames": 120160,
+      "id": "peak-order-low-then-high",
+      "order": 8,
+      "path": "01-core/120_peak_order_low_then_high.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "When the two largest peaks share a 0.01 dB key, does their arrival order affect the selected second peak?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "equal-rms-quantized-peak-order",
+        "peakDbOrder": [
+          -2.0035,
+          -1.9965,
+          -3.0980391997148637,
+          -3.0980391997148637,
+          -3.0980391997148637
+        ],
+        "targetRmsDb": -14.5
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The selected secondary peak changes with arrival order.",
+        "The result is permutation invariant."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "14a5aed7324a9d9fe191cb70090da89647c4050f4e44a53ac1a725b4537acf66",
+      "discriminatorId": "v1:peak-order-high-then-low",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "f7884af7a53ffac8915b163fdeb49b01e069858ba2ccf0f9b32db717aebd0df3",
+      "frames": 120160,
+      "id": "peak-order-high-then-low",
+      "order": 9,
+      "path": "01-core/121_peak_order_high_then_low.wav",
+      "playlists": [
+        "01-core"
+      ],
+      "question": "Does reversing only the first two quantized-equal peaks change the selected peak and rounded DR?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "equal-rms-quantized-peak-order",
+        "peakDbOrder": [
+          -1.9965,
+          -2.0035,
+          -3.0980391997148637,
+          -3.0980391997148637,
+          -3.0980391997148637
+        ],
+        "targetRmsDb": -14.5
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "One frame is finalized and reported.",
+        "The file has insufficient analysis data."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 60,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+      "discriminatorId": "v1:one-frame-nonzero",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "9328c71b54bdcf658fb405a06c32b0ec4819b39ddc16a86a3b0616b07d48ba29",
+      "frames": 1,
+      "id": "one-frame-nonzero",
+      "order": 10,
+      "path": "02-degenerate/201_one_frame_nonzero.wav",
+      "playlists": [
+        "02-degenerate"
+      ],
+      "question": "Can a one-frame nonzero file produce a completed DR result?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "literal",
+        "samplesPerChannel": [
+          [
+            0.5
+          ]
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The result is clamped to DR0.",
+        "A negative DR is reported."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 64,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "b3f689962d5d23d2c4d34e32885e60cb9af0119e64bbf4ce2446694c45d9cdb9",
+      "discriminatorId": "v1:two-frame-negative",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "950f035497a3068b4eb711cac1673b576662467abfd4407d21f7ce1148d29823",
+      "frames": 2,
+      "id": "two-frame-negative",
+      "order": 11,
+      "path": "02-degenerate/202_two_frame_constant.wav",
+      "playlists": [
+        "02-degenerate"
+      ],
+      "question": "How is a two-frame constant signal with negative raw DR reported?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "literal",
+        "samplesPerChannel": [
+          [
+            0.5,
+            0.5
+          ]
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Silence is represented as a numeric DR0.",
+        "Silence is excluded or reported as insufficient."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "ce6092dc0fb387d5ce68d4f032ea95711ff5aadac184a6446b0e64cbc1ef237b",
+      "discriminatorId": "v1:silent-mono",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "0d8b5999e67fc2b3491ef2b5bd319a670af5f7f30f03bcdb10b0764d6eecca3b",
+      "frames": 48064,
+      "id": "silent-mono",
+      "order": 12,
+      "path": "02-degenerate/203_silent_mono.wav",
+      "playlists": [
+        "02-degenerate",
+        "07-album-silence"
+      ],
+      "question": "Does a silent channel become DR0 or an excluded state?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "amplitude": 0.0,
+        "frames": 48064,
+        "kind": "constant"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The track value averages the measured channel with numeric zero.",
+        "The silent channel is excluded from aggregation."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 1922616,
+      "channelMask": null,
+      "channels": 2,
+      "dataSha256": "051220d0a926fba19ca44d15bafe447cd7e8ff570cac1468bdaa24ab556f8253",
+      "discriminatorId": "v1:stereo-silent-channel",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "daa1e30fe6d68cca15d9eae35877caf01a97b49ce6069de63d8e111cb8dc0331",
+      "frames": 240320,
+      "id": "stereo-silent-channel",
+      "order": 13,
+      "path": "03-multichannel/301_stereo_silent_channel.wav",
+      "playlists": [
+        "03-multichannel"
+      ],
+      "question": "Is a silent stereo channel included as DR0 in the track mean?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 12.0
+          },
+          {
+            "constant": 0.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Channel DR values are averaged arithmetically.",
+        "Channel loudness weights the track DR."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 2883920,
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "dataSha256": "47b2f7981c1e9346f9108e2952a6f66efe4c95ff7f9457313eee5b51ee8a7c7f",
+      "discriminatorId": "v1:three-channel-arithmetic",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "395d5b96f8f646b7f9400d123fb58175aee48fd7de08b004f28dcad88efa1aa5",
+      "frames": 240320,
+      "id": "three-channel-arithmetic",
+      "order": 14,
+      "path": "03-multichannel/302_three_channel_arithmetic.wav",
+      "playlists": [
+        "03-multichannel"
+      ],
+      "question": "Is default three-channel aggregation an unweighted arithmetic mean?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 10.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 20.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 30.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "All six channel DR values, including LFE, are averaged.",
+        "The LFE channel is excluded from the official value."
+      ],
+      "architectureScope": "x86-observed-and-x64-static-control",
+      "byteLength": 5767760,
+      "channelMask": "0x0000003f",
+      "channels": 6,
+      "dataSha256": "b39bcd0be156d3913e36a5ec587352b02fadd68fc8ce2966d136de3b7ba848ba",
+      "discriminatorId": "v1:six-channel-lfe",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "previous_observation_and_static_regression",
+      "executionClass": "safe",
+      "fileSha256": "aab3f7b406e9c136f5cad0a0f0d11f4754a171e3acd2e5ec84640fe36636e4ef",
+      "frames": 240320,
+      "id": "six-channel-lfe",
+      "order": 15,
+      "path": "03-multichannel/303_six_channel_lfe.wav",
+      "playlists": [
+        "03-multichannel"
+      ],
+      "question": "Does the official six-channel result include the LFE channel?",
+      "questionClass": "algorithm_core",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "channelOrder": [
+          "FL",
+          "FR",
+          "FC",
+          "LFE",
+          "BL",
+          "BR"
+        ],
+        "channels": [
+          {
+            "peak": 1.0,
+            "targetDrDb": 6.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 9.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 12.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 30.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 15.0
+          },
+          {
+            "peak": 1.0,
+            "targetDrDb": 18.0
+          }
+        ],
+        "count": 10,
+        "kind": "per-channel-repeated-shaped-windows",
+        "speakerMask": "0x0000003f"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Clamp to -100 dB.",
+        "Retain lower centi-dB keys."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 480696,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "3b1504e89d7808e7ec54b0651b78dfec111eac446d5f554b90c1b2f200ab318b",
+      "discriminatorId": "lower-clamp",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "ab06ac487d20ca0732e4b681b53362d8aa030b14903dcbb4194975e8ef362f85",
+      "frames": 120160,
+      "id": "histogram-lower-clamp",
+      "order": 16,
+      "path": "04-numeric/401_histogram_lower_clamp.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Does RMS below -100 dB enter the endpoint histogram bin?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "lower-clamp-ranked-windows",
+        "windowCount": 5
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "floor gives one.",
+        "round or ceil gives two."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 865208,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "0c94c826e487fc8abef2a185d0769ef03881783c9049cd76d116f5ae46f7da80",
+      "discriminatorId": "target-n9",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "e1a94d3f3a2fd7efb7f206b54043d27a8329fada67ad105a1c9530dde98b3e31",
+      "frames": 216288,
+      "id": "loud-target-n9",
+      "order": 17,
+      "path": "04-numeric/402_loud_target_n9.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "At N=9, is the loud target floor(N/5)=1 rather than 2?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "n9-target-boundary",
+        "windowCount": 9
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "N=10 and the one nonzero histogram item is used.",
+        "Zero windows are removed from N."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 961336,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "70cc7cfedee8e1840d9abe4142f41b4d5fb6521f808416951fb9ef330dff399c",
+      "discriminatorId": "sparse-zero",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "22db06244ad26f29fbb0622ed5bc21d2d7d6276ba1a992a4c59970d698ecee43",
+      "frames": 240320,
+      "id": "sparse-nonzero-among-zero",
+      "order": 18,
+      "path": "04-numeric/403_sparse_nonzero_among_zero.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Do zero windows count in N while remaining absent from the histogram?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "one-nonzero-nine-zero",
+        "windowCount": 10
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Distinct adjacent RMS keys.",
+        "One shared key."
+      ],
+      "architectureScope": "x64-f64-core",
+      "byteLength": 769080,
+      "channelMask": null,
+      "channels": 2,
+      "dataSha256": "ad8bd4dc069e07ce289bb8a0da3c72ca775d4bb79c7bc17057a2205a75a637f9",
+      "discriminatorId": "rms-half-f64",
+      "encoding": "wav-ieee-float64le",
+      "evidenceIntent": "architecture_discriminator",
+      "executionClass": "safe",
+      "fileSha256": "25aa2ca5173905597c766ca34b61a0d61b1d7d591684b3b3cbce7c07b9ba4cca",
+      "frames": 48064,
+      "id": "rms-half-f64-stereo",
+      "order": 19,
+      "path": "04-numeric/410_rms_half_f64_stereo.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Do source-f64 channels straddle an RMS centi-dB half?",
+      "questionClass": "architecture_discriminator",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "collapsedFloorF32Hex": "0x1.2006560000000p-2",
+        "downcastKey": -801,
+        "floorF64Hex": "0x1.2006561536d66p-2",
+        "kind": "rms-half-collapse",
+        "sourceKeys": [
+          -801,
+          -800
+        ],
+        "thresholdDb": -8.005
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Both channels collapse.",
+        "They remain distinct."
+      ],
+      "architectureScope": "f32-input-control",
+      "byteLength": 384568,
+      "channelMask": null,
+      "channels": 2,
+      "dataSha256": "4642c0174aa33bc7fe4d162f05ecb3362f5023885f0377c3aa0243ee056e4390",
+      "discriminatorId": "rms-half-f32",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "architecture_discriminator",
+      "executionClass": "safe",
+      "fileSha256": "ecf5b3e09f99e9482fe6289e58649eafc6ac43c5644bc57c93f114e7e4408d36",
+      "frames": 48064,
+      "id": "rms-half-f32-stereo",
+      "order": 20,
+      "path": "04-numeric/411_rms_half_f32_stereo.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Does f32 encoding collapse the paired RMS half witness?",
+      "questionClass": "architecture_discriminator",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "collapsedFloorF32Hex": "0x1.2006560000000p-2",
+        "downcastKey": -801,
+        "floorF64Hex": "0x1.2006561536d66p-2",
+        "kind": "rms-half-collapse",
+        "sourceKeys": [
+          -801,
+          -800
+        ],
+        "thresholdDb": -8.005
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "The two channels select different secondary peaks.",
+        "Same rank."
+      ],
+      "architectureScope": "x64-f64-core",
+      "byteLength": 1922616,
+      "channelMask": null,
+      "channels": 2,
+      "dataSha256": "b54248fe1d8c2bb99a7e54896172756b34c4af0d1f004fb357808feec693a27d",
+      "discriminatorId": "peak-half-f64",
+      "encoding": "wav-ieee-float64le",
+      "evidenceIntent": "architecture_discriminator",
+      "executionClass": "safe",
+      "fileSha256": "6a44778a6ca24bf0e7d9267ed2e50f18ea3ffb4a98ad59ff415f935385db7a23",
+      "frames": 120160,
+      "id": "peak-half-f64-stereo",
+      "order": 21,
+      "path": "04-numeric/420_peak_half_f64_stereo.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Does the peak key use centi-dB lround at the half boundary?",
+      "questionClass": "architecture_discriminator",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "collapsedPeakF32Hex": "0x1.c80ed20000000p-1",
+        "controlDb": -1.0148,
+        "controlKey": -101,
+        "highKey": -100,
+        "kind": "peak-half-collapse",
+        "lowKey": -101,
+        "thresholdDb": -1.005
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Both channels collapse.",
+        "They remain distinct."
+      ],
+      "architectureScope": "f32-input-control",
+      "byteLength": 961336,
+      "channelMask": null,
+      "channels": 2,
+      "dataSha256": "ae4c4f1ce5f195fff5ba0bacce5e696edfb1c3cf4674f2389da1649c6aa6d191",
+      "discriminatorId": "peak-half-f32",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "architecture_discriminator",
+      "executionClass": "safe",
+      "fileSha256": "46df6c734e1de07b881765c7d251fa1e1c9e28f1f7b9cc7f0e1254ea8b280c91",
+      "frames": 120160,
+      "id": "peak-half-f32-stereo",
+      "order": 22,
+      "path": "04-numeric/421_peak_half_f32_stereo.wav",
+      "playlists": [
+        "04-numeric"
+      ],
+      "question": "Does f32 encoding collapse the paired peak half witness?",
+      "questionClass": "architecture_discriminator",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "collapsedPeakF32Hex": "0x1.c80ed20000000p-1",
+        "controlDb": -1.0148,
+        "controlKey": -101,
+        "highKey": -100,
+        "kind": "peak-half-collapse",
+        "lowKey": -101,
+        "thresholdDb": -1.005
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Submitted.",
+        "Discarded."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 529972,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "520665a98a20f21a8f8f94d3f1a574ff888ca035a56a7771f59a4fc5e4519224",
+      "discriminatorId": "sample-rate-control",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "b588c155933215340838cee7f182d025a6a31a8622d8ee15de1043cfbf95a7f4",
+      "frames": 132479,
+      "id": "sr-44100-w-minus-one",
+      "order": 23,
+      "path": "05-samplerates/501_sr_44100_w_minus_one.wav",
+      "playlists": [
+        "05-samplerates"
+      ],
+      "question": "Is a W-1 tail submitted at 44100 Hz?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 44100,
+      "waveform": {
+        "kind": "w-minus-one",
+        "windowFrames": 132480
+      },
+      "windowFrames": 132480
+    },
+    {
+      "alternativeHypotheses": [
+        "One full window plus one-frame tail.",
+        "One rounded-width window."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 529980,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "c4b3bde0c1ff984976ee1131fc8d9e8e69f5b660b10ca720955662b335c1ffcb",
+      "discriminatorId": "sample-rate-split",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "576e49b6080003989f104ddd96726f7a56e635bbcbff25efec9b43c84380c401",
+      "frames": 132481,
+      "id": "sr-44100-w-plus-one",
+      "order": 24,
+      "path": "05-samplerates/502_sr_44100_w_plus_one.wav",
+      "playlists": [
+        "05-samplerates"
+      ],
+      "question": "Does floor(coefficient*rate) split W+1 at 44100 Hz?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 44100,
+      "waveform": {
+        "kind": "w-plus-one-transition",
+        "windowFrames": 132480
+      },
+      "windowFrames": 132480
+    },
+    {
+      "alternativeHypotheses": [
+        "Submitted.",
+        "Discarded."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 576832,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "83c4d132f58ebdf635fb5bed2e6a7408f5882122084716cfcb9c6429e78c234d",
+      "discriminatorId": "sample-rate-control",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "14d8e58eba2079b5fda1ba72a066c791d5c3958c74bf72a847c894f0a1c67036",
+      "frames": 144194,
+      "id": "sr-48000-w-minus-one",
+      "order": 25,
+      "path": "05-samplerates/503_sr_48000_w_minus_one.wav",
+      "playlists": [
+        "05-samplerates"
+      ],
+      "question": "Is a W-1 tail submitted at 48000 Hz?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 48000,
+      "waveform": {
+        "kind": "w-minus-one",
+        "windowFrames": 144195
+      },
+      "windowFrames": 144195
+    },
+    {
+      "alternativeHypotheses": [
+        "One full window plus one-frame tail.",
+        "One rounded-width window."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 576840,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "250e257e53cfe7a5ce6baf221db84d730dd87648aac5e1ddd6dbd5c6982f5a4a",
+      "discriminatorId": "sample-rate-split",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "8fa08e407a1d29f2afacf516e87d2a4da7b547d8a2102b0cec323011948029fd",
+      "frames": 144196,
+      "id": "sr-48000-w-plus-one",
+      "order": 26,
+      "path": "05-samplerates/504_sr_48000_w_plus_one.wav",
+      "playlists": [
+        "05-samplerates"
+      ],
+      "question": "Does floor(coefficient*rate) split W+1 at 48000 Hz?",
+      "questionClass": "numeric_boundary",
+      "sampleRateHz": 48000,
+      "waveform": {
+        "kind": "w-plus-one-transition",
+        "windowFrames": 144195
+      },
+      "windowFrames": 144195
+    },
+    {
+      "alternativeHypotheses": [
+        "All eight mapped channels contribute.",
+        "A layout-specific subset contributes."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 1538128,
+      "channelMask": "0x0000063f",
+      "channels": 8,
+      "dataSha256": "fed1613a2fb2f7c306d48f2b6fe2a5cd632592cfcd1ce1e978d24804359fe35f",
+      "discriminatorId": "eight-channel-report",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "5ed6c28587265097035ebc5c1c342996386a3dca4961433e01bc40511d0fc37d",
+      "frames": 48064,
+      "id": "eight-channel-report-map",
+      "order": 27,
+      "path": "06-precision-report/601_eight_channel_report_map.wav",
+      "playlists": [
+        "06-precision-report"
+      ],
+      "question": "What are the 7.1 column order, report peak/RMS, and track mean?",
+      "questionClass": "report_and_track_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "channelOrder": [
+          "FL",
+          "FR",
+          "FC",
+          "LFE",
+          "BL",
+          "BR",
+          "SL",
+          "SR"
+        ],
+        "kind": "distinct-eight-channel",
+        "peak": [
+          0.95,
+          0.85,
+          0.75,
+          0.65,
+          0.55,
+          0.45,
+          0.35,
+          0.25
+        ],
+        "speakerMask": "0x0000063f",
+        "targetDrDb": [
+          4.0,
+          8.0,
+          12.0,
+          16.0,
+          20.0,
+          24.0,
+          28.0,
+          32.0
+        ]
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Aggregate precise track values.",
+        "Aggregate displayed integers."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "3fd78a3076a81931515e1af7ce53078284fe9e6bccf53e1269ff6f623f37d997",
+      "discriminatorId": "album-track",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "587ff25b5092809357f771341e5088c4917c814a0b532fbbb867898eea351f6c",
+      "frames": 48064,
+      "id": "album-10-49-a",
+      "order": 28,
+      "path": "07-album/701_album_10_49_a.wav",
+      "playlists": [
+        "07-album-silence",
+        "07-album-source",
+        "07-display-half"
+      ],
+      "question": "Track designed around DR10.49 for album/display discrimination.",
+      "questionClass": "album_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "album-rounding-track",
+        "targetDrDb": 10.49
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Aggregate precise track values.",
+        "Aggregate displayed integers."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "cc5a02359ea5a3f9ceaa488389e1e1b9fde710e80d88762b6f63f083fc7b6bc2",
+      "discriminatorId": "album-track",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "d81ed671d0ea3fc8b6ef6dd1b098e55d3a6faed14618de836dda2390c715d4cd",
+      "frames": 48064,
+      "id": "album-10-49-b",
+      "order": 29,
+      "path": "07-album/702_album_10_49_b.wav",
+      "playlists": [
+        "07-album-source"
+      ],
+      "question": "Track designed around DR10.49 for album/display discrimination.",
+      "questionClass": "album_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "album-rounding-track",
+        "targetDrDb": 10.49
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Aggregate precise track values.",
+        "Aggregate displayed integers."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "43886d6a2b36d07e9f69a3d98bd1b755a8c36c46ba01b78f0760bc5f022f724b",
+      "discriminatorId": "album-track",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "8efb335a0c3cfab161d84a612e505962e43bf7e1953f2d340268940996745a93",
+      "frames": 48064,
+      "id": "album-11-49",
+      "order": 30,
+      "path": "07-album/703_album_11_49.wav",
+      "playlists": [
+        "07-album-source"
+      ],
+      "question": "Track designed around DR11.49 for album/display discrimination.",
+      "questionClass": "album_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "album-rounding-track",
+        "targetDrDb": 11.49
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Aggregate precise track values.",
+        "Aggregate displayed integers."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "c425b403e04043337913f0dbe5f01d619f1661e64d71bc2e648805cf619068c0",
+      "discriminatorId": "album-track",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "cecd4f01acd0912f1b35cd54dfb20a6dffba2e620cfa323e8f6577d61a280cc7",
+      "frames": 48064,
+      "id": "display-10-50",
+      "order": 31,
+      "path": "07-album/704_display_10_50.wav",
+      "playlists": [
+        "07-display-half"
+      ],
+      "question": "Track designed around DR10.50 for album/display discrimination.",
+      "questionClass": "album_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "album-rounding-track",
+        "targetDrDb": 10.5
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Low and high witnesses display differently.",
+        "Both truncate alike."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 576848,
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "dataSha256": "915ee510d77d581891ebc3b6b6b881a8c8b053089f88d36a282ba9518755466f",
+      "discriminatorId": "aggregate-display-boundary",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "622f674ef98d523bb17c05bdd9998a2723e82cb03966733c63e1c3582185acef",
+      "frames": 48064,
+      "id": "aggregate-narrow-low",
+      "order": 32,
+      "path": "06-precision-report/610_aggregate_narrow_low.wav",
+      "playlists": [
+        "06-precision-report"
+      ],
+      "question": "Does nonnegative track DR cross the +0.5 display boundary?",
+      "questionClass": "track_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "three-channel-display-boundary",
+        "targetDrDb": 12.499
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Low and high witnesses display differently.",
+        "Both truncate alike."
+      ],
+      "architectureScope": "x86-and-x64-shared-control",
+      "byteLength": 576848,
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "dataSha256": "c88bb8d4f1fac5ef04aefc0b8be5688f75595cd8f4fecea427d8f0edd54fdd75",
+      "discriminatorId": "aggregate-display-boundary",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_regression",
+      "executionClass": "safe",
+      "fileSha256": "336d1768263305076911544b309c344d05dbb26275a56be5c6f4b13aef88dd01",
+      "frames": 48064,
+      "id": "aggregate-narrow-high",
+      "order": 33,
+      "path": "06-precision-report/611_aggregate_narrow_high.wav",
+      "playlists": [
+        "06-precision-report"
+      ],
+      "question": "Does nonnegative track DR cross the +0.5 display boundary?",
+      "questionClass": "track_aggregate",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "three-channel-display-boundary",
+        "targetDrDb": 12.501
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 48108,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "ca0aad53bf83ee00a4c77c4b3b7e4f713340dee5f2e1ca0cf7e944e8276b85bb",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-pcm-u8",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "cc5ec4d60254c2c16a4aaff80e577239c3bb4658e830ad8bff20e0fc9608351d",
+      "frames": 48064,
+      "id": "host-decode-u8",
+      "order": 34,
+      "path": "08-host-decode/801_host_decode_u8.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-pcm-u8?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-pcm-u8",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 96172,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "5a4889752510f32180893b13b9d947a0ca59e4811d50245bd81dc3a3203bdb9d",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-pcm-s16le",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "940fa755f429e6a8484ac5e71837c92e2854975bdb51a860f4ee9cd7f25c0b04",
+      "frames": 48064,
+      "id": "host-decode-s16",
+      "order": 35,
+      "path": "08-host-decode/802_host_decode_s16.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-pcm-s16le?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-pcm-s16le",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 144236,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "05ab9c30e69a12ef38b9e09e61ad120b8fce5acdb624cb5e42ada81fc31ea3ff",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-pcm-s24le",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "6d5d30dc197044fb349cf289ee6c7b43f43046dd6cdf273dc723efb2b7a21dad",
+      "frames": 48064,
+      "id": "host-decode-s24",
+      "order": 36,
+      "path": "08-host-decode/803_host_decode_s24.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-pcm-s24le?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-pcm-s24le",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 192300,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "26bc2af3f293468515c59eece05c4d378d1872564c5879fe0a5104ce7e0ac353",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-pcm-s32le",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "503ec351fe1a01c0991959208536974586c3da9c03cd11f65d456dbb418813eb",
+      "frames": 48064,
+      "id": "host-decode-s32",
+      "order": 37,
+      "path": "08-host-decode/804_host_decode_s32.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-pcm-s32le?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-pcm-s32le",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "7901532ed4e859057769fd2bd95ece36d430cbe0ea396e727f45ca67f6c136f3",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "6020659b806263a5d050d85bc5e7774b18336b641d5706f466a4706b0dd70e62",
+      "frames": 48064,
+      "id": "host-decode-f32",
+      "order": 38,
+      "path": "08-host-decode/805_host_decode_f32.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-ieee-float32le?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-ieee-float32le",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Report-equivalent decoded PCM.",
+        "Format-specific divergence."
+      ],
+      "architectureScope": "foobar2000-2.0-x64-wave-decoder",
+      "byteLength": 384568,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+      "discriminatorId": "host-decode-equivalence",
+      "encoding": "wav-ieee-float64le",
+      "evidenceIntent": "static_decoder_regression",
+      "executionClass": "safe",
+      "fileSha256": "6f2473481ea65ba751b8f6248719381ce4b1a18e4afa5cc673849d8153c27d9e",
+      "frames": 48064,
+      "id": "host-decode-f64",
+      "order": 39,
+      "path": "08-host-decode/806_host_decode_f64.wav",
+      "playlists": [
+        "08-host-decode"
+      ],
+      "question": "Does the host deliver the shared dyadic waveform from wav-ieee-float64le?",
+      "questionClass": "host_decode",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "baseCodeBits": 8,
+        "encoding": "wav-ieee-float64le",
+        "kind": "shared-dyadic-codec-signal"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Rejected or omitted before analysis.",
+        "Reported as a numeric track."
+      ],
+      "architectureScope": "host-dependent",
+      "byteLength": 56,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "discriminatorId": "zero-frame-host",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "isolated_host_edge",
+      "executionClass": "isolated",
+      "fileSha256": "86c96568093397ed6da80c1020bdf53c51eb688c0f370e675981e362673cddd7",
+      "frames": 0,
+      "id": "zero-frame",
+      "order": 40,
+      "path": "99-isolated/901_zero_frame.wav",
+      "playlists": [
+        "99-zero-frame"
+      ],
+      "question": "What is the host/UI behavior for a valid zero-frame WAV?",
+      "questionClass": "host_edge",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "zero-frame"
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Clamp loud RMS to 0 dB.",
+        "Retain positive RMS keys."
+      ],
+      "architectureScope": "host-dependent",
+      "byteLength": 192312,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "78c14dfe0e80804f4c2b4cc575e272b36053b52d060a5c58de39b9e3f4436bac",
+      "discriminatorId": "upper-clamp-overfull",
+      "encoding": "wav-ieee-float32le",
+      "evidenceIntent": "isolated_host_edge",
+      "executionClass": "isolated",
+      "fileSha256": "05cdb4454150641ade2e3dbf48cddc5dd0e64c82ded878c93baf32450261d997",
+      "frames": 48064,
+      "id": "overfull-f32",
+      "order": 41,
+      "path": "99-isolated/902_overfull_f32.wav",
+      "playlists": [
+        "99-overfull-f32"
+      ],
+      "question": "Is the 0 dB histogram clamp observable on finite overfull float32 PCM?",
+      "questionClass": "host_edge",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "overfull-upper-clamp",
+        "peak": 2.0,
+        "targetRms": 1.1
+      },
+      "windowFrames": 24032
+    },
+    {
+      "alternativeHypotheses": [
+        "Clamp loud RMS to 0 dB.",
+        "Retain positive RMS keys."
+      ],
+      "architectureScope": "host-dependent",
+      "byteLength": 384568,
+      "channelMask": null,
+      "channels": 1,
+      "dataSha256": "887358432927ae5ca489c4a9f09905a02c5c5fd4e9ee6526ca9b9ce65c91e06f",
+      "discriminatorId": "upper-clamp-overfull",
+      "encoding": "wav-ieee-float64le",
+      "evidenceIntent": "isolated_host_edge",
+      "executionClass": "isolated",
+      "fileSha256": "a95d09e4fdc7104d14004633def62baa7c9e7f0417a0240c1c5016ff4ebc60c2",
+      "frames": 48064,
+      "id": "overfull-f64",
+      "order": 42,
+      "path": "99-isolated/903_overfull_f64.wav",
+      "playlists": [
+        "99-overfull-f64"
+      ],
+      "question": "Is the 0 dB histogram clamp observable on finite overfull float64 PCM?",
+      "questionClass": "host_edge",
+      "sampleRateHz": 8000,
+      "waveform": {
+        "kind": "overfull-upper-clamp",
+        "peak": 2.0,
+        "targetRms": 1.1
+      },
+      "windowFrames": 24032
+    }
+  ],
+  "corpusId": "foo-dr-meter-108-complete-v2",
+  "generator": {
+    "command": "python3 reference/tools/generate_foo_dr_meter_108_complete_v2.py --output <OUTPUT>",
+    "name": "generate_foo_dr_meter_108_complete_v2.py",
+    "sourceSha256": "f83fdcd0b88f2f414c53f8aa52a5b03f4fd4c8ee25024c4dce603df9a2179054",
+    "v1FixtureSource": {
+      "name": "generate_foo_dr_meter_108_suite.py",
+      "sha256": "e5bf003835a3603db044007c181d1618f8cd43e4c0199d926061ef9f3d391f2b",
+      "usage": "read-only import of the 15 registered v1 fixture recipes"
+    },
+    "version": 2
+  },
+  "isolatedFixtureIds": [
+    "overfull-f32",
+    "overfull-f64",
+    "zero-frame"
+  ],
+  "playlists": {
+    "00-safe-master": [
+      "window-minus-one-control",
+      "exact-window-control",
+      "tail-pair-base",
+      "tail-pair-plus-one",
+      "negative-dr-fallback",
+      "histogram-db-domain",
+      "loud-boundary-bin-ties",
+      "peak-order-low-then-high",
+      "peak-order-high-then-low",
+      "one-frame-nonzero",
+      "two-frame-negative",
+      "silent-mono",
+      "stereo-silent-channel",
+      "three-channel-arithmetic",
+      "six-channel-lfe",
+      "histogram-lower-clamp",
+      "loud-target-n9",
+      "sparse-nonzero-among-zero",
+      "rms-half-f64-stereo",
+      "rms-half-f32-stereo",
+      "peak-half-f64-stereo",
+      "peak-half-f32-stereo",
+      "sr-44100-w-minus-one",
+      "sr-44100-w-plus-one",
+      "sr-48000-w-minus-one",
+      "sr-48000-w-plus-one",
+      "eight-channel-report-map",
+      "album-10-49-a",
+      "album-10-49-b",
+      "album-11-49",
+      "display-10-50",
+      "aggregate-narrow-low",
+      "aggregate-narrow-high",
+      "host-decode-u8",
+      "host-decode-s16",
+      "host-decode-s24",
+      "host-decode-s32",
+      "host-decode-f32",
+      "host-decode-f64"
+    ],
+    "01-core": [
+      "window-minus-one-control",
+      "exact-window-control",
+      "tail-pair-base",
+      "tail-pair-plus-one",
+      "negative-dr-fallback",
+      "histogram-db-domain",
+      "loud-boundary-bin-ties",
+      "peak-order-low-then-high",
+      "peak-order-high-then-low"
+    ],
+    "02-degenerate": [
+      "one-frame-nonzero",
+      "two-frame-negative",
+      "silent-mono"
+    ],
+    "03-multichannel": [
+      "stereo-silent-channel",
+      "three-channel-arithmetic",
+      "six-channel-lfe"
+    ],
+    "04-numeric": [
+      "histogram-lower-clamp",
+      "loud-target-n9",
+      "sparse-nonzero-among-zero",
+      "rms-half-f64-stereo",
+      "rms-half-f32-stereo",
+      "peak-half-f64-stereo",
+      "peak-half-f32-stereo"
+    ],
+    "05-samplerates": [
+      "sr-44100-w-minus-one",
+      "sr-44100-w-plus-one",
+      "sr-48000-w-minus-one",
+      "sr-48000-w-plus-one"
+    ],
+    "06-precision-report": [
+      "eight-channel-report-map",
+      "aggregate-narrow-low",
+      "aggregate-narrow-high"
+    ],
+    "07-album-silence": [
+      "silent-mono",
+      "album-10-49-a"
+    ],
+    "07-album-source": [
+      "album-10-49-a",
+      "album-10-49-b",
+      "album-11-49"
+    ],
+    "07-display-half": [
+      "album-10-49-a",
+      "display-10-50"
+    ],
+    "08-host-decode": [
+      "host-decode-u8",
+      "host-decode-s16",
+      "host-decode-s24",
+      "host-decode-s32",
+      "host-decode-f32",
+      "host-decode-f64"
+    ],
+    "99-overfull-f32": [
+      "overfull-f32"
+    ],
+    "99-overfull-f64": [
+      "overfull-f64"
+    ],
+    "99-zero-frame": [
+      "zero-frame"
+    ]
+  },
+  "schemaVersion": 2,
+  "targetFamily": {
+    "compatibilityClaim": "none; generated inputs are not reference goldens",
+    "component": "foo_dr_meter",
+    "version": "1.0.8"
+  },
+  "window": {
+    "durationCoefficientF64Hex": "0x1.8085bf37612cfp+1",
+    "formula": "floor(sampleRateHz * coefficient)"
+  }
+}

@@ -1,0 +1,3978 @@
+{
+  "schemaVersion": 2,
+  "toolVersion": "0.2.0",
+  "kind": "batch",
+  "data": {
+    "status": "succeeded",
+    "items": [
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/101_window_minus_one_control.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/101_window_minus_one_control.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 24031
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 24031
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 24031,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.04,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.25003453616964333,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 24031
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.04,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 24031,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/102_exact_window_control.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/102_exact_window_control.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 24032
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 24032
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 24032,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.04,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.25003453616964333,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 24032
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.04,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 24032,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/103_tail_pair_base.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/103_tail_pair_base.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 19.08485,
+                      "roundedDr": 19,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.8999999761581421,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8999999761581421,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 19.08485,
+                  "roundedDr": 19,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/104_tail_pair_plus_one.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/104_tail_pair_plus_one.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48065
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48065
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48065,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 2.09485,
+                      "roundedDr": 2,
+                      "loudWindowRms": 0.7071312006813019,
+                      "selectedPeak": 0.8999999761581421,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8999999761581421,
+                      "validWindows": 3,
+                      "frames": 48065
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 2.09485,
+                  "roundedDr": 2,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48065,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/105_negative_dr_fallback.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/105_negative_dr_fallback.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 1.94,
+                      "roundedDr": 2,
+                      "loudWindowRms": 0.7998342550070285,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.10000000149011612,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 1.94,
+                  "roundedDr": 2,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/110_histogram_db_domain.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/110_histogram_db_domain.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 39.25,
+                      "roundedDr": 39,
+                      "loudWindowRms": 0.0010901844923851278,
+                      "selectedPeak": 0.10000000149011612,
+                      "primaryPeak": 0.10000000149011612,
+                      "secondaryPeak": 0.10000000149011612,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 39.25,
+                  "roundedDr": 39,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/111_loud_boundary_bin_ties.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/111_loud_boundary_bin_ties.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 240320
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 240320
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 240320,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 11.9385,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.12648673841641242,
+                      "selectedPeak": 0.5,
+                      "primaryPeak": 0.5,
+                      "secondaryPeak": 0.5,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 11.9385,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 240320,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/120_peak_order_low_then_high.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/120_peak_order_low_then_high.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.5035,
+                      "roundedDr": 13,
+                      "loudWindowRms": 0.18836490894898006,
+                      "selectedPeak": 0.7946483492851257,
+                      "primaryPeak": 0.794008195400238,
+                      "secondaryPeak": 0.7946483492851257,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.5035,
+                  "roundedDr": 13,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/01-core/121_peak_order_high_then_low.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/01-core/121_peak_order_high_then_low.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.4965,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.18836490894898006,
+                      "selectedPeak": 0.794008195400238,
+                      "primaryPeak": 0.7946483492851257,
+                      "secondaryPeak": 0.794008195400238,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.4965,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/201_one_frame_nonzero.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/201_one_frame_nonzero.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 1
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 1
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 1,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 0.0,
+                      "roundedDr": 0,
+                      "loudWindowRms": 0.7071312006813019,
+                      "selectedPeak": 0.5,
+                      "primaryPeak": 0.5,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 1
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 0.0,
+                  "roundedDr": 0,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 1,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/202_two_frame_constant.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/202_two_frame_constant.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 2
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 2
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 2,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 0.0,
+                      "roundedDr": 0,
+                      "loudWindowRms": 0.7071312006813019,
+                      "selectedPeak": 0.5,
+                      "primaryPeak": 0.5,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 2
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 0.0,
+                  "roundedDr": 0,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 2,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/203_silent_mono.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/02-degenerate/203_silent_mono.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "silent",
+                    "frames": 48064,
+                    "validWindows": 2
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 0.0,
+                  "roundedDr": 0,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/301_stereo_silent_channel.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/301_stereo_silent_channel.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 2,
+              "bitsPerSample": 32,
+              "expectedFrames": 240320
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 240320
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 240320,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.0,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.251188643150958,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "silent",
+                    "frames": 240320,
+                    "validWindows": 10
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 6.0,
+                  "roundedDr": 6,
+                  "contributingChannels": [
+                    0,
+                    1
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 240320,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/302_three_channel_arithmetic.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/302_three_channel_arithmetic.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 3,
+              "bitsPerSample": 32,
+              "expectedFrames": 240320
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 240320
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 240320,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 10.0,
+                      "roundedDr": 10,
+                      "loudWindowRms": 0.31622776601683794,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 20.0,
+                      "roundedDr": 20,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 2,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 30.0,
+                      "roundedDr": 30,
+                      "loudWindowRms": 0.03162277660168379,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 20.0,
+                  "roundedDr": 20,
+                  "contributingChannels": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 240320,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/303_six_channel_lfe.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/03-multichannel/303_six_channel_lfe.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 6,
+              "bitsPerSample": 32,
+              "expectedFrames": 240320
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 6,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 240320
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 6,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 240320,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 6.0,
+                      "roundedDr": 6,
+                      "loudWindowRms": 0.5011872336272722,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 9.0,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.35481338923357547,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 2,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.0,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.251188643150958,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 3,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 30.0,
+                      "roundedDr": 30,
+                      "loudWindowRms": 0.03162277660168379,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 4,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 15.0,
+                      "roundedDr": 15,
+                      "loudWindowRms": 0.17782794100389226,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 5,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 18.0,
+                      "roundedDr": 18,
+                      "loudWindowRms": 0.12589254117941673,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 15.0,
+                  "roundedDr": 15,
+                  "contributingChannels": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 240320,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/401_histogram_lower_clamp.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/401_histogram_lower_clamp.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 39.341595,
+                      "roundedDr": 39,
+                      "loudWindowRms": 0.00001,
+                      "selectedPeak": 0.0009270000155083835,
+                      "primaryPeak": 0.0010000000474974513,
+                      "secondaryPeak": 0.0009270000155083835,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 39.341595,
+                  "roundedDr": 39,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/402_loud_target_n9.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/402_loud_target_n9.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 216288
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 216288
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 216288,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 7.9594,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.19998618696327433,
+                      "selectedPeak": 0.5,
+                      "primaryPeak": 0.5,
+                      "secondaryPeak": 0.5,
+                      "validWindows": 9,
+                      "frames": 216288
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 7.9594,
+                  "roundedDr": 8,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 216288,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/403_sparse_nonzero_among_zero.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/403_sparse_nonzero_among_zero.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 240320
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 240320
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 240320,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 20.0,
+                      "roundedDr": 20,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": null,
+                      "validWindows": 10,
+                      "frames": 240320
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 20.0,
+                  "roundedDr": 20,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 240320,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/410_rms_half_f64_stereo.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/410_rms_half_f64_stereo.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 2,
+              "bitsPerSample": 64,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.01,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.3976490964745653,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.01,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.3976490964745653,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.01,
+                  "roundedDr": 8,
+                  "contributingChannels": [
+                    0,
+                    1
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/411_rms_half_f32_stereo.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/411_rms_half_f32_stereo.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 2,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.01,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.3976490964745653,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.01,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.3976490964745653,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 1.0,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.01,
+                  "roundedDr": 8,
+                  "contributingChannels": [
+                    0,
+                    1
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/420_peak_half_f64_stereo.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/420_peak_half_f64_stereo.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 2,
+              "bitsPerSample": 64,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 18.995,
+                      "roundedDr": 19,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.8907380700111389,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8907380700111389,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 18.995,
+                      "roundedDr": 19,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.8907380700111389,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8907380700111389,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 18.995,
+                  "roundedDr": 19,
+                  "contributingChannels": [
+                    0,
+                    1
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/421_peak_half_f32_stereo.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/04-numeric/421_peak_half_f32_stereo.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 2,
+              "bitsPerSample": 32,
+              "expectedFrames": 120160
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 120160
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 2,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 120160,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 18.995,
+                      "roundedDr": 19,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.8907380700111389,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8907380700111389,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 18.995,
+                      "roundedDr": 19,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.8907380700111389,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.8907380700111389,
+                      "validWindows": 5,
+                      "frames": 120160
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 18.995,
+                  "roundedDr": 19,
+                  "contributingChannels": [
+                    0,
+                    1
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 120160,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/501_sr_44100_w_minus_one.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/501_sr_44100_w_minus_one.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 44100,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 132479
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 44100,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 132479
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 44100,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 132479,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.04,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.25003453616964333,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 132479
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.04,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 132479,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/502_sr_44100_w_plus_one.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/502_sr_44100_w_plus_one.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 44100,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 132481
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 44100,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 132481
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 44100,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 132481,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 3.01,
+                      "roundedDr": 3,
+                      "loudWindowRms": 0.7071312006813019,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.5,
+                      "validWindows": 2,
+                      "frames": 132481
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 3.01,
+                  "roundedDr": 3,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 132481,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/503_sr_48000_w_minus_one.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/503_sr_48000_w_minus_one.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 48000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 144194
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 48000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 144194
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 48000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 144194,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.04,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.25003453616964333,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": null,
+                      "validWindows": 1,
+                      "frames": 144194
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.04,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 144194,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/504_sr_48000_w_plus_one.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/05-samplerates/504_sr_48000_w_plus_one.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 48000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 144196
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 48000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 144196
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 48000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 144196,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 3.01,
+                      "roundedDr": 3,
+                      "loudWindowRms": 0.7071312006813019,
+                      "selectedPeak": 1.0,
+                      "primaryPeak": 1.0,
+                      "secondaryPeak": 0.5,
+                      "validWindows": 2,
+                      "frames": 144196
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 3.01,
+                  "roundedDr": 3,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 144196,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/601_eight_channel_report_map.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/601_eight_channel_report_map.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 8,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 8,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 8,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 4.004472,
+                      "roundedDr": 4,
+                      "loudWindowRms": 0.5991009386113537,
+                      "selectedPeak": 0.949999988079071,
+                      "primaryPeak": 0.949999988079071,
+                      "secondaryPeak": 0.949999988079071,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 7.9983788,
+                      "roundedDr": 8,
+                      "loudWindowRms": 0.3384542718663094,
+                      "selectedPeak": 0.8500000238418579,
+                      "primaryPeak": 0.8500000238418579,
+                      "secondaryPeak": 0.8500000238418579,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 2,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.001225,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.18836490894898006,
+                      "selectedPeak": 0.75,
+                      "primaryPeak": 0.75,
+                      "secondaryPeak": 0.75,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 3,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 15.998267,
+                      "roundedDr": 16,
+                      "loudWindowRms": 0.10303861204416166,
+                      "selectedPeak": 0.6499999761581421,
+                      "primaryPeak": 0.6499999761581421,
+                      "secondaryPeak": 0.6499999761581421,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 4,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 19.997253,
+                      "roundedDr": 20,
+                      "loudWindowRms": 0.05501739205107152,
+                      "selectedPeak": 0.550000011920929,
+                      "primaryPeak": 0.550000011920929,
+                      "secondaryPeak": 0.550000011920929,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 5,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 24.00425,
+                      "roundedDr": 24,
+                      "loudWindowRms": 0.028379190284415566,
+                      "selectedPeak": 0.44999998807907104,
+                      "primaryPeak": 0.44999998807907104,
+                      "secondaryPeak": 0.44999998807907104,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 6,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 28.00136,
+                      "roundedDr": 28,
+                      "loudWindowRms": 0.013931568029453036,
+                      "selectedPeak": 0.3499999940395355,
+                      "primaryPeak": 0.3499999940395355,
+                      "secondaryPeak": 0.3499999940395355,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 7,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 31.9988,
+                      "roundedDr": 32,
+                      "loudWindowRms": 0.0062805835881331795,
+                      "selectedPeak": 0.25,
+                      "primaryPeak": 0.25,
+                      "secondaryPeak": 0.25,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 18.000502,
+                  "roundedDr": 18,
+                  "contributingChannels": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/610_aggregate_narrow_low.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/610_aggregate_narrow_low.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 3,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.499001,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42164796590805054,
+                      "primaryPeak": 0.42164796590805054,
+                      "secondaryPeak": 0.42164796590805054,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.499001,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42164796590805054,
+                      "primaryPeak": 0.42164796590805054,
+                      "secondaryPeak": 0.42164796590805054,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 2,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.499001,
+                      "roundedDr": 12,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42164796590805054,
+                      "primaryPeak": 0.42164796590805054,
+                      "secondaryPeak": 0.42164796590805054,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.499001,
+                  "roundedDr": 12,
+                  "contributingChannels": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/611_aggregate_narrow_high.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/06-precision-report/611_aggregate_narrow_high.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 3,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 3,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.501,
+                      "roundedDr": 13,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42174506187438965,
+                      "primaryPeak": 0.42174506187438965,
+                      "secondaryPeak": 0.42174506187438965,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 1,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.501,
+                      "roundedDr": 13,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42174506187438965,
+                      "primaryPeak": 0.42174506187438965,
+                      "secondaryPeak": 0.42174506187438965,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                },
+                {
+                  "channelIndex": 2,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 12.501,
+                      "roundedDr": 13,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.42174506187438965,
+                      "primaryPeak": 0.42174506187438965,
+                      "secondaryPeak": 0.42174506187438965,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 12.501,
+                  "roundedDr": 13,
+                  "contributingChannels": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/07-album/701_album_10_49_a.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/07-album/701_album_10_49_a.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 10.49,
+                      "roundedDr": 10,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.3345800042152405,
+                      "primaryPeak": 0.3345800042152405,
+                      "secondaryPeak": 0.3345800042152405,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 10.49,
+                  "roundedDr": 10,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/07-album/702_album_10_49_b.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/07-album/702_album_10_49_b.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 10.49,
+                      "roundedDr": 10,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.3345800042152405,
+                      "primaryPeak": 0.3345800042152405,
+                      "secondaryPeak": 0.3345800042152405,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 10.49,
+                  "roundedDr": 10,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/07-album/703_album_11_49.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/07-album/703_album_11_49.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 11.49,
+                      "roundedDr": 11,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.375404953956604,
+                      "primaryPeak": 0.375404953956604,
+                      "secondaryPeak": 0.375404953956604,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 11.49,
+                  "roundedDr": 11,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/07-album/704_display_10_50.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/07-album/704_display_10_50.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 10.5,
+                      "roundedDr": 11,
+                      "loudWindowRms": 0.1,
+                      "selectedPeak": 0.33496543765068054,
+                      "primaryPeak": 0.33496543765068054,
+                      "secondaryPeak": 0.33496543765068054,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 10.5,
+                  "roundedDr": 11,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/801_host_decode_u8.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/801_host_decode_u8.wav",
+              "container": "wave",
+              "codec": "pcm_integer",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 8,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/802_host_decode_s16.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/802_host_decode_s16.wav",
+              "container": "wave",
+              "codec": "pcm_integer",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 16,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/803_host_decode_s24.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/803_host_decode_s24.wav",
+              "container": "wave",
+              "codec": "pcm_integer",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 24,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/804_host_decode_s32.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/804_host_decode_s32.wav",
+              "container": "wave",
+              "codec": "pcm_integer",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/805_host_decode_f32.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/805_host_decode_f32.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 32,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      },
+      {
+        "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/806_host_decode_f64.wav",
+        "outcome": {
+          "status": "success",
+          "report": {
+            "source": {
+              "displayPath": "/tmp/macinmeter-v2-root-h/08-host-decode/806_host_decode_f64.wav",
+              "container": "wave",
+              "codec": "pcm_float",
+              "sampleRate": 8000,
+              "channels": 1,
+              "bitsPerSample": 64,
+              "expectedFrames": 48064
+            },
+            "pcm": {
+              "spec": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "expectedFrames": 48064
+            },
+            "analysis": {
+              "algorithm": {
+                "profile": "foo_dr_meter_1_0_8_candidate_v1",
+                "profileVersion": 1,
+                "compatibility": "unverified",
+                "parameters": {
+                  "windowDurationCoefficient": 3.0040816326530613,
+                  "rmsSumMultiplier": 2.0,
+                  "histogramBins": 10001,
+                  "rmsHistogramMinDb": -100.0,
+                  "rmsHistogramMaxDb": 0.0,
+                  "histogramBinWidthDb": 0.01,
+                  "peakKeyBinWidthDb": 0.01,
+                  "loudFraction": 0.2,
+                  "minimumTailFrames": 1,
+                  "includeEntireBoundaryBin": true,
+                  "exactWindowVirtualZeroPeak": false,
+                  "drFloorDb": 0.0,
+                  "silentChannelDrDb": 0.0,
+                  "includesLfeInTrackAggregate": true,
+                  "resultPrecisionBits": 32
+                }
+              },
+              "stream": {
+                "sampleRate": 8000,
+                "channels": 1,
+                "channelLayout": {
+                  "status": "unknown"
+                }
+              },
+              "framesSeen": 48064,
+              "channels": [
+                {
+                  "channelIndex": 0,
+                  "outcome": {
+                    "status": "measured",
+                    "measurement": {
+                      "drDb": 8.961875,
+                      "roundedDr": 9,
+                      "loudWindowRms": 0.3535900211003868,
+                      "selectedPeak": 0.9921875,
+                      "primaryPeak": 0.9921875,
+                      "secondaryPeak": 0.9921875,
+                      "validWindows": 2,
+                      "frames": 48064
+                    }
+                  }
+                }
+              ],
+              "aggregates": {
+                "track": {
+                  "drDb": 8.961875,
+                  "roundedDr": 9,
+                  "contributingChannels": [
+                    0
+                  ],
+                  "excludedChannels": []
+                }
+              }
+            },
+            "diagnostics": {
+              "backend": "symphonia",
+              "decodedFrames": 48064,
+              "warnings": []
+            }
+          }
+        }
+      }
+    ],
+    "summary": {
+      "total": 39,
+      "succeeded": 39,
+      "failed": 0
+    }
+  }
+}

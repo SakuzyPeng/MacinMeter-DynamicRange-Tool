@@ -18,7 +18,7 @@ impl AnalyzeRequest {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
-            profile: AnalysisProfile::ProvisionalV1,
+            profile: AnalysisProfile::FooDrMeter108CandidateV1,
         }
     }
 }

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "kind": "construction_model_observation_comparison",
+  "factBoundary": {
+    "reference": "normalized fixed-target observation",
+    "model": "construction diagnostics, not a golden"
+  },
+  "inputs": {
+    "observationNormalizationSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "modelPredictionsSha256": "bc2cdf42ddb7143a5f46b7070f5e153c91e66c8dc0609f493ffe0134ebbe7777",
+    "modelName": "recovered x64-core construction model embedded in the v2 generator",
+    "compatibilityClaim": "none"
+  },
+  "summary": {
+    "status": "match",
+    "trackDrMatched": 39,
+    "trackDrTotal": 39,
+    "channelDrMatched": 62,
+    "channelDrTotal": 62,
+    "overallPeakMatched": 39,
+    "overallPeakTotal": 39,
+    "overallRmsMatched": 39,
+    "overallRmsTotal": 39,
+    "channelRmsMatched": 62,
+    "channelRmsTotal": 62,
+    "differenceCount": 0,
+    "ignoredModelCasesOutsideObservation": [
+      "overfull-f32",
+      "overfull-f64",
+      "zero-frame"
+    ]
+  },
+  "differences": []
+}

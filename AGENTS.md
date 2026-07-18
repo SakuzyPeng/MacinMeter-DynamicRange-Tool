@@ -5,12 +5,13 @@
 This repository is a virtual Cargo workspace targeting version 0.2.0:
 
 - `crates/macinmeter-domain` — valid domain types, reports, and stable errors
-- `crates/macinmeter-analysis` — the sole `ProvisionalV1` streaming analyzer
+- `crates/macinmeter-analysis` — the sole `FooDrMeter108CandidateV1` streaming analyzer
 - `crates/macinmeter-codecs` — strict native WAV/FLAC/AIFF PCM sources
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
 - `apps/macinmeter-cli` — CLI adapter and renderers
 - `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`
-- `reference` — specifications and future reference-evidence records
+- `reference` — fixed targets, observations, static analysis, specifications,
+  and conformance records
 
 Dependencies flow from adapters through `macinmeter` to `analysis`/`codecs`,
 which both depend on `domain`. Do not introduce frontend, filesystem, or codec
@@ -21,11 +22,14 @@ dependencies into lower layers.
 - Every first-party Rust crate uses `#![forbid(unsafe_code)]`.
 - Production analysis has one `AnalyzerSession`; do not add a compatibility
   engine or legacy profile.
+- Valid PCM blocks and the analyzer boundary use finite interleaved `f64`;
+  source float64 samples must not be narrowed before analysis.
 - M0 decoding is serial and accepts only WAV integer/float PCM, FLAC, and AIFF
   integer PCM by content.
 - Do not add FFmpeg, DSD, Songbird, Tokio/Rayon scheduling, SIMD, trimming, or
   silence preprocessing to M0.
-- Results are always `ProvisionalV1 / Unverified`; never claim reference parity.
+- Results are always `FooDrMeter108CandidateV1 / Unverified`; never claim
+  reference parity.
 - Extensions are discovery hints only. Decoder errors must not become EOF or
   partial successful reports.
 - Library/application code does not print or write files. CLI/Tauri are
@@ -56,7 +60,7 @@ ordinary development.
 - Keep tests deterministic, local, and independent of FFmpeg or network access.
 - Algorithm changes require chunk-boundary, window-boundary, multichannel, and
   finite-JSON coverage plus an update to
-  `reference/specs/provisional-v1.md`.
+  `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`.
 - Codec claims require content-probe, strict-error, frame-count, finite-sample,
   and sticky-EOF contract tests.
 - CLI changes require black-box stdout/stderr, JSON, output-file, and exit-code

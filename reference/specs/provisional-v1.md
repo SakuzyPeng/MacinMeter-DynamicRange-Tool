@@ -6,6 +6,11 @@
 - 参考目标候选：foobar2000 DR Meter 1.0.3
 - 兼容性声明：未建立
 
+> 本文件冻结 M0 的历史工程基线。当前后继规格是
+> [`foo_dr_meter 1.0.8 candidate v1`](foo-dr-meter-1.0.8-candidate-v1.md)；
+> 后继规格允许逐规则保留 E1/H/U，完整 final/intermediate conformance 是进入
+> accepted 的条件，不再把它误作建立 candidate 的前置条件。
+
 ## 1. 目的
 
 本规格冻结 M0 可以依赖的工程边界，并显式列出尚未由参考证据确认的算法行为。

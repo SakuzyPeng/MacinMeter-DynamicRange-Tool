@@ -1,6 +1,15 @@
 # Conformance
 
-本目录尚未加入 conformance 数据。M0 期间不得把当前实现输出直接登记为“通过”。
+当前记录：
+
+- [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)：
+  固定 x64 safe-master observation 与 MacinMeter 0.2.0 candidate 的公开核心
+  字段差分。f64 修正后整数 track DR 为 39/39，每声道两位 DR token 为 62/62；
+  报告 overall peak/RMS、内部状态、isolated 输入和更广输入空间不在比较范围。
+
+不得把 candidate 实现输出直接登记为“通过”；只有固定 reference observation
+与身份明确的实现产物之间的比较，才可形成 conformance 记录。单个有限记录的
+`match` 也不自动把规格升级为 accepted 或把 profile 改成 verified。
 
 每份差分摘要至少包含：
 

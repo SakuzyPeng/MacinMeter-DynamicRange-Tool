@@ -2,7 +2,9 @@
 
 MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace 中的 `macinmeter` application façade，不维护独立的解码、分析或批处理实现。
 
-> 当前输出固定标记为 `ProvisionalV1 / Unverified`。它满足 M0 的工程不变量，但尚未与参考插件完成 conformance 对齐，不能称为“官方”或“参考兼容”结果。
+> 当前输出固定标记为 `FooDrMeter108CandidateV1 / Unverified`。它实现了基于
+> `foo_dr_meter` 1.0.8 固定目标建立的候选规格，但尚未完成 accepted
+> conformance，不能称为“官方”或“参考兼容”结果。
 
 ## M0 能力边界
 
@@ -10,7 +12,7 @@ MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 - 稳定格式为 WAV（PCM integer / IEEE float）、FLAC 与 AIFF（PCM integer）。
 - 目录发现使用扩展名筛选；实际解码器仍按文件内容探测。
 - 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`。
-- 分析、批量和错误共用 schema version 1 的 `WireEnvelope`。
+- 分析、批量和错误共用 schema version 2 的 `WireEnvelope`。
 - 不包含 FFmpeg、DSD、Opus、预处理、文件级并行或环境变量修改。
 
 主窗口当前一次启动一个 job；后端注册表仍按 job 隔离，因此不同窗口或直接命令调用不会共享取消状态。

@@ -3,8 +3,8 @@
 # Legal notes and acknowledgements
 
 MacinMeter is an independently written Rust project released under the MIT
-License. It studies observable behavior associated with foobar2000 DR Meter
-1.0.3 (`foo_dr_meter`) by Janne Hyvärinen; the original plugin and its source
+License. Its current reference target is foobar2000 DR Meter 1.0.8
+(`foo_dr_meter`) by Janne Hyvärinen; the original plugin and its source
 code are not included in this repository.
 
 The project maintainer has obtained the author's permission to reverse engineer
@@ -14,9 +14,11 @@ permission summary needed to explain the research boundary; they must not
 publish private messages without separate consent.
 
 Permission to study a target does not prove that this implementation matches
-it. MacinMeter 0.2.0 reports `ProvisionalV1 / Unverified`, and the project makes
-no reference-compatibility, certification, endorsement, or “official result”
-claim.
+it. MacinMeter reports
+`foo_dr_meter 1.0.8 Candidate V1 / Unverified`, and the project makes no
+reference-compatibility, certification, endorsement, or “official result”
+claim. The target name and version identify the subject of the evidence; they
+do not imply affiliation or parity.
 
 ## Clean implementation boundary
 

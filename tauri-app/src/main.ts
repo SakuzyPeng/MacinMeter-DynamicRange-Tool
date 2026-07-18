@@ -69,7 +69,7 @@ type DecodeProgress = {
 type Measurement = {
   drDb: number;
   roundedDr: number;
-  loudRms: number;
+  loudWindowRms: number;
   selectedPeak: number;
   primaryPeak: number;
   secondaryPeak: number | null;
@@ -88,12 +88,12 @@ type ChannelResult = {
 };
 
 type TrackAggregate = {
-  preciseDrDb: number | null;
+  drDb: number | null;
   roundedDr: number | null;
-  includedChannels: number[];
+  contributingChannels: number[];
   excludedChannels: {
     channelIndex: number;
-    reason: "silent" | "insufficient_data" | "lfe";
+    reason: "insufficient_data";
   }[];
 };
 
@@ -113,25 +113,32 @@ type AnalysisReport = {
   };
   analysis: {
     algorithm: {
-      profile: "provisional_v1";
+      profile: "foo_dr_meter_1_0_8_candidate_v1";
       profileVersion: number;
       compatibility: "unverified";
       parameters: {
         windowDurationCoefficient: number;
         rmsSumMultiplier: number;
         histogramBins: number;
-        minimumNonzeroRmsBin: number;
+        rmsHistogramMinDb: number;
+        rmsHistogramMaxDb: number;
+        histogramBinWidthDb: number;
+        peakKeyBinWidthDb: number;
         loudFraction: number;
         minimumTailFrames: number;
+        includeEntireBoundaryBin: boolean;
         exactWindowVirtualZeroPeak: boolean;
+        drFloorDb: number;
+        silentChannelDrDb: number;
+        includesLfeInTrackAggregate: boolean;
+        resultPrecisionBits: number;
       };
     };
     stream: StreamSpec;
     framesSeen: number;
     channels: ChannelResult[];
     aggregates: {
-      allChannels: TrackAggregate;
-      withoutLfe: TrackAggregate | null;
+      track: TrackAggregate;
     };
   };
   diagnostics: {
@@ -156,19 +163,19 @@ type BatchReport = {
 
 type WireEnvelope =
   | {
-      schemaVersion: number;
+      schemaVersion: 2;
       toolVersion: string;
       kind: "analysis";
       data: AnalysisReport;
     }
   | {
-      schemaVersion: number;
+      schemaVersion: 2;
       toolVersion: string;
       kind: "batch";
       data: BatchReport;
     }
   | {
-      schemaVersion: number;
+      schemaVersion: 2;
       toolVersion: string;
       kind: "error";
       data: PublicError;
@@ -343,21 +350,26 @@ const renderChannel = (channel: ChannelResult): string => {
       <td>${label}</td>
       <td class="dr">DR${value.roundedDr}</td>
       <td>${value.drDb.toFixed(4)} dB</td>
-      <td>${value.loudRms.toFixed(8)}</td>
+      <td>${value.loudWindowRms.toFixed(8)}</td>
       <td>${value.selectedPeak.toFixed(8)}</td>
     </tr>`;
   }
-  const status =
-    channel.outcome.status === "silent" ? "Silent" : "Insufficient data";
-  return `<tr class="muted-row"><td>${label}</td><td colspan="4">${status}</td></tr>`;
+  if (channel.outcome.status === "silent") {
+    return `<tr class="muted-row">
+      <td>${label}</td>
+      <td class="dr">DR0</td>
+      <td colspan="3">Silent · DR0 contribution</td>
+    </tr>`;
+  }
+  return `<tr class="muted-row"><td>${label}</td><td colspan="4">Insufficient data</td></tr>`;
 };
 
 const renderAnalysis = (report: AnalysisReport): string => {
-  const aggregate = report.analysis.aggregates.allChannels;
+  const aggregate = report.analysis.aggregates.track;
   const aggregateHtml =
-    aggregate.roundedDr !== null && aggregate.preciseDrDb !== null
-    ? `<div class="aggregate"><span>Aggregate</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.preciseDrDb.toFixed(4)} dB</em></div>`
-    : `<div class="aggregate unavailable">Aggregate unavailable</div>`;
+    aggregate.roundedDr !== null && aggregate.drDb !== null
+    ? `<div class="aggregate"><span>Track aggregate</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`
+    : `<div class="aggregate unavailable">Track aggregate unavailable</div>`;
   return `<article class="report">
     <div class="report-header">
       <div><h3>${escapeHtml(fileName(report.source.displayPath))}</h3><p>${escapeHtml(report.source.displayPath)}</p></div>
@@ -365,7 +377,7 @@ const renderAnalysis = (report: AnalysisReport): string => {
     </div>
     ${aggregateHtml}
     <div class="table-wrap"><table>
-      <thead><tr><th>Channel</th><th>Rounded</th><th>DR</th><th>RMS</th><th>Peak</th></tr></thead>
+      <thead><tr><th>Channel</th><th>Rounded</th><th>DR</th><th>Loud-window RMS</th><th>Selected DR peak</th></tr></thead>
       <tbody>${report.analysis.channels.map(renderChannel).join("")}</tbody>
     </table></div>
   </article>`;
@@ -528,6 +540,6 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
   statusElement.textContent = `事件监听失败：${describeInvokeError(error)}`;
 });
 
-versionLabel.textContent = `v${packageMetadata.version} · ProvisionalV1 / Unverified`;
+versionLabel.textContent = `v${packageMetadata.version} · foo_dr_meter 1.0.8 Candidate V1 / Unverified`;
 
 updateSelection();

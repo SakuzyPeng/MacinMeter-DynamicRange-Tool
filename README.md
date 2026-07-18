@@ -6,10 +6,11 @@ MacinMeter is an independent, local-first audio dynamic-range analysis project.
 Version 0.2.0 rebuilds the project around one safe, streaming Rust core shared by
 the library, CLI, and Tauri GUI.
 
-> **Compatibility status: `ProvisionalV1 / Unverified`.** The current algorithm
-> is a reproducible engineering baseline, not a verified implementation of the
-> reference plugin. Its values must not be described as “official,” certified,
-> or interchangeable with reference results.
+> **Compatibility status: `foo_dr_meter 1.0.8 Candidate V1 / Unverified`.**
+> The current profile implements a candidate interpretation of evidence gathered
+> from foo_dr_meter 1.0.8. It has not passed a complete reference-conformance
+> process, and its values must not be described as “official,” certified, or
+> interchangeable with reference results.
 
 ## M0 scope
 
@@ -20,7 +21,7 @@ The 0.2.0 baseline deliberately keeps a small trusted surface:
 - AIFF: 8/16/24/32-bit integer PCM
 - serial decoding and serial batch execution
 - streaming, bounded-memory analysis
-- one `ProvisionalV1` profile
+- one `FooDrMeter108CandidateV1` profile
 - structured errors, cancellation, progress, and versioned JSON
 
 Input is probed by content. File extensions are used only while discovering
@@ -68,7 +69,7 @@ JSON and Tauri use the same envelope:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "toolVersion": "0.2.0",
   "kind": "analysis",
   "data": {}
@@ -77,6 +78,16 @@ JSON and Tauri use the same envelope:
 
 The payload contains no timestamp. Non-finite values are never emitted as JSON
 numbers.
+
+The diagnostic fields `loudWindowRms` and `selectedPeak` expose the values used
+by the candidate DR calculation. They are not replicas of the reference text
+report's overall RMS and primary peak fields. Decoders normalize supported
+inputs to finite interleaved `f64`, matching the fixed x64 core's PCM width.
+This closed two source-f64 boundary differences: on the current 39-track
+safe-master observation, integer track DR matches 39/39 and two-decimal channel
+DR matches 62/62. That limited comparison does not cover the unexposed
+intermediate state, all report fields, isolated host-edge inputs, or arbitrary
+audio, so the profile remains `Unverified`.
 
 ## Library
 
@@ -98,7 +109,8 @@ use macinmeter::{AnalysisProfile, AnalyzerSession, ChannelLayout, StreamSpec};
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
     let spec = StreamSpec::new(48_000, 2, ChannelLayout::Unknown)?;
-    let mut session = AnalyzerSession::new(spec, AnalysisProfile::ProvisionalV1)?;
+    let mut session =
+        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1)?;
     session.push_interleaved(&[0.25, -0.25, 0.5, -0.5])?;
     let _result = session.finish();
     Ok(())
@@ -143,20 +155,22 @@ See:
 - [M0 architecture decision](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
-- [`ProvisionalV1` specification](reference/specs/provisional-v1.md)
+- [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - [Reference-evidence policy](reference/README.md)
 
 ## Reference work and attribution
 
-The project studies the behavior of foobar2000 DR Meter 1.0.3
+The current reference target is foobar2000 DR Meter 1.0.8
 (`foo_dr_meter`) by Janne Hyvärinen. Permission to reverse engineer the plugin
 has been obtained from its author. Private permission correspondence is not
 stored in this repository.
 
 That permission and attribution do not establish numerical compatibility.
-Reference binaries, hashes, experiments, observations, and conformance fixtures
-will be recorded as evidence in later milestones; M0 only provides the boundary
-that can accept them.
+Target hashes, experiments, observations, and the candidate specification are
+recorded under `reference/`. The current
+[x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)
+documents its exact scope and remaining gaps. The profile remains `Unverified`
+until broader evidence and review justify a stronger statement.
 
 ## License
 

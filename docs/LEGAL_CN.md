@@ -2,15 +2,16 @@
 
 # 法律说明与致谢
 
-MacinMeter 是独立编写并以 MIT License 发布的 Rust 项目。项目研究 Janne
-Hyvärinen 所著 foobar2000 DR Meter 1.0.3（`foo_dr_meter`）的可观察行为；
+MacinMeter 是独立编写并以 MIT License 发布的 Rust 项目。当前参考目标是 Janne
+Hyvärinen 所著 foobar2000 DR Meter 1.0.8（`foo_dr_meter`）；
 本仓库不包含原插件或其源代码。
 
 项目维护者已经取得作者对逆向该插件的许可。私人通信保存在公开仓库之外。公开工程
 记录只应保留解释研究边界所需的最小授权摘要；未经另行同意，不应发布私人消息原文。
 
-获准研究目标不代表本实现已经与目标一致。MacinMeter 0.2.0 的结果状态为
-`ProvisionalV1 / Unverified`，项目不作参考兼容、认证、背书或“官方结果”声明。
+获准研究目标不代表本实现已经与目标一致。MacinMeter 的结果状态为
+`foo_dr_meter 1.0.8 Candidate V1 / Unverified`，项目不作参考兼容、认证、背书
+或“官方结果”声明。名称和版本只用于标识证据研究对象，不表示从属关系或结果对等。
 
 ## 独立实现边界
 

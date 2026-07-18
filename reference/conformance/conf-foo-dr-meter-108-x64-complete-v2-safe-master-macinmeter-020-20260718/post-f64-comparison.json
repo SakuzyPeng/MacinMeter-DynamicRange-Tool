@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_conformance_comparison",
+  "reference": {
+    "normalizationSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "playlist": "00-safe-master",
+    "targetVersions": {
+      "foobar2000Version": "2.25.10",
+      "drMeterVersion": "1.0.8",
+      "reportedLogDate": "2026-07-18 17:54:55"
+    }
+  },
+  "implementation": {
+    "wireOutputSha256": "96d6a9fa95edf9b57b7904fa0da7ffba362c9e96740b204709366765ba64ce0a",
+    "binarySha256": "ec702c4f82803e7ed29634fe6fd08e8a1eeed5a64510c1ea4c7bf9548f157c90",
+    "wireSchemaVersion": 2,
+    "toolVersion": "0.2.0",
+    "profile": "foo_dr_meter_1_0_8_candidate_v1",
+    "compatibility": "unverified"
+  },
+  "policy": {
+    "trackDr": "exact integer token",
+    "channelDrDb": "exact exported two-decimal token",
+    "numericToleranceDb": 0.0,
+    "itemOrder": "compare by unique fixture stem"
+  },
+  "summary": {
+    "status": "match",
+    "trackDrMatched": 39,
+    "trackDrTotal": 39,
+    "channelDrMatched": 62,
+    "channelDrTotal": 62,
+    "differenceCount": 0,
+    "fixtureSetExact": true,
+    "implementationOrderMatchesReference": true
+  },
+  "differences": [],
+  "notCompared": [
+    {
+      "referenceFields": [
+        "peakDbfsToken",
+        "rmsDbfsToken"
+      ],
+      "reason": "MacinMeter WireEnvelope does not expose the same report-level primary-peak and overall-channel-RMS fields"
+    },
+    {
+      "referenceField": "channelRmsDbfsTokens",
+      "reason": "MacinMeter loudWindowRms has different semantics from the reference report channel overall RMS"
+    },
+    {
+      "fieldClass": "internal intermediate state",
+      "reason": "not observable in the exported reference report"
+    }
+  ]
+}
