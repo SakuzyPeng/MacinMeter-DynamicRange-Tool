@@ -19,5 +19,8 @@
   基于 1.0.8 x64/x86 静态分析、x86 初步观测和 x64 complete-v2 safe-master
   观测的候选算法。当前 schema-v3 MacinMeter 在有限公开字段上达到 track DR
   39/39、channel DR 62/62、overall peak 39/39、overall RMS 39/39、channel
-  RMS 62/62；album 公式仍为 E1 且 focused playlist 未导出。规格保持
+  RMS 62/62、duration 39/39。DR0 track 纳入 album 的窄规则达到 E2；精确
+  internal album mean 与 length weighting 仍为 E1，focused playlist 未导出。
+  已观测的短时 `m:ss` 与 channel ordinal `0..5, 9, 10` 标签规则为 E2，
+  半秒/长时 duration 及未覆盖标签分支仍为 E1。规格保持
   `candidate / unverified`，不声明通用 parity。

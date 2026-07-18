@@ -113,9 +113,12 @@ DR 计算诊断与 report metrics 分离：`loudWindowRms`、`drSelectedPeak`、
 解码器会把受支持输入统一为有限、交错的 `f64`，与固定 x64 核心的 PCM 宽度
 一致。固定 39-track schema-v3 safe-master 实测中，track DR 为 39/39、channel
 DR 为 62/62、overall peak 为 39/39、overall RMS 为 39/39、channel RMS 为
-62/62。该精确 token 比较仍不覆盖不可见中间状态、footer/文本 parity、参考
-duration 渲染、isolated host-edge 输入、album-focused 导出或任意音频，因此
-profile 仍为 `Unverified`。
+62/62、渲染时长为 39/39。参考 footer 的 track 数、采样率集合、声道数集合和
+`DR12` token 也与实现报告一致；若排除三个数值 DR0 track，则反事实结果会是
+DR13。这个局部 footer 检查不证明 host metadata、精确 album 内部算术、
+duration weighting 或完整文本 parity。不可见中间状态、isolated host-edge
+输入、album-focused 导出和任意音频也仍在比较范围之外，因此 profile 继续是
+`Unverified`。
 
 ## 公共库
 
@@ -163,9 +166,9 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-official album 值对 public-f32 track DR 做算术平均，并纳入数值 DR0 track；可选
-duration weighting 使用每首 track 的精确 decoded duration。除非调用方显式调用
-该 API，batch 与 GUI 结果始终只是相互独立的 track report 集合。
+unweighted album 值对 public-f32 track DR 做算术平均，并纳入数值 DR0 track；
+可选 duration weighting 使用每首 track 的精确 decoded duration。除非调用方显式
+调用该 API，batch 与 GUI 结果始终只是相互独立的 track report 集合。
 
 ## GUI
 
@@ -212,7 +215,7 @@ Hyvärinen）。
 
 授权和致谢不代表数值兼容已经成立。目标 hash、实验、观测和候选规格记录在
 `reference/`；当前
-[schema-v3 x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
+[绑定干净提交的 schema-v3 x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
 明确列出精确比较范围与剩余缺口。只有更广泛的证据和审查支持更强结论后，profile
 才能脱离 `Unverified`。
 

@@ -61,10 +61,10 @@
   public-f32 channel overall RMS/primary peak，以及按参考形状聚合的 track
   RMS/peak。
 - Added an explicit `AlbumAggregator` library API. Batch execution is not an
-  album operation: callers opt into official public-f32 track arithmetic or
+  album operation: callers opt into unweighted public-f32 track arithmetic or
   exact-decoded-duration weighting, and numeric DR0 tracks remain included.
   新增显式 `AlbumAggregator` 库 API。批处理不会自动成为 album：调用方显式选择
-  public-f32 track official 算术平均或精确 decoded-duration weighting，数值
+  public-f32 track unweighted 算术平均或精确 decoded-duration weighting，数值
   DR0 track 仍会纳入。
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
@@ -78,12 +78,15 @@
 - Recorded a fixed x64 1.0.8 safe-master observation and scoped conformance.
   The schema-v3 implementation matches 39/39 integer track DR, 62/62
   two-decimal channel DR, 39/39 overall peak, 39/39 overall RMS, and 62/62
-  channel RMS tokens. Album-focused playlists were not exported and album
-  behavior remains E1; the profile remains `Unverified`.
+  channel RMS tokens, plus 39/39 rendered duration tokens. A narrowly scoped
+  footer check confirms the track/sample-rate/channel sets and DR token; it
+  does not verify host metadata, precise album internals, or duration weighting.
+  The profile remains `Unverified`.
   登记固定 x64 1.0.8 safe-master observation 与受限 conformance。schema-v3
   实现匹配整数 track DR 39/39、每声道两位 DR 62/62、overall peak 39/39、
-  overall RMS 39/39 与 channel RMS 62/62。album-focused playlist 尚未导出，
-  album 行为仍为 E1；profile 继续保持 `Unverified`。
+  overall RMS 39/39、channel RMS 62/62 与渲染时长 39/39。严格限域的 footer
+  检查确认 track/采样率/声道集合和 DR token，但不验证 host metadata、精确
+  album 内部状态或 duration weighting；profile 继续保持 `Unverified`。
 - CI is intentionally manual-only during M0; the local pre-commit hook performs
   only format and workspace compile checks.
   M0 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。

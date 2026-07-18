@@ -102,11 +102,13 @@ x86 peak key 先由 `log10f` 结果形成 centi-dB 值，再以 binary32 保存�
   供文本格式化；
 - 接近零的 dB 值有显式 centi-dB `lround` 修正；
 - 数字格式化显式使用 `C` locale，报告模板和 CRLF 来自固定静态字符串；
-- channel mask 到标签的分支和标签表位于同一 renderer，可继续静态登记，不需要
+- channel mask 到标签的分支和标签表位于同一 renderer，已经独立静态登记，不需要
   为映射本身生成音频样本。
 
 bitrate、codec 名称和实际 channel mask 的值来自宿主 metadata；DLL 内的格式化
 规则不能反推出宿主如何生成这些值。
+固定 x64 duration formatter、完整 channel label 表及 footer 数据来源边界另见
+[`SA-foo-dr-meter-108-x64-report-renderer-20260718`](sa-foo-dr-meter-108-x64-report-renderer-20260718.md)。
 
 ## 空流与非默认分支
 
@@ -121,16 +123,22 @@ bitrate、codec 名称和实际 channel mask 的值来自宿主 metadata；DLL �
 
 ## 对当前 MacinMeter 候选的含义
 
-MacinMeter 0.2.0 接受 interleaved binary32 PCM，将每个样本提升到 binary64 后
-做平方、peak、对数和累计，并以整数 centi-dB 保存 peak key。因此它：
+当前 MacinMeter 0.2.0 的有效 PCM 边界接受 finite interleaved binary64，并以
+binary64 完成样本平方、peak、对数和累计；公开 channel/track 结果窄化为
+binary32，peak key 则保存为整数 centi-dB。它已经消除早期候选在分析前把
+float64 PCM 窄化为 binary32 的偏差，但这仍不构成端到端参考等价：
 
-- 不等同 x64 目标，因为进入分析器前已经丢失 binary64 PCM 精度；
-- 不等同 x86 目标，因为 x86 的样本平方、peak logarithm 和已保存 peak key
-  仍有 binary32 运算或存储；
-- 只能继续命名为 `FooDrMeter108CandidateV1 / Unverified`。
+- 固定 x64 目标在 analyzer 边界同样接收 binary64，但目标保存 binary64 peak key，
+  且实际输入还取决于固定宿主、decoder 和运行库；
+- 固定 x86 目标仍有 binary32 PCM、sample square、peak logarithm 和 peak key
+  运算或存储，不能与当前产品共用逐位精度声明；
+- 产品的 native decoder、chunk 编排和数值运行环境没有因 analyzer 输入宽度相同
+  而获得 foobar2000 host/decoder parity；
+- profile 因此继续命名为 `FooDrMeter108CandidateV1 / Unverified`。
 
-现有 x86 15/15 黑盒结果支持候选控制规则，但不能升级为任一架构的 bit-exact
-或 reference parity 声明。
+现有 x86 15/15 与 x64 safe-master 黑盒结果支持已覆盖的候选控制规则和公开字段，
+但不能升级为任一架构的 bit-exact、host/decoder parity 或通用 reference parity
+声明。
 
 ## 不再需要与仍需运行证据的边界
 

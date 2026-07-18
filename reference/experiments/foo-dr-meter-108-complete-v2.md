@@ -70,8 +70,15 @@ MacinMeter 的 reference-to-implementation 差分另见
 后续 schema-v3 report-metrics 记录
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
 又得到 overall peak 39/39、overall RMS 39/39、channel RMS 62/62，并保持上述
-DR 结果。该有限结果不覆盖不可见中间状态、reference duration 文本、footer、
-isolated 输入、album-focused playlist 或更广输入空间，因此 profile 继续保持
+DR 结果。基于已提交源码重建的
+[`clean-commit successor`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
+又按已恢复的固定 renderer 规则比较 duration token，得到 39/39。
+
+successor 对 footer 只登记 track count、sample-rate set、channel-count set、
+重建的 unweighted DR token 四项及 DR0 track 纳入/排除反事实；它不验证精确
+internal album mean、length weighting 或 host 生成的 bit depth、bitrate、codec
+metadata。不可见中间状态、三个 isolated 输入、album-focused playlist、x64
+reference 重复运行和更广输入空间仍不在已完成范围，因此 profile 继续保持
 `FooDrMeter108CandidateV1 / Unverified`。
 
 ## Corpus 布局
@@ -160,6 +167,9 @@ Manifest 可以记录实际生成 PCM 的统计量、参数和内容哈希，但
 5. 不为了静态已解规则重复运行，也不拆成逐项人工采集。
 
 三个 album focused playlist 只用于可选的静态回归诊断，不是本轮常规采集义务。
+现有 safe-master footer 可以支持受限的最终 token/DR0 反事实，但不能替代精确
+internal mean 或 length-weighting 证据；这些规则优先继续静态/动态逆向，不要求
+操作者为已解控制流重复导出。
 
 固定 x64 target 的首次 safe-master 运行已按上节登记。未来其他架构或 host
 版本仍须建立独立 observation，不能与该 x64 报告合并成共同结果。

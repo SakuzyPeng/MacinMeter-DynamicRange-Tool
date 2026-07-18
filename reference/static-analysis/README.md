@@ -15,6 +15,9 @@
   DR。
 - [`SA-foo-dr-meter-108-x64-20260718`](sa-foo-dr-meter-108-x64-20260718.md)：
   `foo_dr_meter` 1.0.8 x64 核心分析路径。
+- [`SA-foo-dr-meter-108-x64-report-renderer-20260718`](sa-foo-dr-meter-108-x64-report-renderer-20260718.md)：
+  固定 1.0.8 x64 duration 舍入与 minute/hour/day/week 格式、channel label
+  mapper，以及插件 renderer 与宿主 footer metadata 的边界。
 - [`SA-foo-dr-meter-108-x86-cross-arch-20260718`](sa-foo-dr-meter-108-x86-cross-arch-20260718.md)：
   固定 1.0.8 x86 核心、x86/x64 精度差异、album 与报告数据流。
 

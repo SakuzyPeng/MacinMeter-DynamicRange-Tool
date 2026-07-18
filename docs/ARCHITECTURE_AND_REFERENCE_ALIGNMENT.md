@@ -2,8 +2,8 @@
 
 > 状态：执行中（M0：`DONE`，foo_dr_meter 1.0.8 Candidate V1 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
-> overall RMS 39/39、channel RMS 62/62，验收范围待扩充），作为整改、重构和
-> 逆向研究的主记录
+> overall RMS 39/39、channel RMS 62/62、duration 39/39，验收范围待扩充），
+> 作为整改、重构和逆向研究的主记录
 >
 > 建立日期：2026-07-17
 >
@@ -161,11 +161,11 @@ schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39
 | REF-002 | DOING | 建立授权与来源档案 | 公开摘要链接、私有原始授权保存位置、授权范围记录 |
 | REF-003 | DOING | 建立可重复的参考运行 harness | 固定输入、半自动运行、原始输出采集 |
 | REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
-| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项与 x64 39 项 safe master 已登记；isolated、重复性与外围范围待补 |
+| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项与 x64 39 项 safe master 已登记；isolated 属 host 外围，x64 repeat 是否进入 accepted 仍待定 |
 | REF-006 | DOING | 开展静态与动态逆向 | x64/x86 核心、album/report、WAV decoder/metadata 已有静态记录；动态中间状态未跟踪 |
-| REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 E2 精度证据和 remaining unknown，保持未验证标记 |
-| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的五组公开 DR/report 字段完全匹配，仍不宣称参考兼容 |
-| REF-009 | DOING | 建立参考 conformance suite | schema-v2 DR-only 与 schema-v3 report-metrics 记录均已登记；中间状态、footer、album-focused 待扩展 |
+| REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 精度、短时 `m:ss`、已观测 ordinal `0..5, 9, 10` 标签与 album DR0 E2 子规则；未覆盖 renderer 分支继续保留 |
+| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的六组公开 DR/report/duration 字段完全匹配，仍不宣称参考兼容 |
+| REF-009 | DOING | 建立参考 conformance suite | clean-commit successor 已覆盖六组字段、四项 footer consistency 与 DR0 反事实；中间状态、精确 album/weighting 与 host metadata 未验收 |
 | REF-010 | TODO | 修订兼容性声明 | 仅在验收通过后恢复明确的参考兼容承诺 |
 
 ### 5.4 P2：测试、发布、性能和维护
@@ -173,7 +173,7 @@ schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
-| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track safe master 已固定并可规范化；isolated、重复性和 accepted oracle 待验收 |
+| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track single pass 已固定并可规范化；accepted oracle、动态中间状态及可选 repeat policy 待验收 |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
 | TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
@@ -407,6 +407,10 @@ Error
 - 建立算法规格模板和证据等级；
 - 将 M0 `ProvisionalV1` 输出仅保存为历史工程 snapshot。
 
+当前 clean-commit successor 已把六组公开字段固定到可由提交源码重建的实现身份，
+但 M1 不因此自动完成：中间状态仍没有动态证据；若最终 accepted policy 要求参考
+runtime 重复性，还必须补同一 x64 target 的独立 repeat run。
+
 出口条件：
 
 - 关键工程行为都有测试；
@@ -447,9 +451,11 @@ Error
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
 - 已将产品 PCM 入口改为 `f64`，关闭 complete-v2 暴露的两处 source-f64
   量化边界差分；
-- schema v3 已分离并对齐公开 overall channel RMS、track RMS 与 primary peak；
-- 显式 `AlbumAggregator` 已实现 E1 静态公式，但不把 batch 自动解释成 album，
-  focused playlist 与 weighting 运行证据仍待补；
+- schema v3 已分离并对齐公开 overall channel RMS、track RMS、primary peak 与
+  duration token；
+- 显式 `AlbumAggregator` 已实现静态 E1 完整公式，但不把 batch 自动解释成
+  album；DR0 纳入子规则由静态路径与 footer 反事实达到 E2，精确 internal mean、
+  length weighting 与 host metadata 不随之升级；
 - 建立 final + intermediate conformance suite；
 - 处理所有系统性残差和未解释边界；
 - 完成兼容性报告。

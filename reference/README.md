@@ -30,13 +30,19 @@ DR 字段达到整数 track DR 39/39、每声道两位 DR token 62/62；这份 s
 历史差分见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
 
-schema v3 将 report metrics 与 DR diagnostics 分离后，新的固定比较又得到
+schema v3 将 report metrics 与 DR diagnostics 分离后，最初的固定比较又得到
 overall primary peak 39/39、overall RMS 39/39、channel overall RMS 62/62，
-同时保持 track DR 39/39、channel DR 62/62；见
+同时保持 track DR 39/39、channel DR 62/62；这份 dirty-worktree 身份的历史记录见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)。
-两份记录边界独立，旧产物不因 schema 升级被改写。有限 conformance 不会把
-candidate 升级为 accepted，也不改变 `Unverified` 状态；album-focused playlist
-尚未导出，album 公式仍只有 E1 静态证据。
+
+基于已提交源码重建的 clean-commit successor 保持上述五类字段完全匹配，并新增
+reference duration token 39/39；见
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)。
+它对 footer 只登记 track count、sample-rate set、channel-count set 和重建的
+unweighted DR token 四项一致性，以及 DR0 纳入的反事实；不把最终整数 token
+外推为精确 internal album mean、length weighting 或 host metadata parity。
+旧产物不因 successor 落地被改写。有限 conformance 不会把 candidate 升级为
+accepted，也不改变 `Unverified` 状态；完整 album 公式仍只有 E1 静态证据。
 
 ## 五类事实
 

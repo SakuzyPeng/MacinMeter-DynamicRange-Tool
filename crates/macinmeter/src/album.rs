@@ -39,8 +39,8 @@ pub enum AlbumWeighting {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumAggregate {
-    pub official_dr_db: FiniteF32,
-    pub rounded_official_dr: u32,
+    pub unweighted_dr_db: FiniteF32,
+    pub rounded_unweighted_dr: u32,
     pub duration_weighted_dr_db: Option<FiniteF32>,
     pub rounded_duration_weighted_dr: Option<u32>,
     pub effective_dr_db: FiniteF32,
@@ -82,8 +82,8 @@ impl AlbumAggregator {
             total_duration_seconds += duration_seconds;
         }
 
-        let official_dr_db =
-            finite_f32((dr_sum / tracks.len() as f64) as f32, "official album DR")?;
+        let unweighted_dr_db =
+            finite_f32((dr_sum / tracks.len() as f64) as f32, "unweighted album DR")?;
         let total_duration_seconds =
             finite_f64(total_duration_seconds, "total decoded album duration")?;
         let duration_weighted_dr_db = (total_duration_seconds.get() > 0.0)
@@ -99,12 +99,12 @@ impl AlbumAggregator {
             weighting == AlbumWeighting::DurationWeighted && duration_weighted_dr_db.is_some();
         let effective_dr_db = match (weighting, duration_weighted_dr_db) {
             (AlbumWeighting::DurationWeighted, Some(weighted)) => weighted,
-            _ => official_dr_db,
+            _ => unweighted_dr_db,
         };
 
         Ok(AlbumAggregate {
-            official_dr_db,
-            rounded_official_dr: rounded_display_dr(official_dr_db),
+            unweighted_dr_db,
+            rounded_unweighted_dr: rounded_display_dr(unweighted_dr_db),
             duration_weighted_dr_db,
             rounded_duration_weighted_dr: duration_weighted_dr_db.map(rounded_display_dr),
             effective_dr_db,

@@ -81,6 +81,10 @@ interleaved `f64`。固定 x64 目标的核心入口同样是 interleaved `f64`�
 | SHA-256 | `6debd1d665cec975853341fb4ae360d2187d2bb0c595eedde9e38b4b77301862` |
 | 分析数据库 | IDA Professional 9.1；临时数据库、日志和二进制不进入仓库 |
 
+固定 x64 report duration、channel label 和 footer renderer 边界另见
+[`SA-foo-dr-meter-108-x64-report-renderer-20260718`](../static-analysis/sa-foo-dr-meter-108-x64-report-renderer-20260718.md)。
+它与 x64 核心记录使用同一固定 DLL SHA-256，但仍属于同一类静态证据。
+
 ### 2.2 黑盒实验
 
 #### 2.2.1 x86 初始判别
@@ -165,10 +169,19 @@ metrics；固定产物与命令登记在
 | overall RMS | 39/39 |
 | 每声道 overall RMS | 62/62 |
 
-这次 follow-up 不改写 schema-v2 历史记录。它仍未比较内部状态、reference
-duration 文本、footer、三个 isolated 输入、album-focused playlist 或更广输入
-空间。因此这是一份有限实现复核，不是 accepted 规格、E3 证据、整份报告 parity
-或 reference compatibility 声明；profile 继续保持
+这份首轮 follow-up 不改写 schema-v2 历史记录。随后从已提交源码重建的
+[`clean-commit successor`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
+保持上述五类字段完全匹配，并按第 4.7 节固定 renderer 规则得到 duration token
+39/39。它还只对 footer 的 track count、sample-rate set、channel-count set 和
+重建的 unweighted DR token 四项做有限比较：safe master 的 39 项中有 3 个数值
+DR0 track；全部纳入时最终 token 是观察到的 `DR12`，若统一排除全部 DR0 则会
+得到 `DR13`。该反事实支持“不做统一 numeric-DR0 filter”，但不能区分精确
+public-f32 mean 与其他同样显示 `DR12` 的聚合，也不验证 length weighting。
+
+两份 schema-v3 记录都没有比较不可导出的中间状态、三个 isolated 输入、
+album-focused playlist、host footer metadata 或更广输入空间。因此它们是有限
+实现复核，不是 accepted 规格、E3 证据、整份报告 parity 或 reference
+compatibility 声明；profile 继续保持
 `FooDrMeter108CandidateV1 / Unverified`。
 
 ## 3. 数据与数值约定
@@ -447,6 +460,19 @@ display_dr = integer_cast(track_dr + 0.5)
 这不是通用的有符号 half-away-from-zero；核心有效路径已经把 DR 保持在非负
 范围。报告中的每声道 DR 保留 binary32 结果并格式化到两位小数。
 
+固定 x64 renderer 的 duration 路径先计算：
+
+```text
+rounded_seconds = llround(f64(decoded_frames) / f64(sample_rate))
+```
+
+这里的 C `llround` 在半值处远离零。随后固定 PFC formatter 将非负整秒拆成
+week、day、hour、minute 和 second：存在 week 时输出 `Nwk `；存在 day 或 week
+时输出 `Nd `；存在 hour/day/week 时尾部为 `h:mm:ss`，否则为 `m:ss`。39 项
+safe-master token 与这条路径全部一致。现有 fixture 的小数秒没有落在半秒附近，
+所以 39/39 只验证现有 token；半值舍入和长时格式由固定 renderer 静态路径支持，
+不能由这 39 项单独外推。
+
 #### 4.7.1 当前 schema-v3 实现映射
 
 MacinMeter 现在把 report metrics 与 DR 计算诊断分开：
@@ -457,7 +483,8 @@ MacinMeter 现在把 report metrics 与 DR 计算诊断分开：
   各平方提升到 binary64 求和、除以声道数并开方；
 - track primary peak 取每声道 public-f32 primary peak 的最大值；
 - `DecodedDuration` 保存精确的 `decodedFrames` 与实际 PCM `sampleRate` 数对，
-  不把舍入后的秒数当作事实；
+  不把舍入后的秒数当作事实；conformance adapter 只在比较 reference 文本时按
+  上述固定 renderer 派生 token；
 - DR 状态机诊断使用 `loudWindowRms`、`drSelectedPeak`、`drPrimaryPeak` 和
   可空的 `drSecondaryPeak`，不再用容易与 report primary peak 混淆的
   `selectedPeak` 字段。
@@ -509,23 +536,36 @@ integer_cast(album_dr_f32 + 0.5)
 
 - 输入是调用方明确构造的 `AlbumTrackMetrics`，不会把任意 `BatchRunner` 结果
   自动解释为 album；
-- official 值对 public-f32 track DR（包含数值 DR0）提升到 binary64 后做算术
-  平均，再窄化到 finite binary32；
+- 产品 API 将参考公式的候选重建命名为 Rust `unweighted_dr_db`（序列化为
+  `unweightedDrDb`），不把 MacinMeter 输出称为官方结果；该值对 public-f32
+  track DR（包含数值 DR0）提升到 binary64 后做算术平均，再窄化到 finite
+  binary32；
 - `DurationWeighted` 只在调用方显式请求时成为 effective 值，并使用每首 track
-  的 exact `DecodedDuration`；总时长为零时回退 official；
-- API 同时保留 official、可选 weighted、effective、track count 与总时长，
+  的 exact `DecodedDuration`；总时长为零时回退产品的 unweighted 值；
+- `SampleRate` 领域类型拒绝零值，因此参考实现的 `frames / 44100` 防御分支在
+  产品有效输入契约之外；产品不会为复现不可达防御分支而引入无效采样率；
+- API 同时保留 unweighted、可选 weighted、effective、track count 与总时长，
   所有公开浮点结果必须 finite。
 
-这只是把已有 E1 静态公式落实为独立、可测试的产品 API。现有 x64 observation
+这只是把完整 E1 静态公式落实为独立、可测试的产品 API。现有 x64 observation
 没有导出 album-focused playlist，因此不得把实现测试或 safe-master official
-footer 外推为 album conformance。
+footer 外推为完整 album conformance。
+
+safe master 中的 3 个数值 DR0 track 提供了一个更窄的可区分反事实：按 schema-v3
+公开 track DR 全部纳入时，binary64 mean 为约 `11.6802833`，最终显示 `DR12`；
+统一过滤全部 DR0 后，36 项 mean 为约 `12.6536402`，会显示 `DR13`。reference
+footer 是 `DR12`，且两种结果都离 `12.5` 边界足够远，不受已导出两位 channel
+token 的量化不确定性影响。它与静态无条件聚合路径共同把“不做统一 numeric-DR0
+filter”提升为 E2；它不能排除按其他隐藏状态选择性过滤的假想规则，也不能证明
+精确 public-f32 mean、最终窄化点或 length-weighting 分支。
 
 ## 5. 逐规则证据等级
 
 证据等级遵循 [`reference/README.md`](../README.md)。`SA-x64` 指 x64 核心
-记录，`SA-cross` 指 x86/cross-arch 记录；`OBS-x86` 与 `OBS-x64` 分别指第
-2.2.1、2.2.2 节的固定黑盒观测。两份静态记录仍属于同一类证据，不因目标数量
-自动升级为 E2；同一构造模型与 observation 的比较也不构成第三类动态跟踪证据。
+记录，`SA-render` 指固定 x64 report renderer 记录，`SA-cross` 指
+x86/cross-arch 记录；`OBS-x86` 与 `OBS-x64` 分别指第 2.2.1、2.2.2 节的固定
+黑盒观测。多份静态记录仍属于同一类证据，不因目标或函数数量自动升级为 E2；
+同一构造模型与 observation 的比较也不构成第三类动态跟踪证据。
 
 | 规则 | 等级 | 依据与限制 |
 | --- | --- | --- |
@@ -545,11 +585,16 @@ footer 外推为 album conformance。
 | 静音产生数值 DR 0 | E2 | 两份 SA 零 peak/histogram 路径；两个 OBS 的 203。 |
 | 默认 track DR 是内部 binary64 channel DR 的全声道算术均值，包含静音和 LFE | E2 | 两份 SA；两个 OBS 的 301=6、302=20、303=15，OBS-x64 还覆盖 8 声道。公开 channel DR 不参与该平均。 |
 | 可选多声道权重使用内部 binary64 channel RMS 与 DR | E1 | 两份 SA；设置在两个 OBS 中关闭。 |
-| 默认 album 聚合不排除数值 DR 0 的 track | E1 | 两份 SA 的无条件聚合；现有 observation 没有独立 album-focused 导出。 |
+| 默认 album 聚合不做统一的数值 DR0 track 过滤 | E2 | 两份 SA 的无条件聚合；OBS-x64 safe-master 含 3 个 DR0，全部纳入显示 DR12，统一排除则会显示 DR13。该反事实不证明其他 album 子规则。 |
 | channel/track 公开结果窄化为 binary32 | E1 | 两份 SA 的明确存储路径；文本精度不足以独立确定所有窄化点。 |
 | 正整数 DR 以 binary32 `+0.5` 后转换 | E2 | 两份 SA 的报告路径；两个 OBS 的 120/121 及 OBS-x64 的 610/611 位于可区分边界两侧。 |
 | report RMS 使用公开 channel RMS 的 binary32 平方和二次均值 | E2 | SA-cross 登记完整数据流；两个 OBS 的 301–303 及 OBS-x64 的 39 个 overall RMS token 与预先构造的静态模型预测一致。 |
 | report peak 为公开 channel primary peak 的最大值 | E2 | SA-cross 登记完整数据流；OBS-x64 的 39 个 overall peak token 与预先构造的静态模型预测一致，但有限输入不证明所有边界。 |
+| duration 以 binary64 frames/rate 经 `llround` 得到整秒 | E1 | SA-render 的固定 x64 数据流；现有 observation 没有半秒判别输入，不能把相符的普通值升级为 E2。 |
+| 短时 duration 使用 `m:ss` renderer | E2 | SA-render 的固定 formatter 分支；OBS-x64 的 39 个 duration token 全部一致。 |
+| duration 的 hour/day/week renderer | E1 | SA-render 的固定分支与模板；现有 observation 没有长时输入。 |
+| 已观测 channel ordinal `0..5, 9, 10` 显示为 `FL, FR, FC, LFE, BL, BR, SL, SR` | E2 | SA-render 的固定表；OBS-x64 的 1/2/3/6/8 声道列覆盖这些 ordinal。该规则不证明宿主如何生成 ordinal。 |
+| channel ordinal `6..8, 11..17` 与 `>=18` 的 `Ch %u`/`?` fallback | E1 | SA-render 的固定表与分支；现有 observation 未执行这些分支。 |
 | official album DR 为 binary32 track DR 的 binary64 算术平均，再窄化为 binary32 | E1 | 两份架构的 album writer 静态数据流。 |
 | album length weighting 使用 decoded duration，结果窄化为 binary32 | E1 | 两份架构的 album writer 静态数据流；设置在两个 OBS 中关闭。 |
 | x86 与 x64 使用不同 PCM、sample-square 和 peak 精度 | E2 | SA-cross 的固定二进制指令级数据宽度；OBS-x64 的 source-f64/先窄化对照声道动态保留不同 token。证据只覆盖已导出边界，不外推所有最后一位。 |
@@ -567,8 +612,12 @@ footer 外推为 album conformance。
   discriminator 已交叉印证，差异见第 3.1 节；
 - block/window、EOF、精确整窗、RMS clamp 和任意合法采样率的窗长；
 - channel/track binary32 存储点、可选多声道 weighting 及其全静音零除零路径；
-- album official、length weighting、DR0 纳入、最终窄化与显示舍入；
-- report peak/RMS、接近零修正、`C` locale 和固定文本；
+- album official、length weighting、最终窄化与显示舍入的静态控制流；其中只有
+  “不统一过滤 DR0”另有 footer 反事实并达到 E2；
+- report peak/RMS、已覆盖的短时 `m:ss` duration renderer、接近零修正、`C`
+  locale 和固定文本；半秒舍入及 hour/day/week 分支仍只有静态证据；
+- 已观测 channel ordinal `0..5, 9, 10` 的公开标签达到 E2；`6..8, 11..17`
+  与 `>=18` fallback 仍为 E1，宿主 channel mask 到 ordinal 的来源规则仍未知；
 - 核心零 frame 结算与宿主首次 decode 无 chunk 的分层行为。
 
 这些规则仍需要本地可重复 fixture 和实现侧测试。“不需要新增插件报告”不表示
@@ -582,13 +631,15 @@ complete-v2 首次 conformance 暴露的两处系统差分都来自 source-f64 �
 safe master 上把 track DR 从 39/39 保持为 39/39、channel DR 从 60/62 修正为
 62/62。已保存的 pre/post 实现产物和精确 token 差分使这项处置可复核。
 
-schema v3 又把独立 report metrics 加入产品模型；固定 safe-master follow-up
-得到 overall peak 39/39、overall RMS 39/39、channel RMS 62/62，同时保持 track
-DR 39/39、channel DR 62/62。这关闭了当前 corpus 中公开且同语义 report/DR
-token 的已知差分。
+schema v3 又把独立 report metrics 加入产品模型；clean-commit safe-master
+successor 得到 overall peak 39/39、overall RMS 39/39、channel RMS 62/62、
+duration 39/39，同时保持 track DR 39/39、channel DR 62/62。这关闭了当前 corpus
+中六组公开且同语义 token 的已知差分。
 
-这些结果不关闭下面的外围边界，也不证明未导出中间状态、reference duration
-文本、footer、album、任意输入或整份报告 byte-for-byte 一致。
+同一记录只对 footer 做部分一致性检查，并以 DR12/DR13 反事实关闭“统一过滤
+numeric DR0”这一窄问题。这些结果不证明未导出中间状态、精确 internal album
+mean、length weighting、host metadata、任意输入或整份报告 byte-for-byte
+一致。
 
 ### 6.3 真正剩余的边界
 
@@ -599,11 +650,11 @@ token 的已知差分。
 | 1.0.3 与 1.0.8 是否相同 | U | 当前证据不得跨版本外推。 |
 | foobar2000 2.25.10 decoder 对全部 PCM/容器的逐位归一化 | U | safe master 已给出普通 U8/S16/S24/S32/F32/F64 的端到端结果；foobar2000 2.0 x64 decoder 的六条转换另有静态记录，但不能跨 host 版本外推成 2.25.10 的完整 decoder 规格。 |
 | 超满幅 float、零帧、损坏文件和 decoder error 的最终 UI/日志 | U | 三个 isolated 输入未在本 observation 采集；DLL 内部异常入口已知，最终外围呈现仍由宿主运行路径决定。 |
-| 宿主生成 channel mask、bitrate 和 codec metadata 的完整规则 | U | DLL 内部标签/格式化可静态读；`32761` 已确认不进入核心 DR，但外围 metadata-report 异常的精确根因仍未知。 |
+| 宿主生成 channel ordinal/mask、bitrate 和 codec metadata 的完整规则 | U | renderer 收到已观测 ordinal `0..5, 9, 10` 后的标签达到 E2，未覆盖标签为 E1；宿主如何产生 ordinal/mask 仍未知。`32761` 已确认不进入核心 DR，但外围 metadata-report 异常的精确根因仍未知。 |
 | 固定 Windows CRT/libm 的未覆盖最后一位边界 | H | 当前 x64 观测覆盖两个架构 precision fixture，但 bit-exact 目标仍须固定运行库并覆盖或动态跟踪更多半值；有限 62 个 token 不能证明所有边界。 |
-| safe-master 重复运行确定性 | U | 当前 x64 observation 只有一次运行；静态已解规则不要求重复人工采集，但 accepted 声明若依赖运行重复性仍需单独证据。 |
-| 整份参考报告与产品字段级 parity | U | schema v3 已有同语义的 overall primary peak、overall RMS 与 channel RMS，并在 safe master 上分别为 39/39、39/39、62/62；reference duration 文本、footer、布局标签及完整报告格式仍未比较。 |
-| album 聚合与 focused 动态验证 | E1 | 产品已有显式 `AlbumAggregator`，公式由静态数据流支持；focused playlist 未导出，batch 不自动充当 album observation，因此没有黑盒交叉验证或 parity 声明。 |
+| safe-master 重复运行确定性 | U | 当前 x64 observation 只有一次运行；静态已解规则不要求重复人工采集。若 accepted policy 坚持 reference runtime repeatability，仍须至少一个独立 x64 repeat run。 |
+| 整份参考报告与产品字段级 parity | U | schema v3 的六组同语义字段已匹配；reference 已观测 ordinal `0..5, 9, 10` 标签规则达到 E2，但没有与产品做标签 parity，footer 也只比较有限子集。host bit-depth/bitrate/codec metadata 没有产品 parity 声明。 |
+| album 精确聚合与 focused 动态验证 | E1 | DR0 统一过滤反事实已单独达到 E2；精确 public-f32 mean、最终窄化和 length weighting 仍只有静态数据流，focused playlist 未导出，batch 也不自动充当 album observation。 |
 | NaN、Inf、反常范围 PCM | U | 不属于有效 PCM 契约；目标异常数学行为不提升为产品契约。 |
 | histogram/窗口计数极限与溢出 | U | 不属于候选有效资源范围；若研究应做静态类型/指令审计，而不是生成数百年音频。 |
 
@@ -633,12 +684,15 @@ token 的已知差分。
 ## 8. 进入 accepted 的最低条件
 
 1. 固定项目实际要兼容的插件版本和架构；
-2. 对关键边界至少补一类动态证据，或说明为何现有 E2 足够；当前没有 E3；
+2. 对窗口数、loud 边界 bin、peak 排名/回退和聚合输入等不可导出中间状态补一类
+   动态证据；当前没有 E3；
 3. 用一次生成的本地 corpus 覆盖多采样率、零 frame、RMS clamp、peak key 半值、
    album 公式和 x86/x64 精度判别；静态已确定的内部规则不要求重复人工导出；
 4. 把现有 track DR 39/39、channel DR 62/62、overall peak 39/39、overall RMS
-   39/39、channel RMS 62/62 的有限 implementation comparison 扩展到验收范围，
-   并明确处理未比较字段；
+   39/39、channel RMS 62/62、duration 39/39 的有限 implementation comparison
+   扩展到验收范围，并明确处理 footer、album 与其他未比较字段；
 5. 明确只接受 x64、只接受 x86，还是分别提供两个数值 profile；不得再声明一个
    未限定架构的共同精度契约；
-6. 保留所有系统性差异，不使用宽容差掩盖整数边界错误。
+6. 若 accepted policy 把 reference runtime repeatability 作为硬条件，补同一固定
+   x64 target 的独立 repeat run，并排除时间戳后做规范化精确差分；
+7. 保留所有系统性差异，不使用宽容差掩盖整数边界错误。

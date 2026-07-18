@@ -58,6 +58,8 @@ look for FFmpeg, use a global cancel flag, or create a Rayon batch pool.
 Current GUI results are always labelled
 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This identifies the evidence
 target and candidate revision. The fixed schema-v3 safe-master comparison
-matches the five exported DR/report field groups, but excludes footer,
-reference duration rendering, album-focused runs, internal state, and arbitrary
-audio; it is not a claim of full reference parity.
+matches the five exported DR/report field groups plus all 39 rendered duration
+tokens. Its limited footer check covers track count, sample-rate/channel-count
+sets, and the aggregate DR token, but not host metadata, precise album
+internals, album-focused runs, internal state, or arbitrary audio; it is not a
+claim of full reference parity.

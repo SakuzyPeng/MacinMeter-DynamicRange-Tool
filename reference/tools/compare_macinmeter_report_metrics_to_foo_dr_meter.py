@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import re
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,19 @@ EXPECTED_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
 EXPECTED_COMPATIBILITY = "unverified"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DB_TOKEN_RE = re.compile(r"^(?:-inf|[-+]?\d+\.\d{2})$")
+NONNEGATIVE_INTEGER_TOKEN_RE = re.compile(r"^(?:0|[1-9]\d*)$")
+UNWEIGHTED_DR_TOKEN_RE = re.compile(r"^DR(?:0|[1-9]\d*)$")
+DURATION_TOKEN_RE = re.compile(
+    r"^(?:"
+    r"[1-9]\d*wk [0-6]d (?:0|[1-9]|1\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r"|[1-6]d (?:0|[1-9]|1\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r"|(?:[1-9]|1\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r"|(?:0|[1-9]|[1-5]\d):[0-5]\d"
+    r")$"
+)
+MAX_U32 = (1 << 32) - 1
+MAX_U64 = (1 << 64) - 1
+MAX_I64 = (1 << 63) - 1
 
 
 class ComparisonError(ValueError):
@@ -86,9 +100,11 @@ def finite_number(value: Any, context: str) -> float:
 def lround(value: float) -> int:
     """C/C++ lround for finite values: halfway cases move away from zero."""
 
-    if value >= 0.0:
-        return math.floor(value + 0.5)
-    return math.ceil(value - 0.5)
+    magnitude = abs(value)
+    whole = math.floor(magnitude)
+    if magnitude - whole >= 0.5:
+        whole += 1
+    return whole if value >= 0.0 else -whole
 
 
 def report_db_token(value: Any, context: str) -> str:
@@ -107,6 +123,123 @@ def require_reference_token(value: Any, context: str) -> str:
     if DB_TOKEN_RE.fullmatch(token) is None:
         raise ComparisonError(f"{context} is not a canonical two-decimal/-inf token")
     return token
+
+
+def require_reference_duration_token(value: Any, context: str) -> str:
+    token = require_string(value, context)
+    if DURATION_TOKEN_RE.fullmatch(token) is None:
+        raise ComparisonError(f"{context} is not a canonical duration token")
+    return token
+
+
+def require_nonnegative_integer_token(value: Any, context: str) -> int:
+    token = require_string(value, context)
+    if NONNEGATIVE_INTEGER_TOKEN_RE.fullmatch(token) is None:
+        raise ComparisonError(f"{context} is not a canonical non-negative integer token")
+    return int(token)
+
+
+def require_unweighted_dr_token(value: Any, context: str) -> str:
+    token = require_string(value, context)
+    if UNWEIGHTED_DR_TOKEN_RE.fullmatch(token) is None:
+        raise ComparisonError(f"{context} is not a canonical DR token")
+    return token
+
+
+def require_positive_integer_set_token(
+    value: Any, suffix: str, context: str
+) -> list[int]:
+    token = require_string(value, context)
+    if suffix:
+        if not token.endswith(suffix):
+            raise ComparisonError(f"{context} must end with {suffix!r}")
+        token = token[: -len(suffix)]
+    parts = token.split(", ")
+    if not parts or any(
+        NONNEGATIVE_INTEGER_TOKEN_RE.fullmatch(part) is None for part in parts
+    ):
+        raise ComparisonError(f"{context} is not a canonical integer-set token")
+    values = [int(part) for part in parts]
+    if any(item <= 0 for item in values):
+        raise ComparisonError(f"{context} values must be positive")
+    if len(set(values)) != len(values):
+        raise ComparisonError(f"{context} repeats a value")
+    return sorted(values)
+
+
+def narrow_f32(value: Any, context: str) -> float:
+    number = finite_number(value, context)
+    try:
+        narrowed = struct.unpack("<f", struct.pack("<f", number))[0]
+    except (OverflowError, struct.error) as error:
+        raise ComparisonError(f"{context} cannot be represented as finite f32") from error
+    if not math.isfinite(narrowed):
+        raise ComparisonError(f"{context} cannot be represented as finite f32")
+    return narrowed
+
+
+def unweighted_public_track_dr_token(
+    track_dr_values: list[float], context: str
+) -> str | None:
+    """Reconstruct only the fixed unweighted footer token from public f32 DR."""
+
+    if not track_dr_values:
+        return None
+    total = 0.0
+    for index, value in enumerate(track_dr_values):
+        dr_f32 = narrow_f32(value, f"{context}[{index}]")
+        if dr_f32 < 0.0:
+            raise ComparisonError(f"{context}[{index}] must be non-negative")
+        total += dr_f32
+    average_f32 = narrow_f32(total / len(track_dr_values), f"{context}.average")
+    return f"DR{math.trunc(average_f32 + 0.5)}"
+
+
+def format_duration_seconds(total_seconds: int) -> str:
+    """Render non-negative whole seconds like the fixed PFC renderer."""
+
+    if total_seconds < 0:
+        raise ComparisonError("duration seconds must be non-negative")
+
+    weeks, remainder = divmod(total_seconds, 7 * 24 * 60 * 60)
+    days, remainder = divmod(remainder, 24 * 60 * 60)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, seconds = divmod(remainder, 60)
+
+    prefix = ""
+    if weeks:
+        prefix += f"{weeks}wk "
+    if days or weeks:
+        prefix += f"{days}d "
+    if hours or days or weeks:
+        return f"{prefix}{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def duration_token(value: Any, context: str) -> str:
+    """Render exact decoded duration through the fixed x64 report path."""
+
+    duration = require_dict(value, context)
+    decoded_frames = require_integer(
+        duration.get("decodedFrames"), f"{context}.decodedFrames"
+    )
+    sample_rate = require_integer(
+        duration.get("sampleRate"), f"{context}.sampleRate"
+    )
+    if not 0 <= decoded_frames <= MAX_U64:
+        raise ComparisonError(f"{context}.decodedFrames must fit unsigned 64-bit")
+    if not 1 <= sample_rate <= MAX_U32:
+        raise ComparisonError(
+            f"{context}.sampleRate must be a positive unsigned 32-bit value"
+        )
+
+    seconds = float(decoded_frames) / float(sample_rate)
+    if not math.isfinite(seconds):
+        raise ComparisonError(f"{context} does not produce a finite duration")
+    rounded_seconds = lround(seconds)
+    if rounded_seconds > MAX_I64:
+        raise ComparisonError(f"{context} exceeds the C llround range")
+    return format_duration_seconds(rounded_seconds)
 
 
 def channel_dr_token(
@@ -185,6 +318,9 @@ def validate_reference(reference: dict[str, Any]) -> list[dict[str, Any]]:
                 "rmsDbfsToken": require_reference_token(
                     case.get("rmsDbfsToken"), f"{context}.rmsDbfsToken"
                 ),
+                "durationToken": require_reference_duration_token(
+                    case.get("durationToken"), f"{context}.durationToken"
+                ),
                 "channelDrDbTokens": [
                     require_reference_token(token, f"{context}.channelDrDbTokens[{token_index}]")
                     for token_index, token in enumerate(channel_dr_tokens)
@@ -209,6 +345,30 @@ def validate_reference(reference: dict[str, Any]) -> list[dict[str, Any]]:
     if observed_tracks != len(validated) or observed_channels != total_channels:
         raise ComparisonError("reference validation counts disagree with normalized cases")
     return validated
+
+
+def validate_reference_footer(reference: dict[str, Any]) -> dict[str, Any]:
+    footer = require_dict(reference.get("footer"), "reference.footer")
+    return {
+        "trackCount": require_nonnegative_integer_token(
+            footer.get("numberOfTracksToken"),
+            "reference.footer.numberOfTracksToken",
+        ),
+        "sampleRates": require_positive_integer_set_token(
+            footer.get("sampleRateToken"),
+            " Hz",
+            "reference.footer.sampleRateToken",
+        ),
+        "channelCounts": require_positive_integer_set_token(
+            footer.get("channelsToken"),
+            "",
+            "reference.footer.channelsToken",
+        ),
+        "unweightedDrToken": require_unweighted_dr_token(
+            footer.get("officialDrToken"),
+            "reference.footer.officialDrToken",
+        ),
+    }
 
 
 def validate_batch_summary(data: dict[str, Any], item_count: int) -> None:
@@ -244,6 +404,22 @@ def add_difference(
     differences.append(difference)
 
 
+def add_footer_difference(
+    differences: list[dict[str, Any]],
+    field: str,
+    reference_value: Any,
+    implementation_value: Any,
+) -> None:
+    differences.append(
+        {
+            "scope": "footerConsistency",
+            "field": field,
+            "reference": reference_value,
+            "implementation": implementation_value,
+        }
+    )
+
+
 def compare(
     reference_path: Path, implementation_path: Path, binary_path: Path
 ) -> dict[str, Any]:
@@ -255,6 +431,7 @@ def compare(
         raise ComparisonError(f"cannot read implementation binary: {error}") from error
 
     reference_cases = validate_reference(reference)
+    reference_footer = validate_reference_footer(reference)
     schema_version = implementation.get("schemaVersion")
     if schema_version != WIRE_SCHEMA_VERSION:
         raise ComparisonError(
@@ -282,10 +459,14 @@ def compare(
     matched_peak = 0
     matched_rms = 0
     matched_channel_rms = 0
+    matched_duration = 0
     total_channel_values = 0
     seen_stems: set[str] = set()
     profile_names: set[str] = set()
     compatibility_names: set[str] = set()
+    implementation_sample_rates: set[int] = set()
+    implementation_channel_counts: set[int] = set()
+    public_track_dr_values: list[float] = []
 
     for index, (case, item_value) in enumerate(
         zip(reference_cases, implementation_items, strict=True)
@@ -316,7 +497,31 @@ def compare(
                 f"implementation item {stem!r} and report source identify different fixtures"
             )
 
-        analysis = require_dict(report.get("analysis"), f"implementation item {stem}.analysis")
+        analysis = require_dict(
+            report.get("analysis"), f"implementation item {stem}.analysis"
+        )
+        stream = require_dict(
+            analysis.get("stream"), f"implementation item {stem}.stream"
+        )
+        stream_sample_rate = require_integer(
+            stream.get("sampleRate"),
+            f"implementation item {stem}.stream.sampleRate",
+        )
+        stream_channels = require_integer(
+            stream.get("channels"),
+            f"implementation item {stem}.stream.channels",
+        )
+        if not 1 <= stream_sample_rate <= MAX_U32:
+            raise ComparisonError(
+                f"implementation item {stem}.stream.sampleRate must be positive u32"
+            )
+        if not 1 <= stream_channels <= MAX_U32:
+            raise ComparisonError(
+                f"implementation item {stem}.stream.channels must be positive"
+            )
+        implementation_sample_rates.add(stream_sample_rate)
+        implementation_channel_counts.add(stream_channels)
+
         algorithm = require_dict(
             analysis.get("algorithm"), f"implementation item {stem}.algorithm"
         )
@@ -342,6 +547,15 @@ def compare(
             analysis.get("aggregates"), f"implementation item {stem}.aggregates"
         )
         track = require_dict(aggregates.get("track"), f"implementation item {stem}.track")
+        public_track_dr = narrow_f32(
+            track.get("drDb"),
+            f"implementation item {stem}.track.drDb",
+        )
+        if public_track_dr < 0.0:
+            raise ComparisonError(
+                f"implementation item {stem}.track.drDb must be non-negative"
+            )
+        public_track_dr_values.append(public_track_dr)
         implementation_track_dr = track.get("roundedDr")
         if implementation_track_dr is not None:
             implementation_track_dr = require_integer(
@@ -374,6 +588,11 @@ def compare(
             raise ComparisonError(
                 f"implementation item {stem!r} has {len(implementation_channels)} channels; "
                 f"reference has {len(reference_channel_dr)}"
+            )
+        if stream_channels != len(implementation_channels):
+            raise ComparisonError(
+                f"implementation item {stem!r} stream channel count disagrees "
+                "with its channel reports"
             )
 
         for channel_index, channel_value in enumerate(implementation_channels):
@@ -454,8 +673,76 @@ def compare(
                 implementation_rms,
             )
 
+        structured_duration = require_dict(
+            track_report.get("duration"),
+            f"implementation item {stem}.reportMetrics.duration",
+        )
+        implementation_duration = duration_token(
+            structured_duration,
+            f"implementation item {stem}.reportMetrics.duration",
+        )
+        duration_sample_rate = require_integer(
+            structured_duration.get("sampleRate"),
+            f"implementation item {stem}.reportMetrics.duration.sampleRate",
+        )
+        if duration_sample_rate != stream_sample_rate:
+            raise ComparisonError(
+                f"implementation item {stem!r} duration sample rate disagrees "
+                "with its actual PCM stream"
+            )
+        if implementation_duration == case["durationToken"]:
+            matched_duration += 1
+        else:
+            add_difference(
+                differences,
+                case,
+                "durationToken",
+                case["durationToken"],
+                implementation_duration,
+            )
+
     if len(profile_names) != 1 or len(compatibility_names) != 1:
         raise ComparisonError("implementation batch mixes algorithm identities")
+
+    implementation_footer = {
+        "trackCount": len(implementation_items),
+        "sampleRates": sorted(implementation_sample_rates),
+        "channelCounts": sorted(implementation_channel_counts),
+        "unweightedDrToken": unweighted_public_track_dr_token(
+            public_track_dr_values,
+            "implementation.publicTrackDr",
+        ),
+    }
+    footer_matches = {
+        field: implementation_footer[field] == reference_footer[field]
+        for field in (
+            "trackCount",
+            "sampleRates",
+            "channelCounts",
+            "unweightedDrToken",
+        )
+    }
+    for field, matches in footer_matches.items():
+        if not matches:
+            add_footer_difference(
+                differences,
+                field,
+                reference_footer[field],
+                implementation_footer[field],
+            )
+
+    nonzero_public_track_dr_values = [
+        value for value in public_track_dr_values if value != 0.0
+    ]
+    counterfactual_token = unweighted_public_track_dr_token(
+        nonzero_public_track_dr_values,
+        "counterfactual.nonzeroPublicTrackDr",
+    )
+    reference_unweighted_dr = reference_footer["unweightedDrToken"]
+    implementation_unweighted_dr = implementation_footer["unweightedDrToken"]
+    numeric_dr0_count = len(public_track_dr_values) - len(
+        nonzero_public_track_dr_values
+    )
 
     source = require_dict(reference["source"], "reference.source")
     return {
@@ -483,6 +770,23 @@ def compare(
             "trackPrimaryPeakDbfs": "reference two-decimal/-inf token",
             "trackOverallRmsDbfs": "reference two-decimal/-inf token",
             "channelOverallRmsDbfs": "reference two-decimal/-inf token",
+            "duration": (
+                "f64(decodedFrames)/sampleRate, C llround half-away, "
+                "then fixed week/day/hour/minute/second rendering"
+            ),
+            "footerTrackCountAndSets": (
+                "semantic equality for track count, positive sample-rate set, "
+                "and positive channel-count set"
+            ),
+            "footerUnweightedDr": (
+                "comparison-only reconstruction from public f32 track drDb: "
+                "sequential f64 sum and mean, narrow to f32, then truncate "
+                "the non-negative value plus 0.5"
+            ),
+            "numericDr0ExclusionCounterfactual": (
+                "diagnostic only: recompute the same unweighted token after "
+                "excluding exactly numeric-zero public f32 track drDb values"
+            ),
             "numericToleranceDb": 0.0,
             "fixtureSetAndOrder": "exact unique fixture stems in reference order",
         },
@@ -498,9 +802,40 @@ def compare(
             "overallRmsTotal": len(reference_cases),
             "channelRmsMatched": matched_channel_rms,
             "channelRmsTotal": total_channel_values,
+            "durationMatched": matched_duration,
+            "durationTotal": len(reference_cases),
+            "footerConsistencyMatched": sum(footer_matches.values()),
+            "footerConsistencyTotal": len(footer_matches),
             "differenceCount": len(differences),
             "fixtureSetExact": True,
             "implementationOrderMatchesReference": True,
+        },
+        "footerConsistency": {
+            "scope": (
+                "normalized reference footer versus successful schema-v3 track "
+                "reports; unweighted reconstruction only"
+            ),
+            "reference": reference_footer,
+            "implementation": implementation_footer,
+            "matches": footer_matches,
+            "numericDr0ExclusionCounterfactual": {
+                "scope": (
+                    "same implementation track set, excluding only tracks whose "
+                    "public f32 track drDb is numeric zero"
+                ),
+                "excludedNumericDr0TrackCount": numeric_dr0_count,
+                "remainingTrackCount": len(nonzero_public_track_dr_values),
+                "unweightedDrToken": counterfactual_token,
+                "referenceMatchesAllTracksToken": (
+                    reference_unweighted_dr == implementation_unweighted_dr
+                ),
+                "referenceMatchesCounterfactualToken": (
+                    reference_unweighted_dr == counterfactual_token
+                ),
+                "distinguishesNumericDr0Inclusion": (
+                    implementation_unweighted_dr != counterfactual_token
+                ),
+            },
         },
         "differences": differences,
         "notCompared": [
@@ -509,12 +844,22 @@ def compare(
                 "reason": "not observable in the exported reference report",
             },
             {
-                "referenceField": "durationToken",
-                "reason": "decoded duration is structured, but reference duration text rendering is outside this comparison",
+                "referenceFields": [
+                    "footer.bitsPerSampleToken",
+                    "footer.bitrateToken",
+                    "footer.codecToken",
+                ],
+                "reason": "these host metadata renderings are outside this comparison",
             },
             {
-                "referenceFields": ["footer", "album focused aggregation"],
-                "reason": "footer metadata and album aggregation have separate evidence and contracts",
+                "fieldClass": (
+                    "length weighting, album grouping, and exact internal "
+                    "aggregation state"
+                ),
+                "reason": (
+                    "footer consistency reconstructs only the unweighted token "
+                    "from exported public f32 track DR values"
+                ),
             },
         ],
     }

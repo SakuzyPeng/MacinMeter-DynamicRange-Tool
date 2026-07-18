@@ -9,7 +9,9 @@
 - [`EXP-foo-dr-meter-108-complete-v2`](foo-dr-meter-108-complete-v2.md)：
   一次性生成 42 个 WAV 的完整回归与 host-edge corpus；39 项组成 safe master，
   3 项各自隔离。固定 x64 runtime 已完成一次 safe-master 导出；isolated 输入
-  尚未采集。构造模型与 observation 的逐字段复核结果单独保存在
+  尚未采集。clean-commit implementation successor 已把同一导出的 duration
+  token 纳入比较并达到 39/39；footer 仍只做有边界的部分比较。构造模型与
+  observation 的逐字段复核结果单独保存在
   [`foo-dr-meter-108-complete-v2-model-observation-comparison.json`](foo-dr-meter-108-complete-v2-model-observation-comparison.json)；
   它验证生成模型预测，但不是 reference golden。
 

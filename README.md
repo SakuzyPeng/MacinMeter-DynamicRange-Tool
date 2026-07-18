@@ -123,10 +123,14 @@ metrics.
 Decoders normalize supported inputs to finite interleaved `f64`, matching the
 fixed x64 core's PCM width. On the fixed 39-track schema-v3 safe-master run,
 track DR matched 39/39, channel DR 62/62, overall peak 39/39, overall RMS
-39/39, and channel RMS 62/62. This exact token comparison still excludes
-unobservable intermediate state, footer/text parity, reference duration
-rendering, isolated host-edge inputs, album-focused exports, and arbitrary
-audio, so the profile remains `Unverified`.
+39/39, channel RMS 62/62, and rendered duration 39/39. The reference footer's
+track count, sample-rate set, channel-count set, and `DR12` token are also
+consistent with the implementation reports; excluding the three numeric DR0
+tracks would instead produce DR13. This partial footer check does not establish
+host metadata, precise album-internal arithmetic, duration weighting, or full
+text parity. Unobservable intermediate state, isolated host-edge inputs,
+album-focused exports, and arbitrary audio also remain outside the comparison,
+so the profile remains `Unverified`.
 
 ## Library
 
@@ -175,10 +179,10 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-The official album value is the arithmetic mean of public-f32 track DR values,
-including numeric DR0 tracks. Optional duration weighting uses each track's
-exact decoded duration. Batch and GUI results remain collections of independent
-track reports unless a caller explicitly invokes this API.
+The unweighted album value is the arithmetic mean of public-f32 track DR
+values, including numeric DR0 tracks. Optional duration weighting uses each
+track's exact decoded duration. Batch and GUI results remain collections of
+independent track reports unless a caller explicitly invokes this API.
 
 ## GUI
 
@@ -229,7 +233,7 @@ stored in this repository.
 That permission and attribution do not establish numerical compatibility.
 Target hashes, experiments, observations, and the candidate specification are
 recorded under `reference/`. The current
-[schema-v3 x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
+[clean-commit schema-v3 x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
 documents its exact scope and remaining gaps. The profile remains `Unverified`
 until broader evidence and review justify a stronger statement.
 
