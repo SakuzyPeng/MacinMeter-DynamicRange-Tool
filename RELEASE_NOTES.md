@@ -1,5 +1,69 @@
 # Release Notes / 发布说明
 
+## v0.2.0 (M0) – Trusted trunk rebuild / 可信主干重建
+
+> Status: development branch. All analysis output is
+> `ProvisionalV1 / Unverified`; this release does not claim reference-plugin
+> compatibility.
+>
+> 状态：开发分支。所有分析结果均标记为 `ProvisionalV1 / Unverified`，本版本不
+> 声明已经兼容参考插件。
+
+### Architecture / 架构
+
+- Replaced the root package with a virtual workspace separating domain,
+  analysis, codecs, application, CLI, and Tauri adapters.
+  将根 package 改为 virtual workspace，分离 domain、analysis、codecs、
+  application、CLI 与 Tauri adapter。
+- Replaced both legacy DR engines with one safe, streaming, consuming
+  `AnalyzerSession`.
+  删除两套 legacy DR 引擎，改为唯一、安全、流式且消费式结算的
+  `AnalyzerSession`。
+- All first-party Rust crates now forbid unsafe code; native CPU flags, manual
+  SIMD, packet parallelism, EdgeTrimmer, and duplicate frontend pipelines were
+  removed.
+  所有第一方 Rust crate 禁止 unsafe；删除原生 CPU 强绑定、手写 SIMD、包级并行、
+  EdgeTrimmer 和前端重复管线。
+
+### Supported surface / 支持范围
+
+- M0 supports content-probed WAV integer/float PCM, FLAC, and AIFF integer PCM.
+  M0 只支持按内容探测的 WAV 整数/浮点 PCM、FLAC 与 AIFF 整数 PCM。
+- AIFC, lossy codecs, Opus/Songbird, FFmpeg routes, DSD, preprocessing, and
+  parallel execution are unavailable by design.
+  AIFC、有损编码、Opus/Songbird、FFmpeg 路径、DSD、预处理和并行执行均有意
+  暂不提供。
+
+### Interfaces / 接口
+
+- Added explicit `macinmeter analyze` and `macinmeter batch` commands, stable
+  exit codes, clean stdout/stderr separation, and atomic explicit output.
+  新增显式 `macinmeter analyze` / `macinmeter batch` 命令、稳定退出码、
+  stdout/stderr 分离与显式原子输出。
+- CLI JSON and Tauri now share schema version 1 and the same application report,
+  errors, cancellation, and progress model.
+  CLI JSON 与 Tauri 共用 schema v1，以及同一 application report、错误、取消和
+  进度模型。
+- GUI jobs use caller-provided IDs and independent cancellation tokens.
+  GUI job 使用调用者提供的 ID 与相互独立的取消 token。
+
+### Engineering / 工程
+
+- Added analysis boundary/property tests, strict decoder contract tests, Rust
+  API/CLI parity checks, CLI black-box tests, and independent GUI job tests.
+  新增分析边界/属性测试、严格解码契约测试、Rust API/CLI 一致性、CLI 黑盒测试与
+  GUI job 隔离测试。
+- CI is intentionally manual-only during M0; the local pre-commit hook performs
+  only format and workspace compile checks.
+  M0 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。
+
+Earlier entries below describe historical 0.1.x releases and removed behavior;
+they are not documentation for the 0.2.0 interface.
+
+以下内容记录历史 0.1.x 版本及已删除行为，不是 0.2.0 接口文档。
+
+---
+
 ## v0.1.3 (2026-02-07) – Boundary Risk Control & Security Fixes / 边界风险控制与安全修复
 
 ### Features / 新功能

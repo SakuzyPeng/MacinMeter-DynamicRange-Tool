@@ -1,110 +1,49 @@
 [English](SUPPORTED_FORMATS.md) | [中文](SUPPORTED_FORMATS_CN.md)
 
-# Supported Audio Formats
+# M0 supported audio formats
 
-## Decoder Routing
+MacinMeter 0.2.0 intentionally exposes a small, correctness-first decoder
+surface. Availability means that the route is part of the M0 contract; it does
+not imply compatibility with the reference DR plugin.
 
-The tool uses smart auto-routing, preferring Symphonia with automatic FFmpeg fallback when needed.
+| Container | Accepted codec | PCM delivered to analysis |
+|---|---|---|
+| WAV / WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f32` |
+| WAV / WAVE | IEEE 32/64-bit float PCM | finite interleaved `f32` |
+| FLAC | FLAC | finite interleaved `f32` |
+| AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f32` |
 
-### Native Symphonia Support
+The decoder probes file contents with no extension hint. Extensions
+`.wav`, `.wave`, `.flac`, `.aif`, and `.aiff` are used only to discover files
+inside directories. An explicitly supplied file may have any extension if its
+content is supported.
 
-- **Lossless**: FLAC, ALAC (Apple Lossless), WAV, AIFF, PCM
-- **Lossy**: AAC, OGG Vorbis, MP1 (MPEG Layer I)
-- **Containers**: MP4/M4A (Symphonia-supported codecs only), MKV/WebM
+## Deliberately unavailable in M0
 
-### Dedicated Decoders
+The following routes are not built into 0.2.0:
 
-- **Opus**: Via songbird decoder (Discord audio library)
-- **MP3**: Stateful format, forced serial decoding
+- AIFC, compressed WAV variants, and non-FLAC codecs in supported containers;
+- MP1/MP2/MP3, AAC, ALAC, Vorbis, Opus, AC-3, E-AC-3, DTS, and DSD;
+- MP4/M4A, Ogg, Matroska/WebM, DSF, and DFF containers;
+- FFmpeg fallback or external decoder processes;
+- resampling, gain, filters, edge trimming, and silence preprocessing;
+- packet-level or file-level parallel decoding.
 
-### Auto Fallback to FFmpeg
+Recognized but unavailable content returns the stable
+`unsupported_format` error code. Malformed content within a supported format
+returns a probe or decode error; it is never converted to an empty or partial
+successful report.
 
-When Symphonia cannot decode a format, the tool automatically falls back to FFmpeg.
+## Decoder contract
 
-**Typical cases**:
-- For extensions `.ac3`, `.ec3/.eac3`, `.dts`, `.dsf`, `.dff` → use FFmpeg directly
-- MP4/M4A containers with AC-3/E-AC-3 (incl. Atmos) or DTS → auto-switch to FFmpeg
-- Incompatible codecs inside containers (some MKV/MP4 variants) → auto fallback to FFmpeg
+Each opened source has immutable PCM stream information. `read_block` returns
+only a non-empty, finite, frame-aligned block, sticky EOF, or a structured
+error. Empty waits and decoder failures are not reported as EOF. Expected and
+decoded frame counts are tracked separately, and M0 fails rather than silently
+skipping a damaged packet.
 
----
-
-## FFmpeg Installation
-
-To use FFmpeg features, make sure both `ffmpeg` and `ffprobe` are installed:
-
-| Platform | Install Command |
-|----------|-----------------|
-| **macOS** | `brew install ffmpeg` |
-| **Windows** | `winget install Gyan.FFmpeg` (or Chocolatey) |
-| **Ubuntu/Debian** | `sudo apt install ffmpeg` |
-| **Fedora/RHEL** | `sudo dnf install ffmpeg` |
-| **Arch** | `sudo pacman -S ffmpeg` |
-
-Verify: both `ffmpeg -version` and `ffprobe -version` should print a version; the tool auto-detects them from PATH.
-
----
-
-## Multichannel & LFE Support
-
-- **Multichannel analysis**: supports 3–32 channels; per-channel DR is computed and listed.
-
-- **Official aggregation**: arithmetic mean of all non-silent channel DRs, rounded (foobar2000 style).
-
-- **LFE detection**:
-  - Via Symphonia: auto-detects layout metadata (e.g., WAV WAVEFORMATEXTENSIBLE masks, some MP4/MKV).
-  - Via FFmpeg: parses ffprobe JSON label sequences (e.g., `FL+FR+FC+LFE+…`) to locate LFE accurately.
-
-- **LFE exclusion (optional)**: enable `--exclude-lfe` to drop LFE from the aggregate; per-channel DR lines remain.
-
----
-
-## DSD Processing
-
-### Options
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--dsd-pcm-rate` | Target sample rate | 352800 Hz |
-| `--dsd-gain-db` | Linear gain (0 to disable) | +6.0 dB |
-| `--dsd-filter` | Low-pass filter | teac |
-
-### Filter Modes
-
-**teac (TEAC Narrow)**:
-- DSD64 → 39 kHz
-- DSD128 → 78 kHz
-- DSD256 → 156 kHz
-- DSD512 → 312 kHz
-- DSD1024 → 624 kHz
-- Capped at 0.45×Fs (target rate)
-
-**studio**:
-- Fixed 20 kHz (audible-band only)
-
-**off**:
-- No extra low-pass (diagnostic; ultrasonics enter RMS and may reduce DR; clipping risk with +6 dB)
-
-### Output Format
-
-- Unified F32LE output for consistency and easy processing
-- Reports show "native 1-bit rate & tier → processed rate"; bit depth printed as "1 (DSD 1-bit, processed as f32)"
-
----
-
-## Format Summary
-
-**12+ mainstream formats**, covering 90%+ user needs:
-
-| Category | Formats | Decoder |
-|----------|---------|---------|
-| Lossless | FLAC, ALAC, WAV, AIFF, PCM | Symphonia |
-| Lossy | AAC, OGG Vorbis, MP1 | Symphonia |
-| Proprietary | MP3 | Symphonia (Serial) |
-| Proprietary | Opus | songbird (Dedicated) |
-| Video Codec | AC-3, E-AC-3, DTS, DSD | FFmpeg (Auto) |
-| Containers | MP4/M4A, MKV, WebM | Symphonia / FFmpeg (Smart) |
-
-### Parallelism Notes
-
-- MP3 uses serial decoding (stateful format); other formats support parallel acceleration.
-- Multichannel uses zero-copy strided optimization with 8–16× performance gain for 3+ channels.
+Channel layout is never inferred from channel count. If the backend cannot
+establish a trustworthy layout, the report uses `unknown`; consequently no
+`without_lfe` aggregate is produced. Aggregate objects preserve every exclusion
+reason even when no channel is measurable; their DR values are then explicit
+`null`.

@@ -1,14 +1,18 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：草案，作为后续整改、重构和逆向研究的主记录
+> 状态：执行中（M0：`DONE`，参考对齐轨道待推进），作为整改、重构和逆向研究的主记录
 >
 > 建立日期：2026-07-17
 >
-> 当前版本：0.1.3
+> Legacy 基线：0.1.3
+>
+> M0 目标版本：0.2.0
 >
 > 参考目标：foobar2000 DR Meter 1.0.3（`foo_dr_meter`）
 >
 > 相关授权与合规说明：[LEGAL_CN.md](LEGAL_CN.md)
+>
+> M0 决策记录：[ADR-0001：以 0.2.0 重建可信主干](adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
 
 ## 1. 文档目的
 
@@ -86,9 +90,9 @@
 4. 解码、算法、应用编排、CLI/GUI 和报告格式保持单向依赖。
 5. 参考兼容模式忠实复现参考行为；产品增强不得悄悄修改参考结果。
 6. 默认只启用已经证明可靠的路径；实验功能必须显式标记。
-7. 大范围重构采用短期纵向切片，不维护长期失联的“大重写分支”。
-8. 新旧实现只在差分验证期间短暂并存；切换生产路径后立即删除旧实现。
-9. 0.1.x 阶段不为错误或不安全的公共 API 承担兼容包袱。
+7. M0 直接建立可运行的 0.2.0 纵向主干，不维护长期失联的“大重写分支”。
+8. 新旧实现只在迁移验证期间短暂并存；切换生产路径后立即删除旧实现和适配层。
+9. 0.2.0 明确允许 Rust API、CLI、JSON 和 GUI IPC breaking change，不保留 0.1.x 行为兼容层。
 10. 所有“小问题”进入清理清单，不以“与主重构无关”为理由永久搁置。
 
 ## 5. 事项总表
@@ -104,36 +108,36 @@
 
 | ID | 状态 | 事项 | 当前风险 | 临时/最终方向 | 验收要点 |
 | --- | --- | --- | --- | --- | --- |
-| COR-001 | TODO | 修复并行解码 Pending/EOF 混淆 | 等待 100ms 无数据即返回 `None`，上层静默截断 | 修复前默认串行；同步接口阻塞到数据、真实 EOF 或错误 | 慢 worker 测试不截断；EOF sticky |
-| COR-002 | TODO | 修复并行 worker 序列缺口和无限 drain | worker 初始化/发送失败可能不产生终态 | 每个序号必须产生 `Samples / Skipped / Error`；设置总体失败条件 | worker 创建失败、panic、channel 断开均能终止并报错 |
-| ALG-001 | TODO | 统一窗口累计和最终结算 | 3+ 声道尾窗未结算，短音频被判静音 | 建立 `push_*()` + 单次 `finish()` | 1/2/3/6/8/16 声道和任意 chunk 切分一致 |
-| SAFE-001 | TODO | 删除不安全的泛型样本转换 | `&[T]` 按独立格式标签重解释，可越界/错位读取 | 使用强类型重载或 sealed trait | 安全 API 无调用者不可见的 unsafe 前置条件 |
-| SAFE-002 | TODO | 封闭 SIMD 安全包装 | Release 下只靠 `debug_assert` 保护裸指针 | Release 生效的长度/偏移检查；低层降为 `pub(crate)` 或 `unsafe` | 错误尺寸、零声道、越界声道返回错误且无 UB |
-| META-001 | TODO | 修正 DSD 实际处理采样率 | 用源 DSD 率计算 PCM 窗口长度和时长 | `pcm_sample_rate` 进入分析器，源率只用于元数据 | DSD 转码后窗口时间尺度正确 |
-| TRIM-001 | TODO | 暂停或修复 EdgeTrimmer | 可删除真实音频，Leading 余数回灌，缓冲可增长至 O(N) | 修复前禁用；最终作为独立前处理状态机重写 | 混合静音/短音频/尾静音不误删且空间有界 |
-| CLI-001 | TODO | 恢复机器输出契约 | `--json` stdout 含横幅，目录 JSON 被忽略 | stdout 只放数据，诊断和进度走 stderr | 单文件 JSON 可被 `jq` 直接解析；批量有定义的 JSON/NDJSON |
-| CLI-002 | TODO | 定义批量部分失败语义 | 部分文件失败仍退出 0，部分写入错误被吞掉 | 返回 `BatchOutcome` 和明确的 partial-failure 退出码 | 黑盒测试覆盖全部成功、部分失败、全部失败、写入失败 |
-| BUILD-001 | TODO | 恢复发行制品 CPU 兼容性 | `target-cpu=native` 和全局 AVX2 可导致非法指令 | 发布便携 baseline；SIMD 运行时分派 | 老 x86-64 基线可启动；AVX2 如保留则作为独立制品 |
+| COR-001 | DONE | 删除 Pending/EOF 混淆路径 | 旧包级并行解码器已删除 | `PcmSource` 只返回 `Data / Eof / Error` | EOF 与 terminal error 均 sticky |
+| COR-002 | DONE | 删除并行 worker 缺口路径 | worker/序号模型已从 M0 删除 | 坏包严格失败，不生成部分结果 | 损坏 FLAC/WAV sticky error 测试 |
+| ALG-001 | DONE | 统一窗口累计和最终结算 | 唯一 `AnalyzerSession` | `push_interleaved()` + consuming `finish()` | 1/2/3/6/8/16 声道和随机 chunk 切分一致 |
+| SAFE-001 | DONE | 删除不安全的泛型样本转换 | 旧转换层已删除 | Symphonia 安全 `SampleBuffer<f32>` | 所有第一方 crate `forbid(unsafe_code)` |
+| SAFE-002 | DONE | 删除手写 SIMD 包装 | 旧 SIMD 层已删除 | M0 只保留 safe scalar | 无裸指针或 target CPU 假设 |
+| META-001 | DONE | 分离实际 PCM stream 信息 | DSD/转码不属于 M0 | `PcmStreamInfo.spec` 只描述实际 PCM | 不猜测或混用源率 |
+| TRIM-001 | DONE | 从生产管线移除 EdgeTrimmer | 旧实现已删除 | 未来只能作为独立显式前处理重建 | M0 请求/结果无 trim 字段 |
+| CLI-001 | DONE | 恢复机器输出契约 | 显式 analyze/batch 命令 | stdout 只放结果，进度/诊断走 stderr | JSON 黑盒测试直接解析 |
+| CLI-002 | DONE | 定义批量失败语义 | tagged item outcome + 稳定退出码 | 全成功 0、失败 1、部分成功 3、取消 130 | 黑盒覆盖全部分支与输出失败 |
+| BUILD-001 | DONE | 恢复便携 CPU 基线 | 删除 `target-cpu=native`/AVX2 | portable safe scalar release | workspace 无本机 CPU 编译标志 |
 
 ### 5.2 P1：核心重构与可靠性
 
 | ID | 状态 | 事项 | 当前问题 | 目标 |
 | --- | --- | --- | --- | --- |
-| ARCH-001 | TODO | 消除模块反向依赖 | `core/audio` 依赖 `tools`，`core` 与 `processing` 相互绑定 | `domain -> analysis/codecs -> application -> adapters` 单向依赖 |
-| ARCH-002 | TODO | 删除双 DR 引擎 | CLI 直接使用 `WindowRmsAnalyzer`，公共库另有 `DrCalculator` | 所有入口调用唯一 `AnalyzerSession` |
-| ARCH-003 | TODO | 拆分配置和结果类型 | `AppConfig` 混合路径、算法、解码、并发、输出和 UI | `AnalysisConfig / DecodeOptions / BatchOptions / OutputOptions` |
-| ARCH-004 | TODO | 具名化输出模型 | `AnalysisOutput` 是四元素元组 | `AnalysisReport`、`ChannelResult`、`DecodeDiagnostics` |
-| CODEC-001 | TODO | 引入一次性 DecodePlan | 多处按扩展名重复路由，探测结果与实际 backend 可不一致 | 探测真实 codec 后生成 backend 和 capability 计划 |
-| CODEC-002 | TODO | 建立后端能力分级 | `can_decode()` 只看扩展名，格式列表不反映 FFmpeg 可用性 | `NativeStable / External / Experimental / Unavailable` |
-| FFMPEG-001 | TODO | 重建 FFmpeg supervisor | stderr 未消费、退出码未检查、kill/join 顺序可能挂死 | 统一管理 stderr、wait、cancel、kill、join 和结构化错误 |
-| META-002 | TODO | 拆分格式和进度状态 | expected、decoded、consumed 共用/覆盖同一字段 | `SourceInfo / PcmStreamInfo / DecodeProgress / Diagnostics` |
-| META-003 | TODO | 建立 LFE 三态模型 | 未知布局会按声道数猜测并影响正式聚合 | `Unknown / KnownNoLfe / Known(indices)`；未知不自动排除 |
-| ERROR-001 | TODO | 结构化错误 | backend、阶段、路径、codec、退出码被压成字符串 | 保留 source、stage、backend、path、recoverability |
+| ARCH-001 | DONE | 消除模块反向依赖 | virtual workspace 强制包边界 | `domain -> analysis/codecs -> application -> adapters` 单向依赖 |
+| ARCH-002 | DONE | 删除双 DR 引擎 | 旧 `core/processing` 生产路径已删除 | 所有入口调用唯一 `AnalyzerSession` |
+| ARCH-003 | DONE | 拆分请求和展示配置 | 分析只接收路径/profile；渲染开关留在 adapter | `AnalyzeRequest / BatchRequest / ExecutionControl` |
+| ARCH-004 | DONE | 具名化输出模型 | 不再使用长元组 | `AnalysisReport`、`ChannelResult`、`DecodeDiagnostics` |
+| CODEC-001 | DONE | 收口一次性探测入口 | 单一 `DecoderFactory` 按内容探测 | M0 只有一个 Symphonia backend，无重复路由 |
+| CODEC-002 | DONE | 固定 M0 能力矩阵 | 文档与 `SUPPORTED_EXTENSIONS` 区分发现/解码 | WAV/FLAC/AIFF stable，其余 unavailable |
+| FFMPEG-001 | DONE | M0 移除 FFmpeg 生产路径 | 外部进程 supervisor 不再存在 | 如恢复必须重新建立完整生命周期契约 |
+| META-002 | DONE | 拆分格式和进度状态 | expected 与 decoded 独立 | `SourceInfo / PcmStreamInfo / DecodeProgress / Diagnostics` |
+| META-003 | DONE | 建立 LFE 三态模型 | 未知布局不猜测 | `Unknown / KnownNoLfe / Known(positions)` |
+| ERROR-001 | DONE | 结构化错误 | 稳定 code/stage + backend/path/details | CLI、JSON 与 Tauri 共用 |
 | CONC-001 | TODO | 建立全局资源预算 | 文件并发、包并发、codec 线程池相互嵌套 | application 层统一 CPU、内存和任务配额 |
-| GUI-001 | TODO | 请求级取消与进度 | Tauri 使用进程级 `AtomicBool`，请求间互相干扰 | 每个任务拥有 ID、CancellationToken 和独立 progress |
-| GUI-002 | TODO | 移除全局 FFmpeg 环境变量修改 | 运行中修改进程环境可能与分析线程竞争 | FFmpeg 路径作为不可变配置传给 DecoderFactory |
-| SECURITY-001 | TODO | 收紧 Tauri 权限 | CSP 为空且开放通用文件写权限 | 设置 CSP，删除未使用的 fs plugin/permission |
-| DEPS-001 | TODO | 收紧 Opus 依赖 | Songbird 引入与本地解码不相称的网络/TLS 依赖 | 使用更窄实现，或将 Opus 做成可选 feature |
+| GUI-001 | DONE | 请求级取消与进度 | `jobId -> CancellationToken` registry | 取消隔离与 RAII 清理测试 |
+| GUI-002 | DONE | 移除全局 FFmpeg 环境变量修改 | GUI 不再包含 FFmpeg 配置 | 无环境变量修改 |
+| SECURITY-001 | DONE | 收紧 Tauri 权限 | 生产/开发 CSP 已设置 | 仅 core default + dialog open |
+| DEPS-001 | DONE | 删除 M0 Opus 依赖 | Songbird 与旧网络/TLS 链移除 | Opus 明确 unavailable |
 
 ### 5.3 P1：参考插件重新逆向与对齐
 
@@ -154,20 +158,20 @@
 
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
-| TEST-001 | TODO | 建立工程不变量测试 | chunk、声道路径、scalar/SIMD、串并行差分 |
+| TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
 | TEST-002 | TODO | 建立参考 golden corpus | 只使用参考插件观测生成 correctness golden |
-| TEST-003 | TODO | 建立 CLI 黑盒测试 | stdout/stderr、JSON、退出码、文件输出和参数冲突 |
-| TEST-004 | TODO | 引入 Miri、sanitizer 和 fuzz | 覆盖 unsafe wrapper、decoder 状态机和异常输入 |
-| TEST-005 | TODO | 处理 ignored/弱断言测试 | ignored 有责任人和原因；测试断言实际期望值 |
-| CI-001 | TODO | 修复 path filter 和 target 构建 | 纳入 `.cargo/**`、scripts、`tauri-app/**`；使用真实 `--target` |
-| CI-002 | TODO | 建立可复现构建 | 固定 MSRV/工具链，CI 使用 `--locked` |
+| TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
+| TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
+| TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
+| CI-001 | DONE | 缩减为 opt-in workspace 验证 | 单手动 Ubuntu job，不再使用旧 path filter/release |
+| CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
 | CI-003 | TODO | 修复 GUI release 链 | release 依赖 GUI build 并上传实际 GUI 制品 |
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
 | RELEASE-001 | TODO | 增加制品验证 | smoke test、checksum；后续评估签名、SBOM、provenance |
-| PERF-001 | TODO | 删除伪性能指标 | 运行时只报告实测耗时和实际 kernel 计数 |
+| PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | TODO | 重建 benchmark 方法 | 随机/交错 A/B、进程树监控、环境与二进制哈希 |
-| DOC-001 | TODO | 修正过度兼容性声明 | 对齐完成前使用 provisional/尚在验证的表述 |
-| DOC-002 | TODO | 清理陈旧文档和脚本 | Tauri 命令、Rust 版本、格式支持、路径和版本保持同步 |
+| DOC-001 | DONE | 修正过度兼容性声明 | 所有输出与 README 标记 `ProvisionalV1 / Unverified` |
+| DOC-002 | DONE | 清理陈旧文档和脚本 | Tauri、格式、MSRV、CLI、性能与法律文档已同步 |
 
 ## 6. 参考插件研究计划
 
@@ -223,7 +227,7 @@
 
 ### 6.4 建议的研究产物
 
-在具体工作开始时建立独立目录，建议结构如下：
+M0 已建立独立 [`reference/`](../reference/README.md) 目录，结构如下：
 
 ```text
 reference/
@@ -259,33 +263,30 @@ reference/
 
 ```text
 domain
-├── AnalysisConfig / AnalysisProfile
+├── AnalysisProfile / StreamSpec
 ├── SourceInfo / PcmStreamInfo
 ├── AnalysisReport / ChannelResult
-├── DecodeDiagnostics / BatchOutcome
-└── AudioError
+├── DecodeDiagnostics / BatchItemOutcome
+└── AnalysisError / ErrorCode
 
 analysis
 └── AnalyzerSession
     ├── push_interleaved()
-    ├── progress()
     └── finish()
 
 codecs
-├── DecodePlan / DecoderFactory
-├── Symphonia adapter
-├── Opus adapter
-└── FFmpeg supervisor
+├── DecoderFactory
+└── Symphonia adapter（M0：WAV/FLAC/AIFF）
 
 application
-├── analyze_file / analyze_many
+├── analyze_file / serial BatchRunner
 ├── progress / cancellation
-└── global resource budget
+└── versioned WireEnvelope
 
 adapters
-├── CLI + Human/JSON/NDJSON formatter
+├── CLI + Human/JSON formatter
 ├── Tauri commands and events
-└── benchmark harness
+└── frontend rendering
 ```
 
 `domain` 不依赖 CLI、Tauri、Symphonia 或 FFmpeg。`analysis` 不知道文件路径和输出格式。`adapters` 不直接构造算法内部状态。
@@ -295,20 +296,20 @@ adapters
 初期建议至少区分：
 
 ```text
-Provisional
+ProvisionalV1
 ReferenceFooDrMeter103
 ```
 
 名称可在参考目标最终固定后调整。
 
-- `Provisional` 明确表示当前尚未完成参考对齐；
+- `ProvisionalV1` 明确表示当前尚未完成参考对齐；
 - `ReferenceFooDrMeter103` 只包含被证据支持的参考行为；
 - Edge trim、静音过滤等作为显式 preprocessing pipeline，不伪装成另一套“官方”算法；
 - 是否长期保留 `Provisional`，在 Reference profile 完成后再决定。
 
 ### 7.3 解码契约
 
-同步 `AudioSource` 的读取结果必须只有：
+同步 `PcmSource` 的读取结果必须只有：
 
 ```text
 Data(chunk)
@@ -316,13 +317,16 @@ Eof
 Error
 ```
 
-若需要非阻塞模型，应显式增加 `Pending`，不能复用 `Eof`。
+若未来需要非阻塞模型，应另建明确的异步契约；M0 `PcmSource` 不增加
+`Pending`，也不能复用 `Eof`。
 
-`PcmStreamInfo.sample_rate` 永远表示送入分析器的实际 PCM 率。源格式、原始 DSD 率、预期帧数、已解码帧数和已消费帧数分别存储。
+`PcmStreamInfo.spec.sample_rate` 永远表示送入分析器的实际 PCM 率。源元数据、
+预期帧数和已解码帧数分别存储。M0 不含 DSD 或转码路径。
 
 ### 7.4 并发策略
 
-- 默认保留文件级并行；
+- M0 使用串行文件处理和串行解码作为确定性基线；
+- 文件级并行只在 application 层具有统一资源预算和差分测试后恢复；
 - 包级并行在重新证明 codec 独立性、EOF 和错误传播前保持关闭；
 - 有状态 codec 不按文件扩展名猜测并行安全性；
 - application 层为文件任务、decoder worker 和外部进程分配统一预算；
@@ -332,27 +336,53 @@ Error
 
 逆向研究是一条从现在开始的并行轨道，不是所有重构完成后的最后一步。
 
-### M0：止血版本
+### M0：0.2.0 可信主干重建
 
-建议目标版本：0.1.4。
+状态：`DONE`。
 
-- 完成 `COR-001`、`ALG-001`、`SAFE-001/002`、`META-001`；
-- 禁用尚未修复的 EdgeTrimmer 和默认包级并行；
-- 修复 JSON、批量退出码和 portable release；
-- 为每项缺陷先增加可复现测试；
-- 修订 README 中把系统性偏差描述为普通误差的表述。
+目标版本：0.2.0。M0 不再以 0.1.4 补丁修补旧生产路径，而是完成一条可以
+持续演进的最小纵向主干。具体决策见
+[ADR-0001](adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)。
+
+- 建立 Cargo workspace；`analysis` 与 `codecs` 分别只依赖 `domain`，
+  `macinmeter` application 组合二者，CLI/Tauri 只依赖 application；
+- 以有效领域类型、具名 `AnalysisReport` 和结构化 `AnalysisError/ErrorCode`
+  取代公共 `AppConfig`、长元组和双语字符串错误；
+- 建立唯一、串行、无输出副作用的生产分析状态机，先支持经过共同契约验证的
+  最小 codec 集；
+- 建立 application 层单文件与批处理编排；一个文件的 batch 不再退化为旧
+  单文件自动保存路径；
+- 重建显式 CLI 操作、JSON schema、stdout/stderr 和全部/部分失败退出语义；
+- 让 CLI 与 Tauri 最终消费同一 application API 和 wire DTO；
+- 默认关闭包级并行，EdgeTrimmer 不进入生产管线、公共请求或结果 schema；
+- 建立 reference 目录与 provisional v1 规格，明确当前尚未具有参考兼容证明；
+- 施工期 CI 只保留手动 Ubuntu workspace fmt/clippy/test，pre-commit 只保留
+  快速格式与 workspace 编译检查；
+- 新纵向路径切换后直接删除旧 API、旧 CLI 适配和重复状态机，不提供 0.1.x
+  兼容别名。
 
 出口条件：
 
-- 不再有已知静默截断和公开安全 API UB；
-- 多声道短音频不再因路径差异得到全零结果；
-- JSON 和退出码可用于自动化；
-- 发行制品使用便携 CPU baseline。
+- 0.2.0 workspace 具有可检查的单向依赖，生产入口只调用一套分析状态机；
+- 默认路径不再有已知静默截断、公开安全 API UB 或 EdgeTrimmer 误删；
+- 同一 PCM 对合法 chunk 切分和声道路径满足工程不变量；
+- JSON 可直接解析，stdout/stderr、退出码和批量 outcome 有黑盒测试；
+- CLI 与 Tauri 共享报告、错误和 application 语义；
+- 所有对外兼容性声明不超出 provisional v1 证据。
+
+本地验收记录（2026-07-18）：
+
+- `cargo +1.88.0 fmt --all -- --check`：通过；
+- `cargo +1.88.0 clippy --locked --workspace --all-targets -- -D warnings`：通过；
+- `cargo +1.88.0 test --locked --workspace`：61 项测试通过；
+- `cargo +1.88.0 check --locked -p macinmeter-gui`：通过；
+- `npm run build`（`tauri-app/`）：TypeScript 与 Vite production build 通过；
+- `npm audit --json`（`tauri-app/`）：0 项已知漏洞；
+- 未触发、未等待 GitHub Actions。
 
 ### M1：事实与证据基础
 
-- 建立工程不变量测试；
-- 建立 reference 目录、目标档案、实验生成器和运行 harness；
+- 填充 reference 目标档案、实验生成器和运行 harness；
 - 保存第一批参考观测，不用当前实现反向生成 correctness golden；
 - 建立算法规格模板和证据等级；
 - 将当前输出仅保存为 legacy snapshot。
@@ -363,24 +393,22 @@ Error
 - 参考插件结果可重复采集；
 - 每条算法结论可追溯到证据或明确标为未知。
 
-### M2：唯一分析内核
+### M2：可信主干扩展
 
-- 引入 domain 类型和 `AnalyzerSession`；
-- 用串行 PCM/WAV 建立第一条完整纵向路径；
-- 差分验证新旧实现；
-- CLI/Tauri 切换到新内核；
-- 删除 `tools::processor` 与 `DrCalculator` 的重复结果构造；
-- 重写 EdgeTrimmer 为独立 preprocessing stage。
+- 将剩余稳定 codec/backend 迁移到 M0 建立的共同 `PcmSource` 和 PCM 契约；
+- 扩充 chunk、声道、scalar/SIMD 和异常输入工程不变量；
+- 根据 reference 证据校正 provisional 算法，不用 legacy snapshot 反向定义正确性；
+- 如仍有产品需求，将 EdgeTrimmer 重写为独立、显式 preprocessing stage。
 
 出口条件：
 
-- 仓库只有一套生产 DR 状态机；
+- 所有正式声明支持的 backend 满足共同契约；
 - chunk、声道和优化路径不影响 provisional 结果；
-- 旧引擎已删除。
+- 新能力不绕过 M0 已建立的 application 和 wire 边界。
 
 ### M3：解码与应用层
 
-- 引入 `DecodePlan`、backend registry 和结构化 `StreamInfo`；
+- 如多 backend 的实际需求成立，引入显式 `DecodePlan` 与 backend registry；
 - 加固 Symphonia、Opus 和 FFmpeg 生命周期；
 - 建立请求级取消和全局资源预算；
 - CLI/Tauri 只依赖 application 层；
@@ -409,7 +437,7 @@ Error
 
 ### M5：产品与仓库收敛
 
-- 视逻辑边界稳定情况拆为 Cargo workspace；
+- 在 M0 建立的 Cargo workspace 上收紧依赖和 feature 边界；
 - 统一 CLI、GUI、版本、MSRV、lockfile 和 release；
 - 修订用户文档、支持格式和兼容性声明；
 - 清理遗留脚本、无效依赖和过期构建文件；
@@ -423,50 +451,51 @@ Error
 - 只优化已确认瓶颈；
 - 性能路径必须通过与标量参考路径的差分测试。
 
-## 9. 建议 PR 顺序
+## 9. 实施顺序记录
 
-1. `fix: stop silent truncation and make serial decoding default`
-2. `fix: finalize multichannel windows consistently`
-3. `fix: close unsafe public conversion and SIMD APIs`
-4. `fix: correct DSD PCM rate and quarantine edge trimming`
-5. `fix: restore JSON, exit-code and portable-release contracts`
-6. `docs: qualify current compatibility claims and add reference research plan`
-7. `test: add invariant, reference-observation and CLI contract suites`
-8. `refactor: introduce domain models and AnalyzerSession`
-9. `refactor: migrate production to the single analyzer and remove legacy engine`
-10. `refactor: introduce DecodePlan, StreamInfo and FFmpeg supervisor`
-11. `refactor: rebuild application, CLI and Tauri adapters`
-12. `feat: implement and verify the reference plugin profile`
-13. `chore: unify workspace, CI, versions and release artifacts`
-14. `perf: re-profile and selectively restore proven optimizations`
+M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发布中间双轨：
 
-每个 PR 应包含对应测试和验收说明。不要把全部步骤压成一个无法审查的大提交。
+1. 接受 0.2.0 ADR 并建立 reference 目录；
+2. 建立 workspace/domain；
+3. 建立唯一 AnalyzerSession；
+4. 建立最小 codecs/application；
+5. 替换 CLI/JSON/退出码；
+6. 迁移 Tauri；
+7. 删除 legacy 生产路径。
+
+后续建议按证据和能力独立提交：
+
+8. `test: add reference observations and conformance harness`
+9. `feat: add one evidence-backed backend behind the PcmSource contract`
+10. `feat: implement and verify the reference plugin profile`
+11. `chore: restore reproducible multi-platform CI and release artifacts`
+12. `perf: re-profile and selectively restore proven optimizations`
+
+每项后续提交应包含对应测试、证据链接和验收说明。
 
 ## 10. 小项清理清单
 
 以下事项不决定总体架构，但同样必须处理：
 
-- [ ] 设置准确的 `rust-version`，修正文档中的 Rust 1.80 表述；
-- [ ] 统一根 crate、Tauri Cargo、Tauri package.json 和 lockfile 版本；
-- [ ] CI 和本地构建使用 `--locked`；
-- [ ] 处理 `panic = "abort"` 与 `catch_unwind` 的矛盾；
-- [ ] 删除非测试代码中的无保护 `expect`；
-- [ ] 默认不提升到系统最高线程优先级，改为显式 opt-in；
-- [ ] 将 benchmark 专用依赖移出核心依赖；
-- [ ] 将仅测试使用的 `hound` 移入 dev-dependencies，或删除；
-- [ ] 明确 Symphonia `default-features`；
-- [ ] 统一 decoder reset 契约和统计单位；
-- [ ] 修复 progress 始终接近 1.0 的元数据覆盖问题；
-- [ ] 支持非 UTF-8 本地路径传给 FFmpeg；
-- [ ] 清理根目录孤立 `package-lock.json`、`compile_commands.json` 等生成物；
-- [ ] 修复 Tauri 严格 Clippy 错误；
-- [ ] 更新 Tauri 文档中的命令数量、权限和批处理状态；
-- [ ] 修复 macOS bundle、benchmark 和 pre-commit 脚本中的过期路径/假设；
-- [ ] 让 audit 忽略列表在本地和 CI 保持一致并可追踪；
-- [ ] 删除或重写没有独立 oracle、只验证实现自身的弱测试；
-- [ ] 为 ignored 测试记录原因、负责人和恢复条件；
-- [ ] 校正文档中的“恒定内存”“单次遍历”“完全兼容”等过度表述；
-- [ ] 删除未进入生产路径的重复 SIMD/Peak 状态和伪性能估算。
+- [x] 设置准确且实际验证的 `rust-version = 1.88`；
+- [x] 统一 workspace、Tauri Cargo、package.json、tauri.conf 和 lockfile 版本；
+- [x] 手动 CI 使用根 lockfile 与 `--locked`；
+- [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
+- [x] 删除非测试代码中的无保护 `expect`；
+- [x] 删除线程优先级控制；
+- [x] 删除旧 benchmark 依赖和脚本；
+- [x] 删除 `hound`；
+- [x] 明确 Symphonia `default-features = false` 与四个 M0 feature；
+- [x] 删除 reset/Pending 契约，进度统一为实际解码 frame；
+- [x] M0 不含 FFmpeg；本地非 UTF-8 `Path` 仍直接传给原生 decoder；
+- [x] 清理根目录孤立 lockfile、`compile_commands.json` 等生成物；
+- [x] 修复 Tauri 严格 Clippy，并更新命令/权限/批处理文档；
+- [x] 删除过期 bundle/benchmark 脚本并缩减 pre-commit；
+- [x] 删除 M0 的 audit 忽略列表；审计恢复时重新建立可追踪策略；
+- [x] 删除 legacy 弱测试，以明确工程不变量和 CLI/codec contract 测试取代；
+- [x] M0 无 ignored 测试；
+- [x] 校正文档中的内存、性能和兼容性过度表述；
+- [x] 删除重复 SIMD/Peak 状态和伪性能估算。
 
 ## 11. 当前建议决策
 
@@ -477,9 +506,9 @@ Error
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
 | 默认算法 | 对齐完成前明确标记 provisional；对齐后默认使用 Reference profile |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
-| 默认并发 | 文件级并行；单文件包级并行保持关闭直到重新证明 |
+| 默认并发 | M0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
-| 公共 API | 0.1.x 允许为正确性和安全性做 breaking changes |
+| 公共 API | 0.2.0 重置 Rust API、CLI、JSON 和 GUI IPC；不保留 0.1.x 兼容层 |
 | 发行 CPU | portable baseline + 函数级运行时 SIMD |
 | 性能判断 | 只接受可复现实测，不接受硬件能力推导的理论倍数 |
 | 重构方式 | 小步纵向迁移；生产切换后立即删除旧路径 |
@@ -491,9 +520,9 @@ Error
 - [ ] 是否能自动化参考插件运行，还是由 Windows 环境半自动采集；
 - [ ] 参考观测和 fixture 哪些可以公开提交；
 - [ ] 对齐完成后是否保留 `Provisional`/legacy profile；
-- [ ] 第一批正式承诺支持的 codec 和容器范围；
+- [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
 - [ ] `Reference` profile 的中间数值容差如何定义；
-- [ ] 何时从 0.1.x 进入新的 API 版本或 1.0 稳定承诺。
+- [ ] provisional JSON schema v1 在哪些证据和消费方验收完成后转为稳定。
 
 ## 13. 完成定义
 
@@ -511,7 +540,9 @@ Error
 
 ## 14. 初始审查基线
 
-本节保存建立路线图时的验证状态，避免后续只看到任务结论而失去问题证据。它不是永久测试报告；每个事项关闭时仍需在对应 PR 中提供新的验证结果。
+本节保存建立路线图时对 **0.1.3 legacy 主干** 的验证状态，避免后续只看到任务
+结论而失去问题证据。下列行为和 advisory 已被 M0 主干取代，不能当作 0.2.0 的
+当前能力或兼容性证据。它不是永久测试报告；每个事项关闭时仍需提供新的验证结果。
 
 ### 14.1 已执行检查
 
@@ -551,22 +582,25 @@ Error
 - EdgeTrimmer 的连续长首部静音会按 `min_run` 重置状态并回灌余数。
 - Tauri 子 lockfile 中包版本和根依赖信息落后于 manifest；普通检查会静默更新。
 
-### 14.3 关键源码入口
+### 14.3 Legacy 基线源码入口
 
-| 主题 | 当前入口 |
+下表记录 0.1.3 审查时的历史路径。M0 切换生产主干后这些文件可以删除，因此
+这里使用路径文本而不是指向当前工作树的链接。
+
+| 主题 | 0.1.3 历史入口 |
 | --- | --- |
-| 同步流式契约 | [`src/audio/streaming.rs`](../src/audio/streaming.rs) |
-| 解码路由与并行状态机 | [`src/audio/universal_decoder.rs`](../src/audio/universal_decoder.rs) |
-| 并行包重排 | [`src/audio/parallel_decoder.rs`](../src/audio/parallel_decoder.rs) |
-| FFmpeg 生命周期 | [`src/audio/ffmpeg_bridge.rs`](../src/audio/ffmpeg_bridge.rs) |
-| 窗口/直方图状态 | [`src/core/histogram.rs`](../src/core/histogram.rs) |
-| 公共 DR Calculator | [`src/core/dr_calculator.rs`](../src/core/dr_calculator.rs) |
-| 生产分析路径 | [`src/tools/processor.rs`](../src/tools/processor.rs) |
-| 样本转换 unsafe 包装 | [`src/processing/sample_conversion.rs`](../src/processing/sample_conversion.rs) |
-| SIMD 安全包装 | [`src/processing/simd_core.rs`](../src/processing/simd_core.rs) |
-| EdgeTrimmer | [`src/processing/edge_trimmer.rs`](../src/processing/edge_trimmer.rs) |
-| CLI 配置与横幅 | [`src/tools/cli.rs`](../src/tools/cli.rs) |
-| 批处理退出行为 | [`src/main.rs`](../src/main.rs) |
-| Tauri 状态与命令 | [`tauri-app/src-tauri/src/lib.rs`](../tauri-app/src-tauri/src/lib.rs) |
-| CPU 构建标志 | [`.cargo/config.toml`](../.cargo/config.toml) |
+| 同步流式契约 | `src/audio/streaming.rs` |
+| 解码路由与并行状态机 | `src/audio/universal_decoder.rs` |
+| 并行包重排 | `src/audio/parallel_decoder.rs` |
+| FFmpeg 生命周期 | `src/audio/ffmpeg_bridge.rs` |
+| 窗口/直方图状态 | `src/core/histogram.rs` |
+| 公共 DR Calculator | `src/core/dr_calculator.rs` |
+| 生产分析路径 | `src/tools/processor.rs` |
+| 样本转换 unsafe 包装 | `src/processing/sample_conversion.rs` |
+| SIMD 安全包装 | `src/processing/simd_core.rs` |
+| EdgeTrimmer | `src/processing/edge_trimmer.rs` |
+| CLI 配置与横幅 | `src/tools/cli.rs` |
+| 批处理退出行为 | `src/main.rs` |
+| Tauri 状态与命令 | `tauri-app/src-tauri/src/lib.rs` |
+| CPU 构建标志 | `.cargo/config.toml` |
 | CI 和 release | [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml) |

@@ -1,63 +1,31 @@
-#!/bin/bash
-# [INSTALL] MacinMeter DR Tool - 预提交钩子安装脚本
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-echo "[INSTALL] MacinMeter DR Tool - 安装预提交钩子"
-echo "======================================="
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "[pre-commit] not inside a Git repository" >&2
+    exit 1
+}
+source_hook="$repo_root/scripts/pre-commit"
+hook_dir="$(git -C "$repo_root" rev-parse --git-path hooks)"
+target_hook="$hook_dir/pre-commit"
 
-# 检查是否在git仓库中
-if [ ! -d ".git" ]; then
-    echo "[FAIL] 错误: 当前目录不是git仓库"
-    echo "请在项目根目录运行此脚本"
+if [[ ! -f "$source_hook" ]]; then
+    echo "[pre-commit] missing $source_hook" >&2
     exit 1
 fi
 
-# 检查是否存在预提交钩子模板
-if [ ! -f "scripts/pre-commit" ]; then
-    echo "[FAIL] 错误: 找不到预提交钩子模板 scripts/pre-commit"
-    exit 1
+mkdir -p "$hook_dir"
+if [[ -f "$target_hook" ]]; then
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+    backup="$target_hook.backup.$timestamp"
+    cp "$target_hook" "$backup"
+    echo "[pre-commit] backed up existing hook to $backup"
 fi
 
-# 备份现有的预提交钩子（如果存在）
-if [ -f ".git/hooks/pre-commit" ]; then
-    echo "[BACKUP] 备份现有预提交钩子..."
-    cp .git/hooks/pre-commit .git/hooks/pre-commit.backup.$(date +%Y%m%d_%H%M%S)
-    echo "[OK] 已备份到 .git/hooks/pre-commit.backup.$(date +%Y%m%d_%H%M%S)"
-fi
+cp "$source_hook" "$target_hook"
+chmod +x "$target_hook"
 
-# 安装新的预提交钩子
-echo "[INSTALL] 安装预提交钩子..."
-cp scripts/pre-commit .git/hooks/pre-commit
-
-# 设置执行权限
-chmod +x .git/hooks/pre-commit
-
-echo "[OK] 预提交钩子安装完成！"
-echo ""
-
-# 测试钩子是否工作
-echo "[TEST] 测试预提交钩子..."
-if .git/hooks/pre-commit; then
-    echo ""
-    echo "[DONE] 预提交钩子测试成功！"
-    echo ""
-    echo "[USAGE] 使用说明:"
-    echo "  - 现在每次 'git commit' 时都会自动运行质量检查"
-    echo "  - 如果检查失败，提交将被阻止"
-    echo "  - 临时跳过钩子: git commit --no-verify"
-    echo "  - 卸载钩子: rm .git/hooks/pre-commit"
-    echo ""
-    echo "[CHECKS] 包含的检查项目:"
-    echo "  [x] 代码格式检查 (cargo fmt --check)"
-    echo "  [x] 静态分析 (cargo clippy)"
-    echo "  [x] 编译检查 (cargo check)"
-    echo "  [x] 单元测试 (cargo test)"
-    echo "  [x] 安全审计 (cargo audit, 可选)"
-    echo ""
-    echo "[TIP] 提示: 这些检查与GitHub Actions CI完全一致"
-else
-    echo ""
-    echo "[WARN] 预提交钩子测试失败，但已安装"
-    echo "   请先修复上述问题再进行提交"
-fi
+echo "[pre-commit] installed fast M0 guard:"
+echo "  cargo fmt --all -- --check"
+echo "  cargo check --locked --workspace"

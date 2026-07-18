@@ -1,0 +1,21 @@
+[package]
+name = "macinmeter-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "macinmeter"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+ctrlc = "3"
+macinmeter = { path = "../../crates/macinmeter" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

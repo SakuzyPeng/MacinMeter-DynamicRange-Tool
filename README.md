@@ -1,174 +1,164 @@
-# MacinMeter DR Tool — Quick Reference
+# MacinMeter DR Tool
 
 [English](README.md) | [中文](README_CN.md)
 
-![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)
-![Branch](https://img.shields.io/badge/branch-main-green.svg?style=for-the-badge)
+MacinMeter is an independent, local-first audio dynamic-range analysis project.
+Version 0.2.0 rebuilds the project around one safe, streaming Rust core shared by
+the library, CLI, and Tauri GUI.
 
-**An independent DR analysis implementation under active reference validation**
+> **Compatibility status: `ProvisionalV1 / Unverified`.** The current algorithm
+> is a reproducible engineering baseline, not a verified implementation of the
+> reference plugin. Its values must not be described as “official,” certified,
+> or interchangeable with reference results.
 
-*Tribute to Janne Hyvärinen's pioneering work*
+## M0 scope
 
-MacinMeter DR Tool is an independent Rust implementation informed by foobar2000 DR Meter 1.0.3 (`foo_dr_meter`, by Janne Hyvärinen). The project is undergoing architecture remediation and renewed behavioral/reverse-engineering alignment. The current algorithm has known systematic deviations from the reference plugin, so its results are not yet certified as reference-equivalent.
+The 0.2.0 baseline deliberately keeps a small trusted surface:
 
----
+- WAV: 8/16/24/32-bit integer PCM and IEEE 32/64-bit float
+- FLAC
+- AIFF: 8/16/24/32-bit integer PCM
+- serial decoding and serial batch execution
+- streaming, bounded-memory analysis
+- one `ProvisionalV1` profile
+- structured errors, cancellation, progress, and versioned JSON
 
-## Introduction
+Input is probed by content. File extensions are used only while discovering
+files in directories. AIFC, MP3, AAC, ALAC, Vorbis, Opus, FFmpeg routes, DSD,
+preprocessing, packet-level parallelism, and SIMD paths are not part of M0 and
+return `unsupported_format` when encountered.
 
-- Provides streaming DR analysis with rounded aggregate and decimal diagnostic outputs. Existing reports call these fields `Official DR` and `Precise DR`; the names do not currently certify reference parity.
-- Declares decoding routes for 12+ common formats (FLAC, WAV, AAC, MP3, Opus, etc.), using FFmpeg for selected external/fallback paths. Runtime availability and correctness vary by backend.
-- Reference compatibility is being re-established from reproducible observations and renewed reverse engineering. Current output must not be treated as interchangeable with `foo_dr_meter`.
+## Build and test
 
-> **Compatibility warning:** Known correctness issues affect some multichannel, parallel-decoding, DSD and experimental preprocessing paths. Cross-check consequential results with the reference plugin and see the [remediation and realignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md).
-
-## Build & Run
+Rust 1.88 or later and Cargo are required.
 
 ```bash
-cargo build --release                                              # Build
-cargo run --release -- <audio-or-folder>                           # Run directly
-./target/release/MacinMeter-DynamicRange-Tool-foo_dr <path>        # Launch binary
-cargo test                                                         # Test
+cargo build --locked --workspace
+cargo test --locked --workspace
+cargo build --locked --release -p macinmeter-cli
 ```
 
-## Tauri GUI
+The release CLI is written to `target/release/macinmeter`.
 
-The `tauri-app/` directory provides a Tauri 2 GUI that reuses the same DR engine. Select audio via system dialog and view rounded/decimal DR fields plus experimental silence-filtering and trim reports.
+## CLI
 
-Run with `cd tauri-app && npm install && npm run tauri dev`. Build release with `npm run tauri build`. See `docs/tauri_wrapper.md` for details.
+The CLI has no implicit directory scan and never saves reports unless
+`--output` is supplied.
 
-## Quick Start
-
-1. **Double-click launch**: Automatically scans the executable directory. Multiple files produce a batch summary, single files generate `<name>_DR_Analysis.txt`.
-
-2. **CLI examples**:
-   ```bash
-   ./target/release/MacinMeter-DynamicRange-Tool-foo_dr song.flac      # Single file
-   ./target/release/MacinMeter-DynamicRange-Tool-foo_dr album_dir      # Folder (4 concurrent files)
-   ```
-
-3. **Verbose logging**: Append `--verbose` to view detailed processing logs.
-
-## Key CLI Options
-
-**Parallel controls** (decode parallelism on by default; multi-file parallelism defaults to 4):
-- `--parallel-threads <N>`: number of decoding threads (default 4)
-- `--parallel-batch <N>`: decode batch size (default 64)
-- `--parallel-files <N>` / `--no-parallel-files`: concurrent files (default 4) / disable
-- `--serial`: disable decode parallelism
-
-> **Current reliability note:** The packet-parallel decoder has known EOF and error-propagation risks. Use `--serial` for results that matter until roadmap items `COR-001` and `COR-002` are closed.
-
-**Output control**: `--output <file>` for single-file reports; batch mode writes to target directory by default.
-
-**Experimental features** (disabled by default):
-- `--trim-edges[=<DB>]`: edge trimming, default −60 dBFS; `--trim-min-run <MS>` (default 60 ms). This path has known state-machine defects and should not be used for trusted analysis yet.
-- `--filter-silence[=<DB>]`: window-level silence filtering, default −70 dBFS
-- `--exclude-lfe`: exclude LFE channels from final DR aggregation. Layout confidence and fallback behavior are under review.
-- `--show-rms-peak`: append RMS/Peak diagnostics table in single-file reports
-
-## Output Format
-
-Reports list DR per channel, fields currently named Official DR and Precise DR, plus audio metadata (sample rate, channels, bit depth, bitrate, codec). These field names describe the existing report schema, not verified reference compatibility.
-
-### Single File Example
-```markdown
-MacinMeter DR Tool vX.X.X | DR15 (15.51 dB)
-audio.flac | 7:02 | 48000 Hz | 2ch | FLAC
-
-| Channel | DR       | Peak     |
-|---------|----------|----------|
-|  Left   | 14.57 dB | -0.12 dB |
-|  Right  | 16.46 dB | -0.08 dB |
-
-> Boundary Risk (High): 15.51 dB is 0.01 dB from DR15/DR16 boundary
+```bash
+macinmeter analyze FILE [--format human|json] [--output PATH]
+macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 ```
 
-### Batch Example
-```markdown
-## MacinMeter DR Batch Report
+Standard output contains only the requested result. Progress and diagnostics go
+to standard error. Output files are replaced atomically through a temporary
+file in the destination directory.
 
-**Generated**: 2025-01-29 12:00:00 | **Files**: 5 | **Directory**: /path/to/album
+Exit codes:
 
-| DR | Precise | File |
-|----|---------|------|
-| 11 | 10.71 | track01.flac |
-| 12 | 12.15 | track02.flac |
-| 13 | 12.64 | track03.flac * |
-| 16 | 15.51 | track04.flac |
-| 15 | 15.19 | track05.flac |
+| Code | Meaning |
+|---:|---|
+| `0` | all requested analyses succeeded |
+| `1` | failure, no input, or output-write failure |
+| `2` | invalid CLI arguments |
+| `3` | batch completed with both successes and failures |
+| `130` | cancelled |
 
-*LFE excluded
+JSON and Tauri use the same envelope:
 
-### Summary
-
-| Metric  | Value      |
-|---------|------------|
-| Total   | 5          |
-| Success | 5 (100%)   |
-
----
-*MacinMeter DR Tool vX.X.X*
+```json
+{
+  "schemaVersion": 1,
+  "toolVersion": "0.2.0",
+  "kind": "analysis",
+  "data": {}
+}
 ```
 
-**Markers**: `*` = LFE excluded · `†` = Silent channels excluded
+The payload contains no timestamp. Non-finite values are never emitted as JSON
+numbers.
 
-## Current Accuracy & Compatibility Status
+## Library
 
-- Reference parity has not yet been re-established. Known differences are systemic and cannot be characterized as a small universal floating-point tolerance.
-- The current 3+ channel path has a known tail-window finalization defect; multichannel results should not be relied on until `ALG-001` is closed.
-- Optional LFE exclusion (`--exclude-lfe`) is experimental while channel-layout confidence and unknown-layout behavior are being corrected.
-- Codec-to-codec output differences are not evidence of algorithm compatibility because decoding and resampling may alter the PCM presented to the analyzer.
-- For the evidence plan, acceptance criteria and tracked fixes, see the [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md).
+The public façade is the `macinmeter` crate:
 
-## Performance Summary
+```rust
+use macinmeter::{AnalyzeRequest, Analyzer};
 
-For historical benchmark data, see [docs/BENCHMARKS.md](docs/BENCHMARKS.md). The methodology and affected parallel paths are being revalidated; these figures are not a correctness guarantee or current performance commitment.
+fn main() -> Result<(), macinmeter::AnalysisError> {
+    let _report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    Ok(())
+}
+```
 
-| Platform | Dataset | Throughput |
-|----------|---------|----------:|
-| macOS · M4 Pro | 1.6 GB single file | ~725 MB/s |
-| macOS · M4 Pro | 69 FLACs (1.17 GB) | ~1168 MB/s |
-| Windows · i9-13900H | 69 FLACs (1.17 GB) | ~568 MB/s |
+Lower-level analysis is available through a frame-aligned streaming session:
 
-**Current guidance**: Use release builds and prefer `--serial` when result integrity matters. Re-tune parallel settings only after the parallel decoder contract is repaired and revalidated.
+```rust
+use macinmeter::{AnalysisProfile, AnalyzerSession, ChannelLayout, StreamSpec};
 
----
+fn main() -> Result<(), macinmeter::AnalysisError> {
+    let spec = StreamSpec::new(48_000, 2, ChannelLayout::Unknown)?;
+    let mut session = AnalyzerSession::new(spec, AnalysisProfile::ProvisionalV1)?;
+    session.push_interleaved(&[0.25, -0.25, 0.5, -0.5])?;
+    let _result = session.finish();
+    Ok(())
+}
+```
 
-## Declared Audio Format Coverage
+`finish` consumes the session. Samples must be finite and frame-aligned.
 
-For details, see [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md).
+## GUI
 
-The table below records intended routing, not a verified capability guarantee. FFmpeg fallback, Opus and container-specific codec paths are part of the decoder reliability audit.
+The Tauri 2 frontend uses exactly the same application façade and wire schema as
+the CLI.
 
-| Category | Formats | Decoder |
-|----------|---------|---------|
-| Lossless | FLAC, ALAC, WAV, AIFF, PCM | Symphonia |
-| Lossy | AAC, OGG Vorbis, MP1, MP3, Opus | Symphonia / songbird |
-| Video Codec | AC-3, E-AC-3, DTS, DSD | FFmpeg (auto) |
-| Containers | MP4/M4A, MKV, WebM | Smart routing |
+```bash
+cd tauri-app
+npm install
+npm run tauri dev
+```
 
-**FFmpeg Installation**: macOS `brew install ffmpeg` · Windows `winget install Gyan.FFmpeg` · Linux package manager
+Each GUI job owns an independent cancellation token. The GUI does not configure
+FFmpeg, mutate process environment variables, or run a separate batch engine.
 
----
+## Architecture
 
-## License & Acknowledgements
+The repository is a virtual Cargo workspace:
 
-**MIT License** - See [LICENSE](LICENSE) for details.
+```text
+macinmeter-domain
+├── macinmeter-analysis
+├── macinmeter-codecs
+└── macinmeter (application façade)
+    ├── macinmeter-cli
+    └── macinmeter-gui
+```
 
-For legal compliance, third-party notices, and disclaimer, see [docs/LEGAL.md](docs/LEGAL.md).
+All first-party crates use `#![forbid(unsafe_code)]`. The application layer is
+the only place that composes decoding and analysis, so frontends cannot silently
+fork algorithm behavior.
 
----
+See:
 
-## Related Links
+- [M0 architecture decision](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
+- [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
+- [Supported formats](docs/SUPPORTED_FORMATS.md)
+- [`ProvisionalV1` specification](reference/specs/provisional-v1.md)
+- [Reference-evidence policy](reference/README.md)
 
-- **Project Roadmap**: [Architecture remediation and reference-plugin realignment (Chinese)](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
-- **Reference Target**: foobar2000 DR Meter 1.0.3 (foo_dr_meter)
-  - **Author**: Janne Hyvärinen
-  - **Official**: https://foobar.hyv.fi/?view=foo_dr_meter
-- **Performance Benchmark**: Dynamic Range Meter 1.1.1 (foo_dynamic_range)
-  - **Based on**: TT Dynamic Range Offline Meter from the Pleasurize Music Foundation
+## Reference work and attribution
 
----
+The project studies the behavior of foobar2000 DR Meter 1.0.3
+(`foo_dr_meter`) by Janne Hyvärinen. Permission to reverse engineer the plugin
+has been obtained from its author. Private permission correspondence is not
+stored in this repository.
 
-**Independent audio-analysis research and engineering project**
+That permission and attribution do not establish numerical compatibility.
+Reference binaries, hashes, experiments, observations, and conformance fixtures
+will be recorded as evidence in later milestones; M0 only provides the boundary
+that can accept them.
+
+## License
+
+MacinMeter is released under the [MIT License](LICENSE). See
+[legal notes](docs/LEGAL.md) and [third-party notices](THIRD_PARTY_NOTICES.md).

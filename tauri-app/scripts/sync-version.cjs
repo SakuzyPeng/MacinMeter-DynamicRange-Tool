@@ -1,48 +1,60 @@
 #!/usr/bin/env node
-/**
- * 版本同步脚本
- * 从主 Cargo.toml 读取版本号，同步到 Tauri 配置文件
- */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-// scripts/ -> tauri-app/ -> MacinMeter-DynamicRange-Tool/
-const ROOT = path.resolve(__dirname, '../..');
-const TAURI_DIR = path.resolve(__dirname, '../src-tauri');
+const ROOT = path.resolve(__dirname, "../..");
+const APP_DIR = path.resolve(__dirname, "..");
+const TAURI_DIR = path.join(APP_DIR, "src-tauri");
 
-// 读取主 Cargo.toml 的版本号
-const mainCargoPath = path.join(ROOT, 'Cargo.toml');
-const mainCargo = fs.readFileSync(mainCargoPath, 'utf-8');
-const versionMatch = mainCargo.match(/^version\s*=\s*"([^"]+)"/m);
+const rootCargoPath = path.join(ROOT, "Cargo.toml");
+const rootCargo = fs.readFileSync(rootCargoPath, "utf8");
+const workspacePackage = rootCargo.match(
+  /\[workspace\.package\]([\s\S]*?)(?=\n\[|$)/,
+);
+const versionMatch = workspacePackage?.[1].match(
+  /^version\s*=\s*"([^"]+)"\s*$/m,
+);
 
 if (!versionMatch) {
-  console.error('Failed to read version from main Cargo.toml');
+  console.error("Failed to read [workspace.package].version from Cargo.toml");
   process.exit(1);
 }
 
 const version = versionMatch[1];
-console.log(`Syncing version: ${version}`);
+console.log(`Syncing GUI version: ${version}`);
 
-// 同步 tauri.conf.json
-const tauriConfPath = path.join(TAURI_DIR, 'tauri.conf.json');
-const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
-if (tauriConf.version !== version) {
-  tauriConf.version = version;
-  fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
-  console.log(`  Updated tauri.conf.json`);
+const updateJsonVersion = (filePath, label) => {
+  const document = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (document.version === version) return;
+  document.version = version;
+  fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`);
+  console.log(`  Updated ${label}`);
+};
+
+updateJsonVersion(path.join(APP_DIR, "package.json"), "package.json");
+updateJsonVersion(path.join(TAURI_DIR, "tauri.conf.json"), "tauri.conf.json");
+
+const packageLockPath = path.join(APP_DIR, "package-lock.json");
+const packageLock = JSON.parse(fs.readFileSync(packageLockPath, "utf8"));
+let packageLockChanged = false;
+if (packageLock.version !== version) {
+  packageLock.version = version;
+  packageLockChanged = true;
+}
+if (packageLock.packages?.[""]?.version !== version) {
+  packageLock.packages[""].version = version;
+  packageLockChanged = true;
+}
+if (packageLockChanged) {
+  fs.writeFileSync(packageLockPath, `${JSON.stringify(packageLock, null, 2)}\n`);
+  console.log("  Updated package-lock.json");
 }
 
-// 同步 src-tauri/Cargo.toml
-const tauriCargoPath = path.join(TAURI_DIR, 'Cargo.toml');
-let tauriCargo = fs.readFileSync(tauriCargoPath, 'utf-8');
-const newTauriCargo = tauriCargo.replace(
-  /^(version\s*=\s*)"[^"]+"/m,
-  `$1"${version}"`
-);
-if (tauriCargo !== newTauriCargo) {
-  fs.writeFileSync(tauriCargoPath, newTauriCargo);
-  console.log(`  Updated src-tauri/Cargo.toml`);
+const tauriCargo = fs.readFileSync(path.join(TAURI_DIR, "Cargo.toml"), "utf8");
+if (!/^version\.workspace\s*=\s*true\s*$/m.test(tauriCargo)) {
+  console.error("src-tauri/Cargo.toml must inherit version.workspace");
+  process.exit(1);
 }
 
-console.log('Version sync complete.');
+console.log("GUI version sync complete.");

@@ -1,27 +1,25 @@
 {
-  "name": "tauri-app",
+  "name": "macinmeter-gui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "engines": {
+    "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
+  },
   "scripts": {
     "sync-version": "node scripts/sync-version.cjs",
-    "dev": "npm run sync-version && vite",
+    "dev": "vite",
     "build": "npm run sync-version && tsc && vite build",
     "preview": "vite preview",
     "tauri": "npm run sync-version && tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.4.2",
-    "@tauri-apps/plugin-fs": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "html-to-image": "^1.11.13",
-    "i18next": "^25.8.0",
-    "i18next-browser-languagedetector": "^8.2.0"
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "^2.11.4",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.4.3"
   }
 }

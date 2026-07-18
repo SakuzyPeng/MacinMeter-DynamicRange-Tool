@@ -1,0 +1,19 @@
+[package]
+name = "macinmeter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+macinmeter-analysis = { path = "../macinmeter-analysis" }
+macinmeter-codecs = { path = "../macinmeter-codecs" }
+macinmeter-domain = { path = "../macinmeter-domain" }
+serde.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "3"

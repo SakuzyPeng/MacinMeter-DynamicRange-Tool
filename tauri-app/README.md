@@ -1,159 +1,107 @@
-# MacinMeter DR GUI
+# MacinMeter GUI
 
-基于 Tauri 2 的跨平台图形界面，直接复用 `macinmeter-dr-tool` CLI 的全部解码和 DR 计算逻辑。
+MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace 中的 `macinmeter` application façade，不维护独立的解码、分析或批处理实现。
 
-## 功能特性
+> 当前输出固定标记为 `ProvisionalV1 / Unverified`。它满足 M0 的工程不变量，但尚未与参考插件完成 conformance 对齐，不能称为“官方”或“参考兼容”结果。
 
-### 分析能力
-- **单文件分析**：选择音频文件，查看详细 DR 结果
-- **批量分析**：扫描目录或深度递归扫描，并行处理多个文件
-- **多文件选择**：一次选择多个文件进行批量分析
-- **实时进度**：显示当前分析进度和已完成文件数
+## M0 能力边界
 
-### 结果展示
-- **Official/Precise DR**：显示官方整数值和精确小数值
-- **每声道详情**：DR、RMS、Peak 等完整数据
-- **边界风险提示**：DR 值接近 X.5 边界时的警告
-- **静音/LFE 标记**：识别静音声道和 LFE 声道
+- 支持单文件与串行批量分析。
+- 稳定格式为 WAV（PCM integer / IEEE float）、FLAC 与 AIFF（PCM integer）。
+- 目录发现使用扩展名筛选；实际解码器仍按文件内容探测。
+- 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`。
+- 分析、批量和错误共用 schema version 1 的 `WireEnvelope`。
+- 不包含 FFmpeg、DSD、Opus、预处理、文件级并行或环境变量修改。
 
-### 导出功能
-- **Copy MD**：复制 Markdown 格式结果到剪贴板
-- **Export JSON**：导出完整分析数据为 JSON 文件
-- **Export Image**：导出结果区域为 PNG 图片
-- **单条复制**：批量分析时可单独复制某个文件的 MD 或 PNG
+主窗口当前一次启动一个 job；后端注册表仍按 job 隔离，因此不同窗口或直接命令调用不会共享取消状态。
+前端 TypeScript 类型只描述这份共享 wire schema；后端没有第二套 Rust 结果 DTO，
+字段 tag/casing 由 Rust 契约测试固定。
 
-### 选项控制
-- **排除 LFE**：从 DR 聚合计算中剔除 LFE 声道
-- **隐藏路径**：导出时隐藏文件路径信息
-- **排序模式**：按原顺序或 DR 精细值升序/降序排列
-- **搜索过滤**：按文件名/路径搜索并跳转
+## 后端命令
 
-## 安装与构建
+| 命令 | 输入 | 输出 |
+| --- | --- | --- |
+| `run_analysis` | `{ jobId, path }` | `WireEnvelope` |
+| `run_batch` | `{ jobId, inputs, recursive }` | `WireEnvelope` |
+| `discover_inputs` | `{ jobId, inputs, recursive }` | 稳定排序后的路径列表 |
+| `cancel_job` | `jobId` | 是否找到并请求取消该 job |
 
-### 环境要求
-- Node.js 18+
-- Rust 1.80+
-- 系统依赖：参见 [Tauri Prerequisites](https://tauri.app/start/prerequisites/)
+目录预览也注册独立 job；重选、清空或开始分析时，前端会先取消旧预览。
 
-### 安装依赖
+进度事件名为 `analysis-event`，payload 统一为：
+
+```json
+{
+  "jobId": "frontend-generated-id",
+  "event": {
+    "type": "file_started"
+  }
+}
+```
+
+事件只用于显示进度；最终结果以命令返回的 `WireEnvelope` 为准。
+
+## 开发与验证
+
+环境要求：
+
+- Rust 1.88 或更新版本
+- Node.js 18、20 或 22+（建议使用当前 LTS）
+- 当前平台对应的 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+安装前端依赖：
 
 ```bash
 cd tauri-app
 npm install
 ```
 
-### 开发模式
+前端静态构建：
+
+```bash
+npm run build
+```
+
+从 workspace 根目录检查 Rust 后端：
+
+```bash
+cargo check --locked -p macinmeter-gui
+```
+
+启动桌面开发环境，或在 macOS 生成当前配置的 `.app` / `.dmg`：
 
 ```bash
 npm run tauri dev
-```
-
-自动启动 Vite 开发服务器和 Tauri 窗口，支持热重载。
-
-### 构建发行版
-
-```bash
 npm run tauri build
 ```
 
-生成平台对应的安装包：
-- macOS: `.app` / `.dmg`
-- Windows: `.exe` / `.msi`
-- Linux: `.AppImage` / `.deb`
+M0 尚未恢复 Windows/Linux 打包目标。workspace 模式下，Rust/Tauri 产物位于仓库
+根目录的 `target/`。本地构建不会自动触发 GitHub Actions。
 
-输出位置：`src-tauri/target/release/bundle/`
+## 版本同步
 
-### macOS 安装说明
+`npm run sync-version` 从根 `Cargo.toml` 的 `[workspace.package].version` 同步：
 
-从网络下载的 DMG 安装后，首次打开可能提示"已损坏"或"无法验证开发者"。这是因为应用未经 Apple 签名。
+- `tauri-app/package.json`
+- `tauri-app/package-lock.json`
+- `tauri-app/src-tauri/tauri.conf.json`
 
-**解决方法**：打开终端，执行以下命令移除隔离属性：
+`src-tauri/Cargo.toml` 必须保留 `version.workspace = true`，脚本只验证这一约束，不把继承版本改回硬编码值。
 
-```bash
-xattr -cr "/Applications/MacinMeter DR GUI.app"
-```
+## 目录
 
-或者：系统设置 → 隐私与安全性 → 安全性 → 点击「仍要打开」
-
-## 使用说明
-
-### 单文件分析
-1. 点击「选择文件」选择音频文件
-2. 点击「开始分析」
-3. 查看结果面板中的 DR 数据
-
-### 批量分析
-1. 点击「选择目录」扫描单层目录，或「深度扫描目录」递归扫描
-2. 扫描完成后显示文件列表，点击「开始分析」
-3. 结果按顺序显示，可使用排序和搜索功能
-
-### 自定义 FFmpeg
-如需使用自定义 FFmpeg（用于 DSD 或特殊格式），在「自定义 ffmpeg 路径」输入框填入路径并点击「应用」。
-
-### 取消分析
-批量分析过程中可点击「取消分析」停止，已完成的结果会保留。
-
-## 技术架构
-
-### 前端
-- **框架**：Vanilla TypeScript + Vite
-- **样式**：原生 CSS，支持打印样式
-- **状态管理**：模块级变量 + 事件监听
-
-### 后端命令
-`src-tauri/src/lib.rs` 注册的 Tauri 命令：
-
-| 命令 | 功能 |
-|------|------|
-| `analyze_audio` | 分析单个音频文件 |
-| `analyze_directory` | 扫描并分析目录中所有音频 |
-| `analyze_files` | 分析指定的多个文件 |
-| `scan_audio_directory` | 扫描目录（不分析） |
-| `deep_scan_audio_directory` | 递归扫描目录 |
-| `copy_image_to_clipboard` | 复制 PNG 图片到剪贴板 |
-| `set_ffmpeg_override` | 设置自定义 FFmpeg 路径 |
-| `cancel_analysis` | 取消当前分析任务 |
-
-### 并行处理
-- **文件级并行**：默认 4 线程并行分析多个文件
-- **解码级并行**：每个文件可启用并行解码（适合大文件）
-- 环境变量 `MACINMETER_GUI_PARALLEL_FILES` 可调整文件并行度
-
-### 剪贴板
-使用 `arboard` crate 跨平台操作剪贴板，无需外部命令。
-
-## 开发说明
-
-### 目录结构
-
-```
+```text
 tauri-app/
-├── src/                    # 前端代码
-│   ├── main.ts            # 主逻辑
-│   └── styles.css         # 样式
-├── src-tauri/             # Rust 后端
-│   ├── src/lib.rs         # Tauri 命令
-│   └── Cargo.toml         # 依赖配置
-├── index.html             # 入口页面
-└── package.json           # Node 依赖
+├── src/
+│   ├── main.ts
+│   └── styles.css
+├── src-tauri/
+│   ├── src/lib.rs
+│   ├── src/main.rs
+│   └── tauri.conf.json
+├── scripts/sync-version.cjs
+├── index.html
+└── package.json
 ```
 
-### 调试
-- 开发模式下 WebView 开发者工具可用（右键 → 检查）
-- Rust 端日志通过 `eprintln!` 输出到终端
-
-### 与 CLI 的关系
-GUI 直接调用 `macinmeter_dr_tool::analyze_file`，与 CLI 共享：
-- 解码器（Symphonia + FFmpeg 桥接）
-- DR 计算算法
-- 所有实验性功能
-
-## IDE 推荐配置
-
-- [VS Code](https://code.visualstudio.com/)
-- [Tauri 插件](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
-- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-
-## 许可证
-
-与主项目相同。
+项目许可证与仓库根目录声明一致。
