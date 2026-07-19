@@ -203,26 +203,27 @@ fn render_json(envelope: &WireEnvelope) -> Result<String, AnalysisError> {
 }
 
 fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
+    let analysis = report.analysis();
     let mut output = String::new();
     output.push_str("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n");
-    output.push_str(&format!("Source: {}\n", report.source.display_path));
+    output.push_str(&format!("Source: {}\n", report.source().display_path));
     output.push_str(&format!(
         "PCM: {} Hz, {} channels, {} frames\nDuration: {}\n\n",
-        report.pcm.spec.sample_rate.get(),
-        report.pcm.spec.channels.get(),
-        report.analysis.frames_seen,
-        format_duration_token(report.analysis.report.duration)?
+        report.pcm().spec.sample_rate.get(),
+        report.pcm().spec.channels.get(),
+        analysis.frames_seen(),
+        format_duration_token(analysis.report().duration)?
     ));
 
-    for channel in &report.analysis.channels {
+    for channel in analysis.channels() {
         match &channel.outcome {
             ChannelOutcome::Measured { measurement } => output.push_str(&format!(
                 "CH {}: DR{} ({:.4} dB), overall RMS {} dBFS, selected DR peak {:.8}\n",
                 channel.channel_index + 1,
                 measurement.rounded_dr,
-                measurement.dr_db,
+                measurement.dr_db.get(),
                 format_dbfs(channel.report.overall_rms_dbfs),
-                measurement.dr_selected_peak
+                measurement.dr_selected_peak.get()
             )),
             ChannelOutcome::Silent {
                 frames,
@@ -238,13 +239,13 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
         }
     }
 
-    let aggregate = &report.analysis.aggregates.track;
-    let report_metrics = &report.analysis.report;
+    let aggregate = &analysis.aggregates().track;
+    let report_metrics = analysis.report();
     if let (Some(rounded_dr), Some(dr_db)) = (aggregate.rounded_dr, aggregate.dr_db) {
         output.push_str(&format!(
             "\nTrack aggregate: DR{} ({:.4} dB; {} contributing channels)\nReport levels: peak {} dBFS, RMS {} dBFS\n",
             rounded_dr,
-            dr_db,
+            dr_db.get(),
             aggregate.contributing_channels.len(),
             format_dbfs(report_metrics.primary_peak_dbfs),
             format_dbfs(report_metrics.overall_rms_dbfs),
@@ -261,10 +262,10 @@ fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
     for item in &report.items {
         match &item.outcome {
             BatchItemOutcome::Success { report } => {
-                let aggregate = &report.analysis.aggregates.track;
+                let aggregate = &report.analysis().aggregates().track;
                 let aggregate = match (aggregate.rounded_dr, aggregate.dr_db) {
                     (Some(rounded_dr), Some(dr_db)) => {
-                        format!("DR{rounded_dr} ({dr_db:.4} dB)")
+                        format!("DR{rounded_dr} ({:.4} dB)", dr_db.get())
                     }
                     _ => "unavailable".to_string(),
                 };

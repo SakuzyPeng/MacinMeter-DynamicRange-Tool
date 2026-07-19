@@ -168,6 +168,12 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 
 `finish` consumes the session and is fallible so numeric/resource failures
 cannot leak non-finite output. Samples must be finite and frame-aligned.
+Successful `AnalysisResult` and `AnalysisReport` roots are immutable and can
+only be created through checked constructors; callers inspect them through
+read-only getters or `AnalysisResult::view()`. Result/report and shared
+batch/event/wire types that are not product inputs support serialization, not
+deserialization. These Rust API constraints do not alter the schema-v3 JSON
+keys, tags, or numeric representation.
 
 Album aggregation is an explicit library operation, never an implicit property
 of a batch:

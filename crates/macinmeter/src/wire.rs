@@ -1,9 +1,9 @@
 use crate::{AnalysisError, AnalysisReport, BatchReport};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 pub const WIRE_SCHEMA_VERSION: u32 = 3;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data", rename_all = "snake_case")]
 pub enum WirePayload {
     Analysis(Box<AnalysisReport>),
@@ -11,7 +11,7 @@ pub enum WirePayload {
     Error(AnalysisError),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WireEnvelope {
     pub schema_version: u32,

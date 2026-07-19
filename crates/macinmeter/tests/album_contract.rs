@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Analyzer, DecodedDuration,
-    ErrorCode, FiniteF32, SampleRate,
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalysisProfile, AnalysisReport,
+    AnalyzeRequest, Analyzer, AnalyzerSession, DecodeDiagnostics, DecodedDuration, ErrorCode,
+    FiniteF32, PcmStreamInfo, SampleRate,
 };
 use std::path::PathBuf;
 
@@ -181,22 +182,42 @@ fn a_negative_track_dr_is_rejected_before_display_rounding() {
 
 #[test]
 fn report_conversion_uses_its_decoded_duration_and_rejects_missing_track_dr() {
-    let mut report = Analyzer::new()
+    let report = Analyzer::new()
         .analyze_file(AnalyzeRequest::new(fixture("tiny_duration.wav")))
         .expect("repository fixture should analyze");
     let expected_dr = report
-        .analysis
-        .aggregates
+        .analysis()
+        .aggregates()
         .track
         .dr_db
         .expect("fixture should have a numeric track DR");
-    let expected_duration = report.analysis.report.duration;
+    let expected_duration = report.analysis().report().duration;
 
     let metrics = AlbumTrackMetrics::try_from(&report).unwrap();
-    assert_eq!(metrics.dr_db.get().to_bits(), expected_dr.to_bits());
+    assert_eq!(metrics.dr_db.get().to_bits(), expected_dr.get().to_bits());
     assert_eq!(metrics.duration, expected_duration);
 
-    report.analysis.aggregates.track.dr_db = None;
-    let error = AlbumTrackMetrics::try_from(&report).unwrap_err();
+    let empty_analysis = AnalyzerSession::new(
+        report.pcm().spec.clone(),
+        AnalysisProfile::FooDrMeter108CandidateV1,
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
+    let missing_track_dr = AnalysisReport::try_new(
+        report.source().clone(),
+        PcmStreamInfo {
+            spec: report.pcm().spec.clone(),
+            expected_frames: None,
+        },
+        empty_analysis,
+        DecodeDiagnostics {
+            backend: "album-contract".to_owned(),
+            decoded_frames: 0,
+            warnings: Vec::new(),
+        },
+    )
+    .unwrap();
+    let error = AlbumTrackMetrics::try_from(&missing_track_dr).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidRequest);
 }

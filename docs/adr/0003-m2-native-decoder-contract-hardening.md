@@ -249,6 +249,28 @@ M2 继续允许 0.2.0 Rust API breaking change，不提供无效结构的兼容�
 这不要求把参考实现的内部状态复制进 domain，也不增加 production diagnostic
 snapshot。
 
+截至 2026-07-20，本切片已完成：
+
+- `DecodeProgress`、`AnalysisResult` 和 `AnalysisReport` 封闭字段；
+  progress 只由 decoded/expected/eof 派生有限且 clamp 到 `[0, 1]` 的 fraction，
+  后两个结果根只能通过 `try_new` 建立，并只公开 getter 或只读
+  `AnalysisResultView`；
+- `AnalysisResult::try_new` 固定 channel 数量、连续 index、outcome frames 和
+  duration frames/sample rate 关系；`AnalysisReport::try_new` 固定 PCM spec
+  与 diagnostics decoded frames 关系。前者失败归入
+  `AnalysisFailed / Analysis`，后者归入 `DecodeFailed / Decode`，application
+  继续补充 path/backend 上下文；
+- algorithm parameters、channel metrics、aggregate DR 和 progress fraction
+  使用透明 `FiniteF32/FiniteF64`；不作为产品输入的 result/report、
+  batch/event/wire 类型删除 `Deserialize`，request/profile 及独立 source/PCM
+  metadata 等真实输入类型继续保留；
+- JSON 字段、tag 和数字形状均未改变，wire schema 保持 v3。
+
+这个切片不把 `AnalysisResultView` 当作可独立构造的有效性证明，也不新增
+aggregate 派生值一致性、source metadata 等于实际 PCM、expected frames 等于
+decoded frames 或 EOF/fraction 联动约束。它只封闭本节列出的成功结果关系，避免
+把更宽的媒体事实误收紧为不成立的 product invariant。
+
 ### 8. 异常媒体采用“固定回归 corpus + 手动 fuzz”
 
 普通 workspace 测试保存小而确定的 malformed/mutation corpus。任何 fuzz

@@ -509,8 +509,11 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
 - Candidate 结算控制流中的平方下溢边界已转写为数值 DR `+0.0` 的
   `Measured` 结果并参与 track 聚合；该修复同步 Candidate 规格与产品测试，不提升
   参考兼容声明；
+- `DecodeProgress`、`AnalysisResult` 与 `AnalysisReport` 已封闭为 checked
+  constructor 加只读 getter/view；成功结果裸浮点改用透明 finite wrapper，
+  不作为产品输入的 result/report、batch/event/wire 类型删除反序列化入口，并固定
+  六条跨字段关系，schema-v3 wire 形状不变；
 - 建立固定 malformed corpus 与独立手动 fuzz 入口；
-- 审计 report/progress 裸浮点与反序列化入口，收紧 domain 有效性边界；
 - 在首次新增 route 前建立单一 Rust capability catalog；
 - 只有通过共同契约、跨 adapter 和文档同步验收的原生 Symphonia route 才能
   标为 stable。
@@ -533,6 +536,8 @@ Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例�
 - 当前所有正式 route 满足共同 `PcmSource` contract matrix 及其已声明位深矩阵，
   当前 source 实现另行满足 sticky terminal-state harness；
 - 合法 chunk 切分、lane 隔离和声道映射满足完整结果 raw-bit 工程不变量；
+- production façade 不可能输出 channel 数量/index/outcome frames、duration、
+  PCM spec 或 diagnostics frames 与成功结果根不一致的 report；
 - 固定 malformed corpus 逐例在独立 timeout 下不产生 panic、超时或 partial
   success；资源限制按平台实际能力记录，不外推为全部字节输入的证明；
 - 新能力不绕过 M0 建立的 application/wire 边界，支持矩阵不在 Rust、GUI 与
@@ -618,7 +623,7 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 10. [x] `test: establish the shared PcmSource contract matrix`
 11. [x] `test: close the declared native PCM matrix`
 12. [x] `test: expand bit-exact analyzer invariants`
-13. [ ] `refactor: enforce valid domain result construction`
+13. [x] `refactor: enforce valid domain result construction`
 14. [ ] `test: add malformed media regression corpus`
 15. [ ] `refactor: centralize native codec capabilities`
 16. [ ] `feat: graduate evidence-backed native routes`（只有实际通过准入时）

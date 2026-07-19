@@ -27,7 +27,7 @@ fn analyze(
 }
 
 fn measurement(result: &macinmeter_domain::AnalysisResult, channel: usize) -> &ChannelMeasurement {
-    match &result.channels[channel].outcome {
+    match &result.channels()[channel].outcome {
         ChannelOutcome::Measured { measurement } => measurement,
         outcome => panic!("expected a measured channel, got {outcome:?}"),
     }
@@ -90,25 +90,25 @@ fn records_candidate_descriptor_parameters() {
     );
     let parameters = &session.algorithm().parameters;
     assert_eq!(
-        parameters.window_duration_coefficient,
+        parameters.window_duration_coefficient.get(),
         3.004_081_632_653_061_3
     );
     assert_eq!(
-        parameters.window_duration_coefficient.to_bits(),
+        parameters.window_duration_coefficient.get().to_bits(),
         0x4008_085b_f376_12cf
     );
-    assert_eq!(parameters.rms_sum_multiplier, 2.0);
+    assert_eq!(parameters.rms_sum_multiplier.get(), 2.0);
     assert_eq!(parameters.histogram_bins, 10_001);
-    assert_eq!(parameters.rms_histogram_min_db, -100.0);
-    assert_eq!(parameters.rms_histogram_max_db, 0.0);
-    assert_eq!(parameters.histogram_bin_width_db, 0.01);
-    assert_eq!(parameters.peak_key_bin_width_db, 0.01);
-    assert_eq!(parameters.loud_fraction, 0.2);
+    assert_eq!(parameters.rms_histogram_min_db.get(), -100.0);
+    assert_eq!(parameters.rms_histogram_max_db.get(), 0.0);
+    assert_eq!(parameters.histogram_bin_width_db.get(), 0.01);
+    assert_eq!(parameters.peak_key_bin_width_db.get(), 0.01);
+    assert_eq!(parameters.loud_fraction.get(), 0.2);
     assert_eq!(parameters.minimum_tail_frames, 1);
     assert!(parameters.include_entire_boundary_bin);
     assert!(!parameters.exact_window_virtual_zero_peak);
-    assert_eq!(parameters.dr_floor_db, 0.0);
-    assert_eq!(parameters.silent_channel_dr_db, 0.0);
+    assert_eq!(parameters.dr_floor_db.get(), 0.0);
+    assert_eq!(parameters.silent_channel_dr_db.get(), 0.0);
     assert!(parameters.includes_lfe_in_track_aggregate);
     assert_eq!(parameters.result_precision_bits, 32);
 }
@@ -211,7 +211,7 @@ fn replicated_channels_have_identical_measurements_for_common_layout_sizes() {
         for channel in 1..usize::from(channel_count) {
             assert_eq!(measurement(&result, channel), first);
         }
-        assert_eq!(result.frames_seen, mono.len() as u64);
+        assert_eq!(result.frames_seen(), mono.len() as u64);
     }
 }
 
@@ -372,8 +372,8 @@ fn accepts_moderately_overfull_finite_pcm_without_clamping() {
     let result = analyze_mono(vec![2.0, -4.0, 3.0]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.dr_primary_peak, 4.0);
-    assert_eq!(channel.dr_selected_peak, 4.0);
+    assert_eq!(channel.dr_primary_peak.get(), 4.0);
+    assert_eq!(channel.dr_selected_peak.get(), 4.0);
 }
 
 #[test]
@@ -384,19 +384,19 @@ fn preserves_f64_pcm_without_narrowing_before_accumulation() {
     let result = analyze_mono(vec![sample]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.dr_primary_peak, sample);
-    assert_eq!(channel.dr_selected_peak, sample);
+    assert_eq!(channel.dr_primary_peak.get(), sample);
+    assert_eq!(channel.dr_selected_peak.get(), sample);
     assert_eq!(
-        result.channels[0].report.primary_peak_linear.get(),
+        result.channels()[0].report.primary_peak_linear.get(),
         sample as f32
     );
     assert_eq!(
-        result.channels[0].report.overall_rms_linear.get(),
+        result.channels()[0].report.overall_rms_linear.get(),
         (2.0_f64.sqrt() * sample) as f32
     );
     assert_ne!(
-        f64::from(result.channels[0].report.primary_peak_linear.get()),
-        channel.dr_primary_peak
+        f64::from(result.channels()[0].report.primary_peak_linear.get()),
+        channel.dr_primary_peak.get()
     );
 }
 
@@ -409,21 +409,21 @@ fn overall_rms_is_the_equal_weighted_mean_of_unquantized_window_power() {
     let expected_channel_rms = ((0.125_f64 + 0.5) / 2.0).sqrt() as f32;
 
     assert_eq!(
-        result.channels[0].report.overall_rms_linear.get(),
+        result.channels()[0].report.overall_rms_linear.get(),
         expected_channel_rms
     );
     assert_eq!(
-        result.channels[0].report.overall_rms_dbfs.unwrap().get(),
+        result.channels()[0].report.overall_rms_dbfs.unwrap().get(),
         (20.0 * f64::from(expected_channel_rms).log10()) as f32
     );
     assert_eq!(
-        result.report.overall_rms_linear.get().to_bits(),
+        result.report().overall_rms_linear.get().to_bits(),
         f64::from(expected_channel_rms * expected_channel_rms)
             .sqrt()
             .to_bits()
     );
-    assert_eq!(result.report.duration.decoded_frames, 4);
-    assert_eq!(result.report.duration.seconds(), 4.0);
+    assert_eq!(result.report().duration.decoded_frames, 4);
+    assert_eq!(result.report().duration.seconds(), 4.0);
 }
 
 #[test]
@@ -454,7 +454,7 @@ fn constructor_enforces_the_product_channel_limit_before_allocation() {
         .finish()
         .expect("an empty session at the channel limit should finish");
     assert_eq!(
-        at_limit_result.channels.len(),
+        at_limit_result.channels().len(),
         usize::from(MAX_ANALYSIS_CHANNELS)
     );
 
@@ -475,7 +475,7 @@ fn constructor_enforces_the_product_channel_limit_before_allocation() {
 fn every_nonempty_tail_is_submitted_and_no_virtual_window_is_added() {
     let empty = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), []);
     assert_eq!(
-        empty.channels[0].outcome,
+        empty.channels()[0].outcome,
         ChannelOutcome::InsufficientData { frames: 0 }
     );
 
@@ -488,7 +488,7 @@ fn every_nonempty_tail_is_submitted_and_no_virtual_window_is_added() {
     let exact_window = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 3]]);
     let exact = measurement(&exact_window, 0);
     assert_eq!(exact.valid_windows, 1);
-    assert_eq!(exact.dr_primary_peak, 0.5);
+    assert_eq!(exact.dr_primary_peak.get(), 0.5);
     assert_eq!(exact.dr_secondary_peak, None);
 
     let exact_plus_one = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 4]]);
@@ -540,10 +540,13 @@ fn fixture_105_recomputes_negative_dr_with_the_primary_peak() {
     let result = analyze_mono(samples);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.dr_primary_peak, 1.0);
-    assert_eq!(channel.dr_secondary_peak, Some(0.1));
+    assert_eq!(channel.dr_primary_peak.get(), 1.0);
+    assert_eq!(
+        channel.dr_secondary_peak.map(|value| value.get()),
+        Some(0.1)
+    );
     assert_eq!(channel.dr_selected_peak, channel.dr_primary_peak);
-    assert!(channel.dr_db > 1.9 && channel.dr_db < 2.0);
+    assert!(channel.dr_db.get() > 1.9 && channel.dr_db.get() < 2.0);
     assert_eq!(channel.rounded_dr, 2);
 }
 
@@ -558,7 +561,7 @@ fn fixture_110_quantizes_rms_in_centi_db_bins() {
     let channel = measurement(&result, 0);
 
     assert_eq!(channel.rounded_dr, 39);
-    assert!((channel.loud_window_rms - 10.0_f64.powf(-59.25 / 20.0)).abs() < 1e-15);
+    assert!((channel.loud_window_rms.get() - 10.0_f64.powf(-59.25 / 20.0)).abs() < 1e-15);
 }
 
 #[test]
@@ -577,7 +580,7 @@ fn fixture_111_includes_the_complete_loud_boundary_bin() {
 
     let expected_loud_rms =
         ((10.0_f64.powf(-13.98 / 10.0) + 4.0 * 10.0_f64.powf(-20.0 / 10.0)) / 5.0).sqrt();
-    assert!((channel.loud_window_rms - expected_loud_rms).abs() < 1e-15);
+    assert!((channel.loud_window_rms.get() - expected_loud_rms).abs() < 1e-15);
     assert_eq!(channel.rounded_dr, 12);
 }
 
@@ -593,7 +596,7 @@ fn six_windows_use_floor_for_the_loud_target_count() {
     let expected = 10.0_f64.powf(bin_db / 10.0).sqrt();
 
     assert_eq!(channel.valid_windows, 6);
-    assert_eq!(channel.loud_window_rms.to_bits(), expected.to_bits());
+    assert_eq!(channel.loud_window_rms.get().to_bits(), expected.to_bits());
 }
 
 #[test]
@@ -607,9 +610,16 @@ fn sparse_nonzero_histogram_uses_every_available_nonzero_bin() {
     let expected_overall = (0.25_f64 / 10.0).sqrt() as f32;
 
     assert_eq!(channel.valid_windows, 10);
-    assert_eq!(channel.loud_window_rms.to_bits(), expected_loud.to_bits());
     assert_eq!(
-        result.channels[0].report.overall_rms_linear.get().to_bits(),
+        channel.loud_window_rms.get().to_bits(),
+        expected_loud.to_bits()
+    );
+    assert_eq!(
+        result.channels()[0]
+            .report
+            .overall_rms_linear
+            .get()
+            .to_bits(),
         expected_overall.to_bits()
     );
 }
@@ -621,10 +631,13 @@ fn two_positive_peak_candidates_select_the_secondary_without_fallback() {
     let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [samples]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.dr_primary_peak.to_bits(), 0.24_f64.to_bits());
-    assert_eq!(channel.dr_secondary_peak, Some(0.22));
-    assert_eq!(channel.dr_selected_peak.to_bits(), 0.22_f64.to_bits());
-    assert!(channel.dr_db > 0.0);
+    assert_eq!(channel.dr_primary_peak.get().to_bits(), 0.24_f64.to_bits());
+    assert_eq!(
+        channel.dr_secondary_peak.map(|value| value.get()),
+        Some(0.22)
+    );
+    assert_eq!(channel.dr_selected_peak.get().to_bits(), 0.22_f64.to_bits());
+    assert!(channel.dr_db.get() > 0.0);
 }
 
 #[test]
@@ -632,8 +645,8 @@ fn negative_primary_dr_clamps_to_positive_zero_bits() {
     let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 6]]);
     let channel = measurement(&result, 0);
 
-    assert!(channel.loud_window_rms > channel.dr_primary_peak);
-    assert_eq!(channel.dr_db.to_bits(), 0.0_f32.to_bits());
+    assert!(channel.loud_window_rms.get() > channel.dr_primary_peak.get());
+    assert_eq!(channel.dr_db.get().to_bits(), 0.0_f32.to_bits());
     assert_eq!(channel.rounded_dr, 0);
 }
 
@@ -664,14 +677,20 @@ fn fixtures_120_and_121_preserve_quantized_peak_arrival_order() {
 
     let low_then_high = analyze_mono(peak_order_case(low_peak_db, high_peak_db));
     let low_first = measurement(&low_then_high, 0);
-    assert_eq!(low_first.dr_primary_peak, low_peak);
-    assert_eq!(low_first.dr_secondary_peak, Some(high_peak));
+    assert_eq!(low_first.dr_primary_peak.get(), low_peak);
+    assert_eq!(
+        low_first.dr_secondary_peak.map(|value| value.get()),
+        Some(high_peak)
+    );
     assert_eq!(low_first.rounded_dr, 13, "fixture 120");
 
     let high_then_low = analyze_mono(peak_order_case(high_peak_db, low_peak_db));
     let high_first = measurement(&high_then_low, 0);
-    assert_eq!(high_first.dr_primary_peak, high_peak);
-    assert_eq!(high_first.dr_secondary_peak, Some(low_peak));
+    assert_eq!(high_first.dr_primary_peak.get(), high_peak);
+    assert_eq!(
+        high_first.dr_secondary_peak.map(|value| value.get()),
+        Some(low_peak)
+    );
     assert_eq!(high_first.rounded_dr, 12, "fixture 121");
 }
 
@@ -685,23 +704,26 @@ fn fixtures_201_to_203_cover_short_and_silent_inputs() {
 
     let silent = analyze_mono(vec![0.0; 2 * WINDOW_FRAMES]);
     assert!(matches!(
-        silent.channels[0].outcome,
+        silent.channels()[0].outcome,
         ChannelOutcome::Silent {
             frames: 48_064,
             valid_windows: 2
         }
     ));
-    assert_eq!(silent.aggregates.track.dr_db, Some(0.0));
-    assert_eq!(silent.aggregates.track.rounded_dr, Some(0));
-    assert_eq!(silent.aggregates.track.contributing_channels, vec![0]);
-    assert!(silent.aggregates.track.excluded_channels.is_empty());
-    assert_eq!(silent.channels[0].report.overall_rms_linear.get(), 0.0);
-    assert_eq!(silent.channels[0].report.overall_rms_dbfs, None);
-    assert_eq!(silent.channels[0].report.primary_peak_linear.get(), 0.0);
-    assert_eq!(silent.report.overall_rms_linear.get(), 0.0);
-    assert_eq!(silent.report.overall_rms_dbfs, None);
-    assert_eq!(silent.report.primary_peak_linear.get(), 0.0);
-    assert_eq!(silent.report.primary_peak_dbfs, None);
+    assert_eq!(
+        silent.aggregates().track.dr_db.map(|value| value.get()),
+        Some(0.0)
+    );
+    assert_eq!(silent.aggregates().track.rounded_dr, Some(0));
+    assert_eq!(silent.aggregates().track.contributing_channels, vec![0]);
+    assert!(silent.aggregates().track.excluded_channels.is_empty());
+    assert_eq!(silent.channels()[0].report.overall_rms_linear.get(), 0.0);
+    assert_eq!(silent.channels()[0].report.overall_rms_dbfs, None);
+    assert_eq!(silent.channels()[0].report.primary_peak_linear.get(), 0.0);
+    assert_eq!(silent.report().overall_rms_linear.get(), 0.0);
+    assert_eq!(silent.report().overall_rms_dbfs, None);
+    assert_eq!(silent.report().primary_peak_linear.get(), 0.0);
+    assert_eq!(silent.report().primary_peak_dbfs, None);
 }
 
 #[test]
@@ -715,11 +737,11 @@ fn fixture_301_includes_a_silent_channel_as_numeric_zero() {
 
     assert_eq!(measurement(&result, 0).rounded_dr, 12);
     assert!(matches!(
-        result.channels[1].outcome,
+        result.channels()[1].outcome,
         ChannelOutcome::Silent { .. }
     ));
-    assert_eq!(result.aggregates.track.rounded_dr, Some(6));
-    assert_eq!(result.aggregates.track.contributing_channels, vec![0, 1]);
+    assert_eq!(result.aggregates().track.rounded_dr, Some(6));
+    assert_eq!(result.aggregates().track.contributing_channels, vec![0, 1]);
 }
 
 #[test]
@@ -745,7 +767,7 @@ fn fixture_302_uses_the_unweighted_channel_arithmetic_mean() {
 
     assert_eq!(
         result
-            .channels
+            .channels()
             .iter()
             .map(|channel| match &channel.outcome {
                 ChannelOutcome::Measured { measurement } => measurement.rounded_dr,
@@ -754,7 +776,7 @@ fn fixture_302_uses_the_unweighted_channel_arithmetic_mean() {
             .collect::<Vec<_>>(),
         vec![10, 20, 30]
     );
-    assert_eq!(result.aggregates.track.rounded_dr, Some(20));
+    assert_eq!(result.aggregates().track.rounded_dr, Some(20));
 }
 
 #[test]
@@ -783,22 +805,22 @@ fn fixture_303_includes_lfe_in_the_reference_default_track_aggregate() {
     );
 
     assert_eq!(measurement(&result, 3).rounded_dr, 30);
-    assert_eq!(result.aggregates.track.rounded_dr, Some(15));
+    assert_eq!(result.aggregates().track.rounded_dr, Some(15));
     assert_eq!(
-        result.aggregates.track.contributing_channels,
+        result.aggregates().track.contributing_channels,
         vec![0, 1, 2, 3, 4, 5]
     );
-    assert!(result.aggregates.track.excluded_channels.is_empty());
+    assert!(result.aggregates().track.excluded_channels.is_empty());
 }
 
 #[test]
 fn aggregate_preserves_insufficient_data_exclusions() {
     let result = analyze(stream(1, 2, ChannelLayout::Unknown), []);
-    assert_eq!(result.aggregates.track.dr_db, None);
-    assert_eq!(result.aggregates.track.rounded_dr, None);
-    assert!(result.aggregates.track.contributing_channels.is_empty());
+    assert_eq!(result.aggregates().track.dr_db, None);
+    assert_eq!(result.aggregates().track.rounded_dr, None);
+    assert!(result.aggregates().track.contributing_channels.is_empty());
     assert_eq!(
-        result.aggregates.track.excluded_channels,
+        result.aggregates().track.excluded_channels,
         vec![
             macinmeter_domain::ExcludedChannel {
                 channel_index: 0,
@@ -820,13 +842,13 @@ fn tiny_nonzero_signal_is_measured_and_serializes_as_finite_json() {
     );
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.loud_window_rms, 0.00001);
+    assert_eq!(channel.loud_window_rms.get(), 0.00001);
     assert_eq!(channel.rounded_dr, 0);
-    assert!(channel.dr_db.is_finite());
-    assert!(channel.dr_selected_peak.is_finite());
+    assert!(channel.dr_db.get().is_finite());
+    assert!(channel.dr_selected_peak.get().is_finite());
     let json = serde_json::to_string(&result).unwrap();
-    let round_trip: macinmeter_domain::AnalysisResult = serde_json::from_str(&json).unwrap();
-    assert_eq!(round_trip, result);
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(value["channels"][0]["outcome"]["measurement"]["drDb"].is_number());
 }
 
 #[test]
@@ -836,16 +858,23 @@ fn squared_underflow_remains_a_numeric_dr_zero_contribution() {
     let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![subnormal]]);
     let channel = measurement(&result, 0);
 
-    assert_eq!(channel.dr_db.to_bits(), 0.0_f32.to_bits());
+    assert_eq!(channel.dr_db.get().to_bits(), 0.0_f32.to_bits());
     assert_eq!(channel.rounded_dr, 0);
-    assert_eq!(channel.loud_window_rms.to_bits(), 0.0_f64.to_bits());
-    assert_eq!(channel.dr_primary_peak.to_bits(), subnormal.to_bits());
-    assert_eq!(channel.dr_selected_peak.to_bits(), subnormal.to_bits());
+    assert_eq!(channel.loud_window_rms.get().to_bits(), 0.0_f64.to_bits());
+    assert_eq!(channel.dr_primary_peak.get().to_bits(), subnormal.to_bits());
     assert_eq!(
-        result.aggregates.track.dr_db.map(f32::to_bits),
+        channel.dr_selected_peak.get().to_bits(),
+        subnormal.to_bits()
+    );
+    assert_eq!(
+        result
+            .aggregates()
+            .track
+            .dr_db
+            .map(|value| value.get().to_bits()),
         Some(0.0_f32.to_bits())
     );
-    assert_eq!(result.aggregates.track.rounded_dr, Some(0));
-    assert_eq!(result.aggregates.track.contributing_channels, vec![0]);
-    assert!(result.aggregates.track.excluded_channels.is_empty());
+    assert_eq!(result.aggregates().track.rounded_dr, Some(0));
+    assert_eq!(result.aggregates().track.contributing_channels, vec![0]);
+    assert!(result.aggregates().track.excluded_channels.is_empty());
 }

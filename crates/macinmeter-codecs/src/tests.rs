@@ -151,23 +151,24 @@ fn assert_pcm_source_contract(case: PcmSourceContractCase) {
 
     let initial_progress = opened.reader.progress();
     assert_eq!(
-        initial_progress.decoded_frames, 0,
+        initial_progress.decoded_frames(),
+        0,
         "{} initial decoded frames",
         case.name
     );
     assert_eq!(
-        initial_progress.expected_frames,
+        initial_progress.expected_frames(),
         Some(case.expected_frames),
         "{} initial expected frames",
         case.name
     );
     assert_eq!(
-        initial_progress.fraction,
+        initial_progress.fraction(),
         Some(0.0),
         "{} initial progress fraction",
         case.name
     );
-    assert!(!initial_progress.eof, "{} began at EOF", case.name);
+    assert!(!initial_progress.is_eof(), "{} began at EOF", case.name);
     let initial_diagnostics = opened.reader.diagnostics().clone();
     assert_eq!(
         initial_diagnostics.backend, "symphonia",
@@ -223,30 +224,31 @@ fn assert_pcm_source_contract(case: PcmSourceContractCase) {
         );
         let progress = opened.reader.progress();
         assert_eq!(
-            progress.decoded_frames, decoded_frames,
+            progress.decoded_frames(),
+            decoded_frames,
             "{} progress disagrees with returned Data",
             case.name
         );
         assert_eq!(
-            progress.expected_frames,
+            progress.expected_frames(),
             Some(case.expected_frames),
             "{} progress expected frames changed",
             case.name
         );
         let expected_fraction = decoded_frames as f64 / case.expected_frames as f64;
         assert_eq!(
-            progress.fraction,
+            progress.fraction(),
             Some(expected_fraction),
             "{} progress fraction",
             case.name
         );
         assert!(
-            progress.fraction.is_some_and(f64::is_finite),
+            progress.fraction().is_some_and(f64::is_finite),
             "{} progress fraction is non-finite",
             case.name
         );
         assert!(
-            !progress.eof,
+            !progress.is_eof(),
             "{} marked EOF while returning Data",
             case.name
         );
@@ -311,14 +313,14 @@ fn assert_pcm_source_contract(case: PcmSourceContractCase) {
         case.name
     );
     let terminal_progress = opened.reader.progress();
-    assert_eq!(terminal_progress.decoded_frames, case.expected_frames);
+    assert_eq!(terminal_progress.decoded_frames(), case.expected_frames);
     assert_eq!(
-        terminal_progress.expected_frames,
+        terminal_progress.expected_frames(),
         Some(case.expected_frames)
     );
-    assert_eq!(terminal_progress.fraction, Some(1.0));
+    assert_eq!(terminal_progress.fraction(), Some(1.0));
     assert!(
-        terminal_progress.eof,
+        terminal_progress.is_eof(),
         "{} EOF was not sticky state",
         case.name
     );
@@ -612,7 +614,7 @@ fn rejects_non_finite_float_pcm_as_a_sticky_decode_error() {
         assert_eq!(first.code, ErrorCode::DecodeFailed);
         assert!(first.message.contains("non-finite"));
         assert_eq!(opened.reader.read_block().unwrap_err(), first);
-        assert!(!opened.reader.progress().eof);
+        assert!(!opened.reader.progress().is_eof());
     }
 }
 
@@ -726,7 +728,7 @@ fn symphonia_terminal_error_is_sticky_and_freezes_observable_state() {
     let immutable_info = reader.stream_info().clone();
     let frozen_progress = reader.progress();
     let frozen_diagnostics = reader.diagnostics().clone();
-    assert!(!frozen_progress.eof);
+    assert!(!frozen_progress.is_eof());
 
     let injected = AnalysisError::new(
         ErrorCode::DecodeFailed,
@@ -750,7 +752,7 @@ fn symphonia_terminal_error_is_sticky_and_freezes_observable_state() {
         assert_eq!(reader.progress(), frozen_progress);
         assert_eq!(reader.diagnostics(), &frozen_diagnostics);
     }
-    assert!(!reader.progress().eof);
+    assert!(!reader.progress().is_eof());
 }
 
 #[test]
@@ -765,10 +767,10 @@ fn rejected_overrun_block_is_not_committed_to_progress_or_diagnostics() {
     assert_eq!(error.stage, AnalysisStage::Decode);
     assert!(error.message.contains("exceeds the expected frame count"));
     let progress = reader.progress();
-    assert_eq!(progress.decoded_frames, 0);
-    assert_eq!(progress.expected_frames, Some(2));
-    assert_eq!(progress.fraction, Some(0.0));
-    assert!(!progress.eof);
+    assert_eq!(progress.decoded_frames(), 0);
+    assert_eq!(progress.expected_frames(), Some(2));
+    assert_eq!(progress.fraction(), Some(0.0));
+    assert!(!progress.is_eof());
     let diagnostics = reader.diagnostics().clone();
     assert_eq!(diagnostics.decoded_frames, 0);
     assert_eq!(diagnostics.warnings.len(), 1);
@@ -804,9 +806,9 @@ fn corrupt_flac_is_a_sticky_error_not_eof() {
     );
     let terminal_progress = opened.reader.progress();
     let terminal_diagnostics = opened.reader.diagnostics().clone();
-    assert_eq!(terminal_progress.decoded_frames, returned_frames);
+    assert_eq!(terminal_progress.decoded_frames(), returned_frames);
     assert_eq!(terminal_diagnostics.decoded_frames, returned_frames);
-    assert!(!terminal_progress.eof);
+    assert!(!terminal_progress.is_eof());
 
     for repeated_read in 1..=2 {
         assert_eq!(

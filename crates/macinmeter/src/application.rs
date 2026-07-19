@@ -133,13 +133,12 @@ impl Analyzer {
         ensure_not_cancelled(control)?;
         let analysis = session.finish()?;
         let diagnostics = opened.reader.diagnostics().clone();
-        let report = AnalysisReport {
-            source: opened.source,
-            pcm,
-            analysis,
-            diagnostics,
-        };
-        Ok(report)
+        match AnalysisReport::try_new(opened.source, pcm, analysis, diagnostics) {
+            Ok(report) => Ok(report),
+            Err(error) => Err(error
+                .with_display_path(display_path)
+                .with_backend(opened.reader.diagnostics().backend.clone())),
+        }
     }
 }
 
@@ -170,6 +169,7 @@ mod tests {
         decoded_frames: u64,
         eof: bool,
         diagnostics: DecodeDiagnostics,
+        terminal_diagnostic_frames: Option<u64>,
     }
 
     impl PcmSource for FakeSource {
@@ -185,6 +185,9 @@ mod tests {
             }
 
             self.eof = true;
+            if let Some(decoded_frames) = self.terminal_diagnostic_frames {
+                self.diagnostics.decoded_frames = decoded_frames;
+            }
             Ok(ReadOutcome::Eof)
         }
 
@@ -201,6 +204,15 @@ mod tests {
         source_channels: ChannelCount,
         stream_channels: ChannelCount,
         blocks: Vec<PcmBlock>,
+    ) -> OpenedAudio {
+        opened_audio_with_terminal_diagnostics(source_channels, stream_channels, blocks, None)
+    }
+
+    fn opened_audio_with_terminal_diagnostics(
+        source_channels: ChannelCount,
+        stream_channels: ChannelCount,
+        blocks: Vec<PcmBlock>,
+        terminal_diagnostic_frames: Option<u64>,
     ) -> OpenedAudio {
         let stream_info = PcmStreamInfo {
             spec: StreamSpec::new(48_000, stream_channels.get(), ChannelLayout::Unknown).unwrap(),
@@ -226,6 +238,7 @@ mod tests {
                     decoded_frames: 0,
                     warnings: Vec::new(),
                 },
+                terminal_diagnostic_frames,
             }),
         }
     }
@@ -299,12 +312,38 @@ mod tests {
             AnalysisEvent::DecodeProgress {
                 index: 7,
                 display_path,
-                progress: DecodeProgress {
-                    decoded_frames: 1,
-                    eof: false,
-                    ..
-                },
+                progress,
             } if display_path == "event-path.fake"
+                && progress.decoded_frames() == 1
+                && !progress.is_eof()
         ));
+    }
+
+    #[test]
+    fn rejects_diagnostics_that_disagree_with_the_finished_analysis() {
+        let channels = ChannelCount::new(1).unwrap();
+        let opened = opened_audio_with_terminal_diagnostics(
+            channels,
+            channels,
+            vec![PcmBlock::new(vec![0.25], channels).unwrap()],
+            Some(2),
+        );
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+
+        let error = Analyzer::analyze_opened(
+            opened,
+            AnalysisProfile::FooDrMeter108CandidateV1,
+            0,
+            &ExecutionControl::new(&cancellation, &progress),
+            "diagnostics.fake",
+        )
+        .expect_err("mismatched terminal diagnostics must not escape as a successful report");
+
+        assert_eq!(error.code, ErrorCode::DecodeFailed);
+        assert_eq!(error.stage, AnalysisStage::Decode);
+        assert_eq!(error.display_path.as_deref(), Some("diagnostics.fake"));
+        assert_eq!(error.backend.as_deref(), Some("fake-source"));
+        assert!(error.message.contains("diagnostics"));
     }
 }

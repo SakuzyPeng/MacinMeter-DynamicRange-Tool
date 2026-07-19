@@ -13,18 +13,15 @@ impl TryFrom<&AnalysisReport> for AlbumTrackMetrics {
 
     fn try_from(report: &AnalysisReport) -> Result<Self, Self::Error> {
         let dr_db = report
-            .analysis
-            .aggregates
+            .analysis()
+            .aggregates()
             .track
             .dr_db
             .ok_or_else(|| AnalysisError::invalid("analysis report has no numeric track DR"))?;
-        let dr_db = FiniteF32::new(dr_db).map_err(|_| {
-            AnalysisError::invalid("analysis report contains a non-finite track DR")
-        })?;
 
         Ok(Self {
             dr_db,
-            duration: report.analysis.report.duration,
+            duration: report.analysis().report().duration,
         })
     }
 }

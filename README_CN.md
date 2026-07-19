@@ -156,6 +156,11 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 `finish` 会消费 session，并以可失败结果阻止数值/资源错误泄漏成非有限输出；输入
 样本必须有限且按完整 frame 对齐。
 
+成功的 `AnalysisResult` 和 `AnalysisReport` 根对象不可变，只能通过 checked
+constructor 建立；调用方通过只读 getter 或 `AnalysisResult::view()` 检查结果。
+不作为产品输入的 result/report 与共享 batch/event/wire 类型只支持序列化，不支持
+反序列化。这些 Rust API 约束不改变 schema-v3 JSON 的字段、tag 或数字形状。
+
 Album 聚合是显式库操作，不会把 batch 隐式当成 album：
 
 ```rust

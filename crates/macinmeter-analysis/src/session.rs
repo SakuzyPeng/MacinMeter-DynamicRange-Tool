@@ -55,7 +55,7 @@ impl AnalyzerSession {
 
         Ok(Self {
             stream,
-            algorithm: descriptor(profile),
+            algorithm: descriptor(profile)?,
             window_frames,
             frames_in_window: 0,
             frames_seen: 0,
@@ -194,16 +194,16 @@ impl AnalyzerSession {
             aggregate_drs.push(finalized.aggregate_dr_db);
         }
 
-        let track = aggregate(&channel_results, &aggregate_drs);
+        let track = aggregate(&channel_results, &aggregate_drs)?;
         let report = track_report(&channel_results, self.frames_seen, self.stream.sample_rate)?;
-        Ok(AnalysisResult {
-            algorithm: self.algorithm,
-            stream: self.stream,
-            frames_seen: self.frames_seen,
-            channels: channel_results,
-            aggregates: AggregateResults { track },
+        AnalysisResult::try_new(
+            self.algorithm,
+            self.stream,
+            self.frames_seen,
+            channel_results,
+            AggregateResults { track },
             report,
-        })
+        )
     }
 
     fn validate_tail_numeric_safety(&self) -> Result<(), AnalysisError> {
@@ -350,17 +350,23 @@ impl ChannelAccumulator {
                 dr_db = dr_for_peak(loud_window_rms, primary_peak).max(DR_FLOOR_DB);
             }
         }
-        let public_dr_db = dr_db as f32;
+        let public_dr_db = finite_f32_narrow(dr_db, "channel DR")?;
+        let loud_window_rms = finite_f64(loud_window_rms, "loud-window RMS")?;
+        let dr_selected_peak = finite_f64(selected_peak, "selected DR peak")?;
+        let dr_primary_peak = finite_f64(primary_peak, "primary DR peak")?;
+        let dr_secondary_peak = secondary_peak
+            .map(|peak| finite_f64(peak, "secondary DR peak"))
+            .transpose()?;
 
         Ok(FinalizedChannel {
             outcome: ChannelOutcome::Measured {
                 measurement: ChannelMeasurement {
                     dr_db: public_dr_db,
-                    rounded_dr: rounded_display_dr(public_dr_db),
+                    rounded_dr: rounded_display_dr(public_dr_db.get()),
                     loud_window_rms,
-                    dr_selected_peak: selected_peak,
-                    dr_primary_peak: primary_peak,
-                    dr_secondary_peak: secondary_peak,
+                    dr_selected_peak,
+                    dr_primary_peak,
+                    dr_secondary_peak,
                     valid_windows: self.valid_windows,
                     frames,
                 },
@@ -560,7 +566,10 @@ fn report_dbfs(linear: f64, label: &str) -> Result<Option<FiniteF32>, AnalysisEr
     finite_f32_narrow(20.0 * linear.log10(), label).map(Some)
 }
 
-fn aggregate(channels: &[ChannelResult], aggregate_drs: &[Option<f64>]) -> TrackAggregate {
+fn aggregate(
+    channels: &[ChannelResult],
+    aggregate_drs: &[Option<f64>],
+) -> Result<TrackAggregate, AnalysisError> {
     debug_assert_eq!(channels.len(), aggregate_drs.len());
     let mut contributing_channels = Vec::new();
     let mut excluded_channels = Vec::new();
@@ -586,13 +595,14 @@ fn aggregate(channels: &[ChannelResult], aggregate_drs: &[Option<f64>]) -> Track
     }
 
     let dr_db = (!contributing_channels.is_empty())
-        .then(|| (dr_sum / contributing_channels.len() as f64) as f32);
-    TrackAggregate {
+        .then(|| finite_f32_narrow(dr_sum / contributing_channels.len() as f64, "track DR"))
+        .transpose()?;
+    Ok(TrackAggregate {
         dr_db,
-        rounded_dr: dr_db.map(rounded_display_dr),
+        rounded_dr: dr_db.map(|value| rounded_display_dr(value.get())),
         contributing_channels,
         excluded_channels,
-    }
+    })
 }
 
 fn analysis_error(message: impl Into<String>) -> AnalysisError {
@@ -753,11 +763,11 @@ mod tests {
                 report: report.clone(),
                 outcome: ChannelOutcome::Measured {
                     measurement: ChannelMeasurement {
-                        dr_db: 1.0,
+                        dr_db: FiniteF32::new(1.0).unwrap(),
                         rounded_dr: 1,
-                        loud_window_rms: 0.1,
-                        dr_selected_peak: 1.0,
-                        dr_primary_peak: 1.0,
+                        loud_window_rms: FiniteF64::new(0.1).unwrap(),
+                        dr_selected_peak: FiniteF64::new(1.0).unwrap(),
+                        dr_primary_peak: FiniteF64::new(1.0).unwrap(),
                         dr_secondary_peak: None,
                         valid_windows: 1,
                         frames: 3,
@@ -769,11 +779,11 @@ mod tests {
                 report,
                 outcome: ChannelOutcome::Measured {
                     measurement: ChannelMeasurement {
-                        dr_db: 1.0,
+                        dr_db: FiniteF32::new(1.0).unwrap(),
                         rounded_dr: 1,
-                        loud_window_rms: 0.1,
-                        dr_selected_peak: 1.0,
-                        dr_primary_peak: 1.0,
+                        loud_window_rms: FiniteF64::new(0.1).unwrap(),
+                        dr_selected_peak: FiniteF64::new(1.0).unwrap(),
+                        dr_primary_peak: FiniteF64::new(1.0).unwrap(),
                         dr_secondary_peak: None,
                         valid_windows: 1,
                         frames: 3,
@@ -782,8 +792,8 @@ mod tests {
             },
         ];
 
-        let track = aggregate(&channels, &[Some(10.0), Some(20.0)]);
-        assert_eq!(track.dr_db, Some(15.0));
+        let track = aggregate(&channels, &[Some(10.0), Some(20.0)]).unwrap();
+        assert_eq!(track.dr_db.map(FiniteF32::get), Some(15.0));
         assert_eq!(track.rounded_dr, Some(15));
     }
 

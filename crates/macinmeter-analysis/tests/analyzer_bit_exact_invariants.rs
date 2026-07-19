@@ -3,9 +3,9 @@
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_domain::{
     AggregateResults, AlgorithmDescriptor, AlgorithmParameters, AnalysisProfile, AnalysisResult,
-    AnalysisStage, ChannelLayout, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics,
-    ChannelResult, ChannelRole, CompatibilityStatus, DecodedDuration, ErrorCode, ExcludedChannel,
-    StreamSpec, TrackAggregate, TrackReportMetrics,
+    AnalysisResultView, AnalysisStage, ChannelLayout, ChannelMeasurement, ChannelOutcome,
+    ChannelReportMetrics, ChannelResult, ChannelRole, CompatibilityStatus, DecodedDuration,
+    ErrorCode, ExcludedChannel, FiniteF32, StreamSpec, TrackAggregate, TrackReportMetrics,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,14 +99,14 @@ struct RawTrackReportProjection {
 
 impl From<&AnalysisResult> for RawAnalysisProjection {
     fn from(result: &AnalysisResult) -> Self {
-        let AnalysisResult {
+        let AnalysisResultView {
             algorithm,
             stream,
             frames_seen,
             channels,
             aggregates,
             report,
-        } = result;
+        } = result.view();
         let AlgorithmDescriptor {
             profile,
             profile_version,
@@ -151,28 +151,28 @@ impl From<&AnalysisResult> for RawAnalysisProjection {
                 profile_version: *profile_version,
                 compatibility: *compatibility,
                 parameters: RawAlgorithmParametersProjection {
-                    window_duration_coefficient: window_duration_coefficient.to_bits(),
-                    rms_sum_multiplier: rms_sum_multiplier.to_bits(),
+                    window_duration_coefficient: window_duration_coefficient.get().to_bits(),
+                    rms_sum_multiplier: rms_sum_multiplier.get().to_bits(),
                     histogram_bins: *histogram_bins,
-                    rms_histogram_min_db: rms_histogram_min_db.to_bits(),
-                    rms_histogram_max_db: rms_histogram_max_db.to_bits(),
-                    histogram_bin_width_db: histogram_bin_width_db.to_bits(),
-                    peak_key_bin_width_db: peak_key_bin_width_db.to_bits(),
-                    loud_fraction: loud_fraction.to_bits(),
+                    rms_histogram_min_db: rms_histogram_min_db.get().to_bits(),
+                    rms_histogram_max_db: rms_histogram_max_db.get().to_bits(),
+                    histogram_bin_width_db: histogram_bin_width_db.get().to_bits(),
+                    peak_key_bin_width_db: peak_key_bin_width_db.get().to_bits(),
+                    loud_fraction: loud_fraction.get().to_bits(),
                     minimum_tail_frames: *minimum_tail_frames,
                     include_entire_boundary_bin: *include_entire_boundary_bin,
                     exact_window_virtual_zero_peak: *exact_window_virtual_zero_peak,
-                    dr_floor_db: dr_floor_db.to_bits(),
-                    silent_channel_dr_db: silent_channel_dr_db.to_bits(),
+                    dr_floor_db: dr_floor_db.get().to_bits(),
+                    silent_channel_dr_db: silent_channel_dr_db.get().to_bits(),
                     includes_lfe_in_track_aggregate: *includes_lfe_in_track_aggregate,
                     result_precision_bits: *result_precision_bits,
                 },
             },
             stream: stream.clone(),
-            frames_seen: *frames_seen,
+            frames_seen,
             channels: channels.iter().map(project_channel).collect(),
             track: RawTrackAggregateProjection {
-                dr_db: dr_db.map(f32::to_bits),
+                dr_db: dr_db.map(|value| value.get().to_bits()),
                 rounded_dr: *rounded_dr,
                 contributing_channels: contributing_channels.clone(),
                 excluded_channels: excluded_channels.clone(),
@@ -212,12 +212,12 @@ fn project_channel(channel: &ChannelResult) -> RawChannelProjection {
                 frames,
             } = measurement;
             RawChannelOutcomeProjection::Measured {
-                dr_db: dr_db.to_bits(),
+                dr_db: dr_db.get().to_bits(),
                 rounded_dr: *rounded_dr,
-                loud_window_rms: loud_window_rms.to_bits(),
-                dr_selected_peak: dr_selected_peak.to_bits(),
-                dr_primary_peak: dr_primary_peak.to_bits(),
-                dr_secondary_peak: dr_secondary_peak.map(f64::to_bits),
+                loud_window_rms: loud_window_rms.get().to_bits(),
+                dr_selected_peak: dr_selected_peak.get().to_bits(),
+                dr_primary_peak: dr_primary_peak.get().to_bits(),
+                dr_secondary_peak: dr_secondary_peak.map(|value| value.get().to_bits()),
                 valid_windows: *valid_windows,
                 frames: *frames,
             }
@@ -371,12 +371,22 @@ fn safe_signal(frames: usize, channel_count: usize, frame_offset: usize) -> Vec<
 fn raw_projector_distinguishes_signed_zero_that_partial_eq_cannot_see() {
     let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
     let positive_zero = analyze(&spec, [vec![0.5; 6]]);
-    let mut negative_zero = positive_zero.clone();
-    let ChannelOutcome::Measured { measurement } = &mut negative_zero.channels[0].outcome else {
+    let view = positive_zero.view();
+    let mut channels = view.channels.to_vec();
+    let ChannelOutcome::Measured { measurement } = &mut channels[0].outcome else {
         panic!("the signed-zero projector fixture must be measured");
     };
-    assert_eq!(measurement.dr_db.to_bits(), 0.0_f32.to_bits());
-    measurement.dr_db = -0.0;
+    assert_eq!(measurement.dr_db.get().to_bits(), 0.0_f32.to_bits());
+    measurement.dr_db = FiniteF32::new(-0.0).unwrap();
+    let negative_zero = AnalysisResult::try_new(
+        view.algorithm.clone(),
+        view.stream.clone(),
+        view.frames_seen,
+        channels,
+        view.aggregates.clone(),
+        view.report.clone(),
+    )
+    .unwrap();
 
     assert_eq!(positive_zero, negative_zero);
     assert_ne!(raw(&positive_zero), raw(&negative_zero));

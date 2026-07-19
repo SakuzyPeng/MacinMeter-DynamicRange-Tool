@@ -1,5 +1,5 @@
 use macinmeter_domain::DecodeProgress;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -24,7 +24,7 @@ impl CancellationToken {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
