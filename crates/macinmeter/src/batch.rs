@@ -234,11 +234,7 @@ fn ensure_discovery_not_cancelled(
 fn is_discoverable(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .map(|extension| {
-            crate::SUPPORTED_EXTENSIONS
-                .iter()
-                .any(|candidate| extension.eq_ignore_ascii_case(candidate))
-        })
+        .map(crate::capability::is_stable_discovery_extension)
         .unwrap_or(false)
 }
 

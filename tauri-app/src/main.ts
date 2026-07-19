@@ -115,11 +115,13 @@ type TrackReportMetrics = {
   };
 };
 
+// Container and codec identifiers are forward-extensible strings owned by the
+// Rust capability catalog; the frontend must not maintain its own union.
 type AnalysisReport = {
   source: {
     displayPath: string;
-    container: "wave" | "flac" | "aiff";
-    codec: "pcm_integer" | "pcm_float" | "flac";
+    container: string;
+    codec: string;
     sampleRate: number;
     channels: number;
     bitsPerSample: number | null;
@@ -255,9 +257,35 @@ let activeJobId: string | null = null;
 let previewJobId: string | null = null;
 let lastEnvelope: WireEnvelope | null = null;
 let selectionRevision = 0;
+type CapabilityRoute = {
+  container: string;
+  codec: string;
+  status: string;
+  backend: string;
+  discoveryExtensions: string[];
+  limitations: string[];
+};
+
+type CapabilitySnapshot = {
+  routes: CapabilityRoute[];
+  stableDiscoveryExtensions: string[];
+};
+
 // This only narrows the native file picker. Rust discovery and content probing
-// remain authoritative.
-const discoveryFilterExtensions = ["wav", "wave", "flac", "aif", "aiff"];
+// remain authoritative: the list comes from the runtime capability snapshot,
+// and an empty list simply leaves the picker unfiltered.
+let discoveryFilterExtensions: string[] = [];
+
+const loadCapabilities = async (): Promise<void> => {
+  try {
+    const snapshot = await invoke<CapabilitySnapshot>("get_capabilities");
+    discoveryFilterExtensions = snapshot.stableDiscoveryExtensions;
+  } catch {
+    discoveryFilterExtensions = [];
+  }
+};
+
+void loadCapabilities();
 
 const escapeHtml = (value: string): string => {
   const replacements: Record<string, string> = {
@@ -454,12 +482,15 @@ chooseFilesButton.addEventListener("click", async () => {
   const result = await open({
     multiple: true,
     directory: false,
-    filters: [
-      {
-        name: "MacinMeter audio",
-        extensions: discoveryFilterExtensions,
-      },
-    ],
+    filters:
+      discoveryFilterExtensions.length > 0
+        ? [
+            {
+              name: "MacinMeter audio",
+              extensions: discoveryFilterExtensions,
+            },
+          ]
+        : [],
   });
   if (!result) return;
   void cancelPreview();

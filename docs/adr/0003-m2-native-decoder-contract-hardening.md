@@ -396,6 +396,22 @@ M2 在首次新增 route 前建立结构化 capability catalog，至少表达：
 capability query 是独立 application API；若分析 report 的 container/codec enum
 新增值会破坏 schema-v3 严格消费者，首次 route 毕业时显式升级 wire schema。
 
+截至 2026-07-20，本切片已完成：
+
+- `macinmeter-codecs` 拥有静态 `NATIVE_CAPABILITY_CATALOG`：四条 stable
+  route（wave/pcm_integer、wave/pcm_float、flac/flac、aiff/pcm_integer）带
+  discovery extensions 与关键限制；§9 评估顺序以 `planned` 条目登记且不携带
+  discovery extensions。container/codec 标识为稳定字符串，stable 条目与
+  domain enum 的 serde 标识一致性由测试固定；
+- 旧 `SUPPORTED_EXTENSIONS` 常量删除；CLI/batch discovery 经
+  `stable_discovery_extensions()` 消费同一 catalog；
+- `macinmeter` 暴露只读 `capabilities()` 快照（Serialize-only，无
+  `Deserialize`），Tauri 新增 `get_capabilities` 命令返回同一快照；
+- TypeScript 删除手写 container/codec union 与手写扩展名列表，picker 从运行时
+  `stableDiscoveryExtensions` 构造，capability 加载失败时退化为不过滤；
+- 产品测试固定 stable catalog snapshot、序列化形状（camelCase、字符串标识）
+  与 discovery 行为；schema-v3 分析 wire envelope 未改变。
+
 ## 明确非目标
 
 M2 不包含：

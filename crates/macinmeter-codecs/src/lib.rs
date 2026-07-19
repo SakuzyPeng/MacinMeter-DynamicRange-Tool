@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod capability;
 mod codec;
 mod container;
 mod error;
 mod symphonia_source;
+
+pub use capability::{
+    CapabilityStatus, NATIVE_CAPABILITY_CATALOG, NativeRouteCapability, stable_discovery_extensions,
+};
 
 #[cfg(test)]
 mod tests;
@@ -45,12 +50,6 @@ use std::path::Path;
 
 /// Structured decoder failure used by the PCM source contract.
 pub type DecodeError = AnalysisError;
-
-/// Extensions that the discovery layer may use to find M0 inputs.
-///
-/// Extensions are not trusted during probing. [`DecoderFactory::open`] only accepts files whose
-/// content has a supported container signature.
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["wav", "wave", "flac", "aif", "aiff"];
 
 /// A successfully opened source together with immutable source and output PCM metadata.
 pub struct OpenedAudio {

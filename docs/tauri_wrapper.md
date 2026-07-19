@@ -15,6 +15,7 @@ The backend exposes:
 | `run_batch` | analyze discovered inputs serially |
 | `discover_inputs` | expand files/directories in stable order under a cancellable `jobId` |
 | `cancel_job` | cancel exactly one caller-generated `jobId` |
+| `get_capabilities` | return the read-only native capability snapshot; the picker builds its extension filter from `stableDiscoveryExtensions` instead of a handwritten list |
 
 The frontend creates each `jobId`. Tauri state maps that ID to an independent
 `CancellationToken`; inserting a duplicate active ID is an error. Progress

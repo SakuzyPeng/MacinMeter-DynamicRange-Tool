@@ -2,8 +2,8 @@
 
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisStage, AnalyzeRequest, Analyzer,
-    BatchRequest, BatchRunner, CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink,
-    WireEnvelope, discover_inputs_with_control as discover_paths,
+    BatchRequest, BatchRunner, CancellationToken, CapabilitySnapshot, ErrorCode, ExecutionControl,
+    NoopProgressSink, WireEnvelope, discover_inputs_with_control as discover_paths,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -236,6 +236,11 @@ async fn discover_inputs(
 }
 
 #[tauri::command]
+fn get_capabilities() -> CapabilitySnapshot {
+    macinmeter::capabilities()
+}
+
+#[tauri::command]
 fn cancel_job(
     registry: tauri::State<'_, JobRegistry>,
     job_id: String,
@@ -269,7 +274,8 @@ pub fn run() {
             run_analysis,
             run_batch,
             discover_inputs,
-            cancel_job
+            cancel_job,
+            get_capabilities
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
@@ -303,6 +309,24 @@ mod tests {
             assert!(registry.register("job").is_err());
         }
         assert!(registry.register("job").is_ok());
+    }
+
+    #[test]
+    fn capability_command_returns_the_shared_application_snapshot() {
+        let snapshot = get_capabilities();
+        assert_eq!(snapshot, macinmeter::capabilities());
+        assert_eq!(
+            snapshot.stable_discovery_extensions,
+            ["aif", "aiff", "flac", "wav", "wave"]
+        );
+        assert!(
+            snapshot
+                .routes
+                .iter()
+                .filter(|route| route.status == "stable")
+                .count()
+                >= 4
+        );
     }
 
     #[test]

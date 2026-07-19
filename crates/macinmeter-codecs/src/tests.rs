@@ -1,4 +1,7 @@
-use crate::{DecoderFactory, PcmSource, ReadOutcome, SUPPORTED_EXTENSIONS};
+use crate::{
+    CapabilityStatus, DecoderFactory, NATIVE_CAPABILITY_CATALOG, PcmSource, ReadOutcome,
+    stable_discovery_extensions,
+};
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, ErrorCode,
     MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
@@ -383,11 +386,98 @@ fn assert_analysis_channel_limit_error(error: &AnalysisError, declared_channels:
 
 #[test]
 fn extensions_are_discovery_only_and_exclude_aifc() {
+    let stable: Vec<&str> = stable_discovery_extensions().collect();
     assert_eq!(
-        SUPPORTED_EXTENSIONS,
-        &["wav", "wave", "flac", "aif", "aiff"]
+        stable,
+        ["wav", "wave", "wav", "wave", "flac", "aif", "aiff"]
     );
-    assert!(!SUPPORTED_EXTENSIONS.contains(&"aifc"));
+    assert!(!stable.contains(&"aifc"));
+}
+
+#[test]
+fn capability_catalog_keeps_planned_routes_out_of_discovery() {
+    for route in NATIVE_CAPABILITY_CATALOG {
+        assert!(!route.container.is_empty() && !route.codec.is_empty());
+        assert!(!route.backend.is_empty());
+        if route.status != CapabilityStatus::Stable {
+            for extension in route.discovery_extensions {
+                assert!(
+                    !stable_discovery_extensions().any(|stable| stable == *extension),
+                    "non-stable route {}/{} must not leak {extension} into discovery",
+                    route.container,
+                    route.codec
+                );
+            }
+        }
+        for extension in route.discovery_extensions {
+            assert_eq!(
+                extension.to_ascii_lowercase(),
+                *extension,
+                "discovery extensions must be lowercase"
+            );
+        }
+    }
+    let stable_pairs: BTreeSet<(&str, &str)> = NATIVE_CAPABILITY_CATALOG
+        .iter()
+        .filter(|route| route.status == CapabilityStatus::Stable)
+        .map(|route| (route.container, route.codec))
+        .collect();
+    assert_eq!(
+        stable_pairs,
+        BTreeSet::from([
+            ("wave", "pcm_integer"),
+            ("wave", "pcm_float"),
+            ("flac", "flac"),
+            ("aiff", "pcm_integer"),
+        ])
+    );
+}
+
+#[test]
+fn stable_catalog_identifiers_match_the_domain_enum_serialization() {
+    let container_ids: BTreeSet<String> = [
+        ContainerFormat::Wave,
+        ContainerFormat::Flac,
+        ContainerFormat::Aiff,
+    ]
+    .iter()
+    .map(|value| {
+        serde_json::to_value(value)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned()
+    })
+    .collect();
+    let codec_ids: BTreeSet<String> = [
+        SourceCodec::PcmInteger,
+        SourceCodec::PcmFloat,
+        SourceCodec::Flac,
+    ]
+    .iter()
+    .map(|value| {
+        serde_json::to_value(value)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned()
+    })
+    .collect();
+    for route in NATIVE_CAPABILITY_CATALOG
+        .iter()
+        .filter(|route| route.status == CapabilityStatus::Stable)
+    {
+        assert!(
+            container_ids.contains(route.container),
+            "stable container id {} must match a domain enum identifier",
+            route.container
+        );
+        assert!(
+            codec_ids.contains(route.codec),
+            "stable codec id {} must match a domain enum identifier",
+            route.codec
+        );
+    }
 }
 
 #[test]
