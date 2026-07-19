@@ -70,6 +70,7 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     let stderr = stderr(&output);
     assert!(stdout.starts_with("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n"));
     assert!(stdout.contains("PCM: 44100 Hz, 2 channels, 441 frames"));
+    assert!(stdout.contains("Duration: 0:00"));
     assert!(stdout.contains("Track aggregate: DR"));
     assert!(stdout.contains("Report levels: peak "));
     assert!(stdout.contains(", RMS "));

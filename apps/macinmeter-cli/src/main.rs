@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod render;
+
 use clap::{Parser, Subcommand, ValueEnum};
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, BatchItemOutcome, BatchReport,
     BatchRequest, BatchRunner, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode,
     ExecutionControl, ProgressSink, WireEnvelope,
 };
+use render::{format_dbfs, format_duration_token};
 use std::{
     fs::OpenOptions,
     io::{self, Write},
@@ -204,10 +207,11 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     output.push_str("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n");
     output.push_str(&format!("Source: {}\n", report.source.display_path));
     output.push_str(&format!(
-        "PCM: {} Hz, {} channels, {} frames\n\n",
+        "PCM: {} Hz, {} channels, {} frames\nDuration: {}\n\n",
         report.pcm.spec.sample_rate.get(),
         report.pcm.spec.channels.get(),
-        report.analysis.frames_seen
+        report.analysis.frames_seen,
+        format_duration_token(report.analysis.report.duration)?
     ));
 
     for channel in &report.analysis.channels {
@@ -249,24 +253,6 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
         output.push_str("\nTrack aggregate: unavailable\n");
     }
     Ok(output)
-}
-
-fn format_dbfs(value: Option<macinmeter::FiniteF32>) -> String {
-    match value {
-        None => "-inf".to_string(),
-        Some(value) => {
-            let mut dbfs = value.get();
-            if dbfs > -0.01 && dbfs < 0.01 {
-                let rounded_centi_db = (dbfs * 100.0).round();
-                dbfs = if rounded_centi_db == 0.0 {
-                    0.0
-                } else {
-                    rounded_centi_db / 100.0
-                };
-            }
-            format!("{dbfs:.2}")
-        }
-    }
 }
 
 fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
@@ -365,23 +351,5 @@ fn error_code_name(code: ErrorCode) -> &'static str {
         ErrorCode::OutputFailed => "output_failed",
         ErrorCode::Cancelled => "cancelled",
         ErrorCode::Internal => "internal",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::format_dbfs;
-    use macinmeter::FiniteF32;
-
-    #[test]
-    fn dbfs_formatter_applies_reference_centi_rounding_and_normalizes_zero() {
-        for value in [0.0, -0.0, 0.004, -0.004] {
-            assert_eq!(format_dbfs(Some(FiniteF32::new(value).unwrap())), "0.00");
-        }
-        assert_eq!(format_dbfs(Some(FiniteF32::new(0.005).unwrap())), "0.01");
-        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.005).unwrap())), "-0.01");
-        assert_eq!(format_dbfs(Some(FiniteF32::new(0.01).unwrap())), "0.01");
-        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.01).unwrap())), "-0.01");
-        assert_eq!(format_dbfs(None), "-inf");
     }
 }

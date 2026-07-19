@@ -624,6 +624,49 @@ mod tests {
     }
 
     #[test]
+    fn histogram_clamp_regression_covers_observed_boundary_vectors() {
+        // Hermetic product regressions copied from
+        // OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719.
+        let cases = [
+            (-101.0, 0),
+            (-100.0, 0),
+            (-99.0, 100),
+            (-1.0, 9_900),
+            (0.0, 10_000),
+            (1.0, 10_000),
+        ];
+
+        for (rms_db, expected_bin) in cases {
+            let rms = 10.0_f64.powf(rms_db / 20.0);
+            assert_eq!(
+                rms_histogram_bin(rms),
+                expected_bin,
+                "{rms_db} dB direct mapping"
+            );
+
+            let sample = rms * std::f64::consts::FRAC_1_SQRT_2;
+            let mut channel = ChannelAccumulator::try_new().unwrap();
+            channel.add_sample(sample);
+            channel.add_sample(-sample);
+            channel.finalize_window(2);
+
+            let nonzero_bins = channel
+                .histogram
+                .iter()
+                .copied()
+                .enumerate()
+                .filter(|(_, count)| *count != 0)
+                .collect::<Vec<_>>();
+            assert_eq!(channel.valid_windows, 1, "{rms_db} dB window count");
+            assert_eq!(
+                nonzero_bins,
+                vec![(expected_bin, 1)],
+                "{rms_db} dB accumulated mapping"
+            );
+        }
+    }
+
+    #[test]
     fn strict_quantized_keys_preserve_first_arrival_for_ties() {
         let low = 10.0_f64.powf(-2.0035 / 20.0);
         let high = 10.0_f64.powf(-1.9965 / 20.0);

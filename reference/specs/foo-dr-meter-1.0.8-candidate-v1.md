@@ -551,11 +551,16 @@ MacinMeter 现在把 report metrics 与 DR 计算诊断分开：
   各平方提升到 binary64 求和、除以声道数并开方；
 - track primary peak 取每声道 public-f32 primary peak 的最大值；
 - `DecodedDuration` 保存精确的 `decodedFrames` 与实际 PCM `sampleRate` 数对，
-  不把舍入后的秒数当作事实；conformance adapter 只在比较 reference 文本时按
-  上述固定 renderer 派生 token；
+  不把舍入后的秒数当作事实；CLI human renderer 与 conformance adapter 只在
+  展示或比较 reference 文本时按上述固定 renderer 派生 token；
 - DR 状态机诊断使用 `loudWindowRms`、`drSelectedPeak`、`drPrimaryPeak` 和
   可空的 `drSecondaryPeak`，不再用容易与 report primary peak 混淆的
   `selectedPeak` 字段。
+
+`OBS-boundary` 的 24 个 duration 半秒/进位向量与 6 个 histogram clamp 向量已
+硬编码为对应产品路径的确定性 Rust 单元测试。测试不读取 observation 文件，也
+不调用 Windows worker；Windows 动态证据因而成为本地 renderer/histogram
+重构必须通过的回归门禁。
 
 公开 report/album 数值由经过验证的 `FiniteF32`/`FiniteF64` wrapper 承载；
 `AnalyzerSession::finish` 为 consuming、fallible API，结算时的数值或资源失败
