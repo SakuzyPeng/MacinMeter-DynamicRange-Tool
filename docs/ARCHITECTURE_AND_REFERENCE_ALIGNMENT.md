@@ -1,6 +1,7 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，M1：`DONE`；foo_dr_meter 1.0.8 Candidate V1
+> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DOING`；
+> foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
 > overall RMS 39/39、channel RMS 62/62、duration 39/39），
@@ -19,6 +20,8 @@
 > M0 决策记录：[ADR-0001：以 0.2.0 重建可信主干](adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
 >
 > M1 范围决策：[ADR-0002：限定 M1 的参考数值契约](adr/0002-m1-reference-numeric-scope.md)
+>
+> M2 范围决策：[ADR-0003：M2 原生解码面与工程契约加固](adr/0003-m2-native-decoder-contract-hardening.md)
 
 ## 1. 文档目的
 
@@ -193,7 +196,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
 | TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core、38 项 accepted numeric-boundary 及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
-| TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
+| TEST-004 | TODO | 建立 malformed corpus 与手动 fuzz | 每例独立 timeout；发现的问题最小化后进入本地回归 corpus |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
 | CI-001 | DONE | 缩减为 opt-in workspace 验证 | 单手动 Ubuntu job，不再使用旧 path filter/release |
 | CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
@@ -476,30 +479,72 @@ M1 的固定目标、输入域、证据与非目标由
 
 ### M2：可信主干扩展
 
-- 将剩余稳定 codec/backend 迁移到 M0 建立的共同 `PcmSource` 和 PCM 契约；
-- 扩充 chunk、声道、scalar/SIMD 和异常输入工程不变量；
-- 根据 reference 证据校正 Candidate 算法，不用 legacy snapshot 反向定义正确性；
-- 如仍有产品需求，将 EdgeTrimmer 重写为独立、显式 preprocessing stage。
+状态：`DOING`。
+
+M2 不以增加格式数量为完成标准，而是先加固当前可信主干。具体边界与实施顺序见
+[ADR-0003](adr/0003-m2-native-decoder-contract-hardening.md)：
+
+- 让 `PcmBlock` 保留构造时使用的声道数，并在 application 边界拒绝
+  block/spec channel geometry 不一致；
+- 固定 `MAX_ANALYSIS_CHANNELS = 64`：codec 在创建 decoder 前以
+  `UnsupportedFormat / Probe` 拒绝超限源，直接 analyzer API 以
+  `ResourceExhausted / Analysis` 拒绝超限 session；
+- 在 codec crate 建立可复用的 `PcmSource` contract matrix，并在
+  application、CLI、Tauri 分别保留各自层级的集成测试；
+- 每条 route 覆盖自身可稳定构造的损坏输入；共享 source 实现通过独立、
+  可注入故障的 sticky terminal-state harness；
+- 补齐当前已声明 WAV/AIFF integer PCM 位深与 FLAC 代表路径的测试证据；
+- 扩充 bit-exact chunk、声道 lane、排列和失败事务性工程不变量；
+- 建立固定 malformed corpus 与独立手动 fuzz 入口；
+- 审计 report/progress 裸浮点与反序列化入口，收紧 domain 有效性边界；
+- 在首次新增 route 前建立单一 Rust capability catalog；
+- 只有通过共同契约、跨 adapter 和文档同步验收的原生 Symphonia route 才能
+  标为 stable。
+
+Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例或实现转写缺陷，才
+按 ADR-0002 重新打开。只有规格语义变化提升 profile version，修复既有规格的
+实现错误不制造新 profile。
+
+第二 backend、Opus/FFmpeg 与全局资源预算属于 M3；benchmark、是否启用文件级
+并发、SIMD 和其他性能优化属于 M6。EdgeTrimmer 和其他 preprocessing 没有需求
+时不实施，有需求时另立独立 ADR。
 
 出口条件：
 
-- 所有正式声明支持的 backend 满足共同契约；
-- chunk、声道和优化路径不影响 Candidate 结果；
-- 新能力不绕过 M0 已建立的 application 和 wire 边界。
+- application decode 路径的 block/spec channel geometry mismatch 不可能静默
+  进入 analyzer；
+- 超过 64 声道的媒体在 decoder creation 前返回
+  `UnsupportedFormat / Probe`，直接 session API 返回
+  `ResourceExhausted / Analysis`；
+- 当前所有正式 route 满足共同 `PcmSource` contract matrix 及其已声明位深矩阵，
+  当前 source 实现另行满足 sticky terminal-state harness；
+- 合法 chunk 切分、lane 隔离和声道映射满足完整结果 raw-bit 工程不变量；
+- 固定 malformed corpus 逐例在独立 timeout 下不产生 panic、超时或 partial
+  success；资源限制按平台实际能力记录，不外推为全部字节输入的证明；
+- 新能力不绕过 M0 建立的 application/wire 边界，支持矩阵不在 Rust、GUI 与
+  文档之间漂移；
+- 单一 Rust capability catalog 驱动 discovery、application query 与 GUI
+  picker；
+- M1 派生出的普通产品 numeric boundary/regression tests 保持通过；历史
+  observation/conformance artifact 不要求日常重跑。
 
-### M3：解码与应用层
+### M3：多 backend 与资源编排
 
-- 如多 backend 的实际需求成立，引入显式 `DecodePlan` 与 backend registry；
-- 加固 Symphonia、Opus 和 FFmpeg 生命周期；
-- 建立请求级取消和全局资源预算；
-- CLI/Tauri 只依赖 application 层；
-- 收紧 Opus、benchmark 和 GUI 依赖。
+- 只有出现明确的外部或多 backend 产品需求时，才引入显式 `DecodePlan` 与
+  backend registry；
+- 对实际选中的外部 decoder 建立完整进程 supervisor 契约，包括启动、取消、
+  timeout、stderr、退出状态、回收和失败传播；Opus/FFmpeg 只是候选，不是承诺；
+- 在 application 层建立统一 CPU、内存和任务预算及调度接口，M3 产品执行仍保持
+  串行；如果 M6 后续由 profile 证明需要并发，唯一允许的轴是 application
+  文件级并发；
+- 保持 M0 已完成的请求级取消、job 隔离以及 CLI/Tauri 薄 adapter 边界；
+- capability catalog 必须反映 backend 的编译时和运行时真实可用性。
 
 出口条件：
 
-- 所有 backend 满足共同契约测试；
+- 所有实际启用的 backend 满足相同的 `PcmSource` 语义和跨层验收；
 - 外部进程失败不会被视为正常 EOF；
-- GUI 请求互不干扰；
+- 所有 backend 和任务服从统一资源预算，取消和失败互不污染；
 - 支持格式列表反映运行时真实能力。
 
 ### M4：参考兼容声明收口
@@ -521,7 +566,7 @@ M1 的固定目标、输入域、证据与非目标由
 
 - 满足第 6.5 节全部标准；
 - 不再存在“已知有偏但归因不明”的结果族；
-- 参考 profile 可独立于 decoder、chunk 和 SIMD 路径验证。
+- 参考 profile 可独立于 decoder、chunk 和任何实际存在的可选执行路径验证。
 
 ### M5：产品与仓库收敛
 
@@ -535,7 +580,8 @@ M1 的固定目标、输入域、证据与非目标由
 
 - 删除未实现 AVX/AVX2 的理论加速报告；
 - 使用可复现 benchmark 重新 profile；
-- 决定是否恢复包级并行；
+- 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
+  除非出现新的必要性证据，否则维持删除状态；
 - 只优化已确认瓶颈；
 - 性能路径必须通过与标量参考路径的差分测试。
 
@@ -551,13 +597,20 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 6. 迁移 Tauri；
 7. 删除 legacy 生产路径。
 
-后续建议按证据和能力独立提交：
+M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增加格式数量作为进度：
 
-8. `test: add reference observations and conformance harness`
-9. `feat: add one evidence-backed backend behind the PcmSource contract`
-10. `feat: implement and verify the reference plugin profile`
-11. `chore: restore reproducible multi-platform CI and release artifacts`
-12. `perf: re-profile and selectively restore proven optimizations`
+8. `fix: bind PCM blocks to their channel geometry`
+9. `fix: enforce analyzer session resource limits`
+10. `test: establish the shared PcmSource contract matrix`
+11. `test: close the declared native PCM matrix`
+12. `test: expand bit-exact analyzer invariants`
+13. `refactor: enforce valid domain result construction`
+14. `test: add malformed media regression corpus`
+15. `refactor: centralize native codec capabilities`
+16. `feat: graduate evidence-backed native routes`（只有实际通过准入时）
+
+多 backend/application 资源预算继续属于 M3；文件级并发是否启用与其他可复现
+性能工程继续属于 M6。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -597,7 +650,7 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 | 默认并发 | M0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
 | 公共 API | 0.2.0 重置 Rust API、CLI、JSON 和 GUI IPC；不保留 0.1.x 兼容层 |
-| 发行 CPU | portable baseline + 函数级运行时 SIMD |
+| 发行 CPU | portable baseline；任何函数级加速由 M6 profiling 与差分证据决定 |
 | 性能判断 | 只接受可复现实测，不接受硬件能力推导的理论倍数 |
 | 重构方式 | 小步纵向迁移；生产切换后立即删除旧路径 |
 

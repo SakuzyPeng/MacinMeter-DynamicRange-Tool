@@ -6,7 +6,8 @@ This repository is a virtual Cargo workspace targeting version 0.2.0:
 
 - `crates/macinmeter-domain` — valid domain types, reports, and stable errors
 - `crates/macinmeter-analysis` — the sole `FooDrMeter108CandidateV1` streaming analyzer
-- `crates/macinmeter-codecs` — strict native WAV/FLAC/AIFF PCM sources
+- `crates/macinmeter-codecs` — strict in-process PCM sources; WAV/FLAC/AIFF
+  are currently the only stable routes
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
 - `apps/macinmeter-cli` — CLI adapter and renderers
 - `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`
@@ -17,17 +18,21 @@ Dependencies flow from adapters through `macinmeter` to `analysis`/`codecs`,
 which both depend on `domain`. Do not introduce frontend, filesystem, or codec
 dependencies into lower layers.
 
-## M0 constraints
+## Trusted trunk and M2 constraints
 
 - Every first-party Rust crate uses `#![forbid(unsafe_code)]`.
 - Production analysis has one `AnalyzerSession`; do not add a compatibility
   engine or legacy profile.
 - Valid PCM blocks and the analyzer boundary use finite interleaved `f64`;
   source float64 samples must not be narrowed before analysis.
-- M0 decoding is serial and accepts only WAV integer/float PCM, FLAC, and AIFF
-  integer PCM by content.
-- Do not add FFmpeg, DSD, Songbird, Tokio/Rayon scheduling, SIMD, trimming, or
-  silence preprocessing to M0.
+- Stable product analysis accepts at most 64 channels. Preserve broader source
+  metadata types, but reject over-limit media before decoder creation and
+  over-limit direct sessions before allocation.
+- Decoding remains serial. WAV integer/float PCM, FLAC, and AIFF integer PCM
+  remain the only stable routes until another in-process Symphonia route
+  satisfies ADR-0003's capability graduation contract.
+- M2 does not add a second backend, FFmpeg, DSD, Songbird/Opus, Tokio/Rayon
+  scheduling, SIMD, trimming, or silence preprocessing.
 - Results are always `FooDrMeter108CandidateV1 / Unverified`; never claim
   reference parity.
 - Extensions are discovery hints only. Decoder errors must not become EOF or
@@ -49,7 +54,7 @@ npm run build
 npm run tauri dev
 ```
 
-Remote CI is manual-only during M0. Do not trigger or wait for it as part of
+Remote CI remains manual-only during M2. Do not trigger or wait for it as part of
 ordinary development.
 
 ## Style and tests
@@ -61,8 +66,12 @@ ordinary development.
 - Algorithm changes require chunk-boundary, window-boundary, multichannel, and
   finite-JSON coverage plus an update to
   `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`.
-- Codec claims require content-probe, strict-error, frame-count, finite-sample,
-  and sticky-EOF contract tests.
+- Codec claims require the codec-level ADR-0003 contract matrix: content probe,
+  immutable stream info, block/spec geometry, sticky EOF, frame-count/progress,
+  route-specific malformed inputs, and a finite normalization oracle. Each
+  concrete `PcmSource` implementation separately requires a deterministic
+  fault-injection test for sticky terminal errors. Application and adapters
+  require separate integration coverage at their own boundaries.
 - CLI changes require black-box stdout/stderr, JSON, output-file, and exit-code
   tests.
 
