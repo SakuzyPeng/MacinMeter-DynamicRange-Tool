@@ -30,6 +30,14 @@ use symphonia::core::{
 };
 
 pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
+    let (source, reader) = open_source(path)?;
+    Ok(OpenedAudio {
+        source,
+        reader: Box::new(reader),
+    })
+}
+
+fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
     let aiff_info = if signature == ContainerSignature::Aiff {
@@ -119,8 +127,9 @@ pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
         pcm: pcm.clone(),
         channels,
         decoded_frames: 0,
-        eof: false,
-        terminal_error: None,
+        terminal: TerminalState::Active,
+        #[cfg(test)]
+        injected_read_error: None,
         diagnostics: DecodeDiagnostics {
             backend: BACKEND.to_owned(),
             decoded_frames: 0,
@@ -128,13 +137,31 @@ pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
         },
     };
 
-    Ok(OpenedAudio {
-        source,
-        reader: Box::new(reader),
-    })
+    Ok((source, reader))
 }
 
-struct SymphoniaPcmSource {
+#[derive(Debug, Clone)]
+enum TerminalState {
+    Active,
+    Eof,
+    Failed(AnalysisError),
+}
+
+impl TerminalState {
+    fn replay(&self) -> Option<Result<ReadOutcome, AnalysisError>> {
+        match self {
+            Self::Active => None,
+            Self::Eof => Some(Ok(ReadOutcome::Eof)),
+            Self::Failed(error) => Some(Err(error.clone())),
+        }
+    }
+
+    const fn is_eof(&self) -> bool {
+        matches!(self, Self::Eof)
+    }
+}
+
+pub(crate) struct SymphoniaPcmSource {
     path: PathBuf,
     format: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,
@@ -142,14 +169,15 @@ struct SymphoniaPcmSource {
     pcm: PcmStreamInfo,
     channels: ChannelCount,
     decoded_frames: u64,
-    eof: bool,
-    terminal_error: Option<AnalysisError>,
+    terminal: TerminalState,
+    #[cfg(test)]
+    injected_read_error: Option<AnalysisError>,
     diagnostics: DecodeDiagnostics,
 }
 
 impl SymphoniaPcmSource {
     fn fail<T>(&mut self, error: AnalysisError) -> Result<T, AnalysisError> {
-        self.terminal_error = Some(error.clone());
+        self.terminal = TerminalState::Failed(error.clone());
         Err(error)
     }
 
@@ -182,7 +210,7 @@ impl SymphoniaPcmSource {
             ));
         }
 
-        self.eof = true;
+        self.terminal = TerminalState::Eof;
         Ok(ReadOutcome::Eof)
     }
 
@@ -210,6 +238,27 @@ impl SymphoniaPcmSource {
             )),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn inject_error_on_next_read(&mut self, error: AnalysisError) {
+        assert!(
+            matches!(self.terminal, TerminalState::Active),
+            "fault injection requires an active source"
+        );
+        assert!(
+            self.injected_read_error.replace(error).is_none(),
+            "only one pending read error may be injected"
+        );
+    }
+
+    #[cfg(test)]
+    pub(crate) fn override_expected_frames(&mut self, expected_frames: Option<u64>) {
+        assert!(
+            matches!(self.terminal, TerminalState::Active),
+            "expected-frame fault injection requires an active source"
+        );
+        self.pcm.expected_frames = expected_frames;
+    }
 }
 
 impl PcmSource for SymphoniaPcmSource {
@@ -218,11 +267,13 @@ impl PcmSource for SymphoniaPcmSource {
     }
 
     fn read_block(&mut self) -> Result<ReadOutcome, AnalysisError> {
-        if self.eof {
-            return Ok(ReadOutcome::Eof);
+        if let Some(outcome) = self.terminal.replay() {
+            return outcome;
         }
-        if let Some(error) = &self.terminal_error {
-            return Err(error.clone());
+
+        #[cfg(test)]
+        if let Some(error) = self.injected_read_error.take() {
+            return self.fail(error);
         }
 
         loop {
@@ -302,8 +353,6 @@ impl PcmSource for SymphoniaPcmSource {
             };
 
             let new_total = self.checked_frame_total(&block)?;
-            self.decoded_frames = new_total;
-            self.diagnostics.decoded_frames = new_total;
             if let Some(expected) = self.pcm.expected_frames
                 && new_total > expected
             {
@@ -319,15 +368,26 @@ impl PcmSource for SymphoniaPcmSource {
                     None,
                 ));
             }
+            self.decoded_frames = new_total;
+            self.diagnostics.decoded_frames = new_total;
             return Ok(ReadOutcome::Data(block));
         }
     }
 
     fn progress(&self) -> DecodeProgress {
-        DecodeProgress::new(self.decoded_frames, self.pcm.expected_frames, self.eof)
+        DecodeProgress::new(
+            self.decoded_frames,
+            self.pcm.expected_frames,
+            self.terminal.is_eof(),
+        )
     }
 
     fn diagnostics(&self) -> &DecodeDiagnostics {
         &self.diagnostics
     }
+}
+
+#[cfg(test)]
+pub(crate) fn open_test_source(path: &Path) -> Result<SymphoniaPcmSource, AnalysisError> {
+    open_source(path).map(|(_, reader)| reader)
 }

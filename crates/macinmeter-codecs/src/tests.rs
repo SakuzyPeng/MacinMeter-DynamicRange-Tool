@@ -1,7 +1,7 @@
-use crate::{DecoderFactory, ReadOutcome, SUPPORTED_EXTENSIONS};
+use crate::{DecoderFactory, PcmSource, ReadOutcome, SUPPORTED_EXTENSIONS};
 use macinmeter_domain::{
-    AnalysisError, AnalysisStage, ChannelCount, ContainerFormat, ErrorCode, MAX_ANALYSIS_CHANNELS,
-    PcmBlock, SourceCodec,
+    AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, ErrorCode,
+    MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
 };
 use std::{
     fs,
@@ -41,6 +41,294 @@ fn assert_block_geometry(block: &PcmBlock, expected_channels: ChannelCount) {
         block.samples().len(),
         block.frames() * block.channels().as_usize()
     );
+}
+
+struct PcmSourceContractCase {
+    name: &'static str,
+    wrong_extension: &'static str,
+    bytes: Vec<u8>,
+    container: ContainerFormat,
+    codec: SourceCodec,
+    sample_rate: u32,
+    channels: u16,
+    bits_per_sample: u32,
+    expected_frames: u64,
+    expected_samples: Vec<f64>,
+    minimum_data_blocks: usize,
+}
+
+fn assert_pcm_source_contract(case: PcmSourceContractCase) {
+    let file = TestFile::new(case.wrong_extension, &case.bytes);
+    let mut opened = DecoderFactory::new()
+        .open(file.path())
+        .unwrap_or_else(|error| panic!("{} failed to open: {error}", case.name));
+    let display_path = file.path().display().to_string();
+
+    assert_eq!(
+        opened.source.display_path, display_path,
+        "{} source path",
+        case.name
+    );
+    assert_eq!(
+        opened.source.container, case.container,
+        "{} container",
+        case.name
+    );
+    assert_eq!(opened.source.codec, case.codec, "{} codec", case.name);
+    assert_eq!(
+        opened.source.sample_rate.get(),
+        case.sample_rate,
+        "{} source sample rate",
+        case.name
+    );
+    assert_eq!(
+        opened.source.channels.get(),
+        case.channels,
+        "{} source channels",
+        case.name
+    );
+    assert_eq!(
+        opened.source.bits_per_sample,
+        Some(case.bits_per_sample),
+        "{} source bit depth",
+        case.name
+    );
+    assert_eq!(
+        opened.source.expected_frames,
+        Some(case.expected_frames),
+        "{} source frame count",
+        case.name
+    );
+
+    let immutable_info = opened.reader.stream_info().clone();
+    assert_eq!(
+        immutable_info.spec.sample_rate, opened.source.sample_rate,
+        "{} PCM/source sample-rate agreement",
+        case.name
+    );
+    assert_eq!(
+        immutable_info.spec.channels, opened.source.channels,
+        "{} PCM/source channel agreement",
+        case.name
+    );
+    assert_eq!(
+        immutable_info.spec.channel_layout,
+        ChannelLayout::Unknown,
+        "{} channel layout",
+        case.name
+    );
+    assert_eq!(
+        immutable_info.expected_frames, opened.source.expected_frames,
+        "{} PCM/source expected-frame agreement",
+        case.name
+    );
+
+    let initial_progress = opened.reader.progress();
+    assert_eq!(
+        initial_progress.decoded_frames, 0,
+        "{} initial decoded frames",
+        case.name
+    );
+    assert_eq!(
+        initial_progress.expected_frames,
+        Some(case.expected_frames),
+        "{} initial expected frames",
+        case.name
+    );
+    assert_eq!(
+        initial_progress.fraction,
+        Some(0.0),
+        "{} initial progress fraction",
+        case.name
+    );
+    assert!(!initial_progress.eof, "{} began at EOF", case.name);
+    let initial_diagnostics = opened.reader.diagnostics().clone();
+    assert_eq!(
+        initial_diagnostics.backend, "symphonia",
+        "{} diagnostics backend",
+        case.name
+    );
+    assert_eq!(
+        initial_diagnostics.decoded_frames, 0,
+        "{} initial diagnostic frame count",
+        case.name
+    );
+    assert!(
+        initial_diagnostics.warnings.is_empty(),
+        "{} began with decoder warnings",
+        case.name
+    );
+
+    let expected_channels = immutable_info.spec.channels;
+    let mut decoded_frames = 0_u64;
+    let mut data_blocks = 0_usize;
+    let mut samples = Vec::new();
+    while let ReadOutcome::Data(block) = opened
+        .reader
+        .read_block()
+        .unwrap_or_else(|error| panic!("{} decode failed: {error}", case.name))
+    {
+        data_blocks += 1;
+        assert_block_geometry(&block, expected_channels);
+        assert!(block.frames() > 0, "{} returned an empty block", case.name);
+        assert!(
+            block.samples().iter().all(|sample| sample.is_finite()),
+            "{} returned non-finite PCM",
+            case.name
+        );
+        let block_frames =
+            u64::try_from(block.frames()).expect("contract fixture frame count fits u64");
+        let previous_frames = decoded_frames;
+        decoded_frames = decoded_frames
+            .checked_add(block_frames)
+            .expect("contract fixture frame count does not overflow");
+        assert!(
+            decoded_frames > previous_frames,
+            "{} progress did not advance after Data",
+            case.name
+        );
+        samples.extend_from_slice(block.samples());
+
+        assert_eq!(
+            opened.reader.stream_info(),
+            &immutable_info,
+            "{} stream info changed after Data",
+            case.name
+        );
+        let progress = opened.reader.progress();
+        assert_eq!(
+            progress.decoded_frames, decoded_frames,
+            "{} progress disagrees with returned Data",
+            case.name
+        );
+        assert_eq!(
+            progress.expected_frames,
+            Some(case.expected_frames),
+            "{} progress expected frames changed",
+            case.name
+        );
+        let expected_fraction = decoded_frames as f64 / case.expected_frames as f64;
+        assert_eq!(
+            progress.fraction,
+            Some(expected_fraction),
+            "{} progress fraction",
+            case.name
+        );
+        assert!(
+            progress.fraction.is_some_and(f64::is_finite),
+            "{} progress fraction is non-finite",
+            case.name
+        );
+        assert!(
+            !progress.eof,
+            "{} marked EOF while returning Data",
+            case.name
+        );
+
+        let diagnostics = opened.reader.diagnostics();
+        assert_eq!(
+            diagnostics.backend, initial_diagnostics.backend,
+            "{} diagnostics backend changed",
+            case.name
+        );
+        assert_eq!(
+            diagnostics.decoded_frames, decoded_frames,
+            "{} diagnostics disagree with returned Data",
+            case.name
+        );
+        assert_eq!(
+            diagnostics.warnings, initial_diagnostics.warnings,
+            "{} produced unexpected warnings",
+            case.name
+        );
+    }
+
+    assert!(
+        data_blocks >= case.minimum_data_blocks,
+        "{} returned {data_blocks} Data blocks, expected at least {}",
+        case.name,
+        case.minimum_data_blocks
+    );
+    assert_eq!(
+        decoded_frames, case.expected_frames,
+        "{} cumulative frame count",
+        case.name
+    );
+    assert_eq!(
+        samples.len(),
+        usize::try_from(case.expected_frames).unwrap() * usize::from(case.channels),
+        "{} cumulative sample count",
+        case.name
+    );
+    let actual_bits: Vec<u64> = samples.iter().map(|sample| sample.to_bits()).collect();
+    let expected_bits: Vec<u64> = case
+        .expected_samples
+        .iter()
+        .map(|sample| sample.to_bits())
+        .collect();
+    assert_eq!(actual_bits, expected_bits, "{} normalized PCM", case.name);
+
+    assert_eq!(
+        opened.reader.stream_info(),
+        &immutable_info,
+        "{} stream info changed at EOF",
+        case.name
+    );
+    let terminal_progress = opened.reader.progress();
+    assert_eq!(terminal_progress.decoded_frames, case.expected_frames);
+    assert_eq!(
+        terminal_progress.expected_frames,
+        Some(case.expected_frames)
+    );
+    assert_eq!(terminal_progress.fraction, Some(1.0));
+    assert!(
+        terminal_progress.eof,
+        "{} EOF was not sticky state",
+        case.name
+    );
+    let terminal_diagnostics = opened.reader.diagnostics().clone();
+    assert_eq!(
+        terminal_diagnostics.backend, initial_diagnostics.backend,
+        "{} terminal diagnostics backend",
+        case.name
+    );
+    assert_eq!(
+        terminal_diagnostics.decoded_frames, case.expected_frames,
+        "{} terminal diagnostic frame count",
+        case.name
+    );
+    assert!(
+        terminal_diagnostics.warnings.is_empty(),
+        "{} successful decode ended with warnings",
+        case.name
+    );
+
+    for repeated_read in 1..=2 {
+        assert_eq!(
+            opened.reader.read_block().unwrap(),
+            ReadOutcome::Eof,
+            "{} repeated EOF read {repeated_read}",
+            case.name
+        );
+        assert_eq!(
+            opened.reader.stream_info(),
+            &immutable_info,
+            "{} stream info changed after repeated EOF",
+            case.name
+        );
+        assert_eq!(
+            opened.reader.progress(),
+            terminal_progress,
+            "{} progress changed after repeated EOF",
+            case.name
+        );
+        assert_eq!(
+            opened.reader.diagnostics(),
+            &terminal_diagnostics,
+            "{} diagnostics changed after repeated EOF",
+            case.name
+        );
+    }
 }
 
 fn assert_analysis_channel_limit_error(error: &AnalysisError, declared_channels: u16) {
@@ -104,42 +392,60 @@ fn rejects_negative_aiff_channel_count_as_malformed() {
 }
 
 #[test]
-fn decodes_pcm_wave_by_content_with_a_wrong_extension() {
-    let frames = [[i16::MIN, i16::MAX], [0, 16_384], [-16_384, 1_000]];
-    let file = TestFile::new("flac", &pcm16_wave(48_000, &frames));
-    let mut opened = DecoderFactory::new().open(file.path()).unwrap();
+fn stable_routes_pass_the_shared_pcm_source_contract() {
+    let wave_frames = multiblock_pcm16_wave_frames();
+    let wave_samples: Vec<i16> = wave_frames
+        .iter()
+        .flat_map(|frame| frame.iter().copied())
+        .collect();
 
-    assert_eq!(opened.source.container, ContainerFormat::Wave);
-    assert_eq!(opened.source.codec, SourceCodec::PcmInteger);
-    assert_eq!(opened.source.sample_rate.get(), 48_000);
-    assert_eq!(opened.source.channels.get(), 2);
-    assert_eq!(opened.source.bits_per_sample, Some(16));
-    assert_eq!(opened.source.expected_frames, Some(3));
-    assert_eq!(
-        opened.reader.stream_info().spec.sample_rate.get(),
-        opened.source.sample_rate.get()
-    );
-    assert_eq!(opened.reader.stream_info().expected_frames, Some(3));
-    assert_eq!(opened.reader.progress().decoded_frames, 0);
-    let expected_channels = opened.reader.stream_info().spec.channels;
+    let aiff_samples = [i16::MIN, -16_384, 0, 16_384, i16::MAX];
+    let flac_samples = [0_i16, 5_793, 8_192, 5_793, 0, -5_793, -8_192, -5_793];
+    let cases = [
+        PcmSourceContractCase {
+            name: "WAV integer PCM",
+            wrong_extension: "flac",
+            bytes: pcm16_wave(48_000, &wave_frames),
+            container: ContainerFormat::Wave,
+            codec: SourceCodec::PcmInteger,
+            sample_rate: 48_000,
+            channels: 2,
+            bits_per_sample: 16,
+            expected_frames: 2_305,
+            expected_samples: normalize_pcm16(&wave_samples),
+            minimum_data_blocks: 2,
+        },
+        PcmSourceContractCase {
+            name: "AIFF integer PCM",
+            wrong_extension: "wav",
+            bytes: pcm16_aiff(44_100, &aiff_samples),
+            container: ContainerFormat::Aiff,
+            codec: SourceCodec::PcmInteger,
+            sample_rate: 44_100,
+            channels: 1,
+            bits_per_sample: 16,
+            expected_frames: 5,
+            expected_samples: normalize_pcm16(&aiff_samples),
+            minimum_data_blocks: 1,
+        },
+        PcmSourceContractCase {
+            name: "FLAC",
+            wrong_extension: "aiff",
+            bytes: TINY_FLAC.to_vec(),
+            container: ContainerFormat::Flac,
+            codec: SourceCodec::Flac,
+            sample_rate: 8_000,
+            channels: 1,
+            bits_per_sample: 16,
+            expected_frames: 8,
+            expected_samples: normalize_pcm16(&flac_samples),
+            minimum_data_blocks: 1,
+        },
+    ];
 
-    let block = match opened.reader.read_block().unwrap() {
-        ReadOutcome::Data(block) => block,
-        ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
-    };
-    assert_block_geometry(&block, expected_channels);
-    assert_eq!(block.frames(), 3);
-    assert_eq!(block.samples().len(), 6);
-    assert!((block.samples()[0] + 1.0).abs() < 0.0001);
-    assert!(block.samples()[1] > 0.999);
-    assert_eq!(opened.reader.progress().decoded_frames, 3);
-    assert_eq!(opened.reader.diagnostics().decoded_frames, 3);
-
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
-    let progress = opened.reader.progress();
-    assert!(progress.eof);
-    assert_eq!(progress.fraction, Some(1.0));
+    for case in cases {
+        assert_pcm_source_contract(case);
+    }
 }
 
 #[test]
@@ -200,30 +506,6 @@ fn rejects_non_finite_float_pcm_as_a_sticky_decode_error() {
 }
 
 #[test]
-fn decodes_uncompressed_aiff() {
-    let samples = [i16::MIN, -16_384, 0, 16_384, i16::MAX];
-    let file = TestFile::new("aiff", &pcm16_aiff(44_100, &samples));
-    let mut opened = DecoderFactory::new().open(file.path()).unwrap();
-
-    assert_eq!(opened.source.container, ContainerFormat::Aiff);
-    assert_eq!(opened.source.codec, SourceCodec::PcmInteger);
-    assert_eq!(opened.source.sample_rate.get(), 44_100);
-    assert_eq!(opened.source.channels.get(), 1);
-    assert_eq!(opened.source.expected_frames, Some(5));
-    let expected_channels = opened.reader.stream_info().spec.channels;
-
-    let block = match opened.reader.read_block().unwrap() {
-        ReadOutcome::Data(block) => block,
-        ReadOutcome::Eof => panic!("generated AIFF unexpectedly contained no PCM"),
-    };
-    assert_block_geometry(&block, expected_channels);
-    assert_eq!(block.frames(), 5);
-    assert!((block.samples()[0] + 1.0).abs() < 0.0001);
-    assert!(block.samples()[4] > 0.999);
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
-}
-
-#[test]
 fn rejects_aiff_payload_that_disagrees_with_declared_complete_frames() {
     let mut bytes = pcm16_aiff(44_100, &[1, 2]);
     bytes[4..8].copy_from_slice(&52_u32.to_be_bytes());
@@ -237,26 +519,72 @@ fn rejects_aiff_payload_that_disagrees_with_declared_complete_frames() {
 }
 
 #[test]
-fn decodes_embedded_flac_and_verifies_its_frame_count() {
-    let file = TestFile::new("aiff", TINY_FLAC);
-    let mut opened = DecoderFactory::new().open(file.path()).unwrap();
+fn symphonia_terminal_error_is_sticky_and_freezes_observable_state() {
+    let frames = multiblock_pcm16_wave_frames();
+    let file = TestFile::new("wav", &pcm16_wave(48_000, &frames));
+    let mut reader = crate::symphonia_source::open_test_source(file.path()).unwrap();
 
-    assert_eq!(opened.source.container, ContainerFormat::Flac);
-    assert_eq!(opened.source.codec, SourceCodec::Flac);
-    assert_eq!(opened.source.sample_rate.get(), 8_000);
-    assert_eq!(opened.source.channels.get(), 1);
-    assert_eq!(opened.source.bits_per_sample, Some(16));
-    assert_eq!(opened.source.expected_frames, Some(8));
-    let expected_channels = opened.reader.stream_info().spec.channels;
-
-    let block = match opened.reader.read_block().unwrap() {
+    let first_block = match reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
-        ReadOutcome::Eof => panic!("embedded FLAC unexpectedly contained no PCM"),
+        ReadOutcome::Eof => panic!("multi-block fault fixture unexpectedly returned EOF"),
     };
-    assert_block_geometry(&block, expected_channels);
-    assert_eq!(block.frames(), 8);
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
-    assert_eq!(opened.reader.diagnostics().decoded_frames, 8);
+    assert!(
+        first_block.frames() < frames.len(),
+        "fault fixture must leave unread backend data"
+    );
+    let immutable_info = reader.stream_info().clone();
+    let frozen_progress = reader.progress();
+    let frozen_diagnostics = reader.diagnostics().clone();
+    assert!(!frozen_progress.eof);
+
+    let injected = AnalysisError::new(
+        ErrorCode::DecodeFailed,
+        AnalysisStage::Decode,
+        "deterministic injected decoder failure",
+    )
+    .with_display_path(file.path().display().to_string())
+    .with_backend("symphonia-test")
+    .with_details("fault=after_first_data")
+    .recoverable(true);
+    reader.inject_error_on_next_read(injected.clone());
+
+    assert_eq!(reader.read_block().unwrap_err(), injected);
+    for repeated_read in 1..=3 {
+        assert_eq!(
+            reader.read_block().unwrap_err(),
+            injected,
+            "terminal error changed on repeated read {repeated_read}"
+        );
+        assert_eq!(reader.stream_info(), &immutable_info);
+        assert_eq!(reader.progress(), frozen_progress);
+        assert_eq!(reader.diagnostics(), &frozen_diagnostics);
+    }
+    assert!(!reader.progress().eof);
+}
+
+#[test]
+fn rejected_overrun_block_is_not_committed_to_progress_or_diagnostics() {
+    let frames = [[1_i16, -1_i16], [2, -2], [3, -3]];
+    let file = TestFile::new("wav", &pcm16_wave(48_000, &frames));
+    let mut reader = crate::symphonia_source::open_test_source(file.path()).unwrap();
+    reader.override_expected_frames(Some(2));
+
+    let error = reader.read_block().unwrap_err();
+    assert_eq!(error.code, ErrorCode::DecodeFailed);
+    assert_eq!(error.stage, AnalysisStage::Decode);
+    assert!(error.message.contains("exceeds the expected frame count"));
+    let progress = reader.progress();
+    assert_eq!(progress.decoded_frames, 0);
+    assert_eq!(progress.expected_frames, Some(2));
+    assert_eq!(progress.fraction, Some(0.0));
+    assert!(!progress.eof);
+    let diagnostics = reader.diagnostics().clone();
+    assert_eq!(diagnostics.decoded_frames, 0);
+    assert_eq!(diagnostics.warnings.len(), 1);
+
+    assert_eq!(reader.read_block().unwrap_err(), error);
+    assert_eq!(reader.progress(), progress);
+    assert_eq!(reader.diagnostics(), &diagnostics);
 }
 
 #[test]
@@ -372,6 +700,25 @@ fn expect_open_error(path: &Path) -> AnalysisError {
         Ok(_) => panic!("generated invalid media unexpectedly opened"),
         Err(error) => error,
     }
+}
+
+fn normalize_pcm16(samples: &[i16]) -> Vec<f64> {
+    samples
+        .iter()
+        .map(|sample| f64::from(*sample) / 32_768.0)
+        .collect()
+}
+
+fn multiblock_pcm16_wave_frames() -> Vec<[i16; 2]> {
+    let mut frames = Vec::with_capacity(2_305);
+    for index in 0..2_305 {
+        let sample = i16::try_from(index % 2_001).unwrap() - 1_000;
+        frames.push([sample, -sample]);
+    }
+    frames[0] = [i16::MIN, i16::MAX];
+    frames[1] = [0, 16_384];
+    frames[2] = [-16_384, 1_000];
+    frames
 }
 
 fn pcm16_wave(sample_rate: u32, frames: &[[i16; 2]]) -> Vec<u8> {

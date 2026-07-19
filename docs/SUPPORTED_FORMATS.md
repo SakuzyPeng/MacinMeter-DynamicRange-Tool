@@ -37,9 +37,12 @@ The following routes are not built into 0.2.0:
 - packet-level or file-level parallel decoding.
 
 Recognized but unavailable content returns the stable
-`unsupported_format` error code. Malformed content within a supported format
-returns a probe or decode error; it is never converted to an empty or partial
-successful report.
+`unsupported_format` error code. Detectable malformed content within a
+supported format returns a probe or decode error; it is never converted to an
+empty or partial successful report. Physical EOF can only be checked against
+declared frame counts or codec integrity evidence: when an input omits both,
+the decoder does not claim that every frame-boundary tail truncation is
+detectable.
 
 ## Decoder contract
 
