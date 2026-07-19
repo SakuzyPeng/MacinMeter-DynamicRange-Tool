@@ -212,6 +212,20 @@ reference bit 结论仍只按各自证据范围使用。
 track aggregate 和 track report 都按原始声道顺序做浮点归约，因此不要求排列前后
 的 track-level raw bits 相同；只断言规格实际保证的关系。
 
+截至 2026-07-19，本切片已完成：
+
+- 穷尽解构 `AnalysisResult` 的 test-only projector 将所有浮点转为 raw bits，
+  并以 signed-zero 自测试证明它能发现普通 `PartialEq` 看不到的差异；
+- 私有 `SessionBits` 穷尽记录分析状态，`StorageShape` 记录所有持久容器的
+  长度和容量；二者都不进入 production API；
+- 全交叉矩阵覆盖声明的声道数、窗口长度和 chunk 方案，并补齐 lane 独立 mono
+  等价、局部扰动、可逆 PCM/layout 排列、错误后安全继续和定长存储；
+- 定向数值测试补齐窗口长度表、`N=6` loud-count floor、稀疏 histogram、正常
+  secondary peak、最终 `+0.0` clamp 和 public-f32 半值边界。
+
+这些测试只证明同一 test binary 内不同执行方式的工程等价，不构成
+foo_dr_meter DLL 的跨平台 bit parity 声明。
+
 ### 7. 收紧有限范围内的 domain 有效性边界
 
 M2 只收紧下列 production output 边界，不以一次封闭整个 report graph 为目标：

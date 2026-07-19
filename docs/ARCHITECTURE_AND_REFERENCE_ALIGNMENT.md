@@ -503,7 +503,12 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
   harness 验证 sticky error；失败 block 只有在完整校验通过后才提交帧计数；
 - application、CLI、Tauri 继续分别保留各自层级的集成测试；
 - 每条 route 继续覆盖自身可稳定构造的损坏输入；
-- 扩充 bit-exact chunk、声道 lane、排列和失败事务性工程不变量；
+- analyzer 已建立完整结果与私有 session 状态的 test-only raw-bit projector；
+  `1/2/3/6/8/16` 声道、全部声明窗口边界、五类 chunk 方案、独立 mono lane、
+  可逆声道/layout 排列、失败事务性和定长存储形状均形成确定性本地门禁；
+- Candidate 结算控制流中的平方下溢边界已转写为数值 DR `+0.0` 的
+  `Measured` 结果并参与 track 聚合；该修复同步 Candidate 规格与产品测试，不提升
+  参考兼容声明；
 - 建立固定 malformed corpus 与独立手动 fuzz 入口；
 - 审计 report/progress 裸浮点与反序列化入口，收紧 domain 有效性边界；
 - 在首次新增 route 前建立单一 Rust capability catalog；
@@ -612,7 +617,7 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 9. [x] `fix: enforce analyzer session resource limits`
 10. [x] `test: establish the shared PcmSource contract matrix`
 11. [x] `test: close the declared native PCM matrix`
-12. [ ] `test: expand bit-exact analyzer invariants`
+12. [x] `test: expand bit-exact analyzer invariants`
 13. [ ] `refactor: enforce valid domain result construction`
 14. [ ] `test: add malformed media regression corpus`
 15. [ ] `refactor: centralize native codec capabilities`

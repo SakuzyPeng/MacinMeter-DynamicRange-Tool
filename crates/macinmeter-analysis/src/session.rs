@@ -608,6 +608,9 @@ fn resource_error(message: impl Into<String>) -> AnalysisError {
 }
 
 #[cfg(test)]
+mod invariant_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -804,30 +807,5 @@ mod tests {
         );
         assert_eq!(report.primary_peak_linear.get(), 0.75);
         assert_eq!(report.duration.seconds(), 2.0);
-    }
-
-    #[test]
-    fn long_stream_does_not_grow_per_channel_storage() {
-        let stream = StreamSpec::new(1, 8, macinmeter_domain::ChannelLayout::Unknown).unwrap();
-        let mut session = candidate_session(stream);
-        let histogram_capacities: Vec<_> = session
-            .channels
-            .iter()
-            .map(|channel| channel.histogram.capacity())
-            .collect();
-        let chunk = vec![0.25; 8 * 997];
-
-        for _ in 0..2_000 {
-            session.push_interleaved(&chunk).unwrap();
-        }
-
-        assert_eq!(
-            session
-                .channels
-                .iter()
-                .map(|channel| channel.histogram.capacity())
-                .collect::<Vec<_>>(),
-            histogram_capacities
-        );
     }
 }

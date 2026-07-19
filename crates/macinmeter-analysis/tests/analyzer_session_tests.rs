@@ -74,7 +74,7 @@ fn analyze_mono(samples: Vec<f64>) -> macinmeter_domain::AnalysisResult {
 }
 
 #[test]
-fn records_the_complete_candidate_contract() {
+fn records_candidate_descriptor_parameters() {
     let stream = stream(44_100, 2, ChannelLayout::Unknown);
     let session = AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
 
@@ -111,6 +111,24 @@ fn records_the_complete_candidate_contract() {
     assert_eq!(parameters.silent_channel_dr_db, 0.0);
     assert!(parameters.includes_lfe_in_track_aggregate);
     assert_eq!(parameters.result_precision_bits, 32);
+}
+
+#[test]
+fn candidate_window_length_table_uses_the_recorded_binary64_coefficient() {
+    for (sample_rate, expected_frames) in [
+        (1, 3),
+        (8_000, 24_032),
+        (44_100, 132_480),
+        (48_000, 144_195),
+        (96_000, 288_391),
+    ] {
+        let session = AnalyzerSession::new(
+            stream(sample_rate, 1, ChannelLayout::KnownNoLfe),
+            AnalysisProfile::FooDrMeter108CandidateV1,
+        )
+        .unwrap();
+        assert_eq!(session.window_frames(), expected_frames, "{sample_rate} Hz");
+    }
 }
 
 #[test]
@@ -561,6 +579,62 @@ fn fixture_111_includes_the_complete_loud_boundary_bin() {
         ((10.0_f64.powf(-13.98 / 10.0) + 4.0 * 10.0_f64.powf(-20.0 / 10.0)) / 5.0).sqrt();
     assert!((channel.loud_window_rms - expected_loud_rms).abs() < 1e-15);
     assert_eq!(channel.rounded_dr, 12);
+}
+
+#[test]
+fn six_windows_use_floor_for_the_loud_target_count() {
+    let mut samples = shaped_window(3, 0.5, 0.6);
+    for _ in 0..5 {
+        append(&mut samples, &shaped_window(3, 0.25, 0.3));
+    }
+    let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [samples]);
+    let channel = measurement(&result, 0);
+    let bin_db = -100.0 + 9_398.0 * 0.01;
+    let expected = 10.0_f64.powf(bin_db / 10.0).sqrt();
+
+    assert_eq!(channel.valid_windows, 6);
+    assert_eq!(channel.loud_window_rms.to_bits(), expected.to_bits());
+}
+
+#[test]
+fn sparse_nonzero_histogram_uses_every_available_nonzero_bin() {
+    let mut samples = shaped_window(3, 0.5, 0.6);
+    samples.resize(samples.len() + 9 * 3, 0.0);
+    let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [samples]);
+    let channel = measurement(&result, 0);
+    let bin_db = -100.0 + 9_398.0 * 0.01;
+    let expected_loud = 10.0_f64.powf(bin_db / 10.0).sqrt();
+    let expected_overall = (0.25_f64 / 10.0).sqrt() as f32;
+
+    assert_eq!(channel.valid_windows, 10);
+    assert_eq!(channel.loud_window_rms.to_bits(), expected_loud.to_bits());
+    assert_eq!(
+        result.channels[0].report.overall_rms_linear.get().to_bits(),
+        expected_overall.to_bits()
+    );
+}
+
+#[test]
+fn two_positive_peak_candidates_select_the_secondary_without_fallback() {
+    let mut samples = shaped_window(3, 0.2, 0.24);
+    append(&mut samples, &shaped_window(3, 0.2, 0.22));
+    let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [samples]);
+    let channel = measurement(&result, 0);
+
+    assert_eq!(channel.dr_primary_peak.to_bits(), 0.24_f64.to_bits());
+    assert_eq!(channel.dr_secondary_peak, Some(0.22));
+    assert_eq!(channel.dr_selected_peak.to_bits(), 0.22_f64.to_bits());
+    assert!(channel.dr_db > 0.0);
+}
+
+#[test]
+fn negative_primary_dr_clamps_to_positive_zero_bits() {
+    let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![0.5; 6]]);
+    let channel = measurement(&result, 0);
+
+    assert!(channel.loud_window_rms > channel.dr_primary_peak);
+    assert_eq!(channel.dr_db.to_bits(), 0.0_f32.to_bits());
+    assert_eq!(channel.rounded_dr, 0);
 }
 
 fn peak_order_case(first_peak_db: f64, second_peak_db: f64) -> Vec<f64> {
