@@ -3,9 +3,9 @@
 
 This is the extended local verifier described by ADR-0003: every corpus case
 runs in its own subprocess with a wall-clock timeout, and — on platforms that
-support `resource.RLIMIT_AS` (Linux and other POSIX systems) — with an address
-space limit. On platforms without that interface (for example Windows) the
-memory limit is skipped and the report records that it was not enforced.
+reliably support `resource.RLIMIT_AS` for this use (currently Linux) — with an
+address space limit. On other platforms the memory limit is skipped and the
+report records that it was not enforced.
 
 Expectations:
 - the process must exit nonzero within the timeout;
@@ -32,6 +32,14 @@ except ImportError:  # pragma: no cover - non-POSIX platforms
     resource = None
 
 
+def supports_memory_limit() -> bool:
+    return (
+        sys.platform.startswith("linux")
+        and resource is not None
+        and hasattr(resource, "RLIMIT_AS")
+    )
+
+
 def preexec_with_memory_limit(limit_bytes: int):
     def apply() -> None:
         resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))
@@ -49,7 +57,7 @@ def run_case(
         return [f"{case['id']}: corpus bytes drifted from the manifest"]
 
     keywords: dict = {}
-    if memory_limit_bytes is not None and resource is not None:
+    if memory_limit_bytes is not None:
         keywords["preexec_fn"] = preexec_with_memory_limit(memory_limit_bytes)
     try:
         completed = subprocess.run(
@@ -104,7 +112,7 @@ def main() -> int:
         "--memory-limit-mib",
         type=int,
         default=2048,
-        help="per-case RLIMIT_AS in MiB where the platform supports it; 0 disables",
+        help="per-case Linux RLIMIT_AS in MiB; 0 disables",
     )
     arguments = parser.parse_args()
 
@@ -115,8 +123,10 @@ def main() -> int:
 
     memory_limit_bytes: int | None = None
     if arguments.memory_limit_mib > 0:
-        if resource is None:
-            print("memory limit NOT enforced: this platform lacks resource.RLIMIT_AS")
+        if not supports_memory_limit():
+            print(
+                "memory limit NOT enforced: RLIMIT_AS verification is enabled only on Linux"
+            )
         else:
             memory_limit_bytes = arguments.memory_limit_mib * 1024 * 1024
 

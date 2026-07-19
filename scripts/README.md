@@ -28,8 +28,8 @@ python3 scripts/verify-malformed-corpus.py               # per-case subprocess +
 ```
 
 The verifier needs a built CLI (`cargo build`). Every case runs in its own
-subprocess with a wall-clock timeout; POSIX platforms additionally apply
-`RLIMIT_AS`. See
+subprocess with a wall-clock timeout; Linux additionally applies `RLIMIT_AS`.
+Other platforms explicitly report timeout-only verification. See
 [`tests/fixtures/malformed-media-v1/README.md`](../tests/fixtures/malformed-media-v1/README.md)
 for the corpus contract and the hidden `malformed-dev` fuzz seam.
 

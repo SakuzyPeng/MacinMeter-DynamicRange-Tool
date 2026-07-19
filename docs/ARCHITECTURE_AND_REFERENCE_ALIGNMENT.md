@@ -196,7 +196,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
 | TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core、38 项 accepted numeric-boundary 及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
-| TEST-004 | TODO | 建立 malformed corpus 与手动 fuzz | 每例独立 timeout；发现的问题最小化后进入本地回归 corpus |
+| TEST-004 | DONE | 建立 malformed corpus 与手动 fuzz | 34-case 固定 corpus、隐藏 byte fuzz seam、逐例独立 timeout；发现的问题最小化后回灌本地 corpus |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
 | CI-001 | DONE | 缩减为 opt-in workspace 验证 | 单手动 Ubuntu job，不再使用旧 path filter/release |
 | CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
@@ -518,7 +518,8 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
   覆盖 WAV/AIFF chunk 结构、FLAC 包失败与跨容器输入，逐例登记预期错误码/
   阶段；WAV/AIFF parser 改为 `Read + Seek` 字节接缝，非默认 `malformed-dev`
   feature 提供隐藏 fuzz 入口；workspace 测试、逐 case 子进程 verifier（30s
-  timeout + POSIX `RLIMIT_AS`）与再生成审计三层验证；
+  timeout；Linux 加 `RLIMIT_AS`，其他平台明确为 timeout-only）与再生成审计
+  三层验证；
 - 单一 Rust capability catalog 已建立：`macinmeter-codecs` 静态 catalog 驱动
   discovery、application 只读 `capabilities()` 查询与 Tauri
   `get_capabilities`；前端删除手写 container/codec union，picker 由运行时

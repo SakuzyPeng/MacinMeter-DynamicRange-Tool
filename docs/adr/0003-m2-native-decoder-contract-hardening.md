@@ -304,9 +304,9 @@ fuzz/sanitizer 是独立的本地或手动任务：
   `dev::probe_container_bytes` fuzz 入口，默认产品 API 不变；
 - workspace 回归测试逐 case 校验字节身份、结构化失败、无 EOF/partial success
   与 decode 终态 sticky；`scripts/verify-malformed-corpus.py` 以逐 case 子进程
-  + 30s timeout 执行，POSIX 上施加 `RLIMIT_AS`（默认 2 GiB），无该接口平台
-  跳过并记录；`scripts/generate-malformed-media-v1.py --check` 审计提交字节与
-  确定性再生成一致。
+  + 30s timeout 执行，Linux 上施加 `RLIMIT_AS`（默认 2 GiB），其他平台明确
+  使用 timeout-only 并记录；`scripts/generate-malformed-media-v1.py --check`
+  审计提交字节与确定性再生成一致。
 
 ### 9. 新能力必须经过明确准入
 

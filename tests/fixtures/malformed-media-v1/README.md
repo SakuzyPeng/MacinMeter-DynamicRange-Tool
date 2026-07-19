@@ -18,7 +18,7 @@ xorshift64 seed 的 XOR），或确定性合成字节串；不含任何个人音
 | 层 | 入口 | 说明 |
 | --- | --- | --- |
 | workspace 测试 | `crates/macinmeter-codecs/tests/malformed_corpus.rs` | 进程内快速回归，校验字节身份与错误码/阶段 |
-| 扩展验证 | `python3 scripts/verify-malformed-corpus.py` | 每 case 独立子进程 + 30s timeout；POSIX 上加 `RLIMIT_AS`（默认 2 GiB），无该接口的平台（如 Windows）跳过内存限制并在输出中记录 |
+| 扩展验证 | `python3 scripts/verify-malformed-corpus.py` | 每 case 独立子进程 + 30s timeout；Linux 上加 `RLIMIT_AS`（默认 2 GiB），其他平台使用 timeout-only 并在输出中记录 |
 | 再生成审计 | `python3 scripts/generate-malformed-media-v1.py --check` | 确认提交字节与确定性再生成一致 |
 
 ## 字节接缝与 fuzz 入口
