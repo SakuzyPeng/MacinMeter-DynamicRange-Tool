@@ -2,8 +2,8 @@
 
 use macinmeter::{
     AnalysisEvent, AnalysisProfile, AnalyzeRequest, Analyzer, BatchItemOutcome, BatchRequest,
-    BatchRunner, BatchStatus, CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink,
-    WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
+    BatchRunner, BatchStatus, CancellationToken, ContainerFormat, ErrorCode, ExecutionControl,
+    NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
 };
 use serde_json::Value;
 use std::{
@@ -50,6 +50,52 @@ fn rust_api_analyzes_a_repository_wave_fixture() {
     );
     assert_eq!(report.diagnostics.decoded_frames, 441);
     assert!(report.diagnostics.warnings.is_empty());
+}
+
+#[test]
+fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
+    for (relative_path, container, codec, bits_per_sample, sample_rate, channels, frames) in [
+        (
+            "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+            ContainerFormat::Aiff,
+            SourceCodec::PcmInteger,
+            24,
+            44_100,
+            2,
+            4,
+        ),
+        (
+            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+            ContainerFormat::Flac,
+            SourceCodec::Flac,
+            16,
+            8_000,
+            2,
+            400,
+        ),
+    ] {
+        let path = fixture(relative_path);
+        let report = Analyzer::new()
+            .analyze_file(AnalyzeRequest::new(&path))
+            .unwrap_or_else(|error| panic!("{relative_path} should analyze: {error}"));
+
+        assert_eq!(report.source.display_path, path.display().to_string());
+        assert_eq!(report.source.container, container);
+        assert_eq!(report.source.codec, codec);
+        assert_eq!(report.source.bits_per_sample, Some(bits_per_sample));
+        assert_eq!(report.source.sample_rate.get(), sample_rate);
+        assert_eq!(report.source.channels.get(), channels);
+        assert_eq!(report.source.expected_frames, Some(frames));
+        assert_eq!(report.pcm.expected_frames, Some(frames));
+        assert_eq!(report.source.sample_rate, report.pcm.spec.sample_rate);
+        assert_eq!(report.source.channels, report.pcm.spec.channels);
+        assert_eq!(report.pcm.spec, report.analysis.stream);
+        assert_eq!(report.analysis.frames_seen, frames);
+        assert_eq!(report.analysis.channels.len(), usize::from(channels));
+        assert_eq!(report.diagnostics.backend, "symphonia");
+        assert_eq!(report.diagnostics.decoded_frames, frames);
+        assert!(report.diagnostics.warnings.is_empty());
+    }
 }
 
 #[test]

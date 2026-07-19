@@ -14,7 +14,7 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 
 0.2.0 有意只保留一小块可信能力：
 
-- WAV：8/16/24/32-bit 整数 PCM 与 IEEE 32/64-bit float
+- 经典 RIFF/WAVE：8/16/24/32-bit 整数 PCM 与 IEEE 32/64-bit float
 - FLAC
 - AIFF：8/16/24/32-bit 整数 PCM
 - 串行解码与串行批处理
@@ -23,9 +23,9 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 - 唯一的 `FooDrMeter108CandidateV1` profile
 - 结构化错误、取消、进度与带版本的 JSON
 
-输入按内容探测；扩展名只用于目录发现。AIFC、MP3、AAC、ALAC、Vorbis、Opus、
-FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于 M0，遇到时返回
-`unsupported_format`。
+输入按内容探测；扩展名只用于目录发现。WAVE_FORMAT_EXTENSIBLE、AIFC、MP3、
+AAC、ALAC、Vorbis、Opus、FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于
+M0，遇到时返回 `unsupported_format`。
 
 ## 构建与测试
 

@@ -3,7 +3,10 @@ use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, ErrorCode,
     MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
 };
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -43,6 +46,28 @@ fn assert_block_geometry(block: &PcmBlock, expected_channels: ChannelCount) {
     );
 }
 
+fn product_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/native-pcm-v1")
+        .join(name)
+}
+
+fn product_fixture_pcm_sha256(name: &str) -> String {
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(product_fixture_path("manifest.json"))
+            .expect("native PCM fixture manifest must exist"),
+    )
+    .expect("native PCM fixture manifest must be valid JSON");
+    manifest["fixtures"]
+        .as_array()
+        .expect("fixture manifest must contain an array")
+        .iter()
+        .find(|fixture| fixture["path"] == name)
+        .and_then(|fixture| fixture["normalizedInterleavedF64LeSha256"].as_str())
+        .unwrap_or_else(|| panic!("fixture manifest must record normalized PCM for {name}"))
+        .to_owned()
+}
+
 struct PcmSourceContractCase {
     name: &'static str,
     wrong_extension: &'static str,
@@ -54,6 +79,7 @@ struct PcmSourceContractCase {
     bits_per_sample: u32,
     expected_frames: u64,
     expected_samples: Vec<f64>,
+    normalized_pcm_sha256: String,
     minimum_data_blocks: usize,
 }
 
@@ -267,6 +293,16 @@ fn assert_pcm_source_contract(case: PcmSourceContractCase) {
         .map(|sample| sample.to_bits())
         .collect();
     assert_eq!(actual_bits, expected_bits, "{} normalized PCM", case.name);
+    let mut normalized_hasher = Sha256::new();
+    for sample in &samples {
+        normalized_hasher.update(sample.to_le_bytes());
+    }
+    assert_eq!(
+        format!("{:x}", normalized_hasher.finalize()),
+        case.normalized_pcm_sha256,
+        "{} normalized PCM manifest hash",
+        case.name
+    );
 
     assert_eq!(
         opened.reader.stream_info(),
@@ -353,6 +389,96 @@ fn extensions_are_discovery_only_and_exclude_aifc() {
 }
 
 #[test]
+fn product_fixture_manifest_matches_the_committed_native_corpus() {
+    let corpus = product_fixture_path("");
+    let manifest_path = corpus.join("manifest.json");
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(&manifest_path).expect("native PCM fixture manifest must exist"),
+    )
+    .expect("native PCM fixture manifest must be valid JSON");
+
+    assert_eq!(manifest["schemaVersion"], 1);
+    assert_eq!(manifest["corpusId"], "native-pcm-v1");
+    assert_eq!(
+        manifest["generator"]["path"],
+        "scripts/generate-native-pcm-v1.py"
+    );
+    let fixtures = manifest["fixtures"]
+        .as_array()
+        .expect("fixture manifest must contain an array");
+    assert_eq!(fixtures.len(), 11);
+
+    let mut referenced_files = BTreeSet::new();
+    for fixture in fixtures {
+        let relative = fixture["path"]
+            .as_str()
+            .expect("fixture path must be a string");
+        assert_eq!(
+            Path::new(relative).components().count(),
+            1,
+            "fixture paths must remain inside the corpus directory"
+        );
+        assert!(
+            referenced_files.insert(relative.to_owned()),
+            "fixture path {relative} is duplicated"
+        );
+        let bytes =
+            fs::read(corpus.join(relative)).expect("every manifest fixture must be committed");
+        assert_eq!(
+            u64::try_from(bytes.len()).unwrap(),
+            fixture["sizeBytes"]
+                .as_u64()
+                .expect("fixture size must be an unsigned integer"),
+            "fixture size drifted for {relative}"
+        );
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&bytes)),
+            fixture["sha256"]
+                .as_str()
+                .expect("fixture SHA-256 must be a string"),
+            "fixture bytes drifted for {relative}"
+        );
+        assert_eq!(fixture["provenance"]["kind"], "deterministically_generated");
+        assert_eq!(fixture["provenance"]["copyrightedAudio"], false);
+        assert_eq!(fixture["provenance"]["license"], "MIT");
+        assert!(
+            fixture["minimumDataBlocks"]
+                .as_u64()
+                .is_some_and(|blocks| blocks >= 1)
+        );
+        let pcm_hash = fixture["normalizedInterleavedF64LeSha256"]
+            .as_str()
+            .expect("normalized PCM SHA-256 must be recorded");
+        assert_eq!(pcm_hash.len(), 64);
+        assert!(pcm_hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
+
+    let committed_audio_files: BTreeSet<String> = fs::read_dir(&corpus)
+        .expect("native PCM corpus directory must exist")
+        .map(|entry| entry.expect("fixture directory entry must be readable"))
+        .filter_map(|entry| {
+            let path = entry.path();
+            let extension = path.extension()?.to_str()?;
+            matches!(extension, "wav" | "aiff" | "flac")
+                .then(|| path.file_name().unwrap().to_string_lossy().into_owned())
+        })
+        .collect();
+    assert_eq!(referenced_files, committed_audio_files);
+    assert_eq!(
+        manifest["derivedMutations"][0]["source"],
+        "flac-pcm-s16-stereo-multiblock.flac"
+    );
+    assert_eq!(
+        manifest["derivedMutations"][0]["operation"],
+        "xor the final byte with 0xff"
+    );
+    assert_eq!(
+        manifest["derivedMutations"][0]["expected"],
+        "sticky decode_failed; never EOF or a successful report"
+    );
+}
+
+#[test]
 fn shared_analysis_channel_limit_accepts_64_and_rejects_larger_geometries() {
     let path = Path::new("channel-limit.test");
     crate::error::validate_analysis_channel_count(path, MAX_ANALYSIS_CHANNELS).unwrap();
@@ -392,103 +518,88 @@ fn rejects_negative_aiff_channel_count_as_malformed() {
 }
 
 #[test]
-fn stable_routes_pass_the_shared_pcm_source_contract() {
-    let wave_frames = multiblock_pcm16_wave_frames();
-    let wave_samples: Vec<i16> = wave_frames
-        .iter()
-        .flat_map(|frame| frame.iter().copied())
-        .collect();
-
-    let aiff_samples = [i16::MIN, -16_384, 0, 16_384, i16::MAX];
-    let flac_samples = [0_i16, 5_793, 8_192, 5_793, 0, -5_793, -8_192, -5_793];
-    let cases = [
-        PcmSourceContractCase {
-            name: "WAV integer PCM",
-            wrong_extension: "flac",
-            bytes: pcm16_wave(48_000, &wave_frames),
+fn declared_native_matrix_passes_the_shared_pcm_source_contract() {
+    let mut cases = Vec::new();
+    for (bits, wave_name, aiff_name) in [
+        (8, "wav-pcm-u8-stereo.wav", "aiff-pcm-s8-stereo.aiff"),
+        (16, "wav-pcm-s16-stereo.wav", "aiff-pcm-s16-stereo.aiff"),
+        (24, "wav-pcm-s24-stereo.wav", "aiff-pcm-s24-stereo.aiff"),
+        (32, "wav-pcm-s32-stereo.wav", "aiff-pcm-s32-stereo.aiff"),
+    ] {
+        let expected_samples = normalize_integer_contract_samples(bits);
+        cases.push(PcmSourceContractCase {
+            name: wave_name,
+            wrong_extension: "aiff",
+            bytes: fs::read(product_fixture_path(wave_name))
+                .expect("declared WAV fixture must be committed"),
             container: ContainerFormat::Wave,
             codec: SourceCodec::PcmInteger,
             sample_rate: 48_000,
             channels: 2,
-            bits_per_sample: 16,
-            expected_frames: 2_305,
-            expected_samples: normalize_pcm16(&wave_samples),
-            minimum_data_blocks: 2,
-        },
-        PcmSourceContractCase {
-            name: "AIFF integer PCM",
+            bits_per_sample: bits,
+            expected_frames: 4,
+            expected_samples: expected_samples.clone(),
+            normalized_pcm_sha256: product_fixture_pcm_sha256(wave_name),
+            minimum_data_blocks: 1,
+        });
+        cases.push(PcmSourceContractCase {
+            name: aiff_name,
             wrong_extension: "wav",
-            bytes: pcm16_aiff(44_100, &aiff_samples),
+            bytes: fs::read(product_fixture_path(aiff_name))
+                .expect("declared AIFF fixture must be committed"),
             container: ContainerFormat::Aiff,
             codec: SourceCodec::PcmInteger,
             sample_rate: 44_100,
-            channels: 1,
-            bits_per_sample: 16,
-            expected_frames: 5,
-            expected_samples: normalize_pcm16(&aiff_samples),
+            channels: 2,
+            bits_per_sample: bits,
+            expected_frames: 4,
+            expected_samples,
+            normalized_pcm_sha256: product_fixture_pcm_sha256(aiff_name),
             minimum_data_blocks: 1,
-        },
-        PcmSourceContractCase {
-            name: "FLAC",
-            wrong_extension: "aiff",
-            bytes: TINY_FLAC.to_vec(),
-            container: ContainerFormat::Flac,
-            codec: SourceCodec::Flac,
-            sample_rate: 8_000,
-            channels: 1,
-            bits_per_sample: 16,
-            expected_frames: 8,
-            expected_samples: normalize_pcm16(&flac_samples),
+        });
+    }
+
+    for (bits, name, expected_samples) in [
+        (32, "wav-float32-stereo.wav", float32_contract_samples()),
+        (64, "wav-float64-stereo.wav", float64_contract_samples()),
+    ] {
+        cases.push(PcmSourceContractCase {
+            name,
+            wrong_extension: "flac",
+            bytes: fs::read(product_fixture_path(name))
+                .expect("declared WAV float fixture must be committed"),
+            container: ContainerFormat::Wave,
+            codec: SourceCodec::PcmFloat,
+            sample_rate: 48_000,
+            channels: 2,
+            bits_per_sample: bits,
+            expected_frames: 4,
+            expected_samples,
+            normalized_pcm_sha256: product_fixture_pcm_sha256(name),
             minimum_data_blocks: 1,
-        },
-    ];
+        });
+    }
+
+    let flac_name = "flac-pcm-s16-stereo-multiblock.flac";
+    cases.push(PcmSourceContractCase {
+        name: flac_name,
+        wrong_extension: "wav",
+        bytes: fs::read(product_fixture_path(flac_name))
+            .expect("representative FLAC fixture must be committed"),
+        container: ContainerFormat::Flac,
+        codec: SourceCodec::Flac,
+        sample_rate: 8_000,
+        channels: 2,
+        bits_per_sample: 16,
+        expected_frames: 400,
+        expected_samples: normalize_pcm16(&flac_contract_samples()),
+        normalized_pcm_sha256: product_fixture_pcm_sha256(flac_name),
+        minimum_data_blocks: 2,
+    });
 
     for case in cases {
         assert_pcm_source_contract(case);
     }
-}
-
-#[test]
-fn decodes_float32_wave_to_f64_pcm() {
-    let samples = [0.25_f32, -0.5, 1.0, -1.0];
-    let file = TestFile::new("wav", &float32_wave(44_100, &samples));
-    let mut opened = DecoderFactory::new().open(file.path()).unwrap();
-
-    assert_eq!(opened.source.codec, SourceCodec::PcmFloat);
-    assert_eq!(opened.source.bits_per_sample, Some(32));
-    let expected_channels = opened.reader.stream_info().spec.channels;
-    let block = match opened.reader.read_block().unwrap() {
-        ReadOutcome::Data(block) => block,
-        ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
-    };
-    assert_block_geometry(&block, expected_channels);
-    let expected: Vec<f64> = samples.iter().map(|sample| f64::from(*sample)).collect();
-    assert_eq!(block.samples(), expected);
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
-}
-
-#[test]
-fn preserves_float64_wave_samples_without_f32_narrowing() {
-    let samples = [
-        0.125_f64 + f64::EPSILON,
-        -0.75 + f64::EPSILON,
-        1.0 - f64::EPSILON,
-        -1.0 + f64::EPSILON,
-    ];
-    assert_ne!(samples[0], f64::from(samples[0] as f32));
-    let file = TestFile::new("wav", &float64_wave(96_000, &samples));
-    let mut opened = DecoderFactory::new().open(file.path()).unwrap();
-
-    assert_eq!(opened.source.codec, SourceCodec::PcmFloat);
-    assert_eq!(opened.source.bits_per_sample, Some(64));
-    let expected_channels = opened.reader.stream_info().spec.channels;
-    let block = match opened.reader.read_block().unwrap() {
-        ReadOutcome::Data(block) => block,
-        ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
-    };
-    assert_block_geometry(&block, expected_channels);
-    assert_eq!(block.samples(), samples);
-    assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
 }
 
 #[test]
@@ -516,6 +627,86 @@ fn rejects_aiff_payload_that_disagrees_with_declared_complete_frames() {
     let error = expect_open_error(file.path());
     assert_eq!(error.code, ErrorCode::MalformedMedia);
     assert!(error.message.contains("declared complete frames"));
+}
+
+#[test]
+fn rejects_overlong_aiff_comm_that_embeds_a_competing_ssnd_chunk() {
+    let file = TestFile::new("aiff", &aiff_with_ssnd_embedded_in_overlong_comm());
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::MalformedMedia);
+    assert_eq!(error.stage, AnalysisStage::Probe);
+    assert!(error.message.contains("exactly 18 bytes"));
+}
+
+#[test]
+fn rejects_invalid_aiff_sample_rates_as_malformed() {
+    let valid_significand = 44_100_u64 << 48;
+    let invalid_rates = [
+        ("zero", [0_u8; 10]),
+        ("negative", extended80_bytes(0xc00e, valid_significand)),
+        ("infinity", extended80_bytes(0x7fff, 1_u64 << 63)),
+        ("nan", extended80_bytes(0x7fff, (1_u64 << 63) | 1)),
+        ("unnormal", extended80_bytes(0x400e, 1)),
+        ("pseudo-denormal", extended80_bytes(0, 1_u64 << 63)),
+    ];
+
+    for (name, rate) in invalid_rates {
+        let mut bytes = pcm16_aiff(44_100, &[1, -1]);
+        bytes[28..38].copy_from_slice(&rate);
+        let file = TestFile::new("aiff", &bytes);
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::MalformedMedia, "{name}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name}");
+        assert!(
+            error.message.contains("valid finite positive"),
+            "{name}: {}",
+            error.message
+        );
+    }
+}
+
+#[test]
+fn rejects_valid_but_unavailable_aiff_sample_rates_as_unsupported() {
+    let valid_significand = 44_100_u64 << 48;
+    let unavailable_rates = [
+        ("positive subnormal", extended80_bytes(0, 1)),
+        ("u32 overflow", extended80_bytes(0x401f, 1_u64 << 63)),
+        (
+            "large overflow with low residue",
+            extended80_bytes(0x403f, (1_u64 << 63) | 1),
+        ),
+        (
+            "fractional",
+            extended80_bytes(0x400e, valid_significand | (1_u64 << 47)),
+        ),
+    ];
+
+    for (name, rate) in unavailable_rates {
+        let mut bytes = pcm16_aiff(44_100, &[1, -1]);
+        bytes[28..38].copy_from_slice(&rate);
+        let file = TestFile::new("aiff", &bytes);
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{name}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name}");
+        assert!(
+            error.message.contains("positive integral u32"),
+            "{name}: {}",
+            error.message
+        );
+    }
+}
+
+#[test]
+fn rejects_nonzero_aiff_ssnd_offset_and_block_size_as_unsupported() {
+    for field in [46..50, 50..54] {
+        let mut bytes = pcm16_aiff(44_100, &[1, -1]);
+        bytes[field].copy_from_slice(&1_u32.to_be_bytes());
+        let file = TestFile::new("aiff", &bytes);
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+        assert_eq!(error.stage, AnalysisStage::Probe);
+        assert!(error.message.contains("SSND offset or block size"));
+    }
 }
 
 #[test]
@@ -589,24 +780,43 @@ fn rejected_overrun_block_is_not_committed_to_progress_or_diagnostics() {
 
 #[test]
 fn corrupt_flac_is_a_sticky_error_not_eof() {
-    let mut corrupt = TINY_FLAC.to_vec();
+    let mut corrupt = fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("canonical FLAC fixture must be committed");
     let last = corrupt.last_mut().unwrap();
     *last ^= 0xff;
     let file = TestFile::new("flac", &corrupt);
     let mut opened = DecoderFactory::new().open(file.path()).unwrap();
 
-    let first_error = match opened.reader.read_block() {
-        Err(error) => error,
-        Ok(outcome) => panic!("corrupt FLAC returned {outcome:?}"),
+    let mut returned_frames = 0_u64;
+    let first_error = loop {
+        match opened.reader.read_block() {
+            Ok(ReadOutcome::Data(block)) => {
+                returned_frames += u64::try_from(block.frames()).unwrap();
+            }
+            Err(error) => break error,
+            Ok(ReadOutcome::Eof) => panic!("corrupt FLAC became a successful EOF"),
+        }
     };
     assert_eq!(first_error.code, ErrorCode::DecodeFailed);
+    assert!(
+        returned_frames > 0,
+        "terminal-frame corruption must exercise Data followed by an error"
+    );
+    let terminal_progress = opened.reader.progress();
+    let terminal_diagnostics = opened.reader.diagnostics().clone();
+    assert_eq!(terminal_progress.decoded_frames, returned_frames);
+    assert_eq!(terminal_diagnostics.decoded_frames, returned_frames);
+    assert!(!terminal_progress.eof);
 
-    let repeated_error = match opened.reader.read_block() {
-        Err(error) => error,
-        Ok(outcome) => panic!("terminal decoder error became {outcome:?}"),
-    };
-    assert_eq!(repeated_error, first_error);
-    assert!(!opened.reader.progress().eof);
+    for repeated_read in 1..=2 {
+        assert_eq!(
+            opened.reader.read_block().unwrap_err(),
+            first_error,
+            "terminal decoder error changed on read {repeated_read}"
+        );
+        assert_eq!(opened.reader.progress(), terminal_progress);
+        assert_eq!(opened.reader.diagnostics(), &terminal_diagnostics);
+    }
 }
 
 #[test]
@@ -617,6 +827,32 @@ fn truncated_wave_is_rejected_before_partial_decode() {
     let error = expect_open_error(file.path());
     assert_eq!(error.code, ErrorCode::MalformedMedia);
     assert_eq!(error.stage, macinmeter_domain::AnalysisStage::Probe);
+}
+
+#[test]
+fn rejects_incoherent_classic_wave_geometry_during_probe() {
+    let base = pcm16_wave(48_000, &[[1, -1], [2, -2], [3, -3]]);
+    for (name, field, replacement) in [
+        ("byte rate", 28..32, 1_u32.to_le_bytes().to_vec()),
+        ("block align", 32..34, 2_u16.to_le_bytes().to_vec()),
+    ] {
+        let mut bytes = base.clone();
+        bytes[field].copy_from_slice(&replacement);
+        let file = TestFile::new("wav", &bytes);
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::MalformedMedia, "{name}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name}");
+        assert!(error.message.contains("PCM geometry"), "{name}");
+    }
+}
+
+#[test]
+fn rejects_wave_format_extensible_until_it_has_its_own_capability_evidence() {
+    let file = TestFile::new("wav", &extensible_pcm16_wave());
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+    assert_eq!(error.stage, AnalysisStage::Probe);
+    assert!(error.message.contains("WAVE_FORMAT_EXTENSIBLE"));
 }
 
 #[test]
@@ -709,6 +945,63 @@ fn normalize_pcm16(samples: &[i16]) -> Vec<f64> {
         .collect()
 }
 
+fn integer_contract_values(bits: u32) -> [i64; 8] {
+    let minimum = -(1_i64 << (bits - 1));
+    let maximum = (1_i64 << (bits - 1)) - 1;
+    let half = 1_i64 << (bits - 2);
+    let marker = (1_i64 << (bits - 3)) + 3;
+    [minimum, maximum, -half, half, -1, 1, 0, marker]
+}
+
+fn normalize_integer_contract_samples(bits: u32) -> Vec<f64> {
+    let divisor = (1_u64 << (bits - 1)) as f64;
+    integer_contract_values(bits)
+        .into_iter()
+        .map(|sample| sample as f64 / divisor)
+        .collect()
+}
+
+fn float32_contract_samples() -> Vec<f64> {
+    [
+        0.0_f32,
+        -0.0,
+        f32::MIN_POSITIVE,
+        f32::from_bits(1),
+        0.25,
+        -0.5,
+        1.5,
+        -2.0,
+    ]
+    .into_iter()
+    .map(f64::from)
+    .collect()
+}
+
+fn float64_contract_samples() -> Vec<f64> {
+    vec![
+        0.0,
+        -0.0,
+        f64::MIN_POSITIVE,
+        f64::from_bits(1),
+        0.125 + f64::EPSILON,
+        -0.75 + f64::EPSILON,
+        1.0 - f64::EPSILON,
+        -1.0 + f64::EPSILON,
+    ]
+}
+
+fn flac_contract_samples() -> Vec<i16> {
+    let mut samples = Vec::with_capacity(800);
+    samples.extend_from_slice(&[i16::MIN, i16::MAX, 0, 0, -1, 1, -16_384, 16_384]);
+    for index in 4_i32..400 {
+        let left = ((index * 257 + 17) % 40_001) - 20_000;
+        let right = ((index * 509 + 1_234) % 30_001) - 15_000;
+        samples.push(i16::try_from(left).unwrap());
+        samples.push(i16::try_from(right).unwrap());
+    }
+    samples
+}
+
 fn multiblock_pcm16_wave_frames() -> Vec<[i16; 2]> {
     let mut frames = Vec::with_capacity(2_305);
     for index in 0..2_305 {
@@ -742,12 +1035,22 @@ fn float32_wave(sample_rate: u32, samples: &[f32]) -> Vec<u8> {
     bytes
 }
 
-fn float64_wave(sample_rate: u32, samples: &[f64]) -> Vec<u8> {
-    let data_size = u32::try_from(samples.len() * 8).unwrap();
-    let mut bytes = wave_header(3, 1, sample_rate, 64, data_size);
-    for sample in samples {
-        bytes.extend_from_slice(&sample.to_le_bytes());
-    }
+fn extensible_pcm16_wave() -> Vec<u8> {
+    let mut bytes = pcm16_wave(48_000, &[[1, -1], [2, -2]]);
+    let riff_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    bytes[4..8].copy_from_slice(&(riff_size + 24).to_le_bytes());
+    bytes[16..20].copy_from_slice(&40_u32.to_le_bytes());
+    bytes[20..22].copy_from_slice(&0xfffe_u16.to_le_bytes());
+
+    let mut extension = Vec::with_capacity(24);
+    extension.extend_from_slice(&22_u16.to_le_bytes());
+    extension.extend_from_slice(&16_u16.to_le_bytes());
+    extension.extend_from_slice(&3_u32.to_le_bytes());
+    extension.extend_from_slice(&[
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b,
+        0x71,
+    ]);
+    bytes.splice(36..36, extension);
     bytes
 }
 
@@ -809,6 +1112,13 @@ fn empty_pcm8_aiff(channels: u16) -> Vec<u8> {
     bytes
 }
 
+fn extended80_bytes(sign_exponent: u16, significand: u64) -> [u8; 10] {
+    let mut bytes = [0_u8; 10];
+    bytes[..2].copy_from_slice(&sign_exponent.to_be_bytes());
+    bytes[2..].copy_from_slice(&significand.to_be_bytes());
+    bytes
+}
+
 fn pcm16_aiff(sample_rate: u32, samples: &[i16]) -> Vec<u8> {
     assert_eq!(sample_rate, 44_100, "test helper only encodes 44.1 kHz");
     let data_size = u32::try_from(samples.len() * 2).unwrap();
@@ -833,13 +1143,19 @@ fn pcm16_aiff(sample_rate: u32, samples: &[i16]) -> Vec<u8> {
     bytes
 }
 
-/// Eight mono 16-bit frames at 8 kHz, encoded without padding or a seek table.
-const TINY_FLAC: &[u8] = &[
-    0x66, 0x4c, 0x61, 0x43, 0x00, 0x00, 0x00, 0x22, 0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x1a, 0x00,
-    0x00, 0x1a, 0x01, 0xf4, 0x00, 0xf0, 0x00, 0x00, 0x00, 0x08, 0x62, 0x56, 0x10, 0xb6, 0xdc, 0xa8,
-    0xcf, 0x62, 0xae, 0x31, 0x08, 0x6e, 0xfa, 0x42, 0xce, 0xc6, 0x84, 0x00, 0x00, 0x28, 0x20, 0x00,
-    0x00, 0x00, 0x72, 0x65, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x20, 0x6c, 0x69, 0x62, 0x46,
-    0x4c, 0x41, 0x43, 0x20, 0x31, 0x2e, 0x35, 0x2e, 0x30, 0x20, 0x32, 0x30, 0x32, 0x35, 0x30, 0x32,
-    0x31, 0x31, 0x00, 0x00, 0x00, 0x00, 0xff, 0xf8, 0x64, 0x08, 0x00, 0x07, 0xf6, 0x18, 0x00, 0x00,
-    0x16, 0xa1, 0x20, 0x00, 0x16, 0xa1, 0x02, 0xcd, 0xf0, 0x7c, 0x64, 0x00, 0x3e, 0x2c, 0x12, 0xbc,
-];
+fn aiff_with_ssnd_embedded_in_overlong_comm() -> Vec<u8> {
+    let mut bytes = pcm16_aiff(44_100, &[i16::MIN]);
+    let mut competing_ssnd = Vec::new();
+    competing_ssnd.extend_from_slice(b"SSND");
+    competing_ssnd.extend_from_slice(&10_u32.to_be_bytes());
+    competing_ssnd.extend_from_slice(&0_u32.to_be_bytes());
+    competing_ssnd.extend_from_slice(&0_u32.to_be_bytes());
+    competing_ssnd.extend_from_slice(&i16::MAX.to_be_bytes());
+
+    let original_form_size = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
+    let extra_size = u32::try_from(competing_ssnd.len()).unwrap();
+    bytes[4..8].copy_from_slice(&(original_form_size + extra_size).to_be_bytes());
+    bytes[16..20].copy_from_slice(&(18 + extra_size).to_be_bytes());
+    bytes.splice(38..38, competing_ssnd);
+    bytes
+}

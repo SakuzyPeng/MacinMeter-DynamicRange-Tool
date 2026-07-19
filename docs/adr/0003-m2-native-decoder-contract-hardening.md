@@ -170,6 +170,14 @@ codec crate 的共同 harness 不依赖 application、CLI 或 Tauri。
 
 位深存在于实现 feature 或枚举中不等于获得 stable 支持声明。
 
+本矩阵把 WAV 支持面固定为 classic RIFF/WAVE format tag 1（linear PCM）与
+format tag 3（IEEE float）。`WAVE_FORMAT_EXTENSIBLE` 的 valid/container bits、
+channel mask 与 GUID 尚未形成独立 capability 证据，因此在 probe 阶段明确返回
+`UnsupportedFormat`，不继承 Symphonia 的隐式支持。稳定 AIFF route 只接受可由
+`u32` 精确表示的有限正整数 80-bit sample rate、恰好 18 bytes 的 COMM chunk，
+以及零 SSND offset/block-size；其他合法变体也必须按新增 route 的准入条件单独
+毕业。
+
 ### 6. 扩展 analyzer 的 bit-exact 工程不变量
 
 M2 使用 test-only raw-bit projector 比较完整核心结果，不增加 production

@@ -17,7 +17,7 @@ the library, CLI, and Tauri GUI.
 
 The 0.2.0 baseline deliberately keeps a small trusted surface:
 
-- WAV: 8/16/24/32-bit integer PCM and IEEE 32/64-bit float
+- classic RIFF/WAVE: 8/16/24/32-bit integer PCM and IEEE 32/64-bit float
 - FLAC
 - AIFF: 8/16/24/32-bit integer PCM
 - serial decoding and serial batch execution
@@ -27,9 +27,9 @@ The 0.2.0 baseline deliberately keeps a small trusted surface:
 - structured errors, cancellation, progress, and versioned JSON
 
 Input is probed by content. File extensions are used only while discovering
-files in directories. AIFC, MP3, AAC, ALAC, Vorbis, Opus, FFmpeg routes, DSD,
-preprocessing, packet-level parallelism, and SIMD paths are not part of M0 and
-return `unsupported_format` when encountered.
+files in directories. WAVE_FORMAT_EXTENSIBLE, AIFC, MP3, AAC, ALAC, Vorbis,
+Opus, FFmpeg routes, DSD, preprocessing, packet-level parallelism, and SIMD
+paths are not part of M0 and return `unsupported_format` when encountered.
 
 ## Build and test
 

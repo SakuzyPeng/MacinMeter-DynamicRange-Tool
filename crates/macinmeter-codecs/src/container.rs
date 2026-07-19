@@ -17,12 +17,21 @@ pub(crate) enum ContainerSignature {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AiffInfo {
     pub(crate) declared_frames: u64,
+    pub(crate) pcm: ContainerPcmInfo,
     length_patch: AiffLengthPatch,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WaveInfo {
     pub(crate) declared_frames: u64,
+    pub(crate) pcm: ContainerPcmInfo,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ContainerPcmInfo {
+    pub(crate) sample_rate: u32,
+    pub(crate) channels: u16,
+    pub(crate) bits_per_sample: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,7 +145,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
     }
 
     let mut position = 12_u64;
-    let mut block_align = None;
+    let mut pcm_format = None;
     let mut data_len = None;
     while position < riff_end {
         let header_end = position.checked_add(8).ok_or_else(|| {
@@ -200,7 +209,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
         }
 
         if &chunk_header[..4] == b"fmt " {
-            if block_align.is_some() {
+            if pcm_format.is_some() {
                 return Err(analysis_error(
                     path,
                     ErrorCode::MalformedMedia,
@@ -223,6 +232,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
             let mut format_prefix = [0_u8; 16];
             file.read_exact(&mut format_prefix)
                 .map_err(|error| malformed_wave_io(path, error))?;
+            let format_tag = u16::from_le_bytes([format_prefix[0], format_prefix[1]]);
             let channels = u16::from_le_bytes([format_prefix[2], format_prefix[3]]);
             validate_analysis_channel_count(path, channels)?;
             let sample_rate = u32::from_le_bytes([
@@ -231,17 +241,124 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
                 format_prefix[6],
                 format_prefix[7],
             ]);
-            let value = u16::from_le_bytes([format_prefix[12], format_prefix[13]]);
-            if channels == 0 || sample_rate == 0 || value == 0 {
+            let byte_rate = u32::from_le_bytes([
+                format_prefix[8],
+                format_prefix[9],
+                format_prefix[10],
+                format_prefix[11],
+            ]);
+            let block_align = u16::from_le_bytes([format_prefix[12], format_prefix[13]]);
+            let bits_per_sample = u16::from_le_bytes([format_prefix[14], format_prefix[15]]);
+            if channels == 0 || sample_rate == 0 {
                 return Err(analysis_error(
                     path,
                     ErrorCode::MalformedMedia,
                     AnalysisStage::Probe,
-                    "WAV channel count, sample rate, and block alignment must be nonzero",
+                    "WAV channel count and sample rate must be nonzero",
                     None,
                 ));
             }
-            block_align = Some(u64::from(value));
+            let allowed_bits = match format_tag {
+                0x0001 => [8, 16, 24, 32].contains(&bits_per_sample),
+                0x0003 => [32, 64].contains(&bits_per_sample),
+                0xfffe => {
+                    return Err(analysis_error(
+                        path,
+                        ErrorCode::UnsupportedFormat,
+                        AnalysisStage::Probe,
+                        "WAVE_FORMAT_EXTENSIBLE is not in the stable native WAV matrix",
+                        None,
+                    ));
+                }
+                _ => {
+                    return Err(analysis_error(
+                        path,
+                        ErrorCode::UnsupportedFormat,
+                        AnalysisStage::Probe,
+                        "WAV codec is outside the stable linear PCM/IEEE float matrix",
+                        Some(format!("format_tag=0x{format_tag:04x}")),
+                    ));
+                }
+            };
+            if !allowed_bits {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::UnsupportedFormat,
+                    AnalysisStage::Probe,
+                    "WAV bit depth is outside the stable native matrix",
+                    Some(format!(
+                        "format_tag=0x{format_tag:04x}; bits_per_sample={bits_per_sample}"
+                    )),
+                ));
+            }
+            if !matches!(chunk_len, 16 | 18) {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::UnsupportedFormat,
+                    AnalysisStage::Probe,
+                    "extended WAV fmt data is outside the stable native matrix",
+                    Some(format!(
+                        "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}"
+                    )),
+                ));
+            }
+            if chunk_len == 18 {
+                let mut extension_size = [0_u8; 2];
+                file.read_exact(&mut extension_size)
+                    .map_err(|error| malformed_wave_io(path, error))?;
+                let extension_size = u16::from_le_bytes(extension_size);
+                if extension_size != 0 {
+                    return Err(analysis_error(
+                        path,
+                        ErrorCode::UnsupportedFormat,
+                        AnalysisStage::Probe,
+                        "WAV fmt extension data is outside the stable native matrix",
+                        Some(format!("extension_size={extension_size}")),
+                    ));
+                }
+            }
+
+            let bytes_per_sample = bits_per_sample / 8;
+            let expected_block_align = channels.checked_mul(bytes_per_sample).ok_or_else(|| {
+                analysis_error(
+                    path,
+                    ErrorCode::ResourceExhausted,
+                    AnalysisStage::Probe,
+                    "WAV frame size overflowed",
+                    None,
+                )
+            })?;
+            let expected_byte_rate = sample_rate
+                .checked_mul(u32::from(expected_block_align))
+                .ok_or_else(|| {
+                    analysis_error(
+                        path,
+                        ErrorCode::ResourceExhausted,
+                        AnalysisStage::Probe,
+                        "WAV byte rate overflowed",
+                        None,
+                    )
+                })?;
+            if block_align != expected_block_align || byte_rate != expected_byte_rate {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::MalformedMedia,
+                    AnalysisStage::Probe,
+                    "WAV byte rate or block alignment disagrees with its PCM geometry",
+                    Some(format!(
+                        "byte_rate={byte_rate}; expected_byte_rate={expected_byte_rate}; \
+                         block_align={block_align}; expected_block_align={expected_block_align}"
+                    )),
+                ));
+            }
+            pcm_format = Some((
+                ContainerPcmInfo {
+                    sample_rate,
+                    channels,
+                    bits_per_sample: u32::from(bits_per_sample),
+                },
+                u64::from(block_align),
+            ));
         } else if &chunk_header[..4] == b"data" && data_len.replace(u64::from(chunk_len)).is_some()
         {
             return Err(analysis_error(
@@ -255,7 +372,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
         position = next_position;
     }
 
-    let block_align = block_align.ok_or_else(|| {
+    let (pcm, block_align) = pcm_format.ok_or_else(|| {
         analysis_error(
             path,
             ErrorCode::MalformedMedia,
@@ -285,6 +402,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
 
     Ok(WaveInfo {
         declared_frames: data_len / block_align,
+        pcm,
     })
 }
 
@@ -390,13 +508,13 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
         }
 
         if &chunk_header[..4] == b"COMM" {
-            if chunk_len < 18 {
+            if chunk_len != 18 {
                 return Err(analysis_error(
                     path,
                     ErrorCode::MalformedMedia,
                     AnalysisStage::Probe,
-                    "AIFF COMM chunk is too short",
-                    None,
+                    "AIFF COMM chunk must contain exactly 18 bytes",
+                    Some(format!("comm_size={chunk_len}")),
                 ));
             }
             if common_format.is_some() {
@@ -431,25 +549,33 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
                 )
             })?;
             validate_analysis_channel_count(path, declared_channels)?;
-            let channels = u64::from(declared_channels);
             let declared_frames = u64::from(u32::from_be_bytes([
                 common_prefix[2],
                 common_prefix[3],
                 common_prefix[4],
                 common_prefix[5],
             ]));
-            let sample_size = u64::from(u16::from_be_bytes([common_prefix[6], common_prefix[7]]));
-            let sample_rate_is_zero = common_prefix[8..18].iter().all(|byte| *byte == 0);
-            if sample_size == 0 || sample_rate_is_zero {
+            let sample_size = u16::from_be_bytes([common_prefix[6], common_prefix[7]]);
+            if ![8, 16, 24, 32].contains(&sample_size) {
                 return Err(analysis_error(
                     path,
-                    ErrorCode::MalformedMedia,
+                    ErrorCode::UnsupportedFormat,
                     AnalysisStage::Probe,
-                    "AIFF sample size and sample rate must be nonzero",
-                    None,
+                    "AIFF bit depth is outside the stable native matrix",
+                    Some(format!("bits_per_sample={sample_size}")),
                 ));
             }
-            common_format = Some((channels, declared_frames, sample_size));
+            let mut sample_rate_bytes = [0_u8; 10];
+            sample_rate_bytes.copy_from_slice(&common_prefix[8..18]);
+            let sample_rate = parse_aiff_integer_sample_rate(path, sample_rate_bytes)?;
+            common_format = Some((
+                ContainerPcmInfo {
+                    sample_rate,
+                    channels: declared_channels,
+                    bits_per_sample: u32::from(sample_size),
+                },
+                declared_frames,
+            ));
         } else if &chunk_header[..4] == b"SSND" {
             if length_patch.is_some() {
                 return Err(analysis_error(
@@ -478,16 +604,22 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
                 sound_header[2],
                 sound_header[3],
             ]);
-            let payload_len = audio_len.checked_sub(offset).ok_or_else(|| {
-                analysis_error(
+            let block_size = u32::from_be_bytes([
+                sound_header[4],
+                sound_header[5],
+                sound_header[6],
+                sound_header[7],
+            ]);
+            if offset != 0 || block_size != 0 {
+                return Err(analysis_error(
                     path,
-                    ErrorCode::MalformedMedia,
+                    ErrorCode::UnsupportedFormat,
                     AnalysisStage::Probe,
-                    "AIFF SSND offset exceeds its audio payload",
-                    None,
-                )
-            })?;
-            sound_data_len = Some(u64::from(payload_len));
+                    "nonzero AIFF SSND offset or block size is outside the stable native matrix",
+                    Some(format!("offset={offset}; block_size={block_size}")),
+                ));
+            }
+            sound_data_len = Some(u64::from(audio_len));
             let patch_offset = position.checked_add(4).ok_or_else(|| {
                 analysis_error(
                     path,
@@ -505,7 +637,7 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
         position = next_position;
     }
 
-    let (channels, declared_frames, sample_size) = common_format.ok_or_else(|| {
+    let (pcm, declared_frames) = common_format.ok_or_else(|| {
         analysis_error(
             path,
             ErrorCode::MalformedMedia,
@@ -532,24 +664,18 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
             None,
         )
     })?;
-    let bytes_per_sample = sample_size.checked_add(7).ok_or_else(|| {
-        analysis_error(
-            path,
-            ErrorCode::ResourceExhausted,
-            AnalysisStage::Probe,
-            "AIFF sample size overflowed",
-            None,
-        )
-    })? / 8;
-    let frame_bytes = channels.checked_mul(bytes_per_sample).ok_or_else(|| {
-        analysis_error(
-            path,
-            ErrorCode::ResourceExhausted,
-            AnalysisStage::Probe,
-            "AIFF frame size overflowed",
-            None,
-        )
-    })?;
+    let bytes_per_sample = u64::from(pcm.bits_per_sample / 8);
+    let frame_bytes = u64::from(pcm.channels)
+        .checked_mul(bytes_per_sample)
+        .ok_or_else(|| {
+            analysis_error(
+                path,
+                ErrorCode::ResourceExhausted,
+                AnalysisStage::Probe,
+                "AIFF frame size overflowed",
+                None,
+            )
+        })?;
     let expected_bytes = declared_frames.checked_mul(frame_bytes).ok_or_else(|| {
         analysis_error(
             path,
@@ -572,8 +698,69 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
     }
     Ok(AiffInfo {
         declared_frames,
+        pcm,
         length_patch,
     })
+}
+
+fn parse_aiff_integer_sample_rate(path: &Path, bytes: [u8; 10]) -> Result<u32, AnalysisError> {
+    let sign_exponent = u16::from_be_bytes([bytes[0], bytes[1]]);
+    let exponent = sign_exponent & 0x7fff;
+    let significand = u64::from_be_bytes([
+        bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9],
+    ]);
+    let details =
+        || format!("sign_exponent=0x{sign_exponent:04x}; significand=0x{significand:016x}");
+    let malformed = || {
+        analysis_error(
+            path,
+            ErrorCode::MalformedMedia,
+            AnalysisStage::Probe,
+            "AIFF sample rate must use a valid finite positive 80-bit encoding",
+            Some(details()),
+        )
+    };
+    let unsupported = || {
+        analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "AIFF sample rate is outside the stable positive integral u32 matrix",
+            Some(details()),
+        )
+    };
+
+    if sign_exponent & 0x8000 != 0 || exponent == 0x7fff {
+        return Err(malformed());
+    }
+    if exponent == 0 {
+        if significand == 0 || significand & (1_u64 << 63) != 0 {
+            return Err(malformed());
+        }
+        return Err(unsupported());
+    }
+    if significand & (1_u64 << 63) == 0 {
+        return Err(malformed());
+    }
+
+    let binary_shift = i32::from(exponent) - 16_383 - 63;
+    if binary_shift >= 0 {
+        return Err(unsupported());
+    }
+    let fractional_bits = binary_shift.unsigned_abs();
+    if fractional_bits >= 64 {
+        return Err(unsupported());
+    }
+    let fractional_mask = (1_u64 << fractional_bits) - 1;
+    if significand & fractional_mask != 0 {
+        return Err(unsupported());
+    }
+    let value = significand >> fractional_bits;
+    let value = u32::try_from(value).map_err(|_| unsupported())?;
+    if value == 0 {
+        return Err(malformed());
+    }
+    Ok(value)
 }
 
 pub(crate) fn media_source(file: File, aiff_info: Option<AiffInfo>) -> Box<dyn MediaSource> {

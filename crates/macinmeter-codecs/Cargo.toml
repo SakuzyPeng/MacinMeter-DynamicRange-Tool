@@ -10,3 +10,7 @@ repository.workspace = true
 [dependencies]
 macinmeter-domain = { path = "../macinmeter-domain" }
 symphonia.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+sha2 = "0.10"

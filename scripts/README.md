@@ -1,5 +1,21 @@
 # Pre-commit checks
 
+## Native PCM product fixtures
+
+The committed `tests/fixtures/native-pcm-v1` codec matrix is generated and
+verified with:
+
+```bash
+python3 scripts/generate-native-pcm-v1.py
+python3 scripts/generate-native-pcm-v1.py --check
+```
+
+WAV/AIFF generation uses the Python standard library. Exact FLAC regeneration
+is intentionally pinned to reference `flac 1.5.0`; normal tests use committed
+bytes and do not require libFLAC, FFmpeg, network access, or personal audio.
+Corpus geometry, hashes, PCM oracles, and provenance are recorded in its
+[`manifest.json`](../tests/fixtures/native-pcm-v1/manifest.json).
+
 M0 期间，预提交钩子只提供快速、本地、确定性的基础反馈：
 
 ```bash

@@ -8,8 +8,8 @@ M0 契约，不表示它已经与 foo_dr_meter 1.0.8 兼容。当前分析 profi
 
 | 容器 | 接受的编码 | 送入分析器的 PCM |
 |---|---|---|
-| WAV / WAVE | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
-| WAV / WAVE | IEEE 32/64-bit 浮点 PCM | 有限、交错的 `f64` |
+| 经典 RIFF/WAVE | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
+| 经典 RIFF/WAVE | IEEE 32/64-bit 浮点 PCM | 有限、交错的 `f64` |
 | FLAC | FLAC | 有限、交错的 `f64` |
 | AIFF | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
 
@@ -22,16 +22,26 @@ decoder 归一化已经逐位一致。
 `.aif`、`.aiff` 只用于目录发现。显式传入的文件即使扩展名不同，只要内容受支持
 也可以打开。
 
+仓库提交的
+[`native-pcm-v1`](../tests/fixtures/native-pcm-v1/README.md) 产品 corpus 以独立
+raw-bit 归一化 oracle 固定了每一个已声明 PCM 位深；其中 FLAC 为 stereo、
+multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这些是产品
+契约 fixture，不是参考插件 golden。
+
 ## M0 明确不可用
 
 0.2.0 不包含：
 
-- AIFC、压缩 WAV 变体以及受支持容器内的其他编码；
+- WAVE_FORMAT_EXTENSIBLE、AIFC、压缩 WAV 变体以及受支持容器内的其他编码；
 - MP1/MP2/MP3、AAC、ALAC、Vorbis、Opus、AC-3、E-AC-3、DTS、DSD；
 - MP4/M4A、Ogg、Matroska/WebM、DSF、DFF 容器；
 - FFmpeg 回退或任何外部解码进程；
 - 重采样、增益、滤波、边缘裁切和静音预处理；
 - 包级并行或文件级并行解码。
+
+稳定 AIFF 路径还要求 80-bit sample rate 为有限、正数、可由 `u32` 精确表示的
+整数、COMM chunk 恰好为 18 bytes，且 SSND offset/block-size 均为零。产品会拒绝
+这些尚未毕业的容器变体，而不会让 backend 静默舍入或自行扩张支持面。
 
 能够识别但不属于 M0 的内容返回稳定错误码 `unsupported_format`。受支持格式内可
 检测的损坏内容返回探测或解码错误，不会变成空的或部分成功的报告。物理 EOF 只能

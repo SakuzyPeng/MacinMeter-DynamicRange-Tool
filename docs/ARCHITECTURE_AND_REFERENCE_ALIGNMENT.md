@@ -491,13 +491,18 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
   `ResourceExhausted / Analysis` 拒绝超限 session；
 - codec crate 已建立可复用的 `PcmSource` contract matrix；WAV/FLAC/AIFF
   各有一条基础合法 fixture 使用同一 harness 验证内容探测、immutable stream
-  info、PCM oracle、progress、diagnostics 与 sticky EOF，完整位深/多 block
-  矩阵仍由下一项闭合；
+  info、PCM oracle、progress、diagnostics 与 sticky EOF；
+- `native-pcm-v1` 产品 corpus 已闭合 classic WAV integer 8/16/24/32、float
+  32/64、AIFF signed integer 8/16/24/32 和 stereo multi-block FLAC；manifest
+  固定 bytes、normalized PCM、生成方式与许可，AIFF/FLAC 同时通过 API/CLI 共享
+  report；
+- WAV header 几何和 AIFF 80-bit sample rate 在 probe 层严格核对；
+  `WAVE_FORMAT_EXTENSIBLE` 与非零 AIFF SSND offset/block-size 在形成独立证据前
+  明确为 unavailable；
 - 当前 Symphonia source 使用单一 terminal-state enum，并通过独立、可注入故障的
   harness 验证 sticky error；失败 block 只有在完整校验通过后才提交帧计数；
 - application、CLI、Tauri 继续分别保留各自层级的集成测试；
 - 每条 route 继续覆盖自身可稳定构造的损坏输入；
-- 补齐当前已声明 WAV/AIFF integer PCM 位深与 FLAC 代表路径的测试证据；
 - 扩充 bit-exact chunk、声道 lane、排列和失败事务性工程不变量；
 - 建立固定 malformed corpus 与独立手动 fuzz 入口；
 - 审计 report/progress 裸浮点与反序列化入口，收紧 domain 有效性边界；
@@ -606,7 +611,7 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 8. [x] `fix: bind PCM blocks to their channel geometry`
 9. [x] `fix: enforce analyzer session resource limits`
 10. [x] `test: establish the shared PcmSource contract matrix`
-11. [ ] `test: close the declared native PCM matrix`
+11. [x] `test: close the declared native PCM matrix`
 12. [ ] `test: expand bit-exact analyzer invariants`
 13. [ ] `refactor: enforce valid domain result construction`
 14. [ ] `test: add malformed media regression corpus`

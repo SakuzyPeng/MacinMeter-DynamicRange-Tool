@@ -33,3 +33,8 @@ manifest；参考结果仍只存在于 observation，而不写回 fixture。
 - 许可或可再生成性说明。
 
 Fixture 本身不是 golden。只有关联到固定 target 的 observation 才能提供参考结果。
+
+产品 codec 回归 corpus 位于
+[`../../tests/fixtures/native-pcm-v1`](../../tests/fixtures/native-pcm-v1/README.md)。
+它验证 MacinMeter 自身的 WAV/AIFF/FLAC 解码契约，不属于本 reference 证据目录，
+也不是插件 observation 或 conformance golden。

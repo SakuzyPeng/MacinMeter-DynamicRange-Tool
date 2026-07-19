@@ -1739,6 +1739,8 @@ name = "macinmeter-codecs"
 version = "0.2.0"
 dependencies = [
  "macinmeter-domain",
+ "serde_json",
+ "sha2",
  "symphonia",
 ]
 

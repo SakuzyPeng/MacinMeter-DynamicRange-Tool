@@ -2,8 +2,8 @@ use crate::{
     OpenedAudio, PcmSource, ReadOutcome,
     codec::{source_bits_per_sample, stream_spec, validate_codec},
     container::{
-        ContainerSignature, container_format, identify_container, inspect_aiff, inspect_wave,
-        media_source,
+        ContainerPcmInfo, ContainerSignature, container_format, identify_container, inspect_aiff,
+        inspect_wave, media_source,
     },
     error::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
@@ -40,15 +40,16 @@ pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
 fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
-    let aiff_info = if signature == ContainerSignature::Aiff {
-        Some(inspect_aiff(&mut file, path)?)
-    } else {
-        None
-    };
-    let wave_info = if signature == ContainerSignature::Wave {
-        Some(inspect_wave(&mut file, path)?)
-    } else {
-        None
+    let (aiff_info, container_pcm) = match signature {
+        ContainerSignature::Aiff => {
+            let info = inspect_aiff(&mut file, path)?;
+            (Some(info), Some((info.pcm, info.declared_frames)))
+        }
+        ContainerSignature::Wave => {
+            let info = inspect_wave(&mut file, path)?;
+            (None, Some((info.pcm, info.declared_frames)))
+        }
+        ContainerSignature::Flac => (None, None),
     };
     file.seek(SeekFrom::Start(0))
         .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?;
@@ -95,12 +96,13 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     let codec_params = track.codec_params.clone();
     let source_codec = validate_codec(path, signature, codec_params.codec)?;
     let (stream_spec, channels) = stream_spec(path, &codec_params)?;
-    let expected_frames = match (wave_info, aiff_info) {
-        (Some(info), None) => Some(info.declared_frames),
-        (None, Some(info)) => Some(info.declared_frames),
-        (None, None) => codec_params.n_frames.filter(|frames| *frames > 0),
-        (Some(_), Some(_)) => unreachable!("container signatures are mutually exclusive"),
-    };
+    let bits_per_sample = source_bits_per_sample(&codec_params);
+    if let Some((validated_pcm, _)) = container_pcm {
+        validate_backend_pcm_metadata(path, validated_pcm, &stream_spec, bits_per_sample)?;
+    }
+    let expected_frames = container_pcm
+        .map(|(_, expected_frames)| expected_frames)
+        .or_else(|| codec_params.n_frames.filter(|frames| *frames > 0));
 
     let decoder = symphonia::default::get_codecs()
         .make(&codec_params, &DecoderOptions { verify: true })
@@ -112,7 +114,7 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
         codec: source_codec,
         sample_rate: stream_spec.sample_rate,
         channels: stream_spec.channels,
-        bits_per_sample: source_bits_per_sample(&codec_params),
+        bits_per_sample,
         expected_frames,
     };
     let pcm = PcmStreamInfo {
@@ -138,6 +140,34 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     };
 
     Ok((source, reader))
+}
+
+fn validate_backend_pcm_metadata(
+    path: &Path,
+    validated: ContainerPcmInfo,
+    stream_spec: &macinmeter_domain::StreamSpec,
+    bits_per_sample: Option<u32>,
+) -> Result<(), AnalysisError> {
+    if stream_spec.sample_rate.get() != validated.sample_rate
+        || stream_spec.channels.get() != validated.channels
+        || bits_per_sample != Some(validated.bits_per_sample)
+    {
+        return Err(analysis_error(
+            path,
+            ErrorCode::MalformedMedia,
+            AnalysisStage::Probe,
+            "decoder metadata disagrees with the validated container PCM format",
+            Some(format!(
+                "container={}Hz/{}ch/{}bit; decoder={}Hz/{}ch/{bits_per_sample:?}bit",
+                validated.sample_rate,
+                validated.channels,
+                validated.bits_per_sample,
+                stream_spec.sample_rate.get(),
+                stream_spec.channels.get(),
+            )),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

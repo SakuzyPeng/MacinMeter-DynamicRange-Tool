@@ -142,6 +142,67 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
 }
 
 #[test]
+fn aiff_and_flac_json_are_the_shared_application_report() {
+    for (relative_path, container, codec, bits_per_sample, frames) in [
+        (
+            "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+            "aiff",
+            "pcm_integer",
+            24,
+            4,
+        ),
+        (
+            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+            "flac",
+            "flac",
+            16,
+            400,
+        ),
+    ] {
+        let input = fixture(relative_path);
+        let output = run([
+            "analyze".as_ref(),
+            input.as_os_str(),
+            "--format".as_ref(),
+            "json".as_ref(),
+        ]);
+
+        assert_code(&output, 0);
+        let cli_value = parse_stdout_json(&output);
+        assert_eq!(cli_value["kind"], "analysis", "{relative_path}");
+        assert_eq!(
+            cli_value["data"]["source"]["container"], container,
+            "{relative_path}"
+        );
+        assert_eq!(
+            cli_value["data"]["source"]["codec"], codec,
+            "{relative_path}"
+        );
+        assert_eq!(
+            cli_value["data"]["source"]["bitsPerSample"], bits_per_sample,
+            "{relative_path}"
+        );
+        assert_eq!(
+            cli_value["data"]["analysis"]["framesSeen"], frames,
+            "{relative_path}"
+        );
+
+        let api_report = macinmeter::Analyzer::new()
+            .analyze_file(macinmeter::AnalyzeRequest::new(&input))
+            .unwrap_or_else(|error| panic!("{relative_path} should analyze via API: {error}"));
+        let api_json = serde_json::to_vec(&macinmeter::WireEnvelope::analysis(api_report))
+            .expect("shared application report should serialize");
+        let api_value: Value = serde_json::from_slice(&api_json)
+            .expect("shared application report should be valid JSON");
+        assert_eq!(
+            cli_value, api_value,
+            "CLI must not define a format-specific report for {relative_path}"
+        );
+        assert!(stderr(&output).contains("[0] analyzing"));
+    }
+}
+
+#[test]
 fn analyze_failure_is_exit_one_and_does_not_pollute_stdout() {
     let input = fixture("fake_audio.wav");
     let output = run(["analyze".as_ref(), input.as_os_str()]);

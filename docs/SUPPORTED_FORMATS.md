@@ -9,8 +9,8 @@ is a candidate and remains `Unverified`.
 
 | Container | Accepted codec | PCM delivered to analysis |
 |---|---|---|
-| WAV / WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
-| WAV / WAVE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
+| classic RIFF/WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
+| classic RIFF/WAVE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
 | FLAC | FLAC | finite interleaved `f64` |
 | AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
 
@@ -25,16 +25,29 @@ The decoder probes file contents with no extension hint. Extensions
 inside directories. An explicitly supplied file may have any extension if its
 content is supported.
 
+The committed
+[`native-pcm-v1`](../tests/fixtures/native-pcm-v1/README.md) product corpus
+locks every declared PCM bit depth to an independent raw-bit normalization
+oracle. Its FLAC case is stereo and multi-block, and AIFF/FLAC also pass the
+shared Rust API and CLI report boundary. These are product contract fixtures,
+not reference-plugin goldens.
+
 ## Deliberately unavailable in M0
 
 The following routes are not built into 0.2.0:
 
-- AIFC, compressed WAV variants, and non-FLAC codecs in supported containers;
+- WAVE_FORMAT_EXTENSIBLE, AIFC, compressed WAV variants, and non-FLAC codecs
+  in supported containers;
 - MP1/MP2/MP3, AAC, ALAC, Vorbis, Opus, AC-3, E-AC-3, DTS, and DSD;
 - MP4/M4A, Ogg, Matroska/WebM, DSF, and DFF containers;
 - FFmpeg fallback or external decoder processes;
 - resampling, gain, filters, edge trimming, and silence preprocessing;
 - packet-level or file-level parallel decoding.
+
+The stable AIFF route also requires a finite, positive, exactly integral
+80-bit sample rate representable as `u32`, an exact 18-byte COMM chunk, plus
+zero SSND offset and block-size fields. Unsupported container variants are
+rejected rather than silently rounded or inherited from backend behavior.
 
 Recognized but unavailable content returns the stable
 `unsupported_format` error code. Detectable malformed content within a

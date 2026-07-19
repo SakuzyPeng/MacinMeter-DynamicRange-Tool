@@ -1,0 +1,410 @@
+{
+  "corpusId": "native-pcm-v1",
+  "derivedMutations": [
+    {
+      "expected": "sticky decode_failed; never EOF or a successful report",
+      "id": "flac-terminal-frame-crc-corruption",
+      "operation": "xor the final byte with 0xff",
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    }
+  ],
+  "fixtures": [
+    {
+      "bitsPerSample": 16,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "aiff",
+      "frames": 4,
+      "id": "aiff-pcm-s16-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "54b36bb1b6af783b4b186c67d2c358e6715ed1b572f039241a495d119ac5b89e",
+      "path": "aiff-pcm-s16-stereo.aiff",
+      "pcmOracle": {
+        "divisor": 32768,
+        "interleavedValues": [
+          -32768,
+          32767,
+          -16384,
+          16384,
+          -1,
+          1,
+          0,
+          8195
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed big-endian",
+      "sampleRate": 44100,
+      "sha256": "2bf2fa0248fed9024208b6ff00688d0f99f13b4d2ab6ce3b5f12a46bb454100c",
+      "sizeBytes": 70
+    },
+    {
+      "bitsPerSample": 24,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "aiff",
+      "frames": 4,
+      "id": "aiff-pcm-s24-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "057c52d7e24071f2df30d02347d3018fb6da34d47cc47dd043f595978846e7e5",
+      "path": "aiff-pcm-s24-stereo.aiff",
+      "pcmOracle": {
+        "divisor": 8388608,
+        "interleavedValues": [
+          -8388608,
+          8388607,
+          -4194304,
+          4194304,
+          -1,
+          1,
+          0,
+          2097155
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed big-endian",
+      "sampleRate": 44100,
+      "sha256": "7b368e14c492201e171d897b72471c50797ac8e14f29abefe14f9c9efb794346",
+      "sizeBytes": 78
+    },
+    {
+      "bitsPerSample": 32,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "aiff",
+      "frames": 4,
+      "id": "aiff-pcm-s32-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "57877345653404c4d7c91730e962044bd74e26162096c94b6b0655fdca0ed8bf",
+      "path": "aiff-pcm-s32-stereo.aiff",
+      "pcmOracle": {
+        "divisor": 2147483648,
+        "interleavedValues": [
+          -2147483648,
+          2147483647,
+          -1073741824,
+          1073741824,
+          -1,
+          1,
+          0,
+          536870915
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed big-endian",
+      "sampleRate": 44100,
+      "sha256": "8fca7786d282a25a1a26378353cdc4b4c4f497288c37e2a7f560638a2ab5df38",
+      "sizeBytes": 86
+    },
+    {
+      "bitsPerSample": 8,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "aiff",
+      "frames": 4,
+      "id": "aiff-pcm-s8-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "c34606196c0809bc9614f143a674b9409ccc6d899df2d7b3ea59b04883dbd0f8",
+      "path": "aiff-pcm-s8-stereo.aiff",
+      "pcmOracle": {
+        "divisor": 128,
+        "interleavedValues": [
+          -128,
+          127,
+          -64,
+          64,
+          -1,
+          1,
+          0,
+          35
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed big-endian",
+      "sampleRate": 44100,
+      "sha256": "c47c96db48a3b51b3d1077e6958b9c5ee902a5e95602c794b31021d92f49632c",
+      "sizeBytes": 62
+    },
+    {
+      "bitsPerSample": 16,
+      "channels": 2,
+      "codec": "flac",
+      "container": "flac",
+      "encoder": {
+        "blockSize": 192,
+        "compressionLevel": 0,
+        "name": "reference libFLAC",
+        "version": "flac 1.5.0"
+      },
+      "frames": 400,
+      "id": "flac-pcm-s16-stereo-multiblock",
+      "minimumDataBlocks": 2,
+      "normalizedInterleavedF64LeSha256": "68e0073dae6ce4af4a0b649069181a9d060b528b468752ffadefbe21d36c404b",
+      "path": "flac-pcm-s16-stereo-multiblock.flac",
+      "pcmOracle": {
+        "divisor": 32768,
+        "firstFrames": [
+          [
+            -32768,
+            32767
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -16384,
+            16384
+          ]
+        ],
+        "kind": "stereo_integer_formula",
+        "remainingFrames": {
+          "left": "((index * 257 + 17) % 40001) - 20000",
+          "right": "((index * 509 + 1234) % 30001) - 15000",
+          "startIndex": 4
+        }
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed 16-bit source PCM encoded by reference libFLAC",
+      "sampleRate": 8000,
+      "sha256": "6bf7538761cd4f0a0ea637825d6d0ed1c6913f39d50384c4dbbd95e3777fff29",
+      "sizeBytes": 941
+    },
+    {
+      "bitsPerSample": 32,
+      "channels": 2,
+      "codec": "pcm_float",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-float32-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "9c54dfc0b7df2702d203b4222084c481ebd90519efdbd88633348360db4f504f",
+      "path": "wav-float32-stereo.wav",
+      "pcmOracle": {
+        "interleavedValues": [
+          "0000000000000000",
+          "8000000000000000",
+          "3810000000000000",
+          "36a0000000000000",
+          "3fd0000000000000",
+          "bfe0000000000000",
+          "3ff8000000000000",
+          "c000000000000000"
+        ],
+        "kind": "explicit_f64_bits"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "IEEE binary32 little-endian",
+      "sampleRate": 48000,
+      "sha256": "928f226aa7cdebf82f93311a233562d0fed59dd5c622d2ea4b958932e6c839aa",
+      "sizeBytes": 76
+    },
+    {
+      "bitsPerSample": 64,
+      "channels": 2,
+      "codec": "pcm_float",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-float64-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "349f9a9f1701ac6a87cd0e2a67122a1ba504f79efe0c8c12b373762f355562cc",
+      "path": "wav-float64-stereo.wav",
+      "pcmOracle": {
+        "interleavedValues": [
+          "0000000000000000",
+          "8000000000000000",
+          "0010000000000000",
+          "0000000000000001",
+          "3fc0000000000008",
+          "bfe7fffffffffffe",
+          "3feffffffffffffe",
+          "bfeffffffffffffe"
+        ],
+        "kind": "explicit_f64_bits"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "IEEE binary64 little-endian",
+      "sampleRate": 48000,
+      "sha256": "dc47c1615041b569670e9199fd631ab64a8bb9187c73833880abb2e8c981e858",
+      "sizeBytes": 108
+    },
+    {
+      "bitsPerSample": 16,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-pcm-s16-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "54b36bb1b6af783b4b186c67d2c358e6715ed1b572f039241a495d119ac5b89e",
+      "path": "wav-pcm-s16-stereo.wav",
+      "pcmOracle": {
+        "divisor": 32768,
+        "interleavedValues": [
+          -32768,
+          32767,
+          -16384,
+          16384,
+          -1,
+          1,
+          0,
+          8195
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed little-endian",
+      "sampleRate": 48000,
+      "sha256": "980a6b83bc689cf0786a1faa7d633d0ae9e78e848d95202bdf2abfc3b4b06e1b",
+      "sizeBytes": 60
+    },
+    {
+      "bitsPerSample": 24,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-pcm-s24-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "057c52d7e24071f2df30d02347d3018fb6da34d47cc47dd043f595978846e7e5",
+      "path": "wav-pcm-s24-stereo.wav",
+      "pcmOracle": {
+        "divisor": 8388608,
+        "interleavedValues": [
+          -8388608,
+          8388607,
+          -4194304,
+          4194304,
+          -1,
+          1,
+          0,
+          2097155
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed little-endian",
+      "sampleRate": 48000,
+      "sha256": "74122d9867fc4f26b2cbfcf3cbc69daf3b5755f52fc73cb7f8e318d90829f2f3",
+      "sizeBytes": 68
+    },
+    {
+      "bitsPerSample": 32,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-pcm-s32-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "57877345653404c4d7c91730e962044bd74e26162096c94b6b0655fdca0ed8bf",
+      "path": "wav-pcm-s32-stereo.wav",
+      "pcmOracle": {
+        "divisor": 2147483648,
+        "interleavedValues": [
+          -2147483648,
+          2147483647,
+          -1073741824,
+          1073741824,
+          -1,
+          1,
+          0,
+          536870915
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "signed little-endian",
+      "sampleRate": 48000,
+      "sha256": "977a5ce823b8038da3a74183b2d306593adc4686b1f4451635072c006a8f7a31",
+      "sizeBytes": 76
+    },
+    {
+      "bitsPerSample": 8,
+      "channels": 2,
+      "codec": "pcm_integer",
+      "container": "wave",
+      "frames": 4,
+      "id": "wav-pcm-u8-stereo",
+      "minimumDataBlocks": 1,
+      "normalizedInterleavedF64LeSha256": "c34606196c0809bc9614f143a674b9409ccc6d899df2d7b3ea59b04883dbd0f8",
+      "path": "wav-pcm-u8-stereo.wav",
+      "pcmOracle": {
+        "divisor": 128,
+        "interleavedValues": [
+          -128,
+          127,
+          -64,
+          64,
+          -1,
+          1,
+          0,
+          35
+        ],
+        "kind": "integer_normalization"
+      },
+      "provenance": {
+        "copyrightedAudio": false,
+        "kind": "deterministically_generated",
+        "license": "MIT"
+      },
+      "sampleEncoding": "unsigned offset-binary",
+      "sampleRate": 48000,
+      "sha256": "2f9c70830d29a750771e156f4e4c8d94fb79d3c6fb431eaf585af9cbc4efbbf3",
+      "sizeBytes": 52
+    }
+  ],
+  "generator": {
+    "networkRequired": false,
+    "path": "scripts/generate-native-pcm-v1.py",
+    "requiresForFlacRegeneration": "flac 1.5.0"
+  },
+  "schemaVersion": 1
+}
