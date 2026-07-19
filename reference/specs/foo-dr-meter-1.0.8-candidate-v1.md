@@ -17,7 +17,7 @@
 - `foo_dr_meter` 1.0.3 或其他版本的规格；
 - x86 与 x64 共用一个数值精度契约的声明；静态分析已确认两者不同；
 - MacinMeter 已与任一参考目标数值兼容的声明；
-- accepted 规格、golden corpus 或动态跟踪证据。
+- accepted 规格或任意 PCM 的穷尽 golden corpus。
 
 本规格的核心伪代码只覆盖 foobar2000 已解码为有限、归一化、交错 PCM 后的分析
 路径。容器探测、codec 解码、整数 PCM 归一化、报告 UI 和标签写入不属于核心
@@ -28,17 +28,17 @@ interleaved `f64`。固定 x64 目标的核心入口同样是 interleaved `f64`�
 目标接收 interleaved `f32`，且 sample square、peak logarithm 和已保存 peak key
 仍有 binary32 运算或存储。当前生产实现以 binary64 样本分析，并以整数 centi-dB
 保存 key、以 binary32 公开 channel/track DR。它修复了 float64 WAV 在分析前被
-窄化的问题，但整数 key、运行库与不可观察中间状态仍不能由有限导出证明为逐位
-等同固定 x64 目标。
+窄化的问题，但整数 key、运行库与有限 corpus 之外的边界仍不能由当前证据证明为
+任意输入逐位等同固定 x64 目标。M1 不要求两种实现的内部表示同构。
 
 默认 profile 固定以下会影响结果的插件设置：
 
 | 设置 | 本规格值 |
 | --- | --- |
 | Weight multichannel DR by channel loudness | off |
-| Weight album DR by track lengths | off |
-| Automatically save tags | off |
-| Add per-channel stats also for stereo album logs | 只影响报告列，不影响核心计算 |
+
+album length weighting 的 off/on 数值分支在第 4.8 节作为辅助聚合规则单独说明；
+自动保存、报告列与其他 UI 设置不属于本数值规格。
 
 ## 2. 证据来源
 
@@ -143,7 +143,25 @@ PCM/RMS/peak 精度路径，并与固定 DLL 的指令级数据宽度形成两�
 histogram、peak key 或内部 binary64 DR。因此这些限制不能因 safe-master 字段
 完全相符而消失。
 
-### 2.3 当前实现差分
+### 2.3 隔离 x64 core 动态记录
+
+固定目标的 accepted 隔离执行见
+[`OBS-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719`](../observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)。
+它不启动 foobar2000，而是对同一 SHA-256 的 x64 analyzer core 逐项执行
+init/push/finish，每个输入使用全新 worker，并保存 result bits、session
+before/after、channel finish state 与浮点控制状态。
+
+39 项 safe-master 全部成功。不同 block size 的结果投影摘要一致，五个 fresh
+worker 的重复输入摘要也一致。core result 重建出的整数 track DR、每声道两位
+DR、每声道 RMS 与 overall peak 分别和既有导出达到 39/39、62/62、62/62、
+39/39 精确匹配。
+
+真实 `shared.dll` 只保留在固定 DLL 的 load/unload lifecycle；core 调用期间，
+目标的 13 个普通 `shared.dll` IAT 入口全部由 fail-fast tripwire 接管。该记录是
+固定 analyzer core 的直接动态证据，不执行 foobar decoder、album writer 或
+report renderer，也不建立 host parity。
+
+### 2.4 当前实现差分
 
 固定 reference observation 与身份明确的 MacinMeter 产物之间的记录见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
@@ -178,10 +196,11 @@ DR0 track；全部纳入时最终 token 是观察到的 `DR12`，若统一排除
 得到 `DR13`。该反事实支持“不做统一 numeric-DR0 filter”，但不能区分精确
 public-f32 mean 与其他同样显示 `DR12` 的聚合，也不验证 length weighting。
 
-两份 schema-v3 记录都没有比较不可导出的中间状态、三个 isolated 输入、
-album-focused playlist、host footer metadata 或更广输入空间。因此它们是有限
-实现复核，不是 accepted 规格、E3 证据、整份报告 parity 或 reference
-compatibility 声明；profile 继续保持
+两份 schema-v3 记录是有限实现复核，不是 accepted 规格、整份报告 parity 或
+任意输入的 reference compatibility 声明。第 2.3 节已经补入 reference core raw
+state，但 ADR-0002 不要求把 MacinMeter 的内部结构逐项映射到这些记录。
+album/renderer 只保留纯数值规则；playlist/grouping、host footer metadata、
+完整文本与更广输入空间不在声明范围。profile 继续保持
 `FooDrMeter108CandidateV1 / Unverified`。
 
 ## 3. 数据与数值约定
@@ -450,8 +469,8 @@ selection RMS 和实际 selected peak。
 
 零 peak/RMS 显示为 `-inf dBFS`。dB 文本在
 `-0.01 < value < 0.01` 时有显式 centi-dB `lround` 修正，随后格式化到两位
-小数；renderer 显式使用 `C` locale。默认 track DR 的正整数显示在 binary32
-结果之后采用：
+小数；修正后为零时显示 `0.00`，不保留 `-0.00`。renderer 显式使用 `C`
+locale。默认 track DR 的正整数显示在 binary32 结果之后采用：
 
 ```text
 display_dr = integer_cast(track_dr + 0.5)
@@ -547,9 +566,9 @@ integer_cast(album_dr_f32 + 0.5)
 - API 同时保留 unweighted、可选 weighted、effective、track count 与总时长，
   所有公开浮点结果必须 finite。
 
-这只是把完整 E1 静态公式落实为独立、可测试的产品 API。现有 x64 observation
-没有导出 album-focused playlist，因此不得把实现测试或 safe-master official
-footer 外推为完整 album conformance。
+这只是把完整 E1 静态公式落实为独立、可测试的产品 API。它定义 album 数值算术，
+不验证 playlist、grouping、自动发现、footer 或其他 album subsystem 行为，也
+不得把实现测试或 safe-master official footer 外推为完整 album conformance。
 
 safe master 中的 3 个数值 DR0 track 提供了一个更窄的可区分反事实：按 schema-v3
 公开 track DR 全部纳入时，binary64 mean 为约 `11.6802833`，最终显示 `DR12`；
@@ -564,8 +583,11 @@ filter”提升为 E2；它不能排除按其他隐藏状态选择性过滤的�
 证据等级遵循 [`reference/README.md`](../README.md)。`SA-x64` 指 x64 核心
 记录，`SA-render` 指固定 x64 report renderer 记录，`SA-cross` 指
 x86/cross-arch 记录；`OBS-x86` 与 `OBS-x64` 分别指第 2.2.1、2.2.2 节的固定
-黑盒观测。多份静态记录仍属于同一类证据，不因目标或函数数量自动升级为 E2；
-同一构造模型与 observation 的比较也不构成第三类动态跟踪证据。
+黑盒观测，`OBS-core` 指第 2.3 节的隔离 core 动态记录。多份静态记录仍属于
+同一类证据，不因目标或函数数量自动升级为 E2；同一构造模型与 observation 的
+比较也不构成第三类证据。`OBS-core` 只对实际保存的 session/channel/result raw
+state 构成直接动态证据，不能把未捕获的 histogram scan 或外围 renderer 一并
+升级。
 
 | 规则 | 等级 | 依据与限制 |
 | --- | --- | --- |
@@ -600,9 +622,11 @@ x86/cross-arch 记录；`OBS-x86` 与 `OBS-x64` 分别指第 2.2.1、2.2.2 节�
 | x86 与 x64 使用不同 PCM、sample-square 和 peak 精度 | E2 | SA-cross 的固定二进制指令级数据宽度；OBS-x64 的 source-f64/先窄化对照声道动态保留不同 token。证据只覆盖已导出边界，不外推所有最后一位。 |
 | 核心零 frame 结算与 host 零帧源行为不同 | E1 | 两份 SA：核心产生 DR0；host 在首次 decode 无 chunk 时抛出 data error。 |
 
-没有任何规则达到 E3，因为尚无动态跟踪。
+本表保留逐规则的保守 E1/E2 等级；第 2.3 节已经提供 core 动态记录，但只有完成
+raw 字段到具体规则的逐项证据复核后才单独升级为 E3。M1 完成不依赖把静态已经
+唯一确定的规则形式化升级到更高证据标签。
 
-## 6. 已解决边界与剩余未知项
+## 6. 已解决边界、限制与非目标
 
 ### 6.1 已由静态分析与固定观测收口
 
@@ -639,27 +663,40 @@ duration 39/39，同时保持 track DR 39/39、channel DR 62/62。这关闭了�
 同一记录只对 footer 做部分一致性检查，并以 DR12/DR13 反事实关闭“统一过滤
 numeric DR0”这一窄问题。这些结果不证明未导出中间状态、精确 internal album
 mean、length weighting、host metadata、任意输入或整份报告 byte-for-byte
-一致。
+一致。按照
+[`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md)，前两项的
+纯数值公式可由固定汇编数据流定义；host metadata、playlist/grouping 和完整文本
+parity 则明确不属于 M1。
 
-### 6.3 真正剩余的边界
+### 6.3 声明内的限制
 
-以下行为不能由当前两个插件 DLL 的核心路径补猜：
+以下限制约束本规格可以作出的数值声明：
 
 | 行为 | 等级 | 说明 |
 | --- | --- | --- |
 | 1.0.3 与 1.0.8 是否相同 | U | 当前证据不得跨版本外推。 |
-| foobar2000 2.25.10 decoder 对全部 PCM/容器的逐位归一化 | U | safe master 已给出普通 U8/S16/S24/S32/F32/F64 的端到端结果；foobar2000 2.0 x64 decoder 的六条转换另有静态记录，但不能跨 host 版本外推成 2.25.10 的完整 decoder 规格。 |
-| 超满幅 float、零帧、损坏文件和 decoder error 的最终 UI/日志 | U | 三个 isolated 输入未在本 observation 采集；DLL 内部异常入口已知，最终外围呈现仍由宿主运行路径决定。 |
-| 宿主生成 channel ordinal/mask、bitrate 和 codec metadata 的完整规则 | U | renderer 收到已观测 ordinal `0..5, 9, 10` 后的标签达到 E2，未覆盖标签为 E1；宿主如何产生 ordinal/mask 仍未知。`32761` 已确认不进入核心 DR，但外围 metadata-report 异常的精确根因仍未知。 |
 | 固定 Windows CRT/libm 的未覆盖最后一位边界 | H | 当前 x64 观测覆盖两个架构 precision fixture，但 bit-exact 目标仍须固定运行库并覆盖或动态跟踪更多半值；有限 62 个 token 不能证明所有边界。 |
-| safe-master 重复运行确定性 | U | 当前 x64 observation 只有一次运行；静态已解规则不要求重复人工采集。若 accepted policy 坚持 reference runtime repeatability，仍须至少一个独立 x64 repeat run。 |
-| 整份参考报告与产品字段级 parity | U | schema v3 的六组同语义字段已匹配；reference 已观测 ordinal `0..5, 9, 10` 标签规则达到 E2，但没有与产品做标签 parity，footer 也只比较有限子集。host bit-depth/bitrate/codec metadata 没有产品 parity 声明。 |
-| album 精确聚合与 focused 动态验证 | E1 | DR0 统一过滤反事实已单独达到 E2；精确 public-f32 mean、最终窄化和 length weighting 仍只有静态数据流，focused playlist 未导出，batch 也不自动充当 album observation。 |
+| album 聚合数值公式 | E1 | DR0 统一过滤反事实已单独达到 E2；public-f32 mean、最终窄化和 length weighting 由固定静态数据流唯一确定。focused playlist/grouping 不属于数值公式验收，batch 也不自动具有 album 语义。 |
 | NaN、Inf、反常范围 PCM | U | 不属于有效 PCM 契约；目标异常数学行为不提升为产品契约。 |
 | histogram/窗口计数极限与溢出 | U | 不属于候选有效资源范围；若研究应做静态类型/指令审计，而不是生成数百年音频。 |
 
 1.0.3 比较应先固定并哈希对应原始 DLL，再建立独立静态差分记录；不应生成
 1.0.8 样本来外推版本关系。
+
+### 6.4 明确非目标
+
+以下行为不是未知算法缺口，而是不属于
+[`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md) 的目标：
+
+- foobar2000 decoder 对全部 PCM/容器的逐位归一化；
+- 超满幅、零帧、损坏文件和 decoder error 的最终宿主 UI/日志；
+- 独立 foobar host repeat、component registration、service 与 lifecycle；
+- 宿主生成 channel ordinal/mask、bit depth、bitrate 和 codec metadata 的规则；
+- playlist、album grouping、自动发现和 footer 语义；
+- 整份报告的标签、模板、locale、换行、编码或 byte-for-byte parity。
+
+已经保存的相关静态或黑盒记录继续作为历史证据，不因成为非目标而删除；它们也
+不能反向扩大本规格的兼容性声明。
 
 ## 7. 使用规则
 
@@ -684,15 +721,15 @@ mean、length weighting、host metadata、任意输入或整份报告 byte-for-b
 ## 8. 进入 accepted 的最低条件
 
 1. 固定项目实际要兼容的插件版本和架构；
-2. 对窗口数、loud 边界 bin、peak 排名/回退和聚合输入等不可导出中间状态补一类
-   动态证据；当前没有 E3；
+2. 对窗口数、loud 边界 bin、peak 排名/回退和聚合输入等规则保存可审计的固定
+   汇编数据流或隔离 core 证据，不要求 production 内部状态逐项差分；
 3. 用一次生成的本地 corpus 覆盖多采样率、零 frame、RMS clamp、peak key 半值、
    album 公式和 x86/x64 精度判别；静态已确定的内部规则不要求重复人工导出；
 4. 把现有 track DR 39/39、channel DR 62/62、overall peak 39/39、overall RMS
    39/39、channel RMS 62/62、duration 39/39 的有限 implementation comparison
-   扩展到验收范围，并明确处理 footer、album 与其他未比较字段；
+   固定为验收基线，并以边界测试覆盖 album/renderer 的纯数值规则；
 5. 明确只接受 x64、只接受 x86，还是分别提供两个数值 profile；不得再声明一个
    未限定架构的共同精度契约；
-6. 若 accepted policy 把 reference runtime repeatability 作为硬条件，补同一固定
-   x64 target 的独立 repeat run，并排除时间戳后做规范化精确差分；
+6. 将 host、decoder、playlist/grouping、metadata 来源和文本 byte parity 明确
+   排除，不把未声明的外围行为误作缺失算法证据；
 7. 保留所有系统性差异，不使用宽容差掩盖整数边界错误。

@@ -64,6 +64,28 @@ fn a_numeric_silent_track_is_included_in_the_unweighted_album_mean() {
 }
 
 #[test]
+fn album_display_rounding_uses_the_final_public_f32_value() {
+    let half = 10.5_f32;
+    let cases = [
+        (f32::from_bits(half.to_bits() - 1), 10),
+        (half, 11),
+        (f32::from_bits(half.to_bits() + 1), 11),
+    ];
+
+    for (dr_db, expected_display) in cases {
+        let result = AlbumAggregator::aggregate(
+            &[track(dr_db.to_bits(), 8_000, 8_000)],
+            AlbumWeighting::Unweighted,
+        )
+        .unwrap();
+
+        assert_eq!(result.unweighted_dr_db.get().to_bits(), dr_db.to_bits());
+        assert_eq!(result.rounded_unweighted_dr, expected_display);
+        assert_eq!(result.rounded_effective_dr, expected_display);
+    }
+}
+
+#[test]
 fn album_aggregate_serializes_explicit_unweighted_field_names() {
     let result = AlbumAggregator::aggregate(
         &[track(12.0_f32.to_bits(), 8_000, 8_000)],

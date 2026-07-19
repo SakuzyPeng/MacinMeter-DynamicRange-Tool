@@ -374,9 +374,14 @@ mod tests {
     use macinmeter::FiniteF32;
 
     #[test]
-    fn dbfs_formatter_normalizes_negative_zero_after_reference_centi_rounding() {
-        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.004).unwrap())), "0.00");
-        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.006).unwrap())), "-0.01");
+    fn dbfs_formatter_applies_reference_centi_rounding_and_normalizes_zero() {
+        for value in [0.0, -0.0, 0.004, -0.004] {
+            assert_eq!(format_dbfs(Some(FiniteF32::new(value).unwrap())), "0.00");
+        }
+        assert_eq!(format_dbfs(Some(FiniteF32::new(0.005).unwrap())), "0.01");
+        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.005).unwrap())), "-0.01");
+        assert_eq!(format_dbfs(Some(FiniteF32::new(0.01).unwrap())), "0.01");
+        assert_eq!(format_dbfs(Some(FiniteF32::new(-0.01).unwrap())), "-0.01");
         assert_eq!(format_dbfs(None), "-inf");
     }
 }

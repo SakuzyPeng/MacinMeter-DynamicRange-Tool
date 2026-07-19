@@ -1,8 +1,9 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，foo_dr_meter 1.0.8 Candidate V1 已实施；schema-v3
+> 状态：执行中（M0：`DONE`，M1：`DONE`；foo_dr_meter 1.0.8 Candidate V1
+> 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
-> overall RMS 39/39、channel RMS 62/62、duration 39/39，验收范围待扩充），
+> overall RMS 39/39、channel RMS 62/62、duration 39/39），
 > 作为整改、重构和逆向研究的主记录
 >
 > 建立日期：2026-07-17
@@ -16,6 +17,8 @@
 > 相关授权与合规说明：[LEGAL_CN.md](LEGAL_CN.md)
 >
 > M0 决策记录：[ADR-0001：以 0.2.0 重建可信主干](adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
+>
+> M1 范围决策：[ADR-0002：限定 M1 的参考数值契约](adr/0002-m1-reference-numeric-scope.md)
 
 ## 1. 文档目的
 
@@ -93,6 +96,11 @@ complete-v2 safe-master 的 39 项输入均完成受控执行。真实、固定�
 metadata、album 或 renderer；其声明固定为 `compatibility: none`、
 `foobarParity: not_assessed`。
 
+ADR-0002 随后把 M1 收紧为固定 x64 数值契约：per-track analyzer core 是主体，
+同时保留 album 聚合与 renderer 中会改变数值结果的纯算术、窄化和舍入。foobar
+host、playlist/grouping、metadata 来源、完整文本以及 production/reference
+内部状态同构均不是 M1 目标，也不作为缺失证据。
+
 ## 3. 事实来源与术语
 
 后续工作必须区分四类“真值”。
@@ -101,7 +109,7 @@ metadata、album 或 renderer；其声明固定为 `compatibility: none`、
 | --- | --- | --- | --- |
 | 工程不变量 | 不依赖参考算法的程序契约 | 内存安全、EOF、chunk 不变性、串并行一致性 | 决定插件的尾窗、峰值或舍入规则 |
 | 参考观测 | 参考插件对固定输入的实际输出 | 建立黑盒 golden corpus、发现偏差 | 在没有证据时解释内部算法 |
-| 算法规格 | 由实验、反汇编或动态跟踪支持的行为说明 | 实现 `Reference` profile 和中间状态测试 | 用单次结果或现有注释代替证据 |
+| 算法规格 | 由实验、反汇编或动态跟踪支持的行为说明 | 实现固定目标的数值契约和针对性边界测试 | 要求不同实现具有相同内部结构，或用现有注释代替证据 |
 | Legacy snapshot | 当前 0.1.x 实现的输出快照 | 观察重构改变了什么 | 证明结果正确或参考兼容 |
 
 任何测试数据都必须标明属于哪一类。
@@ -171,19 +179,19 @@ metadata、album 或 renderer；其声明固定为 `compatibility: none`、
 | REF-002 | DONE | 建立授权与来源档案 | 公开最小摘要、私人打印快照 digest、保管位置与未授权边界均已登记 |
 | REF-003 | DONE | 建立可重复的参考运行 harness | 离线 observation importer 与隔离 x64 core parent/worker/suite 均固定输入、target、runtime、worker 身份和执行契约；39 项 safe-master 每项使用全新 worker 的首次受控记录已验收，范围不含 foobar host |
 | REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
-| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项 foobar 导出、x64 39 项 foobar safe-master 与同 39 项隔离 core 动态记录已登记；host-edge、album 专项及 accepted foobar repeat policy 仍待定 |
-| REF-006 | DOING | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；album、renderer、foobar 注册/解码/metadata 与完整 host lifecycle 仍不在该边界内 |
-| REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 精度、短时 `m:ss`、已观测 ordinal `0..5, 9, 10` 标签与 album DR0 E2 子规则；未覆盖 renderer 分支继续保留 |
+| REF-005 | DONE | 完成目标行为矩阵 | x86 15 项历史导出、x64 39 项 safe-master 与同 39 项隔离 core 动态记录已登记；block-size 与 fresh-worker 稳定性检查已固定，host-edge、album playlist 和 host repeat 不属于 M1 |
+| REF-006 | DONE | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；album 聚合与 renderer 数值路径已有静态数据流，foobar host/metadata/text parity 明确排除 |
+| REF-007 | DONE | 编写版本化数值规格 | Candidate 已纳入 x64 core、report 数值、duration 舍入和 album 聚合规则，并明确证据等级与非目标；DONE 不表示 profile 已升级为 accepted/verified |
 | REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的六组公开 DR/report/duration 字段完全匹配，仍不宣称参考兼容 |
-| REF-009 | DOING | 建立参考 conformance suite | clean-commit successor 已覆盖六组字段、四项 footer consistency 与 DR0 反事实；isolated core 对既有报告的四类字段又达到 39/39、62/62、62/62、39/39，参考 core 中间状态已有 accepted 原始记录，但 production intermediate 差分、精确 album/weighting 与 host metadata 未验收 |
-| REF-010 | TODO | 修订兼容性声明 | 仅在验收通过后恢复明确的参考兼容承诺 |
+| REF-009 | DONE | 建立有界参考 conformance suite | clean-commit successor 覆盖六组字段、四项 footer consistency 与 DR0 反事实；isolated core 对既有报告四类字段达到 39/39、62/62、62/62、39/39；production intermediate 差分不是目标 |
+| REF-010 | DONE | 固定范围与兼容性声明 | 保持 `CandidateV1 / Unverified`，只陈述固定 x64 数值证据，不声称完整 foobar/component parity |
 
 ### 5.4 P2：测试、发布、性能和维护
 
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
-| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer 与 39 项 accepted 隔离 core 动态记录已固定；完整 accepted oracle、foobar host repeat policy 与剩余 host/album/renderer 观测待验收 |
+| TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core 动态记录及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
 | TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
@@ -269,20 +277,23 @@ reference/
 
 私人授权原文不应因目录建议而直接提交到公开仓库。
 
-### 6.5 对齐验收标准
+### 6.5 固定 x64 数值对齐验收标准
 
-完成参考对齐至少需要满足：
+M1 范围内的参考对齐至少需要满足：
 
-1. 所有边界 fixture 的最终整数 DR 与参考插件完全一致；
-2. 每声道窗口数量、被选窗口数量和峰值选择一致；
-3. 可观测的 RMS/Peak 中间值在事先定义并解释的数值容差内；
+1. 固定判别 corpus 的同语义最终字段与参考结果完全一致；
+2. 窗口、RMS、histogram、peak 和聚合规则均可追溯到固定二进制的静态分析、
+   隔离执行或参考观测；
+3. album 与 renderer 中纳入范围的纯数值算术、窄化和舍入具有产品边界测试；
 4. 残差不随采样率、时长、幅度或声道数呈系统趋势；
 5. 极短音频、尾窗、重复峰、静音和多声道没有未解释例外；
-6. 每个特殊行为都可追溯到实验、静态分析或动态跟踪证据；
-7. Reference profile 不依赖解码 chunk 大小或内部优化路径；
-8. 对参考插件本身的奇怪行为保持忠实复现，不在兼容模式中擅自修正。
+6. Candidate profile 不依赖解码 chunk 大小或内部优化路径；
+7. 对参考插件本身已确定的奇怪数值行为保持忠实复现，不擅自修正。
 
-“最终差值小于某个 dB”不能单独作为对齐完成的标准，因为多个内部错误可能相互抵消。
+“最终差值小于某个 dB”不能单独作为对齐完成的标准，因为多个内部错误可能相互
+抵消。但 conformance 也不要求两个实现的中间结构、累计顺序或每个检查点数值
+相等；reference raw state 可以作为逆向证据，MacinMeter 只需满足已声明的最终
+语义和自身工程不变量。只有最终结果出现反例时才增加中间路径诊断。
 
 ## 7. 目标架构
 
@@ -412,17 +423,18 @@ Error
 
 ### M1：事实与证据基础
 
-状态：`DOING`。
+状态：`DONE`。
 
-- 填充 reference 目标档案、实验生成器和运行 harness；
-- 保存第一批参考观测，不用当前实现反向生成 correctness golden；
-- 建立算法规格模板和证据等级；
+- 固定 reference 目标、实验生成器、运行 harness 与判别 corpus；
+- 保存参考观测，不用当前实现反向生成 correctness golden；
+- 建立固定 x64 per-track core 的版本化算法规格和证据等级；
+- 保留 album 聚合与 renderer 中影响数值的算术、窄化和舍入；
 - 将 M0 `ProvisionalV1` 输出仅保存为历史工程 snapshot。
 
 当前 clean-commit successor 已把六组公开字段固定到可由提交源码重建的实现身份，
-但 M1 不因此自动完成。隔离 core 动态证据已经补入，foobar host 的解码、组件注册、
-metadata、album 与 renderer 仍未进入同一受控边界；若最终 accepted policy 要求
-foobar runtime 重复性，还必须补同一 x64 target 的独立 host repeat run。
+隔离 core 动态证据也已经补入。M1 不等待 foobar host 的解码、组件注册、
+metadata、playlist/album grouping、完整 renderer 或独立 host repeat run；
+这些行为不属于固定 analyzer 数值契约。
 
 2026-07-18 至 2026-07-19 的后续检查点补齐了三条证据基础设施：
 
@@ -439,15 +451,22 @@ foobar runtime 重复性，还必须补同一 x64 target 的独立 host repeat r
 
 第三项关闭了 analyzer core “首次受控动态记录”这一缺口，并能保存 raw bits
 用于精确比较；它不启动 foobar2000，因此没有把 foobar decode、registration、
-metadata、album、renderer 或 host parity 升级成已验证事实。CDB/IDA 路径仍可
-用于将来的 host/album/renderer 专项证据，当前也没有据此产生 E3 兼容结论。
-M1 因此仍为 `DOING`。
+metadata、album subsystem、完整 renderer 或 host parity 升级成已验证事实。
+这些外围路径被保留为可选研究材料，不是 M1 缺口。album 的
+unweighted/weighted/fallback/binary32 窄化与整数显示，以及 renderer 的 report
+peak/RMS、DR/dB 与 duration 舍入，仅按纯数值叶子规则进入规格；固定静态数据流
+已足以确定公式，不要求人工制作 album playlist 或完整文本报告。
+
+M1 的固定目标、输入域、证据与非目标由
+[ADR-0002](adr/0002-m1-reference-numeric-scope.md) 收口。Candidate 继续标记
+`Unverified`，表示没有声明任意 PCM 或完整 foobar/component parity；这不否定
+“事实与证据基础”里程碑已经完成。
 
 出口条件：
 
-- 关键工程行为都有测试；
-- 参考插件结果可重复采集；
-- 每条算法结论可追溯到证据或明确标为未知。
+- [x] 关键工程行为都有测试；
+- [x] 固定目标的算法事实可从已保存证据重复审计；
+- [x] 每条纳入范围的算法结论可追溯到证据，外围行为明确列为非目标。
 
 ### M2：可信主干扩展
 
@@ -477,7 +496,7 @@ M1 因此仍为 `DOING`。
 - GUI 请求互不干扰；
 - 支持格式列表反映运行时真实能力。
 
-### M4：参考算法收口
+### M4：参考兼容声明收口
 
 - 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
@@ -488,9 +507,9 @@ M1 因此仍为 `DOING`。
 - 显式 `AlbumAggregator` 已实现静态 E1 完整公式，但不把 batch 自动解释成
   album；DR0 纳入子规则由静态路径与 footer 反事实达到 E2，精确 internal mean、
   length weighting 与 host metadata 不随之升级；
-- 建立 final + intermediate conformance suite；
+- 扩展最终可观测数值 conformance，并复核 album/renderer 的纯数值边界；
 - 处理所有系统性残差和未解释边界；
-- 完成兼容性报告。
+- 完成固定目标、固定数值字段范围内的兼容性报告；不追求 host 或文本 parity。
 
 出口条件：
 
@@ -585,8 +604,9 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 - [x] `ProvisionalV1` 不作为生产兼容 profile 保留；
 - [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
 - [x] Reference profile 的未导出中间状态已有固定 x64 布局与 ASLR-safe 探针计划；
-- [x] 首次受控 analyzer-core 动态记录已按固定 target/runtime/worker/input 身份验收；原始 core bits 使用精确比较，派生显示值及 host/album/renderer 的容差仍随各自 conformance 单独定义；
+- [x] 首次受控 analyzer-core 动态记录已按固定 target/runtime/worker/input 身份验收；原始 core bits 使用精确比较，外围 host/album subsystem/完整 renderer 为非目标，只有纯数值投影规则继续留档；
 - [x] Candidate 结果结构使用 wire schema v3；schema 版本只表示结构契约，不表示算法兼容。
+- [x] M1 不要求 production/reference 中间状态同构；album/renderer 只纳入纯数值规则，host、playlist、metadata 与文本 parity 明确排除。
 
 ## 13. 完成定义
 

@@ -60,6 +60,8 @@ Current GUI results are always labelled
 target and candidate revision. The fixed schema-v3 safe-master comparison
 matches the five exported DR/report field groups plus all 39 rendered duration
 tokens. Its limited footer check covers track count, sample-rate/channel-count
-sets, and the aggregate DR token, but not host metadata, precise album
-internals, album-focused runs, internal state, or arbitrary audio; it is not a
-claim of full reference parity.
+sets, and the aggregate DR token. M1 separately retains the statically recovered
+album arithmetic and renderer rounding rules, but host metadata, playlist
+grouping, complete text rendering, production/reference internal-state parity,
+and arbitrary audio are explicit non-goals. This is not a claim of full
+reference parity.

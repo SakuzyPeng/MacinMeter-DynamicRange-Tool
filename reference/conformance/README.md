@@ -32,16 +32,21 @@
 已导出 footer 的反事实共同支持“数值 DR0 track 不被排除”这一较窄子规则达到
 E2；safe-master footer 仍不足以区分精确 internal mean、公开窄化点或 length
 weighting 的替代实现，且 album-focused playlist 尚未导出。不得把该子规则的
-升级扩张成完整 album conformance。
+升级扩张成完整 album conformance。按
+[`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md)，静态数据流已经
+唯一确定的 album/renderer 纯数值公式可以由产品边界测试验收，不要求为了改变
+证据类别而追加 playlist 导出。
 
 每份差分摘要至少包含：
 
 - conformance run ID；
 - specification 版本和被测 commit/binary SHA-256；
 - target、experiment、observation 和 fixture ID；
-- 每个 final 字段与关键 intermediate state 的差分；
+- 每个纳入范围的最终字段或纯数值规则的差分/边界断言；
 - 容差及其证据来源；
 - 已知系统性偏差和处置状态；
 - 运行环境、执行命令和退出状态。
 
-只有固定 reference observation 与实现输出的比较才能进入本目录。
+只有固定 reference observation 与实现输出的比较才能进入本目录。reference raw
+intermediate state 可以作为逆向证据，但 production 内部状态、内存布局和逐检查点
+相等不是 conformance 记录的必填项。

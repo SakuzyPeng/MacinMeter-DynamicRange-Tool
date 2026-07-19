@@ -6,8 +6,9 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 流式的 Rust 核心，并由公共库、CLI 与 Tauri GUI 共同使用。
 
 > **兼容性状态：`foo_dr_meter 1.0.8 Candidate V1 / Unverified`。**
-> 当前 profile 是依据 foo_dr_meter 1.0.8 证据形成的候选解释，尚未通过完整的参考
-> conformance 验收。结果不得称为“官方”、已认证或可与参考结果互换。
+> 当前 profile 是依据 foo_dr_meter 1.0.8 证据形成的候选解释；有界的 M1 证据
+> 里程碑已经完成，但这不等于任意输入或完整 foobar/component 兼容。结果不得称为
+> “官方”、已认证或可与参考结果互换。
 
 ## M0 范围
 
@@ -116,9 +117,10 @@ DR 为 62/62、overall peak 为 39/39、overall RMS 为 39/39、channel RMS 为
 62/62、渲染时长为 39/39。参考 footer 的 track 数、采样率集合、声道数集合和
 `DR12` token 也与实现报告一致；若排除三个数值 DR0 track，则反事实结果会是
 DR13。这个局部 footer 检查不证明 host metadata、精确 album 内部算术、
-duration weighting 或完整文本 parity。不可见中间状态、isolated host-edge
-输入、album-focused 导出和任意音频也仍在比较范围之外，因此 profile 继续是
-`Unverified`。
+duration weighting 或完整文本 parity，也不以内部实现状态同构为目标。M1 数值
+范围纳入静态恢复的 album 算术与 renderer 舍入规则；host 行为、playlist
+grouping、metadata 来源、完整文本 parity 和任意音频仍不在声明范围内，因此
+profile 继续是 `Unverified`。
 
 ## 公共库
 
@@ -167,8 +169,9 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 ```
 
 unweighted album 值对 public-f32 track DR 做算术平均，并纳入数值 DR0 track；
-可选 duration weighting 使用每首 track 的精确 decoded duration。除非调用方显式
-调用该 API，batch 与 GUI 结果始终只是相互独立的 track report 集合。
+可选 duration weighting 使用每首 track 的精确 decoded duration。这个数值 API
+不声明 playlist grouping、footer 或其他 album 子系统 parity；除非调用方显式
+调用它，batch 与 GUI 结果始终只是相互独立的 track report 集合。
 
 ## GUI
 
@@ -202,10 +205,12 @@ macinmeter-domain
 进一步阅读：
 
 - [M0 架构决策](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
+- [M1 参考数值范围决策](docs/adr/0002-m1-reference-numeric-scope.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [支持格式](docs/SUPPORTED_FORMATS_CN.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - [参考证据策略](reference/README.md)
+- [隔离 x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
 
 ## 参考工作与致谢
 
@@ -217,8 +222,16 @@ Hyvärinen）。
 授权和致谢不代表数值兼容已经成立。目标 hash、实验、观测和候选规格记录在
 `reference/`；当前
 [绑定干净提交的 schema-v3 x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
-明确列出精确比较范围与剩余缺口。只有更广泛的证据和审查支持更强结论后，profile
-才能脱离 `Unverified`。
+明确列出精确比较范围与声明边界。除非未来另行审查并建立更强兼容性声明，profile
+继续保持 `Unverified`。
+
+已经验收的
+[39 项隔离 x64 analyzer-core 观测](reference/observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
+可在不启动 foobar2000 的情况下直接执行固定目标：每个输入使用全新 worker，并在
+core 调用期对 13 个普通 `shared.dll` IAT 入口设置 fail-fast tripwire。它不验证
+foobar 解码、注册、metadata、album grouping 或完整 renderer；这些是明确非目标，
+不是尚未补齐的 M1 证据。该记录的声明仍为 `compatibility: none` 与
+`foobarParity: not_assessed`。
 
 ## 许可证
 

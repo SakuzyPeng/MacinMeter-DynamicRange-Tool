@@ -8,9 +8,10 @@ the library, CLI, and Tauri GUI.
 
 > **Compatibility status: `foo_dr_meter 1.0.8 Candidate V1 / Unverified`.**
 > The current profile implements a candidate interpretation of evidence gathered
-> from foo_dr_meter 1.0.8. It has not passed a complete reference-conformance
-> process, and its values must not be described as “official,” certified, or
-> interchangeable with reference results.
+> from foo_dr_meter 1.0.8. The scoped M1 evidence milestone is complete, but this
+> does not establish arbitrary-input or full foobar/component compatibility.
+> Values must not be described as “official,” certified, or interchangeable with
+> reference results.
 
 ## M0 scope
 
@@ -128,9 +129,11 @@ track count, sample-rate set, channel-count set, and `DR12` token are also
 consistent with the implementation reports; excluding the three numeric DR0
 tracks would instead produce DR13. This partial footer check does not establish
 host metadata, precise album-internal arithmetic, duration weighting, or full
-text parity. Unobservable intermediate state, isolated host-edge inputs,
-album-focused exports, and arbitrary audio also remain outside the comparison,
-so the profile remains `Unverified`.
+text parity. Internal implementation-state parity is intentionally not a target.
+The M1 numeric scope includes the statically recovered album arithmetic and
+renderer rounding rules, while host behavior, playlist grouping, metadata
+provenance, complete text parity, and arbitrary audio remain outside the claim.
+The profile therefore remains `Unverified`.
 
 ## Library
 
@@ -181,8 +184,9 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 
 The unweighted album value is the arithmetic mean of public-f32 track DR
 values, including numeric DR0 tracks. Optional duration weighting uses each
-track's exact decoded duration. Batch and GUI results remain collections of
-independent track reports unless a caller explicitly invokes this API.
+track's exact decoded duration. This numeric API does not claim playlist
+grouping, footer, or other album-subsystem parity. Batch and GUI results remain
+collections of independent track reports unless a caller explicitly invokes it.
 
 ## GUI
 
@@ -218,6 +222,7 @@ fork algorithm behavior.
 See:
 
 - [M0 architecture decision](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
+- [M1 reference-numeric scope decision](docs/adr/0002-m1-reference-numeric-scope.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
@@ -236,15 +241,17 @@ That permission and attribution do not establish numerical compatibility.
 Target hashes, experiments, observations, and the candidate specification are
 recorded under `reference/`. The current
 [clean-commit schema-v3 x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
-documents its exact scope and remaining gaps. The profile remains `Unverified`
-until broader evidence and review justify a stronger statement.
+documents its exact scope and declared limits. The profile remains `Unverified`
+unless a later, separately reviewed compatibility claim justifies a stronger
+statement.
 
 An accepted
 [39-input isolated x64 analyzer-core observation](reference/observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
 now exercises the fixed target directly without starting foobar2000. It verifies
 that boundary with one fresh worker per input and fail-fast tripwires on all 13
 ordinary `shared.dll` IAT entries during core calls. It does not verify foobar
-decoding, registration, metadata, album grouping, or rendering; its claims remain
+decoding, registration, metadata, album grouping, or complete rendering; those
+are explicit non-goals rather than unfinished M1 evidence. Its claims remain
 `compatibility: none` and `foobarParity: not_assessed`.
 
 ## License

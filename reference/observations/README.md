@@ -18,7 +18,7 @@
   39 项 safe master 的单次原始导出；39 个 track 与 62 个声道值均已按 manifest
   完整规范化，39 个原始 duration token 与 footer 也按文本保留。后续
   conformance 可比较这些已存在字段，但不会回写本 observation。重复运行和三个
-  isolated 输入未在该记录中采集。
+  isolated 输入未在该记录中采集；它们不是 ADR-0002 的 M1 阻塞项。
 - [`OBS-foo-dr-meter-108-x86-discriminating-v1-run1-20260718`](obs-foo-dr-meter-108-x86-discriminating-v1-run1-20260718/observation.json)：
   固定 foobar2000 2.0 x86 / `foo_dr_meter` 1.0.8 x86 的 15 项初步单次黑盒
   导出；已与固定 x64 静态路径交叉印证，但没有重复运行。
@@ -45,4 +45,5 @@ foobar2000、候选模型或 MacinMeter。
 [`isolated core harness`](CORE_HARNESS.md)。该流程独立于 foobar process，以
 manifest 或显式有限 interleaved binary64 PCM 驱动固定 DLL，并严格绑定
 target、runtime、worker、block size 与输入身份。它是算法 core 观测工具，不是
-foobar host 或兼容性测试替代品。
+foobar host 或兼容性测试替代品。host repeat、playlist/grouping、metadata 与
+完整文本属于明确非目标，不因本 harness 未执行而成为缺失 core 证据。

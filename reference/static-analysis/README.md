@@ -20,10 +20,13 @@
   mapper，以及插件 renderer 与宿主 footer metadata 的边界。
 - [`SA-foo-dr-meter-108-x64-dynamic-probe-plan-20260718`](sa-foo-dr-meter-108-x64-dynamic-probe-plan-20260718.md)：
   固定 1.0.8 x64 analyzer/session/channel/result 布局，以及可按 ASLR module
-  base 加 RVA 执行的 core、album writer 与 renderer 动态探针计划；该计划尚未
-  动态执行。
+  base 加 RVA 执行的 core、album writer 与 renderer 动态探针计划。该 CDB/IDA
+  方案保留为归档的外围专项工具；当前 M1 core 已由隔离 worker 直接执行。
 - [`SA-foo-dr-meter-108-x86-cross-arch-20260718`](sa-foo-dr-meter-108-x86-cross-arch-20260718.md)：
   固定 1.0.8 x86 核心、x86/x64 精度差异、album 与报告数据流。
 
 固定 x64 safe-master observation 已动态区分 binary64 架构精度，并与核心静态
-路径形成 E2 交叉证据；仍未进行动态中间状态跟踪，因此没有 E3 规则。
+路径形成 E2 交叉证据。随后 accepted
+[`isolated-core observation`](../observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
+又直接保存 session/channel/result raw state。具体规则是否达到 E3 仍须按实际
+捕获字段逐项判定，不能把未执行的 album/renderer probe 一并升级。

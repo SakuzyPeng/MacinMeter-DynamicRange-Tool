@@ -8,8 +8,9 @@
 
 > 本文件冻结 M0 的历史工程基线。当前后继规格是
 > [`foo_dr_meter 1.0.8 candidate v1`](foo-dr-meter-1.0.8-candidate-v1.md)；
-> 后继规格允许逐规则保留 E1/H/U，完整 final/intermediate conformance 是进入
-> accepted 的条件，不再把它误作建立 candidate 的前置条件。
+> 后继规格允许逐规则保留 E1/H/U。当前 M1 验收范围由
+> [`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md) 固定：最终
+> 可观测数值 conformance 与可追溯白盒规则是收口条件，内部状态同构不是条件。
 
 ## 1. 目的
 
@@ -133,6 +134,6 @@ M0 报告 MUST 明确区分：
 1. 固定参考 target 和宿主身份；
 2. 建立可重复运行 harness；
 3. 为第 6 节每个关键行为提供至少 E2 证据，或明确从目标 profile 排除；
-4. 建立 final 与 intermediate 两层 conformance 数据；
+4. 建立最终可观测字段 conformance，并为白盒确定的数值规则建立针对性测试；
 5. 记录容差来源，不用宽容差掩盖系统性偏差；
 6. 确认 CLI/Tauri/库使用同一 `AnalysisReport` 语义。
