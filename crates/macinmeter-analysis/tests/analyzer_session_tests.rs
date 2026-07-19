@@ -754,3 +754,24 @@ fn tiny_nonzero_signal_is_measured_and_serializes_as_finite_json() {
     let round_trip: macinmeter_domain::AnalysisResult = serde_json::from_str(&json).unwrap();
     assert_eq!(round_trip, result);
 }
+
+#[test]
+fn squared_underflow_remains_a_numeric_dr_zero_contribution() {
+    let subnormal = f64::from_bits(1);
+    assert_eq!(subnormal * subnormal, 0.0);
+    let result = analyze(stream(1, 1, ChannelLayout::KnownNoLfe), [vec![subnormal]]);
+    let channel = measurement(&result, 0);
+
+    assert_eq!(channel.dr_db.to_bits(), 0.0_f32.to_bits());
+    assert_eq!(channel.rounded_dr, 0);
+    assert_eq!(channel.loud_window_rms.to_bits(), 0.0_f64.to_bits());
+    assert_eq!(channel.dr_primary_peak.to_bits(), subnormal.to_bits());
+    assert_eq!(channel.dr_selected_peak.to_bits(), subnormal.to_bits());
+    assert_eq!(
+        result.aggregates.track.dr_db.map(f32::to_bits),
+        Some(0.0_f32.to_bits())
+    );
+    assert_eq!(result.aggregates.track.rounded_dr, Some(0));
+    assert_eq!(result.aggregates.track.contributing_channels, vec![0]);
+    assert!(result.aggregates.track.excluded_channels.is_empty());
+}

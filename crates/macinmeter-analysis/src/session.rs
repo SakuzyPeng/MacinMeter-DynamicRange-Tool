@@ -338,28 +338,17 @@ impl ChannelAccumulator {
             });
         }
 
-        let Some(loud_window_rms) = loud_window_rms(&self.histogram, self.valid_windows) else {
-            return Ok(FinalizedChannel {
-                outcome: ChannelOutcome::InsufficientData { frames },
-                aggregate_dr_db: None,
-                report,
-            });
-        };
         let mut selected_peak = secondary_peak
             .filter(|peak| *peak > 0.0)
             .unwrap_or(primary_peak);
-        if selected_peak == 0.0 || primary_peak == 0.0 || loud_window_rms == 0.0 {
-            return Ok(FinalizedChannel {
-                outcome: ChannelOutcome::InsufficientData { frames },
-                aggregate_dr_db: None,
-                report,
-            });
-        }
-
-        let mut dr_db = dr_for_peak(loud_window_rms, selected_peak);
-        if dr_db < DR_FLOOR_DB {
-            selected_peak = primary_peak;
-            dr_db = dr_for_peak(loud_window_rms, primary_peak).max(DR_FLOOR_DB);
+        let loud_window_rms = loud_window_rms(&self.histogram, self.valid_windows).unwrap_or(0.0);
+        let mut dr_db = 0.0;
+        if selected_peak > 0.0 && primary_peak > 0.0 && loud_window_rms > 0.0 {
+            dr_db = dr_for_peak(loud_window_rms, selected_peak);
+            if dr_db < DR_FLOOR_DB {
+                selected_peak = primary_peak;
+                dr_db = dr_for_peak(loud_window_rms, primary_peak).max(DR_FLOOR_DB);
+            }
         }
         let public_dr_db = dr_db as f32;
 

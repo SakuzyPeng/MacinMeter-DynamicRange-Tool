@@ -291,6 +291,12 @@ M2 不以继续逆向或主动修改 Candidate 为交付物。出现新的足够
 规格语义变化同步规格、边界测试和必要的 conformance 记录。实现修复至少同步
 产品回归测试，并说明既有历史 observation/conformance 是否仍适用。
 
+本切片发现并修复了一处既有规格的转写缺陷：有限非零 PCM 的平方下溢为零时，
+Candidate 控制流保留数值 DR `+0.0` 并将该声道纳入 track mean。产品现在将有
+有效窗口的该边界表达为 `Measured`，而不是 `InsufficientData`。这一变更未改写
+任何历史 observation/conformance artifact，也不提升 profile version 或
+compatibility status。
+
 codec 归一化问题必须先与 analyzer 算法问题分离，不能用修改算法补偿 backend
 差异。
 

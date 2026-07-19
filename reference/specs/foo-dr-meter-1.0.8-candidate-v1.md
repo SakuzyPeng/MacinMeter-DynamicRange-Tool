@@ -454,6 +454,15 @@ function finish_channel(state, N):
 如果非零 histogram 项少于 `target`，循环使用所有现有非零项；全静音声道没有
 selected peak 和 histogram 项，沿上述路径得到数值 DR 0。
 
+同一控制流还覆盖一个极小但可达的 binary64 边界：有限非零 PCM 的平方若下溢为
+精确零，peak 仍为正数，但 window RMS、histogram 和 `selected_count` 均为零；
+`dr` 因而保留初始化的数值 `+0.0`。默认 track mean 仍无条件纳入该声道。当前
+MacinMeter 将这个有有效窗口的结果表达为 `Measured`（`loudWindowRms = 0.0`），
+而不是 `InsufficientData`；这是对已登记结算控制流的产品领域映射，不增加新的
+参考兼容声明。该边界当前为 E1：它由 x64 静态控制流和已保存 core 运行所记录的
+MXCSR `0x1f80`（FTZ/DAZ 关闭）推导，尚未使用专门的 reference subnormal 输入做
+动态观测。
+
 ### 4.6 track 聚合
 
 默认设置下：
@@ -660,6 +669,7 @@ album、host 或完整 renderer 一并升级。
 | 优先 secondary，缺失时回退 primary | E2 | 两份 SA；两个 OBS 的单窗口 101/102/201 与重复 peak fixture 支持。 |
 | secondary 产生负 DR 时以 primary 重算并 clamp 至 0 | E2 | 两份 SA；两个 OBS 的 105、202。 |
 | 静音产生数值 DR 0 | E2 | 两份 SA 零 peak/histogram 路径；两个 OBS 的 203。 |
+| 有限非零 PCM 的平方下溢为零时保留数值 DR `+0.0` 并参与默认 track mean | E1 | SA-x64 的 sample-square 与结算控制流；已保存 core 运行应用 MXCSR `0x1f80`（FTZ/DAZ 关闭），但没有专门的 reference subnormal 动态 observation。产品单元测试不提升参考证据等级。 |
 | 默认 track DR 是内部 binary64 channel DR 的全声道算术均值，包含静音和 LFE | E2 | 两份 SA；两个 OBS 的 301=6、302=20、303=15，OBS-x64 还覆盖 8 声道。公开 channel DR 不参与该平均。 |
 | 可选多声道权重在 `C > 2` 时使用内部 binary64 overall channel RMS 与 DR | E2 | 两份 SA 的公式与门槛；OBS-boundary 的四个 off/on 配对达到 track bits 8/8、channel 前提 8/8、pair invariants 4/4，并区分 loud-window RMS、RMS² 与不加权候选。未覆盖全静音零分母和任意声道数。 |
 | 默认 album 聚合不做统一的数值 DR0 track 过滤 | E2 | 两份 SA 的无条件聚合；OBS-x64 safe-master 含 3 个 DR0，全部纳入显示 DR12，统一排除则会显示 DR13。该反事实不证明其他 album 子规则。 |
