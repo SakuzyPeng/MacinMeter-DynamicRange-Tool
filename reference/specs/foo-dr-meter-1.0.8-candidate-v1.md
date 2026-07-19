@@ -11,8 +11,9 @@
 ## 1. 目的与边界
 
 本规格以 1.0.8 x64 二进制为核心算法基准，使用固定 x86 二进制做跨架构静态
-比较，并由 x86 初始实验与 x64 complete-v2 safe-master 实验交叉验证公开行为。
-它用于指导实现和 conformance 实验，但不是：
+比较，并由 x86 初始实验、x64 complete-v2 safe-master、隔离 core 与专门数值
+边界 observation 交叉验证实际覆盖的行为。它用于指导实现和 conformance 实验，
+但不是：
 
 - `foo_dr_meter` 1.0.3 或其他版本的规格；
 - x86 与 x64 共用一个数值精度契约的声明；静态分析已确认两者不同；
@@ -83,7 +84,9 @@ album length weighting 的 off/on 数值分支在第 4.8 节作为辅助聚合�
 
 固定 x64 report duration、channel label 和 footer renderer 边界另见
 [`SA-foo-dr-meter-108-x64-report-renderer-20260718`](../static-analysis/sa-foo-dr-meter-108-x64-report-renderer-20260718.md)。
-它与 x64 核心记录使用同一固定 DLL SHA-256，但仍属于同一类静态证据。
+可隔离调用的 duration/timespan 叶子 ABI 与清理边界另见
+[`SA-foo-dr-meter-108-x64-duration-leaf-20260719`](../static-analysis/sa-foo-dr-meter-108-x64-duration-leaf-20260719.md)。
+它们与 x64 核心记录使用同一固定 DLL SHA-256，但仍属于同一类静态证据。
 
 ### 2.2 黑盒实验
 
@@ -161,7 +164,35 @@ DR、每声道 RMS 与 overall peak 分别和既有导出达到 39/39、62/62、
 固定 analyzer core 的直接动态证据，不执行 foobar decoder、album writer 或
 report renderer，也不建立 host parity。
 
-### 2.4 当前实现差分
+### 2.4 x64 数值边界隔离记录
+
+固定 x64 数值边界 observation 见
+[`OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719`](../observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)。
+`suite.json` 的 SHA-256 为
+`28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b`；
+固定 worker SHA-256 为
+`9685bf13e69cce2f0920510b70e24c57cff4483b1c3296baada3f165704ca817`。
+它不启动 foobar2000，每个向量使用全新 worker，并在固定 runtime、浮点环境和
+13 个 `shared.dll` IAT fail-fast tripwire 下直接执行同一 target 的 duration
+数值叶子或 analyzer core。
+
+该记录的预注册关系全部满足：
+
+| 家族 | 结果 | 动态覆盖 |
+| --- | ---: | --- |
+| duration | 24/24 | `0.5s`、`1.5s`、44.1/48 kHz 半秒，以及 minute/hour/day/week 进位的下侧、精确半值和上侧 |
+| multichannel weighting track bits | 8/8 | 四个 off/on 场景，包括三声道整体 RMS 来源、双声道门槛和部分静音 |
+| weighting channel 前提 | 8/8 | 每次公开 channel DR/RMS raw bits 均先满足构造前提 |
+| weighting pair invariants | 4/4 | 同一 PCM 的 channel result、session、channel state 与 histogram 在开关两侧保持一致 |
+| histogram clamp | 6/6 | `-101/-100/-99/-1/0/+1 dB` 对 bin `0`、内部 bin 和 bin `10000` 的落点 |
+
+因此该 observation 与既有静态数据流形成独立交叉证据，但只覆盖固定 x64 target
+和上述有限向量。duration 是直接调用报告所用的数值叶子，不是完整 renderer；
+weighting 是 per-track 多声道选项，不是 album length weighting；成功集也刻意
+不包含全静音三声道的零分母路径。它不建立 decoder、host、metadata、album、
+完整文本或 MacinMeter compatibility 声明。
+
+### 2.5 当前实现差分
 
 固定 reference observation 与身份明确的 MacinMeter 产物之间的记录见
 [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718`](../conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)。
@@ -346,6 +377,13 @@ function submit_window(frames):
 最后一条是 x64 binary64 key 的语义。x86 会把已保存 key 窄化为 binary32，
 不得对未测试的半值和 tie 边界套用 x64 的逐位预测。
 
+`OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719` 在 finish 后、
+histogram cleanup 前保存 10001 个 `u32le` bin 的摘要与 SHA-256。单声道单窗口
+向量确认 `-101 dB` 与 `-100 dB` 落入 bin `0`，`+1 dB` 与 `0 dB` 落入 bin
+`10000`，而 `-99 dB` 与 `-1 dB` 留在内部 bin。该动态覆盖支持上述有限、非零
+RMS 输入的端点 clamp；它不外推 NaN/Inf、计数溢出、多窗口资源极限或所有
+libm 最后一位边界。
+
 ### 4.4 EOF
 
 ```text
@@ -441,7 +479,11 @@ track_dr_f32 = f32(
 )
 ```
 
-该分支是静态刻画，不属于本规格默认 profile。
+数值边界 observation 的四个 off/on 配对与这条静态公式逐位相符：三声道
+balanced、整体 RMS 来源判别和部分静音场景在开关后只改变 track bits；双声道
+场景保持相同 track bits，确认 `C > 2` 门槛。整体 RMS 来源场景还区分了
+overall channel RMS、loud-window RMS、RMS² 与不加权候选。该分支仍不属于本
+规格默认 profile；有限三声道输入不证明任意声道数或全静音零分母的成功行为。
 
 ### 4.7 报告派生与整数显示
 
@@ -488,9 +530,16 @@ rounded_seconds = llround(f64(decoded_frames) / f64(sample_rate))
 这里的 C `llround` 在半值处远离零。随后固定 PFC formatter 将非负整秒拆成
 week、day、hour、minute 和 second：存在 week 时输出 `Nwk `；存在 day 或 week
 时输出 `Nd `；存在 hour/day/week 时尾部为 `h:mm:ss`，否则为 `m:ss`。39 项
-safe-master token 与这条路径全部一致。现有 fixture 的小数秒没有落在半秒附近，
-所以 39/39 只验证现有 token；半值舍入和长时格式由固定 renderer 静态路径支持，
-不能由这 39 项单独外推。
+safe-master token 与这条路径全部一致；后续隔离 observation 又以 24 个向量覆盖
+`0.5s`、`1.5s`、44.1/48 kHz 精确半秒及 minute/hour/day/week 进位的下侧、
+精确半值和上侧，全部得到预注册 token。
+
+这两类动态证据的边界不同：safe-master 来自完整报告但没有半秒判别输入；24 项
+记录直接调用 renderer 所使用的固定数值叶子，而没有执行完整 renderer。结合
+renderer 到该叶子的固定静态调用数据流，可把非负 finite、
+`fractionalDigits = 0` 路径上已覆盖的 `llround` 与四类文本分支交叉定为 E2；
+不能据此声明负时长、非有限值、零 sample rate、超大 frame 转换、其他小数位或
+完整报告 byte parity。
 
 #### 4.7.1 当前 schema-v3 实现映射
 
@@ -581,13 +630,14 @@ filter”提升为 E2；它不能排除按其他隐藏状态选择性过滤的�
 ## 5. 逐规则证据等级
 
 证据等级遵循 [`reference/README.md`](../README.md)。`SA-x64` 指 x64 核心
-记录，`SA-render` 指固定 x64 report renderer 记录，`SA-cross` 指
-x86/cross-arch 记录；`OBS-x86` 与 `OBS-x64` 分别指第 2.2.1、2.2.2 节的固定
-黑盒观测，`OBS-core` 指第 2.3 节的隔离 core 动态记录。多份静态记录仍属于
-同一类证据，不因目标或函数数量自动升级为 E2；同一构造模型与 observation 的
-比较也不构成第三类证据。`OBS-core` 只对实际保存的 session/channel/result raw
-state 构成直接动态证据，不能把未捕获的 histogram scan 或外围 renderer 一并
-升级。
+记录，`SA-render` 指固定 x64 report renderer 记录，`SA-duration` 指固定
+duration 叶子 ABI 记录，`SA-cross` 指 x86/cross-arch 记录；`OBS-x86` 与
+`OBS-x64` 分别指第 2.2.1、2.2.2 节的固定黑盒观测，`OBS-core` 指第 2.3 节的
+隔离 core 动态记录，`OBS-boundary` 指第 2.4 节的数值边界记录。多份静态记录
+仍属于同一类证据，不因目标或函数数量自动升级为 E2；同一构造模型与
+observation 的比较也不构成第三类证据。`OBS-core` 和 `OBS-boundary` 只对各自
+实际保存或直接执行的状态、数值叶子与有限向量构成动态证据，不能把未执行的
+album、host 或完整 renderer 一并升级。
 
 | 规则 | 等级 | 依据与限制 |
 | --- | --- | --- |
@@ -598,7 +648,7 @@ state 构成直接动态证据，不能把未捕获的 histogram scan 或外围 
 | 精确窗口边界不添加虚拟零 | E1 | 两份 SA；现有导出字段不能观察该隐藏状态，不要求重复导出。 |
 | channel RMS 为所有 window RMS 的等权二次均值 | E2 | SA 的 `sum_window_rms2 / N`；OBS-x86/OBS-x64 的 103、104、110、111。 |
 | RMS 先按 `0.01 dB` 量化再进入 histogram | E2 | 两份 SA；OBS-x86/OBS-x64 的 110 区分线性 `0.0001` bin。 |
-| RMS key clamp 到 `[-100, 0] dB`、共 10001 bins | E1 | 两份 SA 的常量、比较和数组大小；端点 fixture 仍应用于本地回归，但不需要靠报告猜控制流。 |
+| RMS key clamp 到 `[-100, 0] dB`、共 10001 bins | E2 | SA-x64/SA-cross 的常量、比较和数组大小；OBS-boundary 的 `-101/-100/-99/-1/0/+1 dB` 单窗口摘要确认两个端点和相邻内部 bin。E2 不覆盖非有限 RMS、计数溢出或资源极限。 |
 | loud 目标数为 `max(1, floor(N/5))` | E2 | 两份 SA；OBS-x86/OBS-x64 的 5/10-window 输入相符。 |
 | loud 边界 bin 整组纳入并按 bin 中心重建功率 | E2 | 两份 SA；OBS-x86/OBS-x64 的 111 区分精确目标数模型。 |
 | peak 以 `0.01 dB` key、严格 `>` 两级排名 | E2 | 两份 SA 与两个 OBS 的 120/121；x64 precision fixture 还覆盖 source-f64 peak 半值，但有限输入不能证明全部 tie 边界。 |
@@ -606,15 +656,15 @@ state 构成直接动态证据，不能把未捕获的 histogram scan 或外围 
 | secondary 产生负 DR 时以 primary 重算并 clamp 至 0 | E2 | 两份 SA；两个 OBS 的 105、202。 |
 | 静音产生数值 DR 0 | E2 | 两份 SA 零 peak/histogram 路径；两个 OBS 的 203。 |
 | 默认 track DR 是内部 binary64 channel DR 的全声道算术均值，包含静音和 LFE | E2 | 两份 SA；两个 OBS 的 301=6、302=20、303=15，OBS-x64 还覆盖 8 声道。公开 channel DR 不参与该平均。 |
-| 可选多声道权重使用内部 binary64 channel RMS 与 DR | E1 | 两份 SA；设置在两个 OBS 中关闭。 |
+| 可选多声道权重在 `C > 2` 时使用内部 binary64 overall channel RMS 与 DR | E2 | 两份 SA 的公式与门槛；OBS-boundary 的四个 off/on 配对达到 track bits 8/8、channel 前提 8/8、pair invariants 4/4，并区分 loud-window RMS、RMS² 与不加权候选。未覆盖全静音零分母和任意声道数。 |
 | 默认 album 聚合不做统一的数值 DR0 track 过滤 | E2 | 两份 SA 的无条件聚合；OBS-x64 safe-master 含 3 个 DR0，全部纳入显示 DR12，统一排除则会显示 DR13。该反事实不证明其他 album 子规则。 |
 | channel/track 公开结果窄化为 binary32 | E1 | 两份 SA 的明确存储路径；文本精度不足以独立确定所有窄化点。 |
 | 正整数 DR 以 binary32 `+0.5` 后转换 | E2 | 两份 SA 的报告路径；两个 OBS 的 120/121 及 OBS-x64 的 610/611 位于可区分边界两侧。 |
 | report RMS 使用公开 channel RMS 的 binary32 平方和二次均值 | E2 | SA-cross 登记完整数据流；两个 OBS 的 301–303 及 OBS-x64 的 39 个 overall RMS token 与预先构造的静态模型预测一致。 |
 | report peak 为公开 channel primary peak 的最大值 | E2 | SA-cross 登记完整数据流；OBS-x64 的 39 个 overall peak token 与预先构造的静态模型预测一致，但有限输入不证明所有边界。 |
-| duration 以 binary64 frames/rate 经 `llround` 得到整秒 | E1 | SA-render 的固定 x64 数据流；现有 observation 没有半秒判别输入，不能把相符的普通值升级为 E2。 |
-| 短时 duration 使用 `m:ss` renderer | E2 | SA-render 的固定 formatter 分支；OBS-x64 的 39 个 duration token 全部一致。 |
-| duration 的 hour/day/week renderer | E1 | SA-render 的固定分支与模板；现有 observation 没有长时输入。 |
+| duration 以 binary64 frames/rate 经 `llround` 得到整秒 | E2 | SA-render/SA-duration 的固定数据流与 ABI；OBS-boundary 在 `0.5s`、`1.5s`、44.1/48 kHz 半秒及四个进位边界的下侧/精确/上侧共 24/24。限于非负 finite、`fractionalDigits = 0` 和已覆盖 frame 范围。 |
+| 短时 duration 使用 `m:ss` renderer | E2 | SA-render/SA-duration 的固定 formatter 分支；OBS-x64 的 39 个报告 token 与 OBS-boundary 的短时/分钟边界均相符。 |
+| duration 的 hour/day/week renderer | E2 | SA-render/SA-duration 的固定分解与模板；OBS-boundary 直接覆盖 hour、day、week 进位的下侧、精确半值和上侧。它验证数值叶子 token，不等于完整 report renderer parity。 |
 | 已观测 channel ordinal `0..5, 9, 10` 显示为 `FL, FR, FC, LFE, BL, BR, SL, SR` | E2 | SA-render 的固定表；OBS-x64 的 1/2/3/6/8 声道列覆盖这些 ordinal。该规则不证明宿主如何生成 ordinal。 |
 | channel ordinal `6..8, 11..17` 与 `>=18` 的 `Ch %u`/`?` fallback | E1 | SA-render 的固定表与分支；现有 observation 未执行这些分支。 |
 | official album DR 为 binary32 track DR 的 binary64 算术平均，再窄化为 binary32 | E1 | 两份架构的 album writer 静态数据流。 |
@@ -622,9 +672,10 @@ state 构成直接动态证据，不能把未捕获的 histogram scan 或外围 
 | x86 与 x64 使用不同 PCM、sample-square 和 peak 精度 | E2 | SA-cross 的固定二进制指令级数据宽度；OBS-x64 的 source-f64/先窄化对照声道动态保留不同 token。证据只覆盖已导出边界，不外推所有最后一位。 |
 | 核心零 frame 结算与 host 零帧源行为不同 | E1 | 两份 SA：核心产生 DR0；host 在首次 decode 无 chunk 时抛出 data error。 |
 
-本表保留逐规则的保守 E1/E2 等级；第 2.3 节已经提供 core 动态记录，但只有完成
-raw 字段到具体规则的逐项证据复核后才单独升级为 E3。M1 完成不依赖把静态已经
-唯一确定的规则形式化升级到更高证据标签。
+本表保留逐规则的保守 E1/E2 等级；第 2.3 节提供通用 safe-master core 动态
+记录，第 2.4 节提供专门的有限边界判别。它们与静态规则交叉可形成 E2，但隔离
+worker 的直接调用和摘要仍不是内部逐指令 trace，不能自动升级为 E3。M1 完成
+也不依赖把其他静态已唯一确定的规则形式化升级到更高标签。
 
 ## 6. 已解决边界、限制与非目标
 
@@ -635,11 +686,14 @@ raw 字段到具体规则的逐项证据复核后才单独升级为 E3。M1 完�
 - x86/x64 是否共用数值精度：不共用，静态宽度与 x64 architecture
   discriminator 已交叉印证，差异见第 3.1 节；
 - block/window、EOF、精确整窗、RMS clamp 和任意合法采样率的窗长；
-- channel/track binary32 存储点、可选多声道 weighting 及其全静音零除零路径；
+- channel/track binary32 存储点；可选多声道 weighting 的 `C > 2` 门槛、
+  overall RMS 权重来源和部分静音行为已有动态交叉，全静音零除零仍只作为静态
+  无效边界保留；
 - album official、length weighting、最终窄化与显示舍入的静态控制流；其中只有
   “不统一过滤 DR0”另有 footer 反事实并达到 E2；
-- report peak/RMS、已覆盖的短时 `m:ss` duration renderer、接近零修正、`C`
-  locale 和固定文本；半秒舍入及 hour/day/week 分支仍只有静态证据；
+- report peak/RMS、接近零修正、`C` locale 和固定文本；duration 的半秒舍入与
+  minute/hour/day/week token 已由固定数值叶子动态交叉，但完整 renderer 仍未
+  动态执行；
 - 已观测 channel ordinal `0..5, 9, 10` 的公开标签达到 E2；`6..8, 11..17`
   与 `>=18` fallback 仍为 E1，宿主 channel mask 到 ordinal 的来源规则仍未知；
 - 核心零 frame 结算与宿主首次 decode 无 chunk 的分层行为。
@@ -675,7 +729,7 @@ parity 则明确不属于 M1。
 | 行为 | 等级 | 说明 |
 | --- | --- | --- |
 | 1.0.3 与 1.0.8 是否相同 | U | 当前证据不得跨版本外推。 |
-| 固定 Windows CRT/libm 的未覆盖最后一位边界 | H | 当前 x64 观测覆盖两个架构 precision fixture，但 bit-exact 目标仍须固定运行库并覆盖或动态跟踪更多半值；有限 62 个 token 不能证明所有边界。 |
+| 固定 Windows CRT/libm 的未覆盖最后一位边界 | H | 当前 x64 观测覆盖两个架构 precision fixture、24 个 duration 半秒/进位向量和 6 个 histogram 端点向量，但 bit-exact 目标仍须固定运行库；这些有限点不能证明所有 `log10`/`sqrt`/转换边界。 |
 | album 聚合数值公式 | E1 | DR0 统一过滤反事实已单独达到 E2；public-f32 mean、最终窄化和 length weighting 由固定静态数据流唯一确定。focused playlist/grouping 不属于数值公式验收，batch 也不自动具有 album 语义。 |
 | NaN、Inf、反常范围 PCM | U | 不属于有效 PCM 契约；目标异常数学行为不提升为产品契约。 |
 | histogram/窗口计数极限与溢出 | U | 不属于候选有效资源范围；若研究应做静态类型/指令审计，而不是生成数百年音频。 |
@@ -727,7 +781,8 @@ parity 则明确不属于 M1。
    album 公式和 x86/x64 精度判别；静态已确定的内部规则不要求重复人工导出；
 4. 把现有 track DR 39/39、channel DR 62/62、overall peak 39/39、overall RMS
    39/39、channel RMS 62/62、duration 39/39 的有限 implementation comparison
-   固定为验收基线，并以边界测试覆盖 album/renderer 的纯数值规则；
+   固定为验收基线，并保留 reference 数值边界 observation 的 duration 24/24、
+   weighting 8/8 与 histogram 6/6；album 纯数值公式仍按其独立证据边界验收；
 5. 明确只接受 x64、只接受 x86，还是分别提供两个数值 profile；不得再声明一个
    未限定架构的共同精度契约；
 6. 将 host、decoder、playlist/grouping、metadata 来源和文本 byte parity 明确

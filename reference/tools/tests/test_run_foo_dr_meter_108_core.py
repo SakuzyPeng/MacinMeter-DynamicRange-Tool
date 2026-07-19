@@ -126,8 +126,22 @@ def make_manifest_fixture(
     return manifest_path, corpus
 
 
-def protocol_request(channels: int = 1) -> dict[str, object]:
+def histogram_sha256(total_count: int) -> str:
+    bins = [0] * HARNESS.HISTOGRAM_BINS_PER_CHANNEL
+    if total_count:
+        bins[1] = total_count
+    return sha256(struct.pack(f"<{len(bins)}I", *bins))
+
+
+def protocol_request(
+    channels: int = 1,
+    *,
+    weighting: bool = False,
+    block_frames: int = 512,
+) -> dict[str, object]:
     return {
+        "schemaVersion": HARNESS.SCHEMA_VERSION,
+        "kind": HARNESS.PROTOCOL_KIND_REQUEST,
         "requestId": "1" * 64,
         "target": {
             "sha256": "2" * 64,
@@ -142,6 +156,10 @@ def protocol_request(channels: int = 1) -> dict[str, object]:
             "channels": channels,
             "frames": 2,
         },
+        "options": {
+            "multichannelLoudnessWeighting": weighting,
+            "blockFrames": block_frames,
+        },
     }
 
 
@@ -155,7 +173,7 @@ def protocol_result(
     runtime = target["runtimeArtifacts"]
     assert isinstance(runtime, list)
     return {
-        "schemaVersion": 1,
+        "schemaVersion": HARNESS.SCHEMA_VERSION,
         "kind": HARNESS.PROTOCOL_KIND_RESULT,
         "requestId": request["requestId"],
         "targetSha256": target["sha256"],
@@ -209,6 +227,125 @@ def protocol_result(
                 }
                 for index in range(channels)
             ],
+            "options": dict(request["options"]),
+            "histogramAfterFinish": {
+                "layout": HARNESS.HISTOGRAM_LAYOUT,
+                "elementEncoding": HARNESS.HISTOGRAM_ELEMENT_ENCODING,
+                "binsPerChannel": HARNESS.HISTOGRAM_BINS_PER_CHANNEL,
+                "channels": [
+                    {
+                        "index": index,
+                        "totalCount": 1,
+                        "nonzeroBinCount": 1,
+                        "minus100DbCount": 0,
+                        "zeroDbCount": 0,
+                        "sha256": histogram_sha256(1),
+                    }
+                    for index in range(channels)
+                ],
+            },
+            "fpEnvironment": {
+                "before": {
+                    "x87ControlWordBits": "037f",
+                    "mxcsrBits": "00001f80",
+                },
+                "applied": {
+                    "x87ControlWordBits": "037f",
+                    "mxcsrBits": "00001f80",
+                    "rounding": "nearest",
+                    "ftz": False,
+                    "daz": False,
+                    "exceptionsMasked": True,
+                },
+                "after": {
+                    "x87ControlWordBits": "037f",
+                    "mxcsrBits": "00001f80",
+                },
+                "restored": {
+                    "x87ControlWordBits": "037f",
+                    "mxcsrBits": "00001f80",
+                },
+            },
+        },
+    }
+
+
+def duration_protocol_request(
+    *,
+    decoded_frames: int = 1,
+    sample_rate_hz: int = 2,
+    fractional_digits: int = 0,
+) -> dict[str, object]:
+    return {
+        "schemaVersion": HARNESS.SCHEMA_VERSION,
+        "kind": HARNESS.DURATION_PROTOCOL_KIND_REQUEST,
+        "requestId": "a" * 64,
+        "target": {
+            "dllPath": "C:\\staged\\foo_dr_meter.dll",
+            "sha256": "2" * 64,
+            "byteLength": 20,
+            "durationFormatRva": HARNESS.DURATION_FORMAT_RVA,
+            "runtimeProfile": "fixed_foobar_2_25_10",
+            "runtimeArtifacts": [
+                {
+                    "name": name,
+                    "sourcePath": f"C:\\runtime\\{name}",
+                    "sha256": str(index) * 64,
+                    "byteLength": index,
+                }
+                for index, name in enumerate(HARNESS.RUNTIME_ARTIFACT_NAMES, 3)
+            ],
+        },
+        "duration": {
+            "decodedFrames": decoded_frames,
+            "sampleRateHz": sample_rate_hz,
+            "fractionalDigits": fractional_digits,
+        },
+    }
+
+
+def duration_protocol_result(
+    request: dict[str, object],
+    *,
+    text: str = "0:01",
+) -> dict[str, object]:
+    target = request["target"]
+    duration = request["duration"]
+    assert isinstance(target, dict)
+    assert isinstance(duration, dict)
+    runtime = target["runtimeArtifacts"]
+    assert isinstance(runtime, list)
+    decoded_frames = duration["decodedFrames"]
+    sample_rate_hz = duration["sampleRateHz"]
+    assert isinstance(decoded_frames, int)
+    assert isinstance(sample_rate_hz, int)
+    return {
+        "schemaVersion": HARNESS.SCHEMA_VERSION,
+        "kind": HARNESS.DURATION_PROTOCOL_KIND_RESULT,
+        "requestId": request["requestId"],
+        "targetSha256": target["sha256"],
+        "data": {
+            "geometry": dict(duration),
+            "secondsBits": HARNESS._duration_seconds_bits(
+                decoded_frames,
+                sample_rate_hz,
+            ),
+            "text": text,
+            "runtimeArtifacts": [
+                {
+                    "name": item["name"],
+                    "sha256": item["sha256"],
+                    "byteLength": item["byteLength"],
+                }
+                for item in runtime
+                if isinstance(item, dict)
+            ],
+            "loaderMode": "private_staging_dll_load_dir_system32",
+            "sharedServiceBoundary": {
+                "loadLifecycle": "real_shared",
+                "numericLeafExecution": "fail_fast_iat_tripwire",
+                "armedImportCount": 13,
+            },
             "fpEnvironment": {
                 "before": {
                     "x87ControlWordBits": "037f",
@@ -387,7 +524,7 @@ class PcmPreparationTests(unittest.TestCase):
 
 class WorkerProtocolTests(unittest.TestCase):
     def test_valid_result_is_strictly_accepted(self) -> None:
-        request = protocol_request(2)
+        request = protocol_request(2, weighting=True)
         response = protocol_result(request, channels=2)
         parsed = HARNESS.validate_worker_response(
             json_line(response), exit_code=0, request=request
@@ -437,12 +574,23 @@ class WorkerProtocolTests(unittest.TestCase):
 
     def test_response_must_echo_identity_geometry_runtime_and_finite_bits(self) -> None:
         request = protocol_request()
-        for mutation in ("request", "geometry", "runtime", "bits", "session"):
+        for mutation in (
+            "schema",
+            "request",
+            "geometry",
+            "runtime",
+            "bits",
+            "session",
+            "options",
+            "histogram",
+        ):
             with self.subTest(mutation=mutation):
                 response = protocol_result(request)
                 data = response["data"]
                 assert isinstance(data, dict)
-                if mutation == "request":
+                if mutation == "schema":
+                    response["schemaVersion"] = 1
+                elif mutation == "request":
                     response["requestId"] = "9" * 64
                 elif mutation == "geometry":
                     data["frames"] = 3
@@ -452,10 +600,18 @@ class WorkerProtocolTests(unittest.TestCase):
                     artifacts.reverse()
                 elif mutation == "bits":
                     data["trackDrBits"] = "7fc00000"
-                else:
+                elif mutation == "session":
                     before = data["sessionBeforeFinish"]
                     assert isinstance(before, dict)
                     before["submittedFrames"] = 2
+                elif mutation == "options":
+                    options = data["options"]
+                    assert isinstance(options, dict)
+                    options["multichannelLoudnessWeighting"] = True
+                else:
+                    histogram = data["histogramAfterFinish"]
+                    assert isinstance(histogram, dict)
+                    histogram["binsPerChannel"] = 10000
                 with self.assertRaises(HARNESS.CoreHarnessError):
                     HARNESS.validate_worker_response(
                         json_line(response), exit_code=0, request=request
@@ -466,7 +622,7 @@ class WorkerProtocolTests(unittest.TestCase):
         target = request["target"]
         assert isinstance(target, dict)
         response = {
-            "schemaVersion": 1,
+            "schemaVersion": HARNESS.SCHEMA_VERSION,
             "kind": HARNESS.PROTOCOL_KIND_ERROR,
             "requestId": request["requestId"],
             "targetSha256": target["sha256"],
@@ -479,6 +635,219 @@ class WorkerProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(HARNESS.CoreHarnessError, "success exit"):
             HARNESS.validate_worker_response(
                 json_line(response), exit_code=0, request=request
+            )
+
+    def test_histogram_geometry_counts_and_hash_are_strict(self) -> None:
+        request = protocol_request()
+        mutations = {
+            "index": 1,
+            "totalCount": 2,
+            "nonzeroBinCount": 2,
+            "minus100DbCount": 2,
+            "zeroDbCount": 2,
+            "sha256": "A" * 64,
+        }
+        for key, invalid in mutations.items():
+            with self.subTest(key=key):
+                response = protocol_result(request)
+                data = response["data"]
+                assert isinstance(data, dict)
+                histogram = data["histogramAfterFinish"]
+                assert isinstance(histogram, dict)
+                channels = histogram["channels"]
+                assert isinstance(channels, list)
+                item = channels[0]
+                assert isinstance(item, dict)
+                item[key] = invalid
+                with self.assertRaises(HARNESS.CoreHarnessError):
+                    HARNESS.validate_worker_response(
+                        json_line(response),
+                        exit_code=0,
+                        request=request,
+                    )
+
+    def test_core_request_rejects_non_boolean_weighting(self) -> None:
+        prepared = HARNESS.PreparedPcm(
+            input_id="empty",
+            source_kind="explicit_f64le_pcm",
+            source_encoding="f64le-interleaved",
+            conversion="identity",
+            source_identity=HARNESS.FileIdentity(sha256(b""), 0),
+            pcm=b"",
+            sample_rate=8000,
+            channels=1,
+            frames=0,
+        )
+        for value in (0, 1, None, "false"):
+            with self.subTest(value=value):
+                with self.assertRaises(HARNESS.CoreHarnessError):
+                    HARNESS.build_worker_request(
+                        prepared,
+                        worker_identity=HARNESS.FileIdentity("1" * 64, 10),
+                        target_identity=HARNESS.FileIdentity("2" * 64, 20),
+                        runtime_artifacts=(),
+                        runtime_profile="fixed_foobar_2_25_10",
+                        target_path=Path("missing-target.dll"),
+                        pcm_path=Path("missing-input.f64le"),
+                        multichannel_loudness_weighting=value,
+                    )
+
+
+class DurationProtocolTests(unittest.TestCase):
+    def test_valid_duration_result_is_strictly_accepted(self) -> None:
+        request = duration_protocol_request()
+        response = duration_protocol_result(request)
+        parsed = HARNESS.validate_duration_worker_response(
+            json_line(response),
+            exit_code=0,
+            request=request,
+        )
+        self.assertEqual(parsed, response)
+        data = parsed["data"]
+        assert isinstance(data, dict)
+        self.assertEqual(data["secondsBits"], "3fe0000000000000")
+
+    def test_duration_text_accepts_only_safe_canonical_shapes(self) -> None:
+        valid = (
+            "0:01",
+            "1:02:03",
+            "2d 3:04:05",
+            "1wk 0d 0:00:00",
+        )
+        invalid = (
+            "",
+            "1:2",
+            "1:60",
+            "1:60:00",
+            "duration",
+            "C:\\private\\0:01",
+            "一分钟",
+            "1" * 129,
+        )
+        request = duration_protocol_request()
+        for text in valid:
+            with self.subTest(valid=text):
+                response = duration_protocol_result(request, text=text)
+                HARNESS.validate_duration_worker_response(
+                    json_line(response),
+                    exit_code=0,
+                    request=request,
+                )
+        for text in invalid:
+            with self.subTest(invalid=text):
+                response = duration_protocol_result(request, text=text)
+                with self.assertRaises(HARNESS.CoreHarnessError):
+                    HARNESS.validate_duration_worker_response(
+                        json_line(response),
+                        exit_code=0,
+                        request=request,
+                    )
+
+    def test_duration_response_requires_exact_echo_and_runtime_boundary(self) -> None:
+        request = duration_protocol_request()
+        for mutation in (
+            "schema",
+            "request",
+            "target",
+            "geometry",
+            "seconds_nonfinite",
+            "seconds_mismatch",
+            "runtime",
+            "boundary",
+            "fp",
+            "extra",
+        ):
+            with self.subTest(mutation=mutation):
+                response = duration_protocol_result(request)
+                data = response["data"]
+                assert isinstance(data, dict)
+                if mutation == "schema":
+                    response["schemaVersion"] = 1
+                elif mutation == "request":
+                    response["requestId"] = "9" * 64
+                elif mutation == "target":
+                    response["targetSha256"] = "9" * 64
+                elif mutation == "geometry":
+                    geometry = data["geometry"]
+                    assert isinstance(geometry, dict)
+                    geometry["decodedFrames"] = 2
+                elif mutation == "seconds_nonfinite":
+                    data["secondsBits"] = "7ff8000000000000"
+                elif mutation == "seconds_mismatch":
+                    data["secondsBits"] = "3ff0000000000000"
+                elif mutation == "runtime":
+                    runtime = data["runtimeArtifacts"]
+                    assert isinstance(runtime, list)
+                    runtime.reverse()
+                elif mutation == "boundary":
+                    boundary = data["sharedServiceBoundary"]
+                    assert isinstance(boundary, dict)
+                    boundary["numericLeafExecution"] = "uncontrolled"
+                elif mutation == "fp":
+                    fp = data["fpEnvironment"]
+                    assert isinstance(fp, dict)
+                    applied = fp["applied"]
+                    assert isinstance(applied, dict)
+                    applied["rounding"] = "down"
+                else:
+                    data["unexpected"] = True
+                with self.assertRaises(HARNESS.CoreHarnessError):
+                    HARNESS.validate_duration_worker_response(
+                        json_line(response),
+                        exit_code=0,
+                        request=request,
+                    )
+
+    def test_duration_request_rejects_invalid_geometry(self) -> None:
+        base = {
+            "worker_identity": HARNESS.FileIdentity("1" * 64, 10),
+            "target_identity": HARNESS.FileIdentity("2" * 64, 20),
+            "runtime_artifacts": (),
+            "runtime_profile": "fixed_foobar_2_25_10",
+            "target_path": Path("missing-target.dll"),
+            "decoded_frames": 1,
+            "sample_rate_hz": 2,
+            "fractional_digits": 0,
+        }
+        cases = (
+            ("decoded_frames", True),
+            ("decoded_frames", -1),
+            ("decoded_frames", 1 << 64),
+            ("sample_rate_hz", True),
+            ("sample_rate_hz", 0),
+            ("sample_rate_hz", 1 << 32),
+            ("fractional_digits", True),
+            ("fractional_digits", 1),
+        )
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                arguments = dict(base)
+                arguments[key] = value
+                with self.assertRaises(HARNESS.CoreHarnessError):
+                    HARNESS.build_duration_worker_request(**arguments)
+
+    def test_duration_uses_the_shared_protocol_error_kind(self) -> None:
+        request = duration_protocol_request()
+        target = request["target"]
+        assert isinstance(target, dict)
+        response = {
+            "schemaVersion": HARNESS.SCHEMA_VERSION,
+            "kind": HARNESS.PROTOCOL_KIND_ERROR,
+            "requestId": request["requestId"],
+            "targetSha256": target["sha256"],
+            "error": {
+                "code": "duration_contract_mismatch",
+                "message": "duration contract mismatch",
+            },
+        }
+        with self.assertRaisesRegex(
+            HARNESS.WorkerReportedError,
+            "duration_contract_mismatch",
+        ):
+            HARNESS.validate_duration_worker_response(
+                json_line(response),
+                exit_code=2,
+                request=request,
             )
 
 
@@ -506,7 +875,7 @@ class EndToEndParentTests(unittest.TestCase):
             source = "import sys\nsys.stderr.buffer.write(b'x' * 1048576)\n"
         else:
             source = r'''
-import argparse, json
+import argparse, hashlib, json, math, struct
 p = argparse.ArgumentParser()
 p.add_argument("--request", required=True)
 a = p.parse_args()
@@ -515,60 +884,113 @@ artifacts = [
     {"name": x["name"], "sha256": x["sha256"], "byteLength": x["byteLength"]}
     for x in r["target"]["runtimeArtifacts"]
 ]
-data = {
-    "sampleRateHz": r["stream"]["sampleRate"],
-    "channels": r["stream"]["channels"],
-    "frames": r["stream"]["frames"],
-    "trackDrBits": "41200000",
-    "channelResults": [
-        {"index": i, "drBits": "41200000", "peakBits": "3f800000", "rmsBits": "3dcccccd"}
-        for i in range(r["stream"]["channels"])
-    ],
-    "runtimeArtifacts": artifacts,
-    "loaderMode": "private_staging_dll_load_dir_system32",
-    "sharedServiceBoundary": {
-        "loadLifecycle": "real_shared",
-        "coreExecution": "fail_fast_iat_tripwire",
-        "armedImportCount": 13,
+fp = {
+    "before": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
+    "applied": {
+        "x87ControlWordBits": "037f",
+        "mxcsrBits": "00001f80",
+        "rounding": "nearest",
+        "ftz": False,
+        "daz": False,
+        "exceptionsMasked": True,
     },
-    "sessionBeforeFinish": {
-        "currentWindowFrames": r["stream"]["frames"],
-        "windowCount": 0,
-        "submittedFrames": 0,
-    },
-    "sessionAfterFinish": {
-        "currentWindowFrames": 0,
-        "windowCount": 1,
-        "submittedFrames": r["stream"]["frames"],
-    },
-    "channelStateAfterFinish": [
-        {
-            "index": i,
-            "rmsSquareSumBits": "0000000000000000",
-            "primaryPeakBits": "3ff0000000000000",
-            "secondaryPeakBits": "0000000000000000",
-            "primaryPeakKeyBits": "0000000000000000",
-            "secondaryPeakKeyBits": "0000000000000000",
-        }
-        for i in range(r["stream"]["channels"])
-    ],
-    "fpEnvironment": {
-        "before": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
-        "applied": {
-            "x87ControlWordBits": "037f",
-            "mxcsrBits": "00001f80",
-            "rounding": "nearest",
-            "ftz": False,
-            "daz": False,
-            "exceptionsMasked": True,
-        },
-        "after": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
-        "restored": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
-    },
+    "after": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
+    "restored": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
 }
+if r["kind"] == "foo_dr_meter_108_duration_request":
+    geometry = r["duration"]
+    seconds = float(geometry["decodedFrames"]) / float(geometry["sampleRateHz"])
+    seconds_bits = f"{struct.unpack('<Q', struct.pack('<d', seconds))[0]:016x}"
+    rounded = math.floor(seconds + 0.5)
+    weeks, remainder = divmod(rounded, 7 * 24 * 60 * 60)
+    days, remainder = divmod(remainder, 24 * 60 * 60)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, whole_seconds = divmod(remainder, 60)
+    prefix = f"{weeks}wk " if weeks else ""
+    if days or weeks:
+        prefix += f"{days}d "
+    if hours or days or weeks:
+        text = f"{prefix}{hours}:{minutes:02d}:{whole_seconds:02d}"
+    else:
+        text = f"{minutes}:{whole_seconds:02d}"
+    data = {
+        "geometry": geometry,
+        "secondsBits": seconds_bits,
+        "text": text,
+        "runtimeArtifacts": artifacts,
+        "loaderMode": "private_staging_dll_load_dir_system32",
+        "sharedServiceBoundary": {
+            "loadLifecycle": "real_shared",
+            "numericLeafExecution": "fail_fast_iat_tripwire",
+            "armedImportCount": 13,
+        },
+        "fpEnvironment": fp,
+    }
+    kind = "foo_dr_meter_108_duration_result"
+else:
+    histogram = bytearray(10001 * 4)
+    struct.pack_into("<I", histogram, 4, 1)
+    histogram_sha = hashlib.sha256(histogram).hexdigest()
+    data = {
+        "sampleRateHz": r["stream"]["sampleRate"],
+        "channels": r["stream"]["channels"],
+        "frames": r["stream"]["frames"],
+        "trackDrBits": "41200000",
+        "channelResults": [
+            {"index": i, "drBits": "41200000", "peakBits": "3f800000", "rmsBits": "3dcccccd"}
+            for i in range(r["stream"]["channels"])
+        ],
+        "runtimeArtifacts": artifacts,
+        "loaderMode": "private_staging_dll_load_dir_system32",
+        "sharedServiceBoundary": {
+            "loadLifecycle": "real_shared",
+            "coreExecution": "fail_fast_iat_tripwire",
+            "armedImportCount": 13,
+        },
+        "sessionBeforeFinish": {
+            "currentWindowFrames": r["stream"]["frames"],
+            "windowCount": 0,
+            "submittedFrames": 0,
+        },
+        "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "windowCount": 1,
+            "submittedFrames": r["stream"]["frames"],
+        },
+        "channelStateAfterFinish": [
+            {
+                "index": i,
+                "rmsSquareSumBits": "0000000000000000",
+                "primaryPeakBits": "3ff0000000000000",
+                "secondaryPeakBits": "0000000000000000",
+                "primaryPeakKeyBits": "0000000000000000",
+                "secondaryPeakKeyBits": "0000000000000000",
+            }
+            for i in range(r["stream"]["channels"])
+        ],
+        "options": r["options"],
+        "histogramAfterFinish": {
+            "layout": "channel_major",
+            "elementEncoding": "u32le",
+            "binsPerChannel": 10001,
+            "channels": [
+                {
+                    "index": i,
+                    "totalCount": 1,
+                    "nonzeroBinCount": 1,
+                    "minus100DbCount": 0,
+                    "zeroDbCount": 0,
+                    "sha256": histogram_sha,
+                }
+                for i in range(r["stream"]["channels"])
+            ],
+        },
+        "fpEnvironment": fp,
+    }
+    kind = "foo_dr_meter_108_core_result"
 print(json.dumps({
-    "schemaVersion": 1,
-    "kind": "foo_dr_meter_108_core_result",
+    "schemaVersion": 2,
+    "kind": kind,
     "requestId": r["requestId"],
     "targetSha256": r["target"]["sha256"],
     "data": data,
@@ -619,10 +1041,23 @@ print(json.dumps({
                     target_path=target,
                     runtime_artifact_sources=runtimes,
                     timeout_seconds=5,
+                    multichannel_loudness_weighting=True,
                 )
             self.assertEqual(run_worker.call_count, 1)
             self.assertEqual(record["claims"]["foobarParity"], "not_assessed")
             self.assertEqual(record["execution"]["blockFrames"], 512)
+            self.assertIs(
+                record["execution"]["multichannelLoudnessWeighting"],
+                True,
+            )
+            self.assertEqual(
+                record["result"]["options"],
+                {
+                    "multichannelLoudnessWeighting": True,
+                    "blockFrames": 512,
+                },
+            )
+            self.assertIn("histogramAfterFinish", record["result"])
             rendered = HARNESS.canonical_json_bytes(record).decode()
             self.assertNotIn(str(root), rendered)
             self.assertNotIn("dllPath", rendered)
@@ -630,6 +1065,142 @@ print(json.dumps({
                 [item["name"] for item in record["target"]["runtimeArtifacts"]],
                 list(HARNESS.RUNTIME_ARTIFACT_NAMES),
             )
+
+    def test_duration_worker_is_isolated_path_free_and_stages_no_pcm(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worker, worker_hash = self._fake_worker(root)
+            target = root / "foo_dr_meter.dll"
+            target_raw = b"synthetic-target"
+            target.write_bytes(target_raw)
+            runtimes = self._runtime_sources(root)
+            seen_requests: list[dict[str, object]] = []
+            original_guard = HARNESS._hold_staged_worker_launch_guards
+
+            @contextlib.contextmanager
+            def inspecting_guard(
+                stage: Path,
+                staged_worker: Path,
+                staged_pcm: Path | None,
+                request_path: Path,
+            ):
+                self.assertIsNone(staged_pcm)
+                seen_requests.append(
+                    json.loads(request_path.read_text(encoding="utf-8"))
+                )
+                with original_guard(
+                    stage,
+                    staged_worker,
+                    staged_pcm,
+                    request_path,
+                ):
+                    yield
+
+            with (
+                mock.patch.object(
+                    HARNESS,
+                    "EXPECTED_TARGET_SHA256",
+                    sha256(target_raw),
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "EXPECTED_TARGET_BYTE_LENGTH",
+                    len(target_raw),
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "_hold_staged_worker_launch_guards",
+                    inspecting_guard,
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "_run_worker_bounded",
+                    wraps=HARNESS._run_worker_bounded,
+                ) as run_worker,
+            ):
+                record = HARNESS.run_duration_worker(
+                    decoded_frames=1,
+                    sample_rate_hz=2,
+                    worker_path=worker,
+                    worker_sha256=worker_hash,
+                    target_path=target,
+                    runtime_artifact_sources=runtimes,
+                    timeout_seconds=5,
+                )
+            self.assertEqual(run_worker.call_count, 1)
+            self.assertEqual(len(seen_requests), 1)
+            self.assertEqual(
+                set(seen_requests[0]),
+                {"schemaVersion", "kind", "requestId", "target", "duration"},
+            )
+            self.assertEqual(record["result"]["secondsBits"], "3fe0000000000000")
+            self.assertEqual(record["result"]["text"], "0:01")
+            rendered = HARNESS.canonical_json_bytes(record).decode()
+            self.assertNotIn(str(root), rendered)
+            self.assertNotIn("dllPath", rendered)
+
+    def test_duration_staged_request_is_revalidated_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worker, worker_hash = self._fake_worker(root)
+            target = root / "foo_dr_meter.dll"
+            target_raw = b"synthetic-target"
+            target.write_bytes(target_raw)
+            runtimes = self._runtime_sources(root)
+
+            @contextlib.contextmanager
+            def tampering_guard(
+                stage: Path,
+                staged_worker: Path,
+                staged_pcm: Path | None,
+                request_path: Path,
+            ):
+                del stage, staged_worker
+                self.assertIsNone(staged_pcm)
+                request = json.loads(
+                    request_path.read_text(encoding="utf-8")
+                )
+                request["duration"]["decodedFrames"] = 2
+                request_path.write_bytes(
+                    HARNESS.canonical_json_bytes(request)
+                )
+                yield
+
+            with (
+                mock.patch.object(
+                    HARNESS,
+                    "EXPECTED_TARGET_SHA256",
+                    sha256(target_raw),
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "EXPECTED_TARGET_BYTE_LENGTH",
+                    len(target_raw),
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "_hold_staged_worker_launch_guards",
+                    tampering_guard,
+                ),
+                mock.patch.object(
+                    HARNESS,
+                    "_run_worker_bounded",
+                ) as run_worker,
+                self.assertRaisesRegex(
+                    HARNESS.CoreHarnessError,
+                    "differs from canonical request",
+                ),
+            ):
+                HARNESS.run_duration_worker(
+                    decoded_frames=1,
+                    sample_rate_hz=2,
+                    worker_path=worker,
+                    worker_sha256=worker_hash,
+                    target_path=target,
+                    runtime_artifact_sources=runtimes,
+                    timeout_seconds=5,
+                )
+            run_worker.assert_not_called()
 
     def test_worker_timeout_and_prelaunch_hash_gate_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -780,9 +1351,10 @@ print(json.dumps({
                         )
                     run_worker.assert_not_called()
 
-    def test_request_id_ignores_transport_paths_but_binds_block_size(self) -> None:
+    def test_request_id_ignores_paths_but_binds_options_and_duration(self) -> None:
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            ids = []
+            core_ids = []
+            duration_ids = []
             for directory in (first, second):
                 root = Path(directory)
                 prepared = self._prepared(root)
@@ -801,18 +1373,110 @@ print(json.dumps({
                             HARNESS.FileIdentity(str(index + 3) * 64, 1),
                         )
                     )
-                request = HARNESS.build_worker_request(
-                    prepared,
-                    worker_identity=HARNESS.FileIdentity("1" * 64, 10),
-                    target_identity=HARNESS.FileIdentity("2" * 64, 20),
-                    runtime_artifacts=tuple(artifacts),
-                    runtime_profile="fixed_foobar_2_25_10",
-                    target_path=target,
-                    pcm_path=pcm,
-                    block_frames=512,
+                common = {
+                    "worker_identity": HARNESS.FileIdentity("1" * 64, 10),
+                    "target_identity": HARNESS.FileIdentity("2" * 64, 20),
+                    "runtime_artifacts": tuple(artifacts),
+                    "runtime_profile": "fixed_foobar_2_25_10",
+                    "target_path": target,
+                }
+                core_requests = [
+                    HARNESS.build_worker_request(
+                        prepared,
+                        **common,
+                        pcm_path=pcm,
+                        block_frames=block_frames,
+                        multichannel_loudness_weighting=weighting,
+                    )
+                    for block_frames, weighting in (
+                        (512, False),
+                        (512, True),
+                        (511, False),
+                    )
+                ]
+                core_ids.append(
+                    tuple(request["requestId"] for request in core_requests)
                 )
-                ids.append(request["requestId"])
-            self.assertEqual(ids[0], ids[1])
+                self.assertEqual(
+                    core_requests[1]["options"],
+                    {
+                        "multichannelLoudnessWeighting": True,
+                        "blockFrames": 512,
+                    },
+                )
+                duration_requests = [
+                    HARNESS.build_duration_worker_request(
+                        **common,
+                        decoded_frames=frames,
+                        sample_rate_hz=rate,
+                    )
+                    for frames, rate in ((1, 2), (2, 2), (1, 3))
+                ]
+                duration_ids.append(
+                    tuple(
+                        request["requestId"]
+                        for request in duration_requests
+                    )
+                )
+            self.assertEqual(core_ids[0], core_ids[1])
+            self.assertEqual(duration_ids[0], duration_ids[1])
+            self.assertEqual(len(set(core_ids[0])), 3)
+            self.assertEqual(len(set(duration_ids[0])), 3)
+
+
+class CliTests(unittest.TestCase):
+    def _arguments(self) -> list[str]:
+        return [
+            "--worker",
+            "worker.exe",
+            "--worker-sha256",
+            "1" * 64,
+            "--target-dll",
+            "foo_dr_meter.dll",
+            "--shared-dll",
+            "shared.dll",
+            "--shared-sha256",
+            "2" * 64,
+            "--msvcp140-dll",
+            "msvcp140.dll",
+            "--msvcp140-sha256",
+            "3" * 64,
+            "--vcruntime140-dll",
+            "vcruntime140.dll",
+            "--vcruntime140-sha256",
+            "4" * 64,
+            "--vcruntime140-1-dll",
+            "vcruntime140_1.dll",
+            "--vcruntime140-1-sha256",
+            "5" * 64,
+            "pcm",
+            "--pcm",
+            "input.f64le",
+            "--pcm-sha256",
+            "6" * 64,
+            "--input-id",
+            "input",
+            "--sample-rate",
+            "8000",
+            "--channels",
+            "3",
+            "--frames",
+            "2",
+        ]
+
+    def test_weighting_cli_flag_defaults_false_and_can_be_enabled(self) -> None:
+        arguments = self._arguments()
+        source_index = arguments.index("pcm")
+        default = HARNESS.parse_args(arguments)
+        enabled = HARNESS.parse_args(
+            [
+                *arguments[:source_index],
+                "--multichannel-loudness-weighting",
+                *arguments[source_index:],
+            ]
+        )
+        self.assertIs(default.multichannel_loudness_weighting, False)
+        self.assertIs(enabled.multichannel_loudness_weighting, True)
 
 
 class StagedWorkerGuardTests(unittest.TestCase):

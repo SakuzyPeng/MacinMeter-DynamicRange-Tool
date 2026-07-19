@@ -29,11 +29,14 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PROTOCOL_KIND_REQUEST = "foo_dr_meter_108_core_request"
 PROTOCOL_KIND_RESULT = "foo_dr_meter_108_core_result"
 PROTOCOL_KIND_ERROR = "foo_dr_meter_108_core_error"
+DURATION_PROTOCOL_KIND_REQUEST = "foo_dr_meter_108_duration_request"
+DURATION_PROTOCOL_KIND_RESULT = "foo_dr_meter_108_duration_result"
 RECORD_KIND = "foo_dr_meter_108_core_harness_record"
+DURATION_RECORD_KIND = "foo_dr_meter_108_duration_harness_record"
 EXPECTED_TARGET_SHA256 = (
     "ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489"
 )
@@ -41,7 +44,11 @@ EXPECTED_TARGET_BYTE_LENGTH = 424448
 INIT_RVA = 0x8410
 PUSH_RVA = 0x89F0
 FINISH_RVA = 0x8DF0
+DURATION_FORMAT_RVA = 0x38540
 DEFAULT_BLOCK_FRAMES = 512
+HISTOGRAM_BINS_PER_CHANNEL = 10001
+HISTOGRAM_LAYOUT = "channel_major"
+HISTOGRAM_ELEMENT_ENCODING = "u32le"
 MAX_CHANNELS = 64
 MAX_BLOCK_FRAMES = 1_048_576
 MAX_WORKER_STDOUT_BYTES = 1_048_576
@@ -56,6 +63,15 @@ RUNTIME_PROFILES = ("fixed_foobar_2_25_10",)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 BITS_RE = re.compile(r"^[0-9a-f]{8}$")
+BITS64_RE = re.compile(r"^[0-9a-f]{16}$")
+DURATION_TEXT_RE = re.compile(
+    r"^(?:"
+    r"\d+:[0-5]\d"
+    r"|(?:[1-9]\d*):[0-5]\d:[0-5]\d"
+    r"|(?:[1-6])d (?:\d|1\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r"|(?:[1-9]\d*)wk [0-6]d (?:\d|1\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r")$"
+)
 WINDOWS_DRIVE_RE = re.compile(r"(?i)(?:^|[^A-Za-z0-9_])[A-Z]:[\\/]")
 UNC_RE = re.compile(r"\\\\[^\\\s]+\\")
 POSIX_ABSOLUTE_RE = re.compile(r"(?:^|[\s\"'=({])/(?!/)[^\s\"']+")
@@ -109,6 +125,14 @@ class WorkerProcessResult:
     returncode: int
     stdout: bytes
     stderr: bytes
+
+
+@dataclass(frozen=True)
+class PreparedExecution:
+    worker_raw: bytes
+    worker_identity: FileIdentity
+    target_identity: FileIdentity
+    runtime_artifacts: tuple[RuntimeArtifact, ...]
 
 
 @dataclass
@@ -188,6 +212,12 @@ def require_int(
         raise CoreHarnessError(f"{context} must be an integer >= {minimum}")
     if maximum is not None and value > maximum:
         raise CoreHarnessError(f"{context} must be <= {maximum}")
+    return value
+
+
+def require_bool(value: Any, context: str) -> bool:
+    if not isinstance(value, bool):
+        raise CoreHarnessError(f"{context} must be a boolean")
     return value
 
 
@@ -520,7 +550,12 @@ def _request_identity(
     runtime_artifacts: tuple[RuntimeArtifact, ...],
     runtime_profile: str,
     block_frames: int,
+    multichannel_loudness_weighting: bool = False,
 ) -> str:
+    multichannel_loudness_weighting = require_bool(
+        multichannel_loudness_weighting,
+        "multichannel loudness weighting",
+    )
     semantic = {
         "schemaVersion": SCHEMA_VERSION,
         "protocolKind": PROTOCOL_KIND_REQUEST,
@@ -557,7 +592,7 @@ def _request_identity(
             "finishRva": FINISH_RVA,
         },
         "options": {
-            "multichannelLoudnessWeighting": False,
+            "multichannelLoudnessWeighting": multichannel_loudness_weighting,
             "blockFrames": block_frames,
         },
     }
@@ -574,9 +609,14 @@ def build_worker_request(
     target_path: Path,
     pcm_path: Path,
     block_frames: int = DEFAULT_BLOCK_FRAMES,
+    multichannel_loudness_weighting: bool = False,
 ) -> dict[str, Any]:
     block_frames = require_int(
         block_frames, "block frames", minimum=1, maximum=MAX_BLOCK_FRAMES
+    )
+    multichannel_loudness_weighting = require_bool(
+        multichannel_loudness_weighting,
+        "multichannel loudness weighting",
     )
     if runtime_profile not in RUNTIME_PROFILES:
         raise CoreHarnessError("runtime profile is unsupported")
@@ -587,6 +627,7 @@ def build_worker_request(
         runtime_artifacts,
         runtime_profile,
         block_frames,
+        multichannel_loudness_weighting,
     )
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -622,8 +663,115 @@ def build_worker_request(
             "byteLength": prepared.pcm_identity.byte_length,
         },
         "options": {
-            "multichannelLoudnessWeighting": False,
+            "multichannelLoudnessWeighting": multichannel_loudness_weighting,
             "blockFrames": block_frames,
+        },
+    }
+
+
+def _duration_request_identity(
+    worker: FileIdentity,
+    target: FileIdentity,
+    runtime_artifacts: tuple[RuntimeArtifact, ...],
+    runtime_profile: str,
+    decoded_frames: int,
+    sample_rate_hz: int,
+    fractional_digits: int,
+) -> str:
+    semantic = {
+        "schemaVersion": SCHEMA_VERSION,
+        "protocolKind": DURATION_PROTOCOL_KIND_REQUEST,
+        "worker": {
+            "sha256": worker.sha256,
+            "byteLength": worker.byte_length,
+        },
+        "target": {
+            "sha256": target.sha256,
+            "byteLength": target.byte_length,
+            "runtimeArtifacts": [
+                {
+                    "name": artifact.name,
+                    "sha256": artifact.identity.sha256,
+                    "byteLength": artifact.identity.byte_length,
+                }
+                for artifact in runtime_artifacts
+            ],
+            "runtimeProfile": runtime_profile,
+            "durationFormatRva": DURATION_FORMAT_RVA,
+        },
+        "duration": {
+            "decodedFrames": decoded_frames,
+            "sampleRateHz": sample_rate_hz,
+            "fractionalDigits": fractional_digits,
+        },
+    }
+    return sha256_bytes(canonical_json_bytes(semantic))
+
+
+def build_duration_worker_request(
+    *,
+    worker_identity: FileIdentity,
+    target_identity: FileIdentity,
+    runtime_artifacts: tuple[RuntimeArtifact, ...],
+    runtime_profile: str,
+    target_path: Path,
+    decoded_frames: int,
+    sample_rate_hz: int,
+    fractional_digits: int = 0,
+) -> dict[str, Any]:
+    decoded_frames = require_int(
+        decoded_frames,
+        "duration decoded frames",
+        minimum=0,
+        maximum=0xFFFF_FFFF_FFFF_FFFF,
+    )
+    sample_rate_hz = require_int(
+        sample_rate_hz,
+        "duration sample rate",
+        minimum=1,
+        maximum=0xFFFF_FFFF,
+    )
+    fractional_digits = require_int(
+        fractional_digits,
+        "duration fractional digits",
+        minimum=0,
+        maximum=0,
+    )
+    if runtime_profile not in RUNTIME_PROFILES:
+        raise CoreHarnessError("runtime profile is unsupported")
+    request_id = _duration_request_identity(
+        worker_identity,
+        target_identity,
+        runtime_artifacts,
+        runtime_profile,
+        decoded_frames,
+        sample_rate_hz,
+        fractional_digits,
+    )
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "kind": DURATION_PROTOCOL_KIND_REQUEST,
+        "requestId": request_id,
+        "target": {
+            "dllPath": str(target_path.resolve(strict=True)),
+            "sha256": target_identity.sha256,
+            "byteLength": target_identity.byte_length,
+            "durationFormatRva": DURATION_FORMAT_RVA,
+            "runtimeProfile": runtime_profile,
+            "runtimeArtifacts": [
+                {
+                    "name": artifact.name,
+                    "sourcePath": str(artifact.source_path.resolve(strict=True)),
+                    "sha256": artifact.identity.sha256,
+                    "byteLength": artifact.identity.byte_length,
+                }
+                for artifact in runtime_artifacts
+            ],
+        },
+        "duration": {
+            "decodedFrames": decoded_frames,
+            "sampleRateHz": sample_rate_hz,
+            "fractionalDigits": fractional_digits,
         },
     }
 
@@ -661,10 +809,7 @@ def _require_finite_f32_bits(value: Any, context: str) -> str:
 
 
 def _require_finite_f64_bits(value: Any, context: str) -> str:
-    if (
-        not isinstance(value, str)
-        or re.fullmatch(r"[0-9a-f]{16}", value) is None
-    ):
+    if not isinstance(value, str) or BITS64_RE.fullmatch(value) is None:
         raise CoreHarnessError(f"{context} must be sixteen lowercase hex digits")
     number = struct.unpack("<d", struct.pack("<Q", int(value, 16)))[0]
     if not math.isfinite(number):
@@ -784,6 +929,115 @@ def _validate_fp_environment(value: Any) -> None:
         raise CoreHarnessError("worker FP environment was not exactly restored")
 
 
+def _validate_result_options(
+    value: Any,
+    *,
+    request: dict[str, Any],
+) -> None:
+    if not isinstance(value, dict):
+        raise CoreHarnessError("worker result options must be an object")
+    require_exact_keys(
+        value,
+        {"multichannelLoudnessWeighting", "blockFrames"},
+        "worker result options",
+    )
+    require_bool(
+        value["multichannelLoudnessWeighting"],
+        "worker result multichannel loudness weighting",
+    )
+    require_int(
+        value["blockFrames"],
+        "worker result block frames",
+        minimum=1,
+        maximum=MAX_BLOCK_FRAMES,
+    )
+    if value != request["options"]:
+        raise CoreHarnessError("worker result options mismatch")
+
+
+def _validate_histogram_after_finish(
+    value: Any,
+    *,
+    expected_channels: int,
+    window_count: int,
+) -> None:
+    if not isinstance(value, dict):
+        raise CoreHarnessError("worker histogram must be an object")
+    require_exact_keys(
+        value,
+        {"layout", "elementEncoding", "binsPerChannel", "channels"},
+        "worker histogram",
+    )
+    if (
+        value["layout"] != HISTOGRAM_LAYOUT
+        or value["elementEncoding"] != HISTOGRAM_ELEMENT_ENCODING
+        or value["binsPerChannel"] != HISTOGRAM_BINS_PER_CHANNEL
+    ):
+        raise CoreHarnessError("worker histogram geometry mismatch")
+    channels = value["channels"]
+    if not isinstance(channels, list) or len(channels) != expected_channels:
+        raise CoreHarnessError("worker histogram channel count mismatch")
+    for index, item in enumerate(channels):
+        if not isinstance(item, dict):
+            raise CoreHarnessError("worker histogram channel must be an object")
+        require_exact_keys(
+            item,
+            {
+                "index",
+                "totalCount",
+                "nonzeroBinCount",
+                "minus100DbCount",
+                "zeroDbCount",
+                "sha256",
+            },
+            "worker histogram channel",
+        )
+        if item["index"] != index:
+            raise CoreHarnessError(
+                "worker histogram channel indexes must be ordered"
+            )
+        total = require_int(
+            item["totalCount"],
+            f"worker histogram channel {index} total count",
+            minimum=0,
+            maximum=0xFFFF_FFFF_FFFF_FFFF,
+        )
+        nonzero = require_int(
+            item["nonzeroBinCount"],
+            f"worker histogram channel {index} nonzero bin count",
+            minimum=0,
+            maximum=HISTOGRAM_BINS_PER_CHANNEL,
+        )
+        minus_100 = require_int(
+            item["minus100DbCount"],
+            f"worker histogram channel {index} minus-100 dB count",
+            minimum=0,
+            maximum=0xFFFF_FFFF_FFFF_FFFF,
+        )
+        zero = require_int(
+            item["zeroDbCount"],
+            f"worker histogram channel {index} zero dB count",
+            minimum=0,
+            maximum=0xFFFF_FFFF_FFFF_FFFF,
+        )
+        require_sha256(
+            item["sha256"],
+            f"worker histogram channel {index} SHA-256",
+        )
+        if total > window_count:
+            raise CoreHarnessError(
+                "worker histogram total exceeds finalized window count"
+            )
+        if nonzero > total:
+            raise CoreHarnessError(
+                "worker histogram nonzero bin count exceeds total count"
+            )
+        if minus_100 > total or zero > total or minus_100 + zero > total:
+            raise CoreHarnessError(
+                "worker histogram distinguished-bin counts exceed total count"
+            )
+
+
 def validate_worker_response(
     raw_stdout: bytes,
     *,
@@ -862,6 +1116,8 @@ def validate_worker_response(
             "sessionAfterFinish",
             "channelStateAfterFinish",
             "fpEnvironment",
+            "options",
+            "histogramAfterFinish",
         },
         "worker result data",
     )
@@ -875,6 +1131,7 @@ def validate_worker_response(
     _require_finite_f32_bits(data["trackDrBits"], "worker track DR bits")
     if data["loaderMode"] != "private_staging_dll_load_dir_system32":
         raise CoreHarnessError("worker loader mode mismatch")
+    _validate_result_options(data["options"], request=request)
     shared_boundary = data["sharedServiceBoundary"]
     if not isinstance(shared_boundary, dict):
         raise CoreHarnessError("worker shared-service boundary must be an object")
@@ -915,6 +1172,11 @@ def validate_worker_response(
     expected_window_delta = 1 if before_session[0] > 0 else 0
     if after_session[1] != before_session[1] + expected_window_delta:
         raise CoreHarnessError("worker finish window-count transition mismatch")
+    _validate_histogram_after_finish(
+        data["histogramAfterFinish"],
+        expected_channels=expected_stream["channels"],
+        window_count=after_session[1],
+    )
     _validate_fp_environment(data["fpEnvironment"])
     channel_state = data["channelStateAfterFinish"]
     if (
@@ -958,6 +1220,184 @@ def validate_worker_response(
             _require_finite_f32_bits(
                 item[key], f"worker channel {index} {key}"
             )
+    return response
+
+
+def _duration_seconds_bits(decoded_frames: int, sample_rate_hz: int) -> str:
+    seconds = float(decoded_frames) / float(sample_rate_hz)
+    if not math.isfinite(seconds):
+        raise CoreHarnessError("duration seconds are not finite")
+    bits = struct.unpack("<Q", struct.pack("<d", seconds))[0]
+    return f"{bits:016x}"
+
+
+def _validate_duration_text(value: Any) -> str:
+    if not isinstance(value, str) or not value or len(value) > 128:
+        raise CoreHarnessError("worker duration text is invalid")
+    try:
+        value.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise CoreHarnessError("worker duration text must be ASCII") from error
+    if DURATION_TEXT_RE.fullmatch(value) is None:
+        raise CoreHarnessError("worker duration text is not canonical")
+    return value
+
+
+def validate_duration_worker_response(
+    raw_stdout: bytes,
+    *,
+    exit_code: int,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    if len(raw_stdout) > MAX_WORKER_STDOUT_BYTES:
+        raise CoreHarnessError("worker stdout exceeds its byte limit")
+    try:
+        text = raw_stdout.decode("utf-8")
+    except UnicodeError as error:
+        raise CoreHarnessError("worker stdout is not UTF-8") from error
+    lines = text.splitlines()
+    if len(lines) != 1 or not lines[0].strip():
+        raise CoreHarnessError("worker stdout must contain exactly one JSON line")
+    response = load_json_object_bytes(
+        lines[0].encode("utf-8"),
+        "duration worker response",
+    )
+    assert_path_free(response)
+    common_values = {
+        "schemaVersion": SCHEMA_VERSION,
+        "requestId": request["requestId"],
+        "targetSha256": request["target"]["sha256"],
+    }
+    for key, expected in common_values.items():
+        if response.get(key) != expected:
+            raise CoreHarnessError(f"worker response {key} mismatch")
+
+    kind = response.get("kind")
+    if kind == PROTOCOL_KIND_ERROR:
+        require_exact_keys(
+            response,
+            {"schemaVersion", "kind", "requestId", "targetSha256", "error"},
+            "worker error response",
+        )
+        if exit_code == 0:
+            raise CoreHarnessError(
+                "worker error response used a success exit code"
+            )
+        error = response["error"]
+        if not isinstance(error, dict):
+            raise CoreHarnessError("worker error must be an object")
+        require_exact_keys(error, {"code", "message"}, "worker error")
+        code = require_identifier(error.get("code"), "worker error code")
+        message = error.get("message")
+        if not isinstance(message, str) or not message or len(message) > 512:
+            raise CoreHarnessError("worker error message is invalid")
+        raise WorkerReportedError(code)
+
+    if kind != DURATION_PROTOCOL_KIND_RESULT:
+        raise CoreHarnessError("worker response kind is unknown")
+    require_exact_keys(
+        response,
+        {
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "targetSha256",
+            "data",
+        },
+        "duration worker result response",
+    )
+    if exit_code != 0:
+        raise CoreHarnessError(
+            "duration worker result response used a failure exit code"
+        )
+    data = response["data"]
+    if not isinstance(data, dict):
+        raise CoreHarnessError("duration worker result data must be an object")
+    require_exact_keys(
+        data,
+        {
+            "geometry",
+            "secondsBits",
+            "text",
+            "runtimeArtifacts",
+            "loaderMode",
+            "sharedServiceBoundary",
+            "fpEnvironment",
+        },
+        "duration worker result data",
+    )
+    geometry = data["geometry"]
+    if not isinstance(geometry, dict):
+        raise CoreHarnessError("duration worker geometry must be an object")
+    require_exact_keys(
+        geometry,
+        {"decodedFrames", "sampleRateHz", "fractionalDigits"},
+        "duration worker geometry",
+    )
+    decoded_frames = require_int(
+        geometry["decodedFrames"],
+        "duration worker decoded frames",
+        minimum=0,
+        maximum=0xFFFF_FFFF_FFFF_FFFF,
+    )
+    sample_rate_hz = require_int(
+        geometry["sampleRateHz"],
+        "duration worker sample rate",
+        minimum=1,
+        maximum=0xFFFF_FFFF,
+    )
+    require_int(
+        geometry["fractionalDigits"],
+        "duration worker fractional digits",
+        minimum=0,
+        maximum=0,
+    )
+    if geometry != request["duration"]:
+        raise CoreHarnessError("duration worker geometry mismatch")
+    seconds_bits = _require_finite_f64_bits(
+        data["secondsBits"],
+        "duration worker seconds bits",
+    )
+    expected_seconds_bits = _duration_seconds_bits(
+        decoded_frames,
+        sample_rate_hz,
+    )
+    if seconds_bits != expected_seconds_bits:
+        raise CoreHarnessError("duration worker seconds bits mismatch")
+    _validate_duration_text(data["text"])
+    if data["loaderMode"] != "private_staging_dll_load_dir_system32":
+        raise CoreHarnessError("worker loader mode mismatch")
+    shared_boundary = data["sharedServiceBoundary"]
+    if not isinstance(shared_boundary, dict):
+        raise CoreHarnessError(
+            "duration worker shared-service boundary must be an object"
+        )
+    require_exact_keys(
+        shared_boundary,
+        {"loadLifecycle", "numericLeafExecution", "armedImportCount"},
+        "duration worker shared-service boundary",
+    )
+    if shared_boundary != {
+        "loadLifecycle": "real_shared",
+        "numericLeafExecution": "fail_fast_iat_tripwire",
+        "armedImportCount": 13,
+    }:
+        raise CoreHarnessError(
+            "duration worker shared-service boundary mismatch"
+        )
+    expected_artifacts = [
+        {
+            "name": item["name"],
+            "sha256": item["sha256"],
+            "byteLength": item["byteLength"],
+        }
+        for item in request["target"]["runtimeArtifacts"]
+    ]
+    if data["runtimeArtifacts"] != expected_artifacts:
+        raise CoreHarnessError(
+            "duration worker runtime artifact identities mismatch"
+        )
+    _validate_fp_environment(data["fpEnvironment"])
     return response
 
 
@@ -1040,7 +1480,7 @@ def _close_windows_handle(handle: int) -> None:
 def _hold_staged_worker_launch_guards(
     stage: Path,
     staged_worker: Path,
-    staged_pcm: Path,
+    staged_pcm: Path | None,
     request_path: Path,
 ) -> Iterable[None]:
     if not _is_windows():
@@ -1048,17 +1488,21 @@ def _hold_staged_worker_launch_guards(
         return
 
     handles: list[int] = []
+    staged_files = tuple(
+        path
+        for path in (staged_worker, staged_pcm, request_path)
+        if path is not None
+    )
     try:
         handles.append(
             _open_windows_no_write_delete_handle(stage, directory=True)
         )
-        for path in (staged_worker, staged_pcm, request_path):
+        for path in staged_files:
             handles.append(
                 _open_windows_no_write_delete_handle(path, directory=False)
             )
         if stage.is_symlink() or any(
-            path.is_symlink()
-            for path in (staged_worker, staged_pcm, request_path)
+            path.is_symlink() for path in staged_files
         ):
             raise CoreHarnessError("staged execution path became a symbolic link")
         yield
@@ -1230,6 +1674,92 @@ def _run_worker_bounded(
     )
 
 
+def _validate_timeout_seconds(timeout_seconds: float) -> float:
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0.0
+        or timeout_seconds > 300.0
+    ):
+        raise CoreHarnessError(
+            "timeout must be finite and within (0, 300] seconds"
+        )
+    return float(timeout_seconds)
+
+
+def _prepare_execution(
+    *,
+    worker_path: Path,
+    worker_sha256: str,
+    target_path: Path,
+    runtime_artifact_sources: dict[str, tuple[Path, str]],
+) -> PreparedExecution:
+    worker_raw = require_regular_file_bytes(
+        worker_path,
+        "core worker",
+        maximum_bytes=256 * 1024 * 1024,
+    )
+    worker_identity = assert_expected_identity(
+        worker_raw,
+        worker_sha256,
+        None,
+        "core worker",
+    )
+    target_raw = require_regular_file_bytes(
+        target_path,
+        "fixed target DLL",
+        maximum_bytes=16 * 1024 * 1024,
+    )
+    target_identity = assert_expected_identity(
+        target_raw,
+        EXPECTED_TARGET_SHA256,
+        EXPECTED_TARGET_BYTE_LENGTH,
+        "fixed target DLL",
+    )
+    if set(runtime_artifact_sources) != set(RUNTIME_ARTIFACT_NAMES):
+        raise CoreHarnessError(
+            "runtime artifact allowlist is incomplete or has extras"
+        )
+    runtime_artifacts: list[RuntimeArtifact] = []
+    resolved_paths: set[Path] = set()
+    for name in RUNTIME_ARTIFACT_NAMES:
+        source_path, expected_sha256 = runtime_artifact_sources[name]
+        if source_path.name.casefold() != name:
+            raise CoreHarnessError(
+                "runtime artifact basename differs from allowlist"
+            )
+        try:
+            resolved = source_path.resolve(strict=True)
+        except OSError as error:
+            raise CoreHarnessError("runtime artifact is absent") from error
+        if resolved in resolved_paths:
+            raise CoreHarnessError(
+                "runtime artifacts must have unique source files"
+            )
+        resolved_paths.add(resolved)
+        artifact_raw = require_regular_file_bytes(
+            source_path,
+            f"runtime artifact {name}",
+            maximum_bytes=64 * 1024 * 1024,
+        )
+        artifact_identity = assert_expected_identity(
+            artifact_raw,
+            expected_sha256,
+            None,
+            f"runtime artifact {name}",
+        )
+        runtime_artifacts.append(
+            RuntimeArtifact(name, source_path, artifact_identity)
+        )
+    return PreparedExecution(
+        worker_raw=worker_raw,
+        worker_identity=worker_identity,
+        target_identity=target_identity,
+        runtime_artifacts=tuple(runtime_artifacts),
+    )
+
+
 def run_core_worker(
     prepared: PreparedPcm,
     *,
@@ -1240,57 +1770,23 @@ def run_core_worker(
     runtime_profile: str = "fixed_foobar_2_25_10",
     timeout_seconds: float = 30.0,
     block_frames: int = DEFAULT_BLOCK_FRAMES,
+    multichannel_loudness_weighting: bool = False,
 ) -> dict[str, Any]:
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, (int, float))
-        or not math.isfinite(timeout_seconds)
-        or timeout_seconds <= 0.0
-        or timeout_seconds > 300.0
-    ):
-        raise CoreHarnessError("timeout must be finite and within (0, 300] seconds")
-    worker_raw = require_regular_file_bytes(
-        worker_path, "core worker", maximum_bytes=256 * 1024 * 1024
+    timeout_seconds = _validate_timeout_seconds(timeout_seconds)
+    multichannel_loudness_weighting = require_bool(
+        multichannel_loudness_weighting,
+        "multichannel loudness weighting",
     )
-    worker_identity = assert_expected_identity(
-        worker_raw, worker_sha256, None, "core worker"
+    execution = _prepare_execution(
+        worker_path=worker_path,
+        worker_sha256=worker_sha256,
+        target_path=target_path,
+        runtime_artifact_sources=runtime_artifact_sources,
     )
-    target_raw = require_regular_file_bytes(
-        target_path, "fixed target DLL", maximum_bytes=16 * 1024 * 1024
-    )
-    target_identity = assert_expected_identity(
-        target_raw,
-        EXPECTED_TARGET_SHA256,
-        EXPECTED_TARGET_BYTE_LENGTH,
-        "fixed target DLL",
-    )
-    if set(runtime_artifact_sources) != set(RUNTIME_ARTIFACT_NAMES):
-        raise CoreHarnessError("runtime artifact allowlist is incomplete or has extras")
-    runtime_artifacts_list: list[RuntimeArtifact] = []
-    resolved_paths: set[Path] = set()
-    for name in RUNTIME_ARTIFACT_NAMES:
-        source_path, expected_sha256 = runtime_artifact_sources[name]
-        if source_path.name.casefold() != name:
-            raise CoreHarnessError("runtime artifact basename differs from allowlist")
-        try:
-            resolved = source_path.resolve(strict=True)
-        except OSError as error:
-            raise CoreHarnessError("runtime artifact is absent") from error
-        if resolved in resolved_paths:
-            raise CoreHarnessError("runtime artifacts must have unique source files")
-        resolved_paths.add(resolved)
-        artifact_raw = require_regular_file_bytes(
-            source_path,
-            f"runtime artifact {name}",
-            maximum_bytes=64 * 1024 * 1024,
-        )
-        artifact_identity = assert_expected_identity(
-            artifact_raw, expected_sha256, None, f"runtime artifact {name}"
-        )
-        runtime_artifacts_list.append(
-            RuntimeArtifact(name, source_path, artifact_identity)
-        )
-    runtime_artifacts = tuple(runtime_artifacts_list)
+    worker_raw = execution.worker_raw
+    worker_identity = execution.worker_identity
+    target_identity = execution.target_identity
+    runtime_artifacts = execution.runtime_artifacts
     _validate_f64le(
         prepared.pcm,
         channels=prepared.channels,
@@ -1313,6 +1809,9 @@ def run_core_worker(
             target_path=target_path,
             pcm_path=staged_pcm,
             block_frames=block_frames,
+            multichannel_loudness_weighting=(
+                multichannel_loudness_weighting
+            ),
         )
         request_path.write_bytes(canonical_json_bytes(request))
         with _hold_staged_worker_launch_guards(
@@ -1355,7 +1854,7 @@ def run_core_worker(
             completed = _run_worker_bounded(
                 _worker_command(staged_worker, request_path),
                 cwd=stage,
-                timeout_seconds=float(timeout_seconds),
+                timeout_seconds=timeout_seconds,
             )
         response = validate_worker_response(
             completed.stdout,
@@ -1385,6 +1884,9 @@ def run_core_worker(
             "workerSha256": worker_identity.sha256,
             "workerByteLength": worker_identity.byte_length,
             "blockFrames": block_frames,
+            "multichannelLoudnessWeighting": (
+                multichannel_loudness_weighting
+            ),
             "processModel": "one_worker_process_per_input",
         },
         "target": {
@@ -1413,6 +1915,151 @@ def run_core_worker(
         ],
     }
     assert_path_free(record, "harness record")
+    canonical_json_bytes(record)
+    return record
+
+
+def run_duration_worker(
+    *,
+    decoded_frames: int,
+    sample_rate_hz: int,
+    worker_path: Path,
+    worker_sha256: str,
+    target_path: Path,
+    runtime_artifact_sources: dict[str, tuple[Path, str]],
+    fractional_digits: int = 0,
+    runtime_profile: str = "fixed_foobar_2_25_10",
+    timeout_seconds: float = 30.0,
+) -> dict[str, Any]:
+    timeout_seconds = _validate_timeout_seconds(timeout_seconds)
+    decoded_frames = require_int(
+        decoded_frames,
+        "duration decoded frames",
+        minimum=0,
+        maximum=0xFFFF_FFFF_FFFF_FFFF,
+    )
+    sample_rate_hz = require_int(
+        sample_rate_hz,
+        "duration sample rate",
+        minimum=1,
+        maximum=0xFFFF_FFFF,
+    )
+    fractional_digits = require_int(
+        fractional_digits,
+        "duration fractional digits",
+        minimum=0,
+        maximum=0,
+    )
+    if runtime_profile not in RUNTIME_PROFILES:
+        raise CoreHarnessError("runtime profile is unsupported")
+    execution = _prepare_execution(
+        worker_path=worker_path,
+        worker_sha256=worker_sha256,
+        target_path=target_path,
+        runtime_artifact_sources=runtime_artifact_sources,
+    )
+    worker_raw = execution.worker_raw
+    worker_identity = execution.worker_identity
+    target_identity = execution.target_identity
+    runtime_artifacts = execution.runtime_artifacts
+
+    with tempfile.TemporaryDirectory(
+        prefix="foo-dr-meter-108-duration-"
+    ) as directory:
+        stage = Path(directory)
+        staged_worker = _stage_worker(worker_raw, worker_path, stage)
+        request_path = stage / "request.json"
+        request = build_duration_worker_request(
+            worker_identity=worker_identity,
+            target_identity=target_identity,
+            runtime_artifacts=runtime_artifacts,
+            runtime_profile=runtime_profile,
+            target_path=target_path,
+            decoded_frames=decoded_frames,
+            sample_rate_hz=sample_rate_hz,
+            fractional_digits=fractional_digits,
+        )
+        request_path.write_bytes(canonical_json_bytes(request))
+        with _hold_staged_worker_launch_guards(
+            stage,
+            staged_worker,
+            None,
+            request_path,
+        ):
+            staged_worker_raw = require_regular_file_bytes(
+                staged_worker,
+                "staged core worker",
+                maximum_bytes=256 * 1024 * 1024,
+            )
+            assert_expected_identity(
+                staged_worker_raw,
+                worker_identity.sha256,
+                worker_identity.byte_length,
+                "staged core worker",
+            )
+            staged_request_raw = require_regular_file_bytes(
+                request_path,
+                "staged worker request",
+                maximum_bytes=16 * 1024 * 1024,
+            )
+            if staged_request_raw != canonical_json_bytes(request):
+                raise CoreHarnessError(
+                    "staged worker request differs from canonical request"
+                )
+            completed = _run_worker_bounded(
+                _worker_command(staged_worker, request_path),
+                cwd=stage,
+                timeout_seconds=timeout_seconds,
+            )
+        response = validate_duration_worker_response(
+            completed.stdout,
+            exit_code=completed.returncode,
+            request=request,
+        )
+
+    record: dict[str, Any] = {
+        "schemaVersion": SCHEMA_VERSION,
+        "kind": DURATION_RECORD_KIND,
+        "requestId": request["requestId"],
+        "duration": {
+            "decodedFrames": decoded_frames,
+            "sampleRateHz": sample_rate_hz,
+            "fractionalDigits": fractional_digits,
+        },
+        "execution": {
+            "workerSha256": worker_identity.sha256,
+            "workerByteLength": worker_identity.byte_length,
+            "processModel": "one_worker_process_per_request",
+        },
+        "target": {
+            "id": "TARGET-foo-dr-meter-1.0.8-x64-static-ff3556ad",
+            "sha256": target_identity.sha256,
+            "byteLength": target_identity.byte_length,
+            "durationFormatRva": DURATION_FORMAT_RVA,
+            "runtimeArtifacts": [
+                {
+                    "name": artifact.name,
+                    "sha256": artifact.identity.sha256,
+                    "byteLength": artifact.identity.byte_length,
+                }
+                for artifact in runtime_artifacts
+            ],
+            "runtimeProfile": runtime_profile,
+        },
+        "result": response["data"],
+        "claims": {
+            "scope": (
+                "isolated foo_dr_meter 1.0.8 x64 duration numeric leaf"
+            ),
+            "compatibility": "none",
+            "foobarParity": "not_assessed",
+        },
+        "limitations": [
+            "No foobar decoder, component lifecycle, report assembly, or renderer lifecycle was exercised.",
+            "The input frame count and sample rate are explicit harness values, not observations of host decoding.",
+        ],
+    }
+    assert_path_free(record, "duration harness record")
     canonical_json_bytes(record)
     return record
 
@@ -1457,6 +2104,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--block-frames", type=int, default=DEFAULT_BLOCK_FRAMES)
+    parser.add_argument(
+        "--multichannel-loudness-weighting",
+        action="store_true",
+        help="pass the optional multichannel weighting flag to finish()",
+    )
     parser.add_argument("--output", type=Path)
     source = parser.add_subparsers(dest="source", required=True)
 
@@ -1511,6 +2163,9 @@ def main(argv: list[str] | None = None) -> int:
             runtime_profile=args.runtime_profile,
             timeout_seconds=args.timeout_seconds,
             block_frames=args.block_frames,
+            multichannel_loudness_weighting=(
+                args.multichannel_loudness_weighting
+            ),
         )
         _write_record(record, args.output)
         return 0

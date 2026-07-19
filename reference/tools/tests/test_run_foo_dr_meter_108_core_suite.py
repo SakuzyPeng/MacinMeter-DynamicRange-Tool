@@ -104,7 +104,7 @@ class SyntheticSuite:
         self.worker = root / "fake_worker.py"
         self.worker.write_text(
             r'''
-import argparse, json, os, struct, sys
+import argparse, hashlib, json, os, struct, sys
 p = argparse.ArgumentParser()
 p.add_argument("--request", required=True)
 a = p.parse_args()
@@ -118,7 +118,7 @@ if log:
         output.write(f"{os.getpid()} {first.hex()}\n")
 if first < 0:
     print(json.dumps({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "kind": "foo_dr_meter_108_core_error",
         "requestId": r["requestId"],
         "targetSha256": r["target"]["sha256"],
@@ -153,6 +153,9 @@ fp = {
     "after": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
     "restored": {"x87ControlWordBits": "037f", "mxcsrBits": "00001f80"},
 }
+histogram = bytearray(10001 * 4)
+struct.pack_into("<I", histogram, 4, 1)
+histogram_sha256 = hashlib.sha256(histogram).hexdigest()
 data = {
     "sampleRateHz": r["stream"]["sampleRate"],
     "channels": r["stream"]["channels"],
@@ -179,11 +182,28 @@ data = {
         "windowCount": 1,
         "submittedFrames": r["stream"]["frames"],
     },
+    "options": r["options"],
+    "histogramAfterFinish": {
+        "layout": "channel_major",
+        "elementEncoding": "u32le",
+        "binsPerChannel": 10001,
+        "channels": [
+            {
+                "index": i,
+                "totalCount": 1,
+                "nonzeroBinCount": 1,
+                "minus100DbCount": 0,
+                "zeroDbCount": 0,
+                "sha256": histogram_sha256,
+            }
+            for i in range(r["stream"]["channels"])
+        ],
+    },
     "channelStateAfterFinish": state,
     "fpEnvironment": fp,
 }
 print(json.dumps({
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "kind": "foo_dr_meter_108_core_result",
     "requestId": r["requestId"],
     "targetSha256": r["target"]["sha256"],

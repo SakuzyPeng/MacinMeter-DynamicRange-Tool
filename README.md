@@ -131,9 +131,11 @@ tracks would instead produce DR13. This partial footer check does not establish
 host metadata, precise album-internal arithmetic, duration weighting, or full
 text parity. Internal implementation-state parity is intentionally not a target.
 The M1 numeric scope includes the statically recovered album arithmetic and
-renderer rounding rules, while host behavior, playlist grouping, metadata
-provenance, complete text parity, and arbitrary audio remain outside the claim.
-The profile therefore remains `Unverified`.
+renderer numeric rules. A separate 38-vector isolated run now also
+cross-checks duration half-second/carry behavior, optional multichannel
+loudness weighting, and both RMS-histogram clamp endpoints. Host behavior,
+playlist grouping, metadata provenance, complete text parity, and arbitrary
+audio remain outside the claim. The profile therefore remains `Unverified`.
 
 ## Library
 
@@ -228,6 +230,7 @@ See:
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - [Reference-evidence policy](reference/README.md)
 - [Isolated x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
+- [Isolated x64 numeric-boundary observation](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
 
 ## Reference work and attribution
 
@@ -253,6 +256,13 @@ ordinary `shared.dll` IAT entries during core calls. It does not verify foobar
 decoding, registration, metadata, album grouping, or complete rendering; those
 are explicit non-goals rather than unfinished M1 evidence. Its claims remain
 `compatibility: none` and `foobarParity: not_assessed`.
+
+The same hardened boundary has also completed an accepted
+[38-vector numeric observation](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md):
+24 duration, 8 multichannel-weighting, and 6 histogram-endpoint workers all
+matched their preregistered assertions. It closes those output-affecting
+per-track evidence gaps without running the full renderer or broadening the
+compatibility claim.
 
 ## License
 

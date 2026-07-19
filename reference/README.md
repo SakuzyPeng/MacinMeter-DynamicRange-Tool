@@ -73,6 +73,13 @@ registration、metadata、album 或 renderer。记录因此明确声明
 得到 track DR 39/39、channel DR 62/62、channel RMS 62/62 和 overall peak
 39/39 精确匹配；该对照不扩大上述执行边界。
 
+最后几个可能改变 per-track 可见输出、但此前只有静态证据的数值分支，现由
+[`38 项隔离 numeric-boundary observation`](observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
+一次收口：duration 24/24、multichannel weighting 的 track raw bits 8/8、
+channel 前提 8/8、配对不变量 4/4、histogram endpoint 6/6。该运行仍不启动
+foobar2000；duration 只执行固定 numeric leaf，因而不会把完整 renderer 或
+component parity 纳入结论。
+
 这组 accepted 隔离观测、静态记录、版本化规格和有界 conformance 共同构成 M1
 主证据。此前保存的 foobar host、metadata、album writer 和 renderer 记录仍然
 有效，但只在其各自声明的边界内作为历史或辅助数值证据，不是 M1 待办。

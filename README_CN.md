@@ -119,7 +119,9 @@ DR 为 62/62、overall peak 为 39/39、overall RMS 为 39/39、channel RMS 为
 DR13。这个局部 footer 检查不证明 host metadata、精确 album 内部算术、
 duration weighting 或完整文本 parity，也不以内部实现状态同构为目标。M1 数值
 范围纳入静态恢复的 album 算术与 renderer 舍入规则；host 行为、playlist
-grouping、metadata 来源、完整文本 parity 和任意音频仍不在声明范围内，因此
+grouping、metadata 来源、完整文本 parity 和任意音频仍不在声明范围内。另一个
+38-vector 隔离运行已经交叉验证 duration 半秒/进位、可选多声道 loudness
+weighting 和 RMS histogram 两个 clamp 端点；它没有扩大兼容性范围，因此
 profile 继续是 `Unverified`。
 
 ## 公共库
@@ -211,6 +213,7 @@ macinmeter-domain
 - [`foo_dr_meter 1.0.8 Candidate V1` 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - [参考证据策略](reference/README.md)
 - [隔离 x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
+- [隔离 x64 numeric-boundary 观测](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
 
 ## 参考工作与致谢
 
@@ -232,6 +235,12 @@ core 调用期对 13 个普通 `shared.dll` IAT 入口设置 fail-fast tripwire�
 foobar 解码、注册、metadata、album grouping 或完整 renderer；这些是明确非目标，
 不是尚未补齐的 M1 证据。该记录的声明仍为 `compatibility: none` 与
 `foobarParity: not_assessed`。
+
+同一个 hardened 边界还完成了
+[38-vector numeric 观测](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)：
+24 个 duration、8 个多声道 weighting 和 6 个 histogram endpoint worker
+全部满足预注册判据。它关闭这些可能改变 per-track 输出的证据缺口，但没有执行
+完整 renderer，也没有扩大兼容性声明。
 
 ## 许可证
 

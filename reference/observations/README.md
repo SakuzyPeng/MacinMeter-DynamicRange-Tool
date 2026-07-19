@@ -4,6 +4,13 @@
 
 当前观测：
 
+- [`OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719`](obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)：
+  固定 x64 target 的 accepted 隔离 numeric observation。它不启动
+  foobar2000；24 个 duration leaf、8 个 weighting core 和 6 个 histogram
+  core 向量各使用一个全新 worker。duration 24/24、weighting track raw bits
+  8/8、channel 前提 8/8、配对不变量 4/4、histogram 6/6 均满足预注册判据。
+  这为半秒/长时 duration、可选多声道加权和 histogram 两端 clamp 提供动态
+  交叉证据，不执行完整 renderer，也不声明 component parity。
 - [`OBS-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719`](obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)：
   固定 `foo_dr_meter` 1.0.8 x64 target `ff3556ad` 的 accepted 隔离
   analyzer-core 动态观测。它不启动 foobar2000；complete-v2 的 39 项 safe
@@ -47,3 +54,8 @@ manifest 或显式有限 interleaved binary64 PCM 驱动固定 DLL，并严格�
 target、runtime、worker、block size 与输入身份。它是算法 core 观测工具，不是
 foobar host 或兼容性测试替代品。host repeat、playlist/grouping、metadata 与
 完整文本属于明确非目标，不因本 harness 未执行而成为缺失 core 证据。
+
+同一个 hardened worker 的 schema v2 还提供固定 duration numeric leaf 入口，
+并在 analyzer finish 后保存完整 histogram slice 的紧凑摘要；边界矩阵由
+[`run_foo_dr_meter_108_numeric_boundaries.py`](../tools/run_foo_dr_meter_108_numeric_boundaries.py)
+一次性驱动。

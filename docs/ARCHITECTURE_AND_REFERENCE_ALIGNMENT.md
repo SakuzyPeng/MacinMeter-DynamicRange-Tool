@@ -177,11 +177,11 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | --- | --- | --- | --- |
 | REF-001 | DONE | 固定参考目标身份 | foo_dr_meter 1.0.8 x64/x86 hash、宿主与配置记录 |
 | REF-002 | DONE | 建立授权与来源档案 | 公开最小摘要、私人打印快照 digest、保管位置与未授权边界均已登记 |
-| REF-003 | DONE | 建立可重复的参考运行 harness | 离线 observation importer 与隔离 x64 core parent/worker/suite 均固定输入、target、runtime、worker 身份和执行契约；39 项 safe-master 每项使用全新 worker 的首次受控记录已验收，范围不含 foobar host |
+| REF-003 | DONE | 建立可重复的参考运行 harness | 离线 observation importer 与隔离 x64 numeric parent/worker/suite 均固定输入、target、runtime、worker 身份和执行契约；harness 已演进至 schema v2，39 项历史 safe-master 与 38 项 numeric-boundary 每项使用全新 worker，范围不含 foobar host |
 | REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
-| REF-005 | DONE | 完成目标行为矩阵 | x86 15 项历史导出、x64 39 项 safe-master 与同 39 项隔离 core 动态记录已登记；block-size 与 fresh-worker 稳定性检查已固定，host-edge、album playlist 和 host repeat 不属于 M1 |
-| REF-006 | DONE | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；album 聚合与 renderer 数值路径已有静态数据流，foobar host/metadata/text parity 明确排除 |
-| REF-007 | DONE | 编写版本化数值规格 | Candidate 已纳入 x64 core、report 数值、duration 舍入和 album 聚合规则，并明确证据等级与非目标；DONE 不表示 profile 已升级为 accepted/verified |
+| REF-005 | DONE | 完成目标行为矩阵 | x86 15 项历史导出、x64 39 项 safe-master/隔离 core，以及 duration/weighting/histogram 38 项隔离边界记录已登记；block-size 与 fresh-worker 稳定性检查已固定，host-edge、album playlist 和 host repeat 不属于 M1 |
+| REF-006 | DONE | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；duration leaf、可选多声道 weighting 与 histogram endpoint 已有专门动态交叉；album 聚合、完整 renderer、foobar host/metadata/text parity 保持各自证据边界 |
+| REF-007 | DONE | 编写版本化数值规格 | Candidate 已纳入 x64 core、report 数值、duration 舍入、histogram clamp、多声道 weighting 和 album 聚合规则，并明确证据等级与非目标；DONE 不表示 profile 已升级为 accepted/verified |
 | REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的六组公开 DR/report/duration 字段完全匹配，仍不宣称参考兼容 |
 | REF-009 | DONE | 建立有界参考 conformance suite | clean-commit successor 覆盖六组字段、四项 footer consistency 与 DR0 反事实；isolated core 对既有报告四类字段达到 39/39、62/62、62/62、39/39；production intermediate 差分不是目标 |
 | REF-010 | DONE | 固定范围与兼容性声明 | 保持 `CandidateV1 / Unverified`，只陈述固定 x64 数值证据，不声称完整 foobar/component parity |
@@ -191,7 +191,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
-| TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core 动态记录及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
+| TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core、38 项 accepted numeric-boundary 及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
 | TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
@@ -436,7 +436,7 @@ Error
 metadata、playlist/album grouping、完整 renderer 或独立 host repeat run；
 这些行为不属于固定 analyzer 数值契约。
 
-2026-07-18 至 2026-07-19 的后续检查点补齐了三条证据基础设施：
+2026-07-18 至 2026-07-19 的后续检查点补齐了四条证据基础设施：
 
 - observation importer 会从 canonical manifest、实际 fixture bytes、未经修改的
   report 和显式 target/run metadata 重建并复核 path-free 包；它不运行参考插件，
@@ -447,11 +447,17 @@ metadata、playlist/album grouping、完整 renderer 或独立 host repeat run�
 - 隔离 x64 core parent/worker/suite 固定 PCM、target、runtime、worker、block
   size 和请求身份，每个输入使用全新 worker；固定 39 项 safe-master 已形成
   accepted 动态记录。真实 `shared.dll` 被保留用于 load/unload lifecycle，core
-  执行期间 13 个目标普通 IAT 入口均由 fail-fast tripwire 接管。
+  执行期间 13 个目标普通 IAT 入口均由 fail-fast tripwire 接管；
+- 同一 worker 的 schema v2 又一次性完成 38 个高区分度数值向量：duration
+  24/24、multichannel weighting track bits 8/8、channel 前提 8/8、配对
+  不变量 4/4、histogram endpoint 6/6，全部满足预注册判据。
 
 第三项关闭了 analyzer core “首次受控动态记录”这一缺口，并能保存 raw bits
 用于精确比较；它不启动 foobar2000，因此没有把 foobar decode、registration、
 metadata、album subsystem、完整 renderer 或 host parity 升级成已验证事实。
+第四项把此前仍可能改变 per-track 可见输出、但只有静态证据的 duration 半秒与
+长时 token、可选多声道加权、histogram 两端 clamp 交叉为 E2；duration 只执行
+固定 numeric leaf，仍不是完整 renderer 动态记录。
 这些外围路径被保留为可选研究材料，不是 M1 缺口。album 的
 unweighted/weighted/fallback/binary32 窄化与整数显示，以及 renderer 的 report
 peak/RMS、DR/dB 与 duration 舍入，仅按纯数值叶子规则进入规格；固定静态数据流

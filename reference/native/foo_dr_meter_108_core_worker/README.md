@@ -1,11 +1,34 @@
-# Isolated foo_dr_meter 1.0.8 x64 core worker
+# Isolated foo_dr_meter 1.0.8 x64 numeric worker
 
 This Windows x64 helper is the worker side of
 `reference/tools/run_foo_dr_meter_108_core.py`. It accepts exactly
 `--request <request.json>`, privately stages and re-verifies the fixed
 `foo_dr_meter.dll` plus the four allowlisted runtime DLLs, loads the target
-with DLL-load-directory and System32-only search flags, invokes the fixed
-analyzer RVAs, and writes one path-free JSON protocol line.
+with DLL-load-directory and System32-only search flags, invokes one fixed
+numeric operation, and writes one path-free JSON protocol line. It does not
+start or install foobar2000.
+
+Protocol schema version 2 has two independent request/result pairs:
+
+- `foo_dr_meter_108_core_request` /
+  `foo_dr_meter_108_core_result` invokes the fixed init/push/finish analyzer
+  RVAs. The requested `multichannelLoudnessWeighting` boolean is passed
+  unchanged to finish and is echoed with `blockFrames`. After finish and before
+  cleanup, the worker strictly validates the channel-major 10,001-bin `u32`
+  histogram vector and emits a compact per-channel summary: total and nonzero
+  counts, endpoint counts, and the SHA-256 of the exact `u32le` bin image.
+- `foo_dr_meter_108_duration_request` /
+  `foo_dr_meter_108_duration_result` invokes only the fixed duration-format
+  numeric leaf at RVA `0x38540`, with `decodedFrames / sampleRateHz` as
+  binary64 seconds and fractional digits fixed to zero. It verifies the fixed
+  `llround` and target-heap `free` imports, validates the returned bounded ASCII
+  duration text, and releases target-owned storage through the target's own
+  heap import.
+
+Both request kinds use schema version 2
+`foo_dr_meter_108_core_error` responses for structured failures. The duration
+operation is isolated numeric-leaf evidence; it is not execution of the full
+report renderer.
 
 The staging directory is created with a protected DACL granting access only to
 the process token's user SID and Local System. A 128-bit random name is paired
@@ -37,10 +60,10 @@ Windows still needs the fixed real `shared.dll` during the component DLL's
 normal load and unload lifecycle. That does not require a running foobar2000
 process. After loading is complete, the worker finds all 13 `shared.dll`
 imports in the fixed target and replaces their IAT slots with one fail-fast
-tripwire for the complete init/push/finish/cleanup interval. A call made through
-any of those 13 ordinary IAT slots therefore terminates that one worker process
-instead of receiving an invented return value. The original slots are restored
-before `FreeLibrary`.
+tripwire for the complete selected numeric-operation interval. A call made
+through any of those 13 ordinary IAT slots therefore terminates that one worker
+process instead of receiving an invented return value. The original slots are
+restored before `FreeLibrary`.
 
 The tripwire does not cover a function resolved dynamically with
 `GetProcAddress`, a pointer cached elsewhere before arming, a delay-load table,

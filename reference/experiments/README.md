@@ -4,6 +4,12 @@
 
 当前实验：
 
+- [`EXP-foo-dr-meter-108-numeric-boundaries-v1`](foo-dr-meter-108-numeric-boundaries-v1.md)：
+  不启动 foobar2000，使用固定 x64 隔离 worker 一次运行 38 个 numeric vector，
+  覆盖 duration 半秒与 minute/hour/day/week 进位、可选 multichannel
+  loudness weighting，以及 histogram `-100/0 dB` endpoint clamp。首次
+  observation 的 duration 24/24、weighting raw-bit/前提/配对判据和 histogram
+  6/6 均通过。
 - [`EXP-foo-dr-meter-108-discriminating-v1`](foo-dr-meter-108-discriminating-v1.md)：
   已完成一次固定 x86 黑盒观测的 15 项初始判别实验。
 - [`EXP-foo-dr-meter-108-complete-v2`](foo-dr-meter-108-complete-v2.md)：

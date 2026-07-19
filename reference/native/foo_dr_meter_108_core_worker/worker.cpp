@@ -1,8 +1,8 @@
 #include "mini_json.hpp"
 #include "shared_iat_tripwire.hpp"
 
-#include <windows.h>
 #include <bcrypt.h>
+#include <windows.h>
 
 #include <algorithm>
 #include <array>
@@ -16,6 +16,7 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -39,9 +40,15 @@ constexpr std::uint32_t kResultCleanupRva = 0x3CE0;
 constexpr std::uint32_t kHistogramCleanupRva = 0x10970;
 constexpr std::uint32_t kChannelStateCleanupRva = 0x109E0;
 constexpr std::uint32_t kAccumulatorCleanupRva = 0x10A70;
+constexpr std::uint32_t kDurationFormatRva = 0x38540;
+constexpr std::uint32_t kTargetFreeIatRva = 0x497F0;
+constexpr std::uint32_t kTargetLlroundIatRva = 0x49860;
 constexpr std::size_t kSessionSize = 0x70;
 constexpr std::size_t kResultSize = 0x58;
 constexpr std::size_t kChannelStateStride = 0x28;
+constexpr std::size_t kDurationOutputSize = 0x30;
+constexpr std::size_t kMaximumDurationTextBytes = 128;
+constexpr std::uint32_t kHistogramBinsPerChannel = 10001;
 constexpr std::uint32_t kMaximumChannels = 64;
 constexpr std::uint32_t kMaximumBlockFrames = 1'048'576;
 constexpr std::uint64_t kMaximumPcmBytes = UINT64_C(1) << 30;
@@ -83,21 +90,20 @@ constexpr std::array<KnownRuntimeIdentity, 4> kRealRuntime = {{
      "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736",
      109392},
     {"vcruntime140_1.dll",
-     "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f",
-     49520},
+     "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f", 49520},
 }};
 
 constexpr std::array<std::string_view, 4> kRuntimeNames = {
     "shared.dll", "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"};
 
 class WorkerError final : public std::runtime_error {
- public:
+public:
   WorkerError(std::string code, std::string message)
       : std::runtime_error(std::move(message)), code_(std::move(code)) {}
 
   [[nodiscard]] const std::string &code() const noexcept { return code_; }
 
- private:
+private:
   std::string code_;
 };
 
@@ -106,7 +112,7 @@ class WorkerError final : public std::runtime_error {
 }
 
 class UniqueHandle final {
- public:
+public:
   UniqueHandle() noexcept = default;
   explicit UniqueHandle(HANDLE handle) noexcept : handle_(handle) {}
   ~UniqueHandle() { reset(); }
@@ -137,12 +143,12 @@ class UniqueHandle final {
     handle_ = next;
   }
 
- private:
+private:
   HANDLE handle_ = INVALID_HANDLE_VALUE;
 };
 
 class UniqueModule final {
- public:
+public:
   UniqueModule() noexcept = default;
   explicit UniqueModule(HMODULE module) noexcept : module_(module) {}
   ~UniqueModule() { reset(); }
@@ -167,7 +173,7 @@ class UniqueModule final {
     module_ = next;
   }
 
- private:
+private:
   HMODULE module_ = nullptr;
 };
 
@@ -180,8 +186,8 @@ struct ObjectIdentity {
   std::uint64_t volume_serial_number = 0;
   std::array<std::byte, 16> file_id{};
 
-  [[nodiscard]] bool operator==(const ObjectIdentity &) const noexcept =
-      default;
+  [[nodiscard]] bool
+  operator==(const ObjectIdentity &) const noexcept = default;
 };
 
 struct LockedFile {
@@ -197,7 +203,13 @@ struct RuntimeArtifact {
   FileIdentity identity;
 };
 
+enum class RequestOperation {
+  core,
+  duration,
+};
+
 struct Request {
+  RequestOperation operation = RequestOperation::core;
   std::string request_id;
   std::wstring target_path;
   FileIdentity target_identity;
@@ -209,6 +221,10 @@ struct Request {
   std::wstring pcm_path;
   FileIdentity pcm_identity;
   std::uint32_t block_frames = 0;
+  bool multichannel_loudness_weighting = false;
+  std::uint64_t decoded_frames = 0;
+  std::uint32_t duration_sample_rate = 0;
+  std::uint32_t fractional_digits = 0;
 };
 
 struct ResponseContext {
@@ -236,6 +252,14 @@ struct ChannelResult {
   std::uint32_t rms_bits = 0;
 };
 
+struct HistogramChannelSummary {
+  std::uint64_t total_count = 0;
+  std::uint32_t nonzero_bin_count = 0;
+  std::uint32_t minus_100_db_count = 0;
+  std::uint32_t zero_db_count = 0;
+  std::string sha256;
+};
+
 struct FpControlPair {
   std::uint16_t x87_control_word = 0;
   std::uint32_t mxcsr = 0;
@@ -254,6 +278,13 @@ struct CoreOutput {
   SessionSnapshot after_finish;
   std::vector<ChannelState> channel_state;
   std::vector<ChannelResult> channel_results;
+  std::vector<HistogramChannelSummary> histogram;
+  FpEnvironmentRecord fp_environment;
+};
+
+struct DurationOutput {
+  std::uint64_t seconds_bits = 0;
+  std::string text;
   FpEnvironmentRecord fp_environment;
 };
 
@@ -282,44 +313,43 @@ template <typename T>
   constexpr char kHex[] = "0123456789abcdef";
   for (const unsigned char character : value) {
     switch (character) {
-      case '"':
-        output += "\\\"";
-        break;
-      case '\\':
-        output += "\\\\";
-        break;
-      case '\b':
-        output += "\\b";
-        break;
-      case '\f':
-        output += "\\f";
-        break;
-      case '\n':
-        output += "\\n";
-        break;
-      case '\r':
-        output += "\\r";
-        break;
-      case '\t':
-        output += "\\t";
-        break;
-      default:
-        if (character < 0x20) {
-          output += "\\u00";
-          output.push_back(kHex[character >> 4]);
-          output.push_back(kHex[character & 0x0F]);
-        } else {
-          output.push_back(static_cast<char>(character));
-        }
-        break;
+    case '"':
+      output += "\\\"";
+      break;
+    case '\\':
+      output += "\\\\";
+      break;
+    case '\b':
+      output += "\\b";
+      break;
+    case '\f':
+      output += "\\f";
+      break;
+    case '\n':
+      output += "\\n";
+      break;
+    case '\r':
+      output += "\\r";
+      break;
+    case '\t':
+      output += "\\t";
+      break;
+    default:
+      if (character < 0x20) {
+        output += "\\u00";
+        output.push_back(kHex[character >> 4]);
+        output.push_back(kHex[character & 0x0F]);
+      } else {
+        output.push_back(static_cast<char>(character));
+      }
+      break;
     }
   }
   output.push_back('"');
   return output;
 }
 
-template <typename T>
-[[nodiscard]] std::string decimal(T value) {
+template <typename T> [[nodiscard]] std::string decimal(T value) {
   std::array<char, 32> buffer{};
   const auto result =
       std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
@@ -329,8 +359,7 @@ template <typename T>
   return std::string(buffer.data(), result.ptr);
 }
 
-template <typename T>
-[[nodiscard]] std::string fixed_hex(T value) {
+template <typename T> [[nodiscard]] std::string fixed_hex(T value) {
   constexpr std::size_t kDigits = sizeof(T) * 2;
   constexpr char kHex[] = "0123456789abcdef";
   std::array<char, kDigits> output{};
@@ -374,8 +403,8 @@ void trace_checkpoint(std::string_view checkpoint) noexcept {
 }
 
 [[nodiscard]] std::wstring utf8_to_wide(std::string_view value) {
-  if (value.empty() ||
-      value.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+  if (value.empty() || value.size() > static_cast<std::size_t>(
+                                          std::numeric_limits<int>::max())) {
     fail("invalid_request", "request path is invalid");
   }
   const int required =
@@ -458,18 +487,17 @@ void trace_checkpoint(std::string_view checkpoint) noexcept {
   while (offset < bytes.size()) {
     const ULONG chunk = static_cast<ULONG>(std::min<std::size_t>(
         bytes.size() - offset, std::numeric_limits<ULONG>::max()));
-    if (BCryptHashData(
-            hash,
-            reinterpret_cast<PUCHAR>(
-                const_cast<std::byte *>(bytes.data() + offset)),
-            chunk, 0) != 0) {
+    if (BCryptHashData(hash,
+                       reinterpret_cast<PUCHAR>(
+                           const_cast<std::byte *>(bytes.data() + offset)),
+                       chunk, 0) != 0) {
       cleanup();
       fail("hash_failed", "SHA-256 update failed");
     }
     offset += chunk;
   }
-  if (BCryptFinishHash(hash, digest.data(),
-                       static_cast<ULONG>(digest.size()), 0) != 0) {
+  if (BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()),
+                       0) != 0) {
     cleanup();
     fail("hash_failed", "SHA-256 finalization failed");
   }
@@ -484,8 +512,8 @@ void trace_checkpoint(std::string_view checkpoint) noexcept {
   return output;
 }
 
-[[nodiscard]] ObjectIdentity query_object_identity(
-    HANDLE handle, std::string_view error_code) {
+[[nodiscard]] ObjectIdentity
+query_object_identity(HANDLE handle, std::string_view error_code) {
   FILE_ID_INFO information{};
   if (!GetFileInformationByHandleEx(handle, FileIdInfo, &information,
                                     static_cast<DWORD>(sizeof(information)))) {
@@ -540,7 +568,8 @@ void trace_checkpoint(std::string_view checkpoint) noexcept {
       extra_read != 0) {
     fail(error_code, "required input file changed while being read");
   }
-  FileIdentity identity{sha256(bytes), static_cast<std::uint64_t>(bytes.size())};
+  FileIdentity identity{sha256(bytes),
+                        static_cast<std::uint64_t>(bytes.size())};
   ObjectIdentity object_identity =
       query_object_identity(handle.get(), error_code);
   return LockedFile{std::move(handle), std::move(bytes), std::move(identity),
@@ -555,9 +584,8 @@ void verify_identity(const FileIdentity &actual, const FileIdentity &expected,
   }
 }
 
-void require_exact_keys(
-    const mini_json::Value &value,
-    std::initializer_list<std::string_view> expected_keys) {
+void require_exact_keys(const mini_json::Value &value,
+                        std::initializer_list<std::string_view> expected_keys) {
   const auto &object = value.as_object();
   if (object.size() != expected_keys.size()) {
     fail("invalid_request", "request object fields differ from the protocol");
@@ -578,8 +606,8 @@ void require_exact_keys(
   }
 }
 
-[[nodiscard]] const std::string &request_string(
-    const mini_json::Value &value, std::string_view key) {
+[[nodiscard]] const std::string &request_string(const mini_json::Value &value,
+                                                std::string_view key) {
   try {
     return value.at(key).as_string();
   } catch (const mini_json::TypeError &) {
@@ -596,8 +624,8 @@ void require_exact_keys(
   }
 }
 
-[[nodiscard]] const mini_json::Value &request_value(
-    const mini_json::Value &value, std::string_view key) {
+[[nodiscard]] const mini_json::Value &
+request_value(const mini_json::Value &value, std::string_view key) {
   try {
     return value.at(key);
   } catch (const mini_json::TypeError &) {
@@ -632,6 +660,79 @@ void validate_identifier(std::string_view value) {
   }
 }
 
+void parse_target(const mini_json::Value &target, Request &request,
+                  ResponseContext &context, bool duration_target) {
+  if (duration_target) {
+    require_exact_keys(target,
+                       {"dllPath", "sha256", "byteLength", "durationFormatRva",
+                        "runtimeProfile", "runtimeArtifacts"});
+  } else {
+    require_exact_keys(target,
+                       {"dllPath", "sha256", "byteLength", "initRva", "pushRva",
+                        "finishRva", "runtimeProfile", "runtimeArtifacts"});
+  }
+  request.target_path =
+      full_path(utf8_to_wide(request_string(target, "dllPath")));
+  request.target_identity.sha256 = request_string(target, "sha256");
+  request.target_identity.byte_length = request_uint(target, "byteLength");
+  context.target_sha256 = request.target_identity.sha256;
+  const bool rvas_match =
+      duration_target
+          ? request_uint(target, "durationFormatRva") == kDurationFormatRva
+          : request_uint(target, "initRva") == kInitRva &&
+                request_uint(target, "pushRva") == kPushRva &&
+                request_uint(target, "finishRva") == kFinishRva;
+  if (request.target_identity.sha256 != kTargetSha256 ||
+      request.target_identity.byte_length != kTargetByteLength || !rvas_match) {
+    fail("target_identity_mismatch", "fixed target identity is incorrect");
+  }
+  request.runtime_profile = request_string(target, "runtimeProfile");
+  if (request.runtime_profile != "fixed_foobar_2_25_10" &&
+      request.runtime_profile != "fail_fast_shared_v1") {
+    fail("invalid_request", "runtime profile is unsupported");
+  }
+
+  const auto &artifact_values =
+      request_value(target, "runtimeArtifacts").as_array();
+  if (artifact_values.size() != kRuntimeNames.size()) {
+    fail("invalid_request", "runtime artifact allowlist is invalid");
+  }
+  for (std::size_t index = 0; index < artifact_values.size(); ++index) {
+    const auto &item = artifact_values[index];
+    require_exact_keys(item, {"name", "sourcePath", "sha256", "byteLength"});
+    RuntimeArtifact artifact;
+    artifact.name = request_string(item, "name");
+    if (artifact.name != kRuntimeNames[index]) {
+      fail("invalid_request", "runtime artifacts are not in canonical order");
+    }
+    artifact.source_path =
+        full_path(utf8_to_wide(request_string(item, "sourcePath")));
+    if (_wcsicmp(basename(artifact.source_path).c_str(),
+                 utf8_to_wide(artifact.name).c_str()) != 0) {
+      fail("invalid_request", "runtime artifact basename is invalid");
+    }
+    artifact.identity.sha256 = request_string(item, "sha256");
+    artifact.identity.byte_length = request_uint(item, "byteLength");
+    if (!is_lower_hex(artifact.identity.sha256, 64) ||
+        artifact.identity.byte_length == 0 ||
+        artifact.identity.byte_length > kMaximumArtifactBytes) {
+      fail("invalid_request", "runtime artifact identity is invalid");
+    }
+    const KnownRuntimeIdentity &known = kRealRuntime[index];
+    if (index != 0 || request.runtime_profile == "fixed_foobar_2_25_10") {
+      if (artifact.identity.sha256 != known.sha256 ||
+          artifact.identity.byte_length != known.byte_length) {
+        fail("runtime_identity_mismatch",
+             "runtime artifact differs from the fixed profile");
+      }
+    } else if (artifact.identity.sha256 == kRealRuntime[0].sha256) {
+      fail("runtime_identity_mismatch",
+           "fail-fast profile cannot use the real shared runtime");
+    }
+    request.runtime_artifacts.push_back(std::move(artifact));
+  }
+}
+
 [[nodiscard]] Request parse_request(std::string_view raw,
                                     ResponseContext &context) {
   mini_json::Value root;
@@ -641,14 +742,26 @@ void validate_identifier(std::string_view value) {
     fail("invalid_request", "request is not strict JSON");
   }
   try {
-    require_exact_keys(root, {"schemaVersion", "kind", "requestId", "target",
-                              "stream", "pcm", "options"});
-    if (request_uint(root, "schemaVersion") != 1 ||
-        request_string(root, "kind") != "foo_dr_meter_108_core_request") {
+    if (request_uint(root, "schemaVersion") != 2) {
       fail("invalid_request", "request protocol identity is unsupported");
+    }
+    const std::string &kind = request_string(root, "kind");
+    const bool is_core = kind == "foo_dr_meter_108_core_request";
+    const bool is_duration = kind == "foo_dr_meter_108_duration_request";
+    if (!is_core && !is_duration) {
+      fail("invalid_request", "request protocol identity is unsupported");
+    }
+    if (is_core) {
+      require_exact_keys(root, {"schemaVersion", "kind", "requestId", "target",
+                                "stream", "pcm", "options"});
+    } else {
+      require_exact_keys(
+          root, {"schemaVersion", "kind", "requestId", "target", "duration"});
     }
 
     Request request;
+    request.operation =
+        is_core ? RequestOperation::core : RequestOperation::duration;
     request.request_id = request_string(root, "requestId");
     validate_identifier(request.request_id);
     if (!is_lower_hex(request.request_id, 64)) {
@@ -657,79 +770,36 @@ void validate_identifier(std::string_view value) {
     context.request_id = request.request_id;
 
     const auto &target = request_value(root, "target");
-    require_exact_keys(target,
-                       {"dllPath", "sha256", "byteLength", "initRva",
-                        "pushRva", "finishRva", "runtimeProfile",
-                        "runtimeArtifacts"});
-    request.target_path = full_path(utf8_to_wide(request_string(target, "dllPath")));
-    request.target_identity.sha256 = request_string(target, "sha256");
-    request.target_identity.byte_length = request_uint(target, "byteLength");
-    context.target_sha256 = request.target_identity.sha256;
-    if (request.target_identity.sha256 != kTargetSha256 ||
-        request.target_identity.byte_length != kTargetByteLength ||
-        request_uint(target, "initRva") != kInitRva ||
-        request_uint(target, "pushRva") != kPushRva ||
-        request_uint(target, "finishRva") != kFinishRva) {
-      fail("target_identity_mismatch", "fixed target identity is incorrect");
-    }
-    request.runtime_profile = request_string(target, "runtimeProfile");
-    if (request.runtime_profile != "fixed_foobar_2_25_10" &&
-        request.runtime_profile != "fail_fast_shared_v1") {
-      fail("invalid_request", "runtime profile is unsupported");
-    }
+    parse_target(target, request, context, is_duration);
 
-    const auto &artifact_values =
-        request_value(target, "runtimeArtifacts").as_array();
-    if (artifact_values.size() != kRuntimeNames.size()) {
-      fail("invalid_request", "runtime artifact allowlist is invalid");
-    }
-    for (std::size_t index = 0; index < artifact_values.size(); ++index) {
-      const auto &item = artifact_values[index];
-      require_exact_keys(item, {"name", "sourcePath", "sha256", "byteLength"});
-      RuntimeArtifact artifact;
-      artifact.name = request_string(item, "name");
-      if (artifact.name != kRuntimeNames[index]) {
-        fail("invalid_request", "runtime artifacts are not in canonical order");
+    if (is_duration) {
+      const auto &duration = request_value(root, "duration");
+      require_exact_keys(duration,
+                         {"decodedFrames", "sampleRateHz", "fractionalDigits"});
+      request.decoded_frames = request_uint(duration, "decodedFrames");
+      request.duration_sample_rate =
+          narrow_u32(request_uint(duration, "sampleRateHz"),
+                     "duration sample rate is invalid");
+      request.fractional_digits =
+          narrow_u32(request_uint(duration, "fractionalDigits"),
+                     "duration fractional digits are invalid");
+      if (request.duration_sample_rate == 0 || request.fractional_digits != 0) {
+        fail("invalid_request", "duration geometry is invalid");
       }
-      artifact.source_path =
-          full_path(utf8_to_wide(request_string(item, "sourcePath")));
-      if (_wcsicmp(basename(artifact.source_path).c_str(),
-                   utf8_to_wide(artifact.name).c_str()) != 0) {
-        fail("invalid_request", "runtime artifact basename is invalid");
-      }
-      artifact.identity.sha256 = request_string(item, "sha256");
-      artifact.identity.byte_length = request_uint(item, "byteLength");
-      if (!is_lower_hex(artifact.identity.sha256, 64) ||
-          artifact.identity.byte_length == 0 ||
-          artifact.identity.byte_length > kMaximumArtifactBytes) {
-        fail("invalid_request", "runtime artifact identity is invalid");
-      }
-      const KnownRuntimeIdentity &known = kRealRuntime[index];
-      if (index != 0 || request.runtime_profile == "fixed_foobar_2_25_10") {
-        if (artifact.identity.sha256 != known.sha256 ||
-            artifact.identity.byte_length != known.byte_length) {
-          fail("runtime_identity_mismatch",
-               "runtime artifact differs from the fixed profile");
-        }
-      } else if (artifact.identity.sha256 == kRealRuntime[0].sha256) {
-        fail("runtime_identity_mismatch",
-             "fail-fast profile cannot use the real shared runtime");
-      }
-      request.runtime_artifacts.push_back(std::move(artifact));
+      return request;
     }
 
     const auto &stream = request_value(root, "stream");
-    require_exact_keys(
-        stream, {"sampleRate", "channels", "frames", "sampleEncoding"});
-    request.sample_rate =
-        narrow_u32(request_uint(stream, "sampleRate"), "sample rate is invalid");
-    request.channels =
-        narrow_u32(request_uint(stream, "channels"), "channel count is invalid");
+    require_exact_keys(stream,
+                       {"sampleRate", "channels", "frames", "sampleEncoding"});
+    request.sample_rate = narrow_u32(request_uint(stream, "sampleRate"),
+                                     "sample rate is invalid");
+    request.channels = narrow_u32(request_uint(stream, "channels"),
+                                  "channel count is invalid");
     request.frames = request_uint(stream, "frames");
     if (request.sample_rate == 0 || request.channels == 0 ||
         request.channels > kMaximumChannels ||
-        request_string(stream, "sampleEncoding") !=
-            "f64le-interleaved") {
+        request_string(stream, "sampleEncoding") != "f64le-interleaved") {
       fail("invalid_request", "stream geometry or encoding is invalid");
     }
     if (request.frames >
@@ -755,11 +825,10 @@ void validate_identifier(std::string_view value) {
     const auto &options = request_value(root, "options");
     require_exact_keys(options,
                        {"multichannelLoudnessWeighting", "blockFrames"});
-    if (request_bool(options, "multichannelLoudnessWeighting")) {
-      fail("invalid_request", "multichannel weighting must be disabled");
-    }
-    request.block_frames =
-        narrow_u32(request_uint(options, "blockFrames"), "block size is invalid");
+    request.multichannel_loudness_weighting =
+        request_bool(options, "multichannelLoudnessWeighting");
+    request.block_frames = narrow_u32(request_uint(options, "blockFrames"),
+                                      "block size is invalid");
     if (request.block_frames == 0 ||
         request.block_frames > kMaximumBlockFrames) {
       fail("invalid_request", "block size is invalid");
@@ -770,8 +839,8 @@ void validate_identifier(std::string_view value) {
   }
 }
 
-[[nodiscard]] std::vector<double> decode_pcm(
-    const std::vector<std::byte> &bytes) {
+[[nodiscard]] std::vector<double>
+decode_pcm(const std::vector<std::byte> &bytes) {
   if (bytes.size() % sizeof(std::uint64_t) != 0) {
     fail("pcm_identity_mismatch", "PCM is not binary64 aligned");
   }
@@ -788,7 +857,7 @@ void validate_identifier(std::string_view value) {
 }
 
 class PrivateDirectorySecurity final {
- public:
+public:
   PrivateDirectorySecurity() {
     HANDLE raw_token = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw_token)) {
@@ -831,9 +900,8 @@ class PrivateDirectorySecurity final {
     }
     constexpr std::size_t kAceOverhead =
         sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD);
-    const std::size_t acl_bytes =
-        sizeof(ACL) + 2 * kAceOverhead + user_sid_bytes +
-        actual_system_sid_bytes;
+    const std::size_t acl_bytes = sizeof(ACL) + 2 * kAceOverhead +
+                                  user_sid_bytes + actual_system_sid_bytes;
     if (acl_bytes > std::numeric_limits<DWORD>::max()) {
       fail("staging_failed", "private staging ACL is too large");
     }
@@ -842,12 +910,11 @@ class PrivateDirectorySecurity final {
     if (!InitializeAcl(acl, static_cast<DWORD>(acl_.size()), ACL_REVISION)) {
       fail("staging_failed", "private staging ACL initialization failed");
     }
-    constexpr DWORD kInheritance =
-        OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
-    if (!AddAccessAllowedAceEx(acl, ACL_REVISION, kInheritance,
-                               FILE_ALL_ACCESS, token_user->User.Sid) ||
-        !AddAccessAllowedAceEx(acl, ACL_REVISION, kInheritance,
-                               FILE_ALL_ACCESS, system_sid)) {
+    constexpr DWORD kInheritance = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+    if (!AddAccessAllowedAceEx(acl, ACL_REVISION, kInheritance, FILE_ALL_ACCESS,
+                               token_user->User.Sid) ||
+        !AddAccessAllowedAceEx(acl, ACL_REVISION, kInheritance, FILE_ALL_ACCESS,
+                               system_sid)) {
       fail("staging_failed", "private staging ACL construction failed");
     }
     if (!InitializeSecurityDescriptor(&descriptor_,
@@ -864,14 +931,14 @@ class PrivateDirectorySecurity final {
   }
 
   PrivateDirectorySecurity(const PrivateDirectorySecurity &) = delete;
-  PrivateDirectorySecurity &operator=(const PrivateDirectorySecurity &) =
-      delete;
+  PrivateDirectorySecurity &
+  operator=(const PrivateDirectorySecurity &) = delete;
 
   [[nodiscard]] SECURITY_ATTRIBUTES *attributes() noexcept {
     return &attributes_;
   }
 
- private:
+private:
   std::vector<std::byte> token_user_;
   std::array<std::byte, SECURITY_MAX_SID_SIZE> system_sid_{};
   std::vector<std::byte> acl_;
@@ -880,7 +947,7 @@ class PrivateDirectorySecurity final {
 };
 
 class StageDirectory final {
- public:
+public:
   StageDirectory() {
     std::array<wchar_t, 32768> temporary_root{};
     const DWORD root_length = GetTempPathW(
@@ -944,23 +1011,21 @@ class StageDirectory final {
     }
   }
 
- private:
-  [[nodiscard]] static UniqueHandle open_direct_directory(
-      const std::wstring &path) {
+private:
+  [[nodiscard]] static UniqueHandle
+  open_direct_directory(const std::wstring &path) {
     UniqueHandle handle(CreateFileW(
         path.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL,
         FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
     if (!handle.valid() || GetFileType(handle.get()) != FILE_TYPE_DISK) {
-      fail("staging_failed",
-           "private staging directory could not be locked");
+      fail("staging_failed", "private staging directory could not be locked");
     }
     BY_HANDLE_FILE_INFORMATION information{};
     if (!GetFileInformationByHandle(handle.get(), &information) ||
         (information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
         (information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-      fail("staging_failed",
-           "private staging path is not a direct directory");
+      fail("staging_failed", "private staging path is not a direct directory");
     }
     return handle;
   }
@@ -1010,7 +1075,7 @@ void write_staged_file(const std::wstring &path,
 }
 
 class FpEnvironmentGuard final {
- public:
+public:
   explicit FpEnvironmentGuard(FpEnvironmentRecord &record) noexcept
       : record_(record) {
     record_.before = capture_fp_control();
@@ -1038,15 +1103,15 @@ class FpEnvironmentGuard final {
     restored_ = true;
   }
 
- private:
+private:
   FpEnvironmentRecord &record_;
   bool restored_ = false;
 };
 
 [[nodiscard]] std::wstring module_path(HMODULE module) {
   std::wstring output(32768, L'\0');
-  const DWORD length =
-      GetModuleFileNameW(module, output.data(), static_cast<DWORD>(output.size()));
+  const DWORD length = GetModuleFileNameW(module, output.data(),
+                                          static_cast<DWORD>(output.size()));
   if (length == 0 || length >= output.size()) {
     fail("loader_verification_failed", "loaded module path is unavailable");
   }
@@ -1059,14 +1124,12 @@ void verify_loaded_module(std::wstring_view module_name,
                           const LockedFile &expected_file) {
   const std::wstring name(module_name);
   HMODULE module = GetModuleHandleW(name.c_str());
-  if (module == nullptr ||
-      !same_path(module_path(module), expected_path)) {
+  if (module == nullptr || !same_path(module_path(module), expected_path)) {
     fail("loader_verification_failed",
          "loaded runtime module did not come from private staging");
   }
-  LockedFile loaded =
-      read_locked_file(expected_path, kMaximumArtifactBytes,
-                       "loader_verification_failed");
+  LockedFile loaded = read_locked_file(expected_path, kMaximumArtifactBytes,
+                                       "loader_verification_failed");
   if (loaded.object_identity != expected_file.object_identity) {
     fail("loader_verification_failed",
          "loaded runtime path no longer names the locked artifact");
@@ -1090,8 +1153,14 @@ void verify_loaded_module(std::wstring_view module_name,
     MEMORY_BASIC_INFORMATION info{};
     if (VirtualQuery(reinterpret_cast<const void *>(current), &info,
                      sizeof(info)) != sizeof(info) ||
-        info.State != MEM_COMMIT || (info.Protect & PAGE_GUARD) != 0 ||
-        (info.Protect & PAGE_NOACCESS) != 0) {
+        info.State != MEM_COMMIT || (info.Protect & PAGE_GUARD) != 0) {
+      return false;
+    }
+    const DWORD protection = info.Protect & 0xFFU;
+    if (protection != PAGE_READONLY && protection != PAGE_READWRITE &&
+        protection != PAGE_WRITECOPY && protection != PAGE_EXECUTE_READ &&
+        protection != PAGE_EXECUTE_READWRITE &&
+        protection != PAGE_EXECUTE_WRITECOPY) {
       return false;
     }
     const std::uintptr_t region_end =
@@ -1102,6 +1171,198 @@ void verify_loaded_module(std::wstring_view module_name,
     current = std::min(region_end, end);
   }
   return true;
+}
+
+[[nodiscard]] bool
+memory_range_is_executable(const void *pointer,
+                           std::size_t byte_length) noexcept {
+  if (pointer == nullptr || byte_length == 0) {
+    return false;
+  }
+  std::uintptr_t current = reinterpret_cast<std::uintptr_t>(pointer);
+  if (current > std::numeric_limits<std::uintptr_t>::max() - byte_length) {
+    return false;
+  }
+  const std::uintptr_t end = current + byte_length;
+  while (current < end) {
+    MEMORY_BASIC_INFORMATION info{};
+    if (VirtualQuery(reinterpret_cast<const void *>(current), &info,
+                     sizeof(info)) != sizeof(info) ||
+        info.State != MEM_COMMIT || (info.Protect & PAGE_GUARD) != 0) {
+      return false;
+    }
+    const DWORD protection = info.Protect & 0xFFU;
+    if (protection != PAGE_EXECUTE && protection != PAGE_EXECUTE_READ &&
+        protection != PAGE_EXECUTE_READWRITE &&
+        protection != PAGE_EXECUTE_WRITECOPY) {
+      return false;
+    }
+    const std::uintptr_t region_end =
+        reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
+    if (region_end <= current) {
+      return false;
+    }
+    current = std::min(region_end, end);
+  }
+  return true;
+}
+
+[[nodiscard]] bool rva_fits(std::uint32_t rva, std::size_t byte_length,
+                            std::uint32_t image_size) noexcept {
+  return rva <= image_size && byte_length <= image_size - rva;
+}
+
+[[nodiscard]] bool ascii_iequals(std::string_view left,
+                                 std::string_view right) noexcept {
+  if (left.size() != right.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < left.size(); ++index) {
+    const auto lower = [](char character) noexcept {
+      return character >= 'A' && character <= 'Z'
+                 ? static_cast<char>(character - 'A' + 'a')
+                 : character;
+    };
+    if (lower(left[index]) != lower(right[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] std::optional<std::string_view>
+image_string(const std::byte *base, std::uint32_t image_size,
+             std::uint32_t rva) noexcept {
+  if (rva >= image_size) {
+    return std::nullopt;
+  }
+  const char *start = reinterpret_cast<const char *>(base + rva);
+  const std::size_t maximum = image_size - rva;
+  const void *terminator = std::memchr(start, '\0', maximum);
+  if (terminator == nullptr) {
+    return std::nullopt;
+  }
+  const auto *end = static_cast<const char *>(terminator);
+  return std::string_view(start, static_cast<std::size_t>(end - start));
+}
+
+[[nodiscard]] std::uintptr_t
+verify_named_import(HMODULE module, std::string_view expected_dll,
+                    std::string_view expected_function,
+                    std::uint32_t expected_iat_rva) {
+  auto *base = reinterpret_cast<std::byte *>(module);
+  const auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(base);
+  if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) {
+    fail("target_layout_mismatch", "fixed target has an invalid PE header");
+  }
+  const auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS64 *>(
+      base + static_cast<std::size_t>(dos->e_lfanew));
+  if (nt->Signature != IMAGE_NT_SIGNATURE ||
+      nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
+      nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+    fail("target_layout_mismatch",
+         "fixed target is not the expected PE64 image");
+  }
+  const std::uint32_t image_size = nt->OptionalHeader.SizeOfImage;
+  const IMAGE_DATA_DIRECTORY directory =
+      nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+  if (directory.VirtualAddress == 0 ||
+      directory.Size < sizeof(IMAGE_IMPORT_DESCRIPTOR) ||
+      !rva_fits(directory.VirtualAddress, directory.Size, image_size) ||
+      !rva_fits(expected_iat_rva, sizeof(IMAGE_THUNK_DATA64), image_size)) {
+    fail("target_layout_mismatch", "fixed target import directory is invalid");
+  }
+
+  const auto *descriptors = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR *>(
+      base + directory.VirtualAddress);
+  const std::size_t descriptor_limit =
+      directory.Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
+  const IMAGE_IMPORT_DESCRIPTOR *matched_descriptor = nullptr;
+  for (std::size_t index = 0; index < descriptor_limit; ++index) {
+    const IMAGE_IMPORT_DESCRIPTOR &descriptor = descriptors[index];
+    if (descriptor.Name == 0 && descriptor.FirstThunk == 0) {
+      break;
+    }
+    const std::optional<std::string_view> name =
+        image_string(base, image_size, descriptor.Name);
+    if (!name.has_value()) {
+      fail("target_layout_mismatch", "fixed target import name is invalid");
+    }
+    if (ascii_iequals(*name, expected_dll)) {
+      if (matched_descriptor != nullptr) {
+        fail("target_layout_mismatch",
+             "fixed target import descriptor is duplicated");
+      }
+      matched_descriptor = &descriptor;
+    }
+  }
+  if (matched_descriptor == nullptr ||
+      matched_descriptor->OriginalFirstThunk == 0 ||
+      matched_descriptor->FirstThunk == 0) {
+    fail("target_layout_mismatch", "fixed target named import is absent");
+  }
+
+  const std::uint32_t names_rva = matched_descriptor->OriginalFirstThunk;
+  const std::uint32_t iat_rva = matched_descriptor->FirstThunk;
+  if (!rva_fits(names_rva, sizeof(IMAGE_THUNK_DATA64), image_size) ||
+      !rva_fits(iat_rva, sizeof(IMAGE_THUNK_DATA64), image_size)) {
+    fail("target_layout_mismatch", "fixed target named IAT is invalid");
+  }
+  const auto *names =
+      reinterpret_cast<const IMAGE_THUNK_DATA64 *>(base + names_rva);
+  const auto *iat =
+      reinterpret_cast<const IMAGE_THUNK_DATA64 *>(base + iat_rva);
+  const std::size_t thunk_limit =
+      std::min((image_size - names_rva) / sizeof(IMAGE_THUNK_DATA64),
+               (image_size - iat_rva) / sizeof(IMAGE_THUNK_DATA64));
+  std::optional<std::uintptr_t> matched_target;
+  bool terminated = false;
+  for (std::size_t index = 0; index < thunk_limit; ++index) {
+    const std::uint64_t name_value = names[index].u1.AddressOfData;
+    if (name_value == 0) {
+      terminated = true;
+      break;
+    }
+    if (IMAGE_SNAP_BY_ORDINAL64(name_value) ||
+        name_value > std::numeric_limits<std::uint32_t>::max()) {
+      continue;
+    }
+    const std::uint32_t name_rva = static_cast<std::uint32_t>(name_value);
+    if (!rva_fits(name_rva, offsetof(IMAGE_IMPORT_BY_NAME, Name) + 1,
+                  image_size)) {
+      fail("target_layout_mismatch", "fixed target import thunk is invalid");
+    }
+    const std::optional<std::string_view> function_name =
+        image_string(base, image_size,
+                     name_rva + static_cast<std::uint32_t>(
+                                    offsetof(IMAGE_IMPORT_BY_NAME, Name)));
+    if (!function_name.has_value()) {
+      fail("target_layout_mismatch", "fixed target function name is invalid");
+    }
+    if (*function_name == expected_function) {
+      const std::uint64_t slot_rva_u64 = static_cast<std::uint64_t>(iat_rva) +
+                                         index * sizeof(IMAGE_THUNK_DATA64);
+      if (slot_rva_u64 != expected_iat_rva || matched_target.has_value()) {
+        fail("target_layout_mismatch",
+             "fixed target named import has an unexpected IAT slot");
+      }
+      const std::uintptr_t target =
+          static_cast<std::uintptr_t>(iat[index].u1.Function);
+      if (target == 0 ||
+          !memory_range_is_readable(base + expected_iat_rva,
+                                    sizeof(IMAGE_THUNK_DATA64)) ||
+          !memory_range_is_executable(reinterpret_cast<const void *>(target),
+                                      1)) {
+        fail("target_layout_mismatch",
+             "fixed target named import did not resolve safely");
+      }
+      matched_target = target;
+    }
+  }
+  if (!terminated || !matched_target.has_value()) {
+    fail("target_layout_mismatch", "fixed target named import is incomplete");
+  }
+  return *matched_target;
 }
 
 void validate_executable_rva(HMODULE module, std::uint32_t rva) {
@@ -1116,7 +1377,8 @@ void validate_executable_rva(HMODULE module, std::uint32_t rva) {
       nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
       nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
       rva >= nt->OptionalHeader.SizeOfImage) {
-    fail("target_layout_mismatch", "fixed target is not the expected PE64 image");
+    fail("target_layout_mismatch",
+         "fixed target is not the expected PE64 image");
   }
   const IMAGE_SECTION_HEADER *section = IMAGE_FIRST_SECTION(nt);
   for (std::uint16_t index = 0; index < nt->FileHeader.NumberOfSections;
@@ -1157,6 +1419,171 @@ using InitFunction = void *(__cdecl *)(void *, std::uint32_t, std::uint32_t,
 using PushFunction = void(__cdecl *)(void *, const double *, std::uint32_t);
 using FinishFunction = void(__cdecl *)(void *, void *, bool);
 using CleanupFunction = void(__cdecl *)(void *);
+using DurationFormatFunction = void *(__cdecl *)(void *, double, std::uint32_t);
+using TargetFreeFunction = void(__cdecl *)(void *);
+
+[[nodiscard]] std::vector<HistogramChannelSummary>
+capture_histogram(const std::byte *session, std::uint32_t channels,
+                  std::uint64_t window_count) {
+  const std::uintptr_t begin = load_unaligned<std::uintptr_t>(session + 0x50);
+  const std::uintptr_t end = load_unaligned<std::uintptr_t>(session + 0x58);
+  const std::uintptr_t capacity =
+      load_unaligned<std::uintptr_t>(session + 0x60);
+  const std::size_t channel_bytes =
+      static_cast<std::size_t>(kHistogramBinsPerChannel) *
+      sizeof(std::uint32_t);
+  const std::size_t expected_bytes =
+      static_cast<std::size_t>(channels) * channel_bytes;
+  if (begin == 0 || begin % alignof(std::uint32_t) != 0 ||
+      begin > std::numeric_limits<std::uintptr_t>::max() - expected_bytes) {
+    fail("core_contract_mismatch",
+         "fixed core histogram begin pointer is invalid");
+  }
+  const std::uintptr_t expected_end = begin + expected_bytes;
+  if (end != expected_end || capacity < end ||
+      (capacity - begin) % alignof(std::uint32_t) != 0 ||
+      !memory_range_is_readable(reinterpret_cast<const void *>(begin),
+                                expected_bytes) ||
+      (capacity != end &&
+       !memory_range_is_readable(reinterpret_cast<const void *>(end),
+                                 capacity - end))) {
+    fail("core_contract_mismatch",
+         "fixed core histogram vector bounds are invalid");
+  }
+
+  std::vector<HistogramChannelSummary> summaries;
+  summaries.reserve(channels);
+  for (std::uint32_t channel = 0; channel < channels; ++channel) {
+    const auto *channel_begin = reinterpret_cast<const std::byte *>(
+        begin + static_cast<std::size_t>(channel) * channel_bytes);
+    std::vector<std::byte> channel_image(channel_bytes);
+    std::memcpy(channel_image.data(), channel_begin, channel_bytes);
+
+    HistogramChannelSummary summary;
+    for (std::uint32_t bin = 0; bin < kHistogramBinsPerChannel; ++bin) {
+      const std::uint32_t count = load_unaligned<std::uint32_t>(
+          channel_image.data() + static_cast<std::size_t>(bin) * 4);
+      summary.total_count += count;
+      if (count != 0) {
+        ++summary.nonzero_bin_count;
+      }
+    }
+    if (summary.total_count > window_count) {
+      fail("core_contract_mismatch",
+           "fixed core histogram count exceeds the finalized window count");
+    }
+    summary.minus_100_db_count =
+        load_unaligned<std::uint32_t>(channel_image.data());
+    summary.zero_db_count = load_unaligned<std::uint32_t>(
+        channel_image.data() +
+        static_cast<std::size_t>(kHistogramBinsPerChannel - 1) * 4);
+    summary.sha256 = sha256(channel_image);
+    summaries.push_back(std::move(summary));
+  }
+  return summaries;
+}
+
+[[nodiscard]] bool ascii_digits(std::string_view value) noexcept {
+  return !value.empty() &&
+         std::all_of(value.begin(), value.end(), [](char character) {
+           return character >= '0' && character <= '9';
+         });
+}
+
+[[nodiscard]] std::optional<std::uint64_t>
+parse_ascii_uint(std::string_view value) noexcept {
+  if (!ascii_digits(value)) {
+    return std::nullopt;
+  }
+  std::uint64_t parsed = 0;
+  const auto result =
+      std::from_chars(value.data(), value.data() + value.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    return std::nullopt;
+  }
+  return parsed;
+}
+
+[[nodiscard]] bool is_two_digit_00_to_59(std::string_view value) noexcept {
+  const std::optional<std::uint64_t> parsed = parse_ascii_uint(value);
+  return value.size() == 2 && parsed.has_value() && *parsed <= 59;
+}
+
+[[nodiscard]] bool is_canonical_positive_uint(std::string_view value) noexcept {
+  return ascii_digits(value) && value.front() >= '1' && value.front() <= '9';
+}
+
+[[nodiscard]] bool is_canonical_hour(std::string_view value) noexcept {
+  const std::optional<std::uint64_t> parsed = parse_ascii_uint(value);
+  if (!parsed.has_value() || *parsed > 23) {
+    return false;
+  }
+  if (value.size() == 1) {
+    return true;
+  }
+  return value.size() == 2 && value.front() >= '1' && value.front() <= '2';
+}
+
+[[nodiscard]] bool validate_clock(std::string_view value,
+                                  bool require_hours) noexcept {
+  const std::size_t first = value.find(':');
+  if (first == std::string_view::npos) {
+    return false;
+  }
+  const std::size_t second = value.find(':', first + 1);
+  if (!require_hours && second == std::string_view::npos) {
+    return ascii_digits(value.substr(0, first)) &&
+           is_two_digit_00_to_59(value.substr(first + 1));
+  }
+  if (second == std::string_view::npos ||
+      value.find(':', second + 1) != std::string_view::npos) {
+    return false;
+  }
+  const std::string_view hours = value.substr(0, first);
+  const bool hours_valid = require_hours ? is_canonical_hour(hours)
+                                         : is_canonical_positive_uint(hours);
+  return hours_valid &&
+         is_two_digit_00_to_59(value.substr(first + 1, second - first - 1)) &&
+         is_two_digit_00_to_59(value.substr(second + 1));
+}
+
+[[nodiscard]] bool validate_duration_text(std::string_view value) noexcept {
+  if (value.empty() || value.size() > kMaximumDurationTextBytes) {
+    return false;
+  }
+  const std::size_t week_marker = value.find("wk ");
+  if (week_marker != std::string_view::npos) {
+    const std::string_view weeks = value.substr(0, week_marker);
+    const std::size_t day_start = week_marker + 3;
+    if (!is_canonical_positive_uint(weeks) || day_start + 3 > value.size() ||
+        value[day_start] < '0' || value[day_start] > '6' ||
+        value.substr(day_start + 1, 2) != "d ") {
+      return false;
+    }
+    return validate_clock(value.substr(day_start + 3), true);
+  }
+  if (value.size() >= 3 && value[0] >= '1' && value[0] <= '6' &&
+      value.substr(1, 2) == "d ") {
+    return validate_clock(value.substr(3), true);
+  }
+  return validate_clock(value, false);
+}
+
+class TargetAllocationGuard final {
+public:
+  TargetAllocationGuard(TargetFreeFunction free_function,
+                        void *allocation) noexcept
+      : free_function_(free_function), allocation_(allocation) {}
+
+  ~TargetAllocationGuard() { free_function_(allocation_); }
+
+  TargetAllocationGuard(const TargetAllocationGuard &) = delete;
+  TargetAllocationGuard &operator=(const TargetAllocationGuard &) = delete;
+
+private:
+  TargetFreeFunction free_function_;
+  void *allocation_;
+};
 
 void execute_core(HMODULE module, const Request &request,
                   const std::vector<double> &samples, CoreOutput &output,
@@ -1186,9 +1613,9 @@ void execute_core(HMODULE module, const Request &request,
 
   std::uint64_t frame_offset = 0;
   while (frame_offset < request.frames) {
-    const std::uint32_t frames = static_cast<std::uint32_t>(
-        std::min<std::uint64_t>(request.frames - frame_offset,
-                                request.block_frames));
+    const std::uint32_t frames =
+        static_cast<std::uint32_t>(std::min<std::uint64_t>(
+            request.frames - frame_offset, request.block_frames));
     const std::size_t sample_offset =
         static_cast<std::size_t>(frame_offset * request.channels);
     push(session.data(), samples.data() + sample_offset, frames);
@@ -1203,7 +1630,8 @@ void execute_core(HMODULE module, const Request &request,
          "fixed core pre-finish frame accounting is inconsistent");
   }
 
-  finish(session.data(), result.data(), false);
+  finish(session.data(), result.data(),
+         request.multichannel_loudness_weighting);
   trace_checkpoint("after-finish");
   output.after_finish = capture_session(session.data());
   if (output.after_finish.current_window_frames != 0 ||
@@ -1218,6 +1646,8 @@ void execute_core(HMODULE module, const Request &request,
     fail("core_contract_mismatch",
          "fixed core finalized window accounting is inconsistent");
   }
+  output.histogram = capture_histogram(session.data(), request.channels,
+                                       output.after_finish.window_count);
 
   const auto channel_state_pointer =
       load_unaligned<std::uintptr_t>(session.data() + 0x38);
@@ -1226,10 +1656,12 @@ void execute_core(HMODULE module, const Request &request,
   if (!memory_range_is_readable(
           reinterpret_cast<const void *>(channel_state_pointer),
           channel_state_bytes)) {
-    fail("core_contract_mismatch", "fixed core channel-state storage is invalid");
+    fail("core_contract_mismatch",
+         "fixed core channel-state storage is invalid");
   }
   output.channel_state.reserve(request.channels);
-  const auto *state = reinterpret_cast<const std::byte *>(channel_state_pointer);
+  const auto *state =
+      reinterpret_cast<const std::byte *>(channel_state_pointer);
   for (std::uint32_t channel = 0; channel < request.channels; ++channel) {
     const std::byte *item =
         state + static_cast<std::size_t>(channel) * kChannelStateStride;
@@ -1257,17 +1689,16 @@ void execute_core(HMODULE module, const Request &request,
   if (result_channels != request.channels ||
       result_sample_rate != request.sample_rate ||
       result_frames != request.frames) {
-    fail("core_contract_mismatch", "fixed core result geometry is inconsistent");
+    fail("core_contract_mismatch",
+         "fixed core result geometry is inconsistent");
   }
   output.track_dr_bits = load_unaligned<std::uint32_t>(result.data() + 0x00);
   validate_finite_f32_bits(output.track_dr_bits);
 
-  const auto dr_pointer =
-      load_unaligned<std::uintptr_t>(result.data() + 0x28);
+  const auto dr_pointer = load_unaligned<std::uintptr_t>(result.data() + 0x28);
   const auto peak_pointer =
       load_unaligned<std::uintptr_t>(result.data() + 0x38);
-  const auto rms_pointer =
-      load_unaligned<std::uintptr_t>(result.data() + 0x48);
+  const auto rms_pointer = load_unaligned<std::uintptr_t>(result.data() + 0x48);
   const std::size_t array_bytes =
       static_cast<std::size_t>(request.channels) * sizeof(std::uint32_t);
   if (!memory_range_is_readable(reinterpret_cast<const void *>(dr_pointer),
@@ -1302,6 +1733,77 @@ void execute_core(HMODULE module, const Request &request,
   trace_checkpoint("after-cleanup");
 }
 
+void execute_duration(HMODULE module, const Request &request,
+                      DurationOutput &output, FpEnvironmentGuard &fp_guard) {
+  auto *base = reinterpret_cast<std::byte *>(module);
+  auto format =
+      reinterpret_cast<DurationFormatFunction>(base + kDurationFormatRva);
+  const std::uintptr_t llround_target =
+      verify_named_import(module, "api-ms-win-crt-math-l1-1-0.dll", "llround",
+                          kTargetLlroundIatRva);
+  const std::uintptr_t free_target = verify_named_import(
+      module, "api-ms-win-crt-heap-l1-1-0.dll", "free", kTargetFreeIatRva);
+  if (llround_target == free_target) {
+    fail("target_layout_mismatch",
+         "fixed target math and heap imports unexpectedly alias");
+  }
+  auto target_free = reinterpret_cast<TargetFreeFunction>(free_target);
+
+  const double seconds = static_cast<double>(request.decoded_frames) /
+                         static_cast<double>(request.duration_sample_rate);
+  if (!std::isfinite(seconds) || seconds < 0.0) {
+    fail("invalid_request", "duration seconds are not finite and nonnegative");
+  }
+  output.seconds_bits = std::bit_cast<std::uint64_t>(seconds);
+
+  alignas(16) std::array<std::byte, kDurationOutputSize> duration_object{};
+  trace_checkpoint("before-duration-leaf");
+  void *returned =
+      format(duration_object.data(), seconds, request.fractional_digits);
+  trace_checkpoint("after-duration-leaf");
+  fp_guard.capture_after();
+
+  void *allocation = reinterpret_cast<void *>(
+      load_unaligned<std::uintptr_t>(duration_object.data() + 0x18));
+  TargetAllocationGuard allocation_guard(target_free, allocation);
+  if (returned != duration_object.data()) {
+    fail("duration_contract_mismatch",
+         "fixed duration formatter returned an unexpected object");
+  }
+  const auto text_pointer =
+      load_unaligned<std::uintptr_t>(duration_object.data() + 0x08);
+  if (text_pointer == 0) {
+    fail("duration_contract_mismatch",
+         "fixed duration formatter returned a null text pointer");
+  }
+  const auto *text = reinterpret_cast<const char *>(text_pointer);
+  std::size_t text_length = 0;
+  for (; text_length <= kMaximumDurationTextBytes; ++text_length) {
+    if (!memory_range_is_readable(text + text_length, 1)) {
+      fail("duration_contract_mismatch",
+           "fixed duration formatter text storage is unreadable");
+    }
+    const unsigned char character =
+        static_cast<unsigned char>(text[text_length]);
+    if (character == 0) {
+      break;
+    }
+    if (character < 0x20 || character > 0x7E) {
+      fail("duration_contract_mismatch",
+           "fixed duration formatter text is not printable ASCII");
+    }
+  }
+  if (text_length > kMaximumDurationTextBytes) {
+    fail("duration_contract_mismatch",
+         "fixed duration formatter text exceeds its byte limit");
+  }
+  output.text.assign(text, text_length);
+  if (!validate_duration_text(output.text)) {
+    fail("duration_contract_mismatch",
+         "fixed duration formatter text violates the duration grammar");
+  }
+}
+
 [[nodiscard]] std::string render_fp_pair(const FpControlPair &value) {
   return "{\"x87ControlWordBits\":" +
          json_escape(fixed_hex(value.x87_control_word)) +
@@ -1314,19 +1816,49 @@ void execute_core(HMODULE module, const Request &request,
          ",\"submittedFrames\":" + decimal(value.submitted_frames) + "}";
 }
 
+[[nodiscard]] std::string render_runtime_artifacts(const Request &request) {
+  std::string json = "[";
+  for (std::size_t index = 0; index < request.runtime_artifacts.size();
+       ++index) {
+    if (index != 0) {
+      json.push_back(',');
+    }
+    const RuntimeArtifact &item = request.runtime_artifacts[index];
+    json += "{\"name\":" + json_escape(item.name) +
+            ",\"sha256\":" + json_escape(item.identity.sha256) +
+            ",\"byteLength\":" + decimal(item.identity.byte_length) + "}";
+  }
+  json.push_back(']');
+  return json;
+}
+
+[[nodiscard]] std::string render_fp_environment(const FpEnvironmentRecord &fp) {
+  std::string json = "{\"before\":" + render_fp_pair(fp.before);
+  json += ",\"applied\":{\"x87ControlWordBits\":" +
+          json_escape(fixed_hex(fp.applied.x87_control_word)) +
+          ",\"mxcsrBits\":" + json_escape(fixed_hex(fp.applied.mxcsr)) +
+          ",\"rounding\":\"nearest\",\"ftz\":false,\"daz\":false,"
+          "\"exceptionsMasked\":true}";
+  json += ",\"after\":" + render_fp_pair(fp.after);
+  json += ",\"restored\":" + render_fp_pair(fp.restored) + "}";
+  return json;
+}
+
 [[nodiscard]] std::string render_result(const ResponseContext &context,
                                         const Request &request,
                                         const CoreOutput &output) {
   std::string json =
-      "{\"schemaVersion\":1,\"kind\":\"foo_dr_meter_108_core_result\","
+      "{\"schemaVersion\":2,\"kind\":\"foo_dr_meter_108_core_result\","
       "\"requestId\":" +
       json_escape(context.request_id) +
       ",\"targetSha256\":" + json_escape(context.target_sha256) + ",\"data\":{";
   json += "\"sampleRateHz\":" + decimal(request.sample_rate);
   json += ",\"channels\":" + decimal(request.channels);
   json += ",\"frames\":" + decimal(request.frames);
-  json += ",\"trackDrBits\":" +
-          json_escape(fixed_hex(output.track_dr_bits));
+  json += ",\"options\":{\"multichannelLoudnessWeighting\":";
+  json += request.multichannel_loudness_weighting ? "true" : "false";
+  json += ",\"blockFrames\":" + decimal(request.block_frames) + "}";
+  json += ",\"trackDrBits\":" + json_escape(fixed_hex(output.track_dr_bits));
   json += ",\"channelResults\":[";
   for (std::size_t index = 0; index < output.channel_results.size(); ++index) {
     if (index != 0) {
@@ -1338,32 +1870,38 @@ void execute_core(HMODULE module, const Request &request,
             ",\"peakBits\":" + json_escape(fixed_hex(item.peak_bits)) +
             ",\"rmsBits\":" + json_escape(fixed_hex(item.rms_bits)) + "}";
   }
-  json += "],\"runtimeArtifacts\":[";
-  for (std::size_t index = 0; index < request.runtime_artifacts.size(); ++index) {
+  json += "],\"runtimeArtifacts\":" + render_runtime_artifacts(request);
+  json += ",\"loaderMode\":\"private_staging_dll_load_dir_system32\","
+          "\"sharedServiceBoundary\":{\"loadLifecycle\":\"real_shared\","
+          "\"coreExecution\":\"fail_fast_iat_tripwire\","
+          "\"armedImportCount\":13},"
+          "\"sessionBeforeFinish\":" +
+          render_session(output.before_finish) +
+          ",\"sessionAfterFinish\":" + render_session(output.after_finish);
+  json += ",\"histogramAfterFinish\":{"
+          "\"layout\":\"channel_major\","
+          "\"elementEncoding\":\"u32le\","
+          "\"binsPerChannel\":" +
+          decimal(kHistogramBinsPerChannel) + ",\"channels\":[";
+  for (std::size_t index = 0; index < output.histogram.size(); ++index) {
     if (index != 0) {
       json.push_back(',');
     }
-    const RuntimeArtifact &item = request.runtime_artifacts[index];
-    json += "{\"name\":" + json_escape(item.name) +
-            ",\"sha256\":" + json_escape(item.identity.sha256) +
-            ",\"byteLength\":" + decimal(item.identity.byte_length) + "}";
+    const HistogramChannelSummary &item = output.histogram[index];
+    json += "{\"index\":" + decimal(index) +
+            ",\"totalCount\":" + decimal(item.total_count) +
+            ",\"nonzeroBinCount\":" + decimal(item.nonzero_bin_count) +
+            ",\"minus100DbCount\":" + decimal(item.minus_100_db_count) +
+            ",\"zeroDbCount\":" + decimal(item.zero_db_count) +
+            ",\"sha256\":" + json_escape(item.sha256) + "}";
   }
-  json +=
-      "],\"loaderMode\":\"private_staging_dll_load_dir_system32\","
-      "\"sharedServiceBoundary\":{\"loadLifecycle\":\"real_shared\","
-      "\"coreExecution\":\"fail_fast_iat_tripwire\","
-      "\"armedImportCount\":13},"
-      "\"sessionBeforeFinish\":" +
-      render_session(output.before_finish) +
-      ",\"sessionAfterFinish\":" + render_session(output.after_finish);
-  json += ",\"channelStateAfterFinish\":[";
+  json += "]},\"channelStateAfterFinish\":[";
   for (std::size_t index = 0; index < output.channel_state.size(); ++index) {
     if (index != 0) {
       json.push_back(',');
     }
     const ChannelState &item = output.channel_state[index];
-    json += "{\"index\":" + decimal(index) +
-            ",\"rmsSquareSumBits\":" +
+    json += "{\"index\":" + decimal(index) + ",\"rmsSquareSumBits\":" +
             json_escape(fixed_hex(item.rms_square_sum_bits)) +
             ",\"primaryPeakBits\":" +
             json_escape(fixed_hex(item.primary_peak_bits)) +
@@ -1374,22 +1912,38 @@ void execute_core(HMODULE module, const Request &request,
             ",\"secondaryPeakKeyBits\":" +
             json_escape(fixed_hex(item.secondary_peak_key_bits)) + "}";
   }
-  const FpEnvironmentRecord &fp = output.fp_environment;
-  json += "],\"fpEnvironment\":{\"before\":" + render_fp_pair(fp.before);
-  json += ",\"applied\":{\"x87ControlWordBits\":" +
-          json_escape(fixed_hex(fp.applied.x87_control_word)) +
-          ",\"mxcsrBits\":" + json_escape(fixed_hex(fp.applied.mxcsr)) +
-          ",\"rounding\":\"nearest\",\"ftz\":false,\"daz\":false,"
-          "\"exceptionsMasked\":true}";
-  json += ",\"after\":" + render_fp_pair(fp.after);
-  json += ",\"restored\":" + render_fp_pair(fp.restored) + "}}}\n";
+  json +=
+      "],\"fpEnvironment\":" + render_fp_environment(output.fp_environment) +
+      "}}\n";
+  return json;
+}
+
+[[nodiscard]] std::string render_duration_result(const ResponseContext &context,
+                                                 const Request &request,
+                                                 const DurationOutput &output) {
+  std::string json =
+      "{\"schemaVersion\":2,\"kind\":\"foo_dr_meter_108_duration_result\","
+      "\"requestId\":" +
+      json_escape(context.request_id) +
+      ",\"targetSha256\":" + json_escape(context.target_sha256) + ",\"data\":{";
+  json += "\"geometry\":{\"decodedFrames\":" + decimal(request.decoded_frames) +
+          ",\"sampleRateHz\":" + decimal(request.duration_sample_rate) +
+          ",\"fractionalDigits\":" + decimal(request.fractional_digits) + "}";
+  json += ",\"secondsBits\":" + json_escape(fixed_hex(output.seconds_bits));
+  json += ",\"text\":" + json_escape(output.text);
+  json += ",\"runtimeArtifacts\":" + render_runtime_artifacts(request);
+  json += ",\"loaderMode\":\"private_staging_dll_load_dir_system32\","
+          "\"sharedServiceBoundary\":{\"loadLifecycle\":\"real_shared\","
+          "\"numericLeafExecution\":\"fail_fast_iat_tripwire\","
+          "\"armedImportCount\":13},\"fpEnvironment\":" +
+          render_fp_environment(output.fp_environment) + "}}\n";
   return json;
 }
 
 [[nodiscard]] std::string render_error(const ResponseContext &context,
                                        std::string_view code,
                                        std::string_view message) {
-  return "{\"schemaVersion\":1,\"kind\":\"foo_dr_meter_108_core_error\","
+  return "{\"schemaVersion\":2,\"kind\":\"foo_dr_meter_108_core_error\","
          "\"requestId\":" +
          json_escape(context.request_id) +
          ",\"targetSha256\":" + json_escape(context.target_sha256) +
@@ -1401,8 +1955,7 @@ void execute_core(HMODULE module, const Request &request,
   return read_locked_file(path, kMaximumRequestBytes, "invalid_request");
 }
 
-[[nodiscard]] std::wstring require_request_argument(int argc,
-                                                    wchar_t **argv) {
+[[nodiscard]] std::wstring require_request_argument(int argc, wchar_t **argv) {
   if (argc != 3 || std::wstring_view(argv[1]) != L"--request" ||
       argv[2][0] == L'\0') {
     fail("invalid_arguments", "expected exactly --request REQUEST.json");
@@ -1419,9 +1972,8 @@ void execute_core(HMODULE module, const Request &request,
       request_file.bytes.size());
   Request request = parse_request(request_text, context);
 
-  LockedFile target =
-      read_locked_file(request.target_path, UINT64_C(16) << 20,
-                       "target_identity_mismatch");
+  LockedFile target = read_locked_file(request.target_path, UINT64_C(16) << 20,
+                                       "target_identity_mismatch");
   verify_identity(target.identity, request.target_identity,
                   "target_identity_mismatch",
                   "fixed target bytes differ from the request");
@@ -1429,20 +1981,23 @@ void execute_core(HMODULE module, const Request &request,
   std::vector<LockedFile> runtime_sources;
   runtime_sources.reserve(request.runtime_artifacts.size());
   for (const RuntimeArtifact &artifact : request.runtime_artifacts) {
-    LockedFile source = read_locked_file(
-        artifact.source_path, kMaximumArtifactBytes,
-        "runtime_identity_mismatch");
+    LockedFile source =
+        read_locked_file(artifact.source_path, kMaximumArtifactBytes,
+                         "runtime_identity_mismatch");
     verify_identity(source.identity, artifact.identity,
                     "runtime_identity_mismatch",
                     "runtime artifact bytes differ from the request");
     runtime_sources.push_back(std::move(source));
   }
 
-  LockedFile pcm = read_locked_file(request.pcm_path, kMaximumPcmBytes,
-                                    "pcm_identity_mismatch");
-  verify_identity(pcm.identity, request.pcm_identity, "pcm_identity_mismatch",
-                  "PCM bytes differ from the request");
-  std::vector<double> samples = decode_pcm(pcm.bytes);
+  std::vector<double> samples;
+  if (request.operation == RequestOperation::core) {
+    LockedFile pcm = read_locked_file(request.pcm_path, kMaximumPcmBytes,
+                                      "pcm_identity_mismatch");
+    verify_identity(pcm.identity, request.pcm_identity, "pcm_identity_mismatch",
+                    "PCM bytes differ from the request");
+    samples = decode_pcm(pcm.bytes);
+  }
 
   StageDirectory stage;
   const std::wstring target_stage = stage.file_path(L"foo_dr_meter.dll");
@@ -1457,8 +2012,10 @@ void execute_core(HMODULE module, const Request &request,
   std::vector<LockedFile> staged_runtime;
   runtime_stage_paths.reserve(request.runtime_artifacts.size());
   staged_runtime.reserve(request.runtime_artifacts.size());
-  for (std::size_t index = 0; index < request.runtime_artifacts.size(); ++index) {
-    const std::wstring name = utf8_to_wide(request.runtime_artifacts[index].name);
+  for (std::size_t index = 0; index < request.runtime_artifacts.size();
+       ++index) {
+    const std::wstring name =
+        utf8_to_wide(request.runtime_artifacts[index].name);
     std::wstring path = stage.file_path(name);
     stage.remember(path);
     write_staged_file(path, runtime_sources[index].bytes);
@@ -1496,9 +2053,8 @@ void execute_core(HMODULE module, const Request &request,
                   "staging_failed",
                   "staged target identity changed before loading");
   for (std::size_t index = 0; index < staged_runtime.size(); ++index) {
-    LockedFile runtime_by_path =
-        read_locked_file(runtime_stage_paths[index], kMaximumArtifactBytes,
-                         "staging_failed");
+    LockedFile runtime_by_path = read_locked_file(
+        runtime_stage_paths[index], kMaximumArtifactBytes, "staging_failed");
     if (runtime_by_path.object_identity !=
         staged_runtime[index].object_identity) {
       fail("staging_failed",
@@ -1509,9 +2065,9 @@ void execute_core(HMODULE module, const Request &request,
                     "staged runtime identity changed before loading");
   }
   trace_checkpoint("before-load");
-  UniqueModule module(LoadLibraryExW(
-      target_stage.c_str(), nullptr,
-      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32));
+  UniqueModule module(LoadLibraryExW(target_stage.c_str(), nullptr,
+                                     LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+                                         LOAD_LIBRARY_SEARCH_SYSTEM32));
   if (module.get() == nullptr) {
     fail("loader_failed", "fixed target could not be privately loaded");
   }
@@ -1521,9 +2077,8 @@ void execute_core(HMODULE module, const Request &request,
     fail("loader_verification_failed",
          "loaded target did not come from private staging");
   }
-  LockedFile loaded_target =
-      read_locked_file(target_stage, UINT64_C(16) << 20,
-                       "loader_verification_failed");
+  LockedFile loaded_target = read_locked_file(target_stage, UINT64_C(16) << 20,
+                                              "loader_verification_failed");
   if (loaded_target.object_identity != staged_target.object_identity) {
     fail("loader_verification_failed",
          "loaded target path no longer names the locked artifact");
@@ -1531,10 +2086,10 @@ void execute_core(HMODULE module, const Request &request,
   verify_identity(loaded_target.identity, staged_target.identity,
                   "loader_verification_failed",
                   "loaded target module identity changed");
-  for (std::size_t index = 0; index < request.runtime_artifacts.size(); ++index) {
+  for (std::size_t index = 0; index < request.runtime_artifacts.size();
+       ++index) {
     verify_loaded_module(utf8_to_wide(request.runtime_artifacts[index].name),
-                         runtime_stage_paths[index],
-                         staged_runtime[index]);
+                         runtime_stage_paths[index], staged_runtime[index]);
   }
   trace_checkpoint("after-module-verification");
 
@@ -1542,8 +2097,7 @@ void execute_core(HMODULE module, const Request &request,
   if (shared == nullptr) {
     fail("loader_verification_failed", "shared runtime was not loaded");
   }
-  FARPROC marker =
-      GetProcAddress(shared, "macinmeter_shared_shim_marker_v1");
+  FARPROC marker = GetProcAddress(shared, "macinmeter_shared_shim_marker_v1");
   if (request.runtime_profile == "fail_fast_shared_v1") {
     if (marker == nullptr) {
       fail("loader_verification_failed",
@@ -1560,11 +2114,15 @@ void execute_core(HMODULE module, const Request &request,
          "real runtime unexpectedly contains the shim marker");
   }
 
-  for (const std::uint32_t rva :
-       {kInitRva, kPushRva, kFinishRva, kResultCleanupRva,
-        kHistogramCleanupRva, kChannelStateCleanupRva,
-        kAccumulatorCleanupRva}) {
-    validate_executable_rva(module.get(), rva);
+  if (request.operation == RequestOperation::core) {
+    for (const std::uint32_t rva :
+         {kInitRva, kPushRva, kFinishRva, kResultCleanupRva,
+          kHistogramCleanupRva, kChannelStateCleanupRva,
+          kAccumulatorCleanupRva}) {
+      validate_executable_rva(module.get(), rva);
+    }
+  } else {
+    validate_executable_rva(module.get(), kDurationFormatRva);
   }
 
   if (request.runtime_profile != "fixed_foobar_2_25_10") {
@@ -1572,20 +2130,18 @@ void execute_core(HMODULE module, const Request &request,
          "fail-fast shared is a load-lifecycle negative probe only");
   }
   shared_iat::Error tripwire_error{};
-  std::optional<shared_iat::Tripwire> tripwire =
-      shared_iat::Tripwire::arm(
-          module.get(),
-          reinterpret_cast<std::uintptr_t>(&macinmeter_shared_core_tripwire),
-          tripwire_error);
+  std::optional<shared_iat::Tripwire> tripwire = shared_iat::Tripwire::arm(
+      module.get(),
+      reinterpret_cast<std::uintptr_t>(&macinmeter_shared_core_tripwire),
+      tripwire_error);
   if (!tripwire.has_value() || tripwire->import_count() != 13) {
     fail("shared_boundary_failed",
          "fixed shared-service import boundary could not be armed");
   }
-  trace_checkpoint("after-core-tripwire-arm");
+  trace_checkpoint("after-operation-tripwire-arm");
   if (environment_is_one(L"MACINMETER_CORE_TRIPWIRE_SELF_TEST")) {
     using TripwireTestFunction = void(__fastcall *)();
-    const std::uintptr_t target =
-        tripwire->first_patched_target_for_test();
+    const std::uintptr_t target = tripwire->first_patched_target_for_test();
     if (target == 0) {
       fail("shared_boundary_failed",
            "fixed shared-service tripwire self-test could not start");
@@ -1595,14 +2151,23 @@ void execute_core(HMODULE module, const Request &request,
          "fixed shared-service tripwire unexpectedly returned");
   }
 
-  CoreOutput output;
-  FpEnvironmentGuard fp_guard(output.fp_environment);
-  execute_core(module.get(), request, samples, output, fp_guard);
+  CoreOutput core_output;
+  DurationOutput duration_output;
+  FpEnvironmentRecord &fp_environment =
+      request.operation == RequestOperation::core
+          ? core_output.fp_environment
+          : duration_output.fp_environment;
+  FpEnvironmentGuard fp_guard(fp_environment);
+  if (request.operation == RequestOperation::core) {
+    execute_core(module.get(), request, samples, core_output, fp_guard);
+  } else {
+    execute_duration(module.get(), request, duration_output, fp_guard);
+  }
   if (!tripwire->restore()) {
     fail("shared_boundary_failed",
          "fixed shared-service import boundary could not be restored");
   }
-  trace_checkpoint("after-core-tripwire-restore");
+  trace_checkpoint("after-operation-tripwire-restore");
   if (!module.unload()) {
     fail("loader_unload_failed", "fixed target could not be unloaded");
   }
@@ -1615,12 +2180,15 @@ void execute_core(HMODULE module, const Request &request,
   }
   fp_guard.restore();
   trace_checkpoint("after-unload");
-  const std::string response = render_result(context, request, output);
+  const std::string response =
+      request.operation == RequestOperation::core
+          ? render_result(context, request, core_output)
+          : render_duration_result(context, request, duration_output);
   write_all(GetStdHandle(STD_OUTPUT_HANDLE), response);
   return 0;
 }
 
-}  // namespace
+} // namespace
 
 int wmain(int argc, wchar_t **argv) {
   ResponseContext context;

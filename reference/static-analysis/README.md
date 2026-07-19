@@ -17,7 +17,12 @@
   `foo_dr_meter` 1.0.8 x64 核心分析路径。
 - [`SA-foo-dr-meter-108-x64-report-renderer-20260718`](sa-foo-dr-meter-108-x64-report-renderer-20260718.md)：
   固定 1.0.8 x64 duration 舍入与 minute/hour/day/week 格式、channel label
-  mapper，以及插件 renderer 与宿主 footer metadata 的边界。
+  mapper，以及插件 renderer 与宿主 footer metadata 的边界；后续固定数值
+  边界 observation 已对 duration 叶子的半秒和四类 token 分支形成 E2 动态
+  交叉，但没有执行完整 renderer。
+- [`SA-foo-dr-meter-108-x64-duration-leaf-20260719`](sa-foo-dr-meter-108-x64-duration-leaf-20260719.md)：
+  固定 renderer 所调用的 `0x180038540` duration/timespan 数值叶子 ABI、
+  `llround`/`free` IAT、输出对象与安全 direct-call 清理边界。
 - [`SA-foo-dr-meter-108-x64-dynamic-probe-plan-20260718`](sa-foo-dr-meter-108-x64-dynamic-probe-plan-20260718.md)：
   固定 1.0.8 x64 analyzer/session/channel/result 布局，以及可按 ASLR module
   base 加 RVA 执行的 core、album writer 与 renderer 动态探针计划。该 CDB/IDA
@@ -30,3 +35,11 @@
 [`isolated-core observation`](../observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
 又直接保存 session/channel/result raw state。具体规则是否达到 E3 仍须按实际
 捕获字段逐项判定，不能把未执行的 album/renderer probe 一并升级。
+
+固定
+[`numeric-boundaries observation`](../observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
+随后以同一 target 直接执行 duration 叶子与 analyzer core，得到 duration
+24/24、multichannel weighting track bits 8/8、channel 前提 8/8、pair
+invariants 4/4 和 histogram clamp 6/6。它把实际覆盖的半秒/进位 token、
+`C > 2` weighting 分支和 `[-100, 0] dB` histogram 端点提升为 E2；不覆盖
+foobar、album length weighting、完整 renderer、无效输入或任意资源极限。
