@@ -294,12 +294,14 @@ fuzz/sanitizer 是独立的本地或手动任务：
 
 截至 2026-07-20，本切片已完成：
 
-- 提交 `tests/fixtures/malformed-media-v1`：38 个确定性 case，覆盖 WAV/AIFF
+- 提交 `tests/fixtures/malformed-media-v1`：41 个确定性 case，覆盖 WAV/AIFF
   chunk 结构（截断、长度越界/下溢、非法字段、重复 chunk、固定 seed 的
-  尺寸域 XOR）、FLAC 包与边界失败（magic、STREAMINFO 截断、metadata 巨大
-  声明长度、帧内字节翻转、中途与帧边界截断、末字节翻转、未知总样本数）与
-  跨容器输入（未知内容、空文件）；manifest 记录每 case 的派生操作、SHA-256
-  与预期错误码/阶段；
+  尺寸域 XOR）、FLAC 包与边界失败（magic、STREAMINFO 截断、外层 metadata
+  巨大声明长度、内层 Vorbis vendor 长度与 comment 数量的 32-bit 越界声明、
+  帧内字节翻转、中途与帧边界截断、末字节翻转、未知总样本数）与跨容器输入
+  （未知内容、空文件）；manifest 记录每 case 的派生操作、SHA-256 与预期
+  错误码/阶段。内层 4 GiB 声明 case 在 verifier 的 2 GiB `RLIMIT_AS` 下干净
+  失败，证明没有按声明内层长度的无条件分配；
 - 关闭一处静默 partial success：STREAMINFO 总样本数为零（规范含义为未知）且
   MD5 缺失的 FLAC 在帧边界截断后原本产出成功报告。稳定 FLAC 路径现要求声明
   非零总样本数，未知计数在 probe 阶段返回 `UnsupportedFormat`，capability

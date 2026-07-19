@@ -326,6 +326,42 @@
     },
     {
       "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "flac-vorbis-vendor-length-overrun",
+      "operation": "set the inner vendor string length to 0xFFFFFFFF (u32le at offset 46)",
+      "path": "flac-vorbis-vendor-length-overrun.flac",
+      "sha256": "10fda5aa2cb9f790b460d8fe2f8aa1017da5a0631a15609ee04dd794bc9b7478",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "flac-vorbis-vendor-length-inner-overrun",
+      "operation": "set the inner vendor string length to 0x00FFFFF0, larger than the 40-byte block but far below the file-bounded outer length",
+      "path": "flac-vorbis-vendor-length-inner-overrun.flac",
+      "sha256": "ac0fdb970c746548158776db168f9863578e9111d16ea22c34e2f21bd1e4bd61",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "flac-vorbis-comment-count-overrun",
+      "operation": "set the inner comment count to 0xFFFFFFFF (u32le at offset 82)",
+      "path": "flac-vorbis-comment-count-overrun.flac",
+      "sha256": "8713634979c3588b6a94b656602bffb4656308ae3cc03ae2a5dc3ae61891398f",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
         "code": "unsupported_format",
         "stage": "probe"
       },

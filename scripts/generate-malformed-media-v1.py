@@ -296,6 +296,35 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "bytes": patch(flac, 43, b"\xff\xff\xff"),
             "expected": {"code": "malformed_media", "stage": "probe"},
         },
+        # The outer 24-bit block length is bounded by the file, but the inner
+        # Vorbis-comment lengths are independent 32-bit little-endian fields.
+        # The 4 GiB declarations run under the verifier's 2 GiB RLIMIT_AS, so a
+        # clean structured failure also proves no allocation proportional to
+        # the declared inner length.
+        {
+            "id": "flac-vorbis-vendor-length-overrun",
+            "source": FLAC_S16,
+            "operation": "set the inner vendor string length to 0xFFFFFFFF (u32le at offset 46)",
+            "bytes": patch(flac, 46, struct.pack("<I", 0xFFFF_FFFF)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "flac-vorbis-vendor-length-inner-overrun",
+            "source": FLAC_S16,
+            "operation": (
+                "set the inner vendor string length to 0x00FFFFF0, larger than "
+                "the 40-byte block but far below the file-bounded outer length"
+            ),
+            "bytes": patch(flac, 46, struct.pack("<I", 0x00FF_FFF0)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "flac-vorbis-comment-count-overrun",
+            "source": FLAC_S16,
+            "operation": "set the inner comment count to 0xFFFFFFFF (u32le at offset 82)",
+            "bytes": patch(flac, 82, struct.pack("<I", 0xFFFF_FFFF)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
         {
             "id": "flac-unknown-total-samples",
             "source": FLAC_S16,
