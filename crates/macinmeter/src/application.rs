@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, AnalysisStage,
-    CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink,
+    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, AnalysisStage, ErrorCode,
+    ExecutionControl,
 };
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
@@ -24,22 +24,16 @@ impl AnalyzeRequest {
 }
 
 #[derive(Debug, Default)]
-pub struct Analyzer {
+pub(crate) struct Analyzer {
     decoder_factory: DecoderFactory,
 }
 
 impl Analyzer {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    pub fn analyze_file(&self, request: AnalyzeRequest) -> Result<AnalysisReport, AnalysisError> {
-        let cancellation = CancellationToken::new();
-        let progress = NoopProgressSink;
-        self.analyze_file_with_control(request, &ExecutionControl::new(&cancellation, &progress))
-    }
-
-    pub fn analyze_file_with_control(
+    pub(crate) fn analyze_file_with_control(
         &self,
         request: AnalyzeRequest,
         control: &ExecutionControl<'_>,
@@ -154,8 +148,9 @@ fn ensure_not_cancelled(control: &ExecutionControl<'_>) -> Result<(), AnalysisEr
 mod tests {
     use super::*;
     use crate::{
-        ChannelCount, ChannelLayout, ContainerFormat, DecodeDiagnostics, DecodeProgress, PcmBlock,
-        PcmStreamInfo, SampleRate, SourceCodec, SourceInfo, StreamSpec,
+        CancellationToken, ChannelCount, ChannelLayout, ContainerFormat, DecodeDiagnostics,
+        DecodeProgress, NoopProgressSink, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec,
+        SourceInfo, StreamSpec,
     };
     use macinmeter_codecs::PcmSource;
     use std::{

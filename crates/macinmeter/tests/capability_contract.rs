@@ -105,7 +105,9 @@ fn discovery_only_follows_stable_catalog_extensions() {
     ] {
         std::fs::write(root.path().join(name), b"x").unwrap();
     }
-    let discovered = macinmeter::discover_inputs(&[root.path().to_path_buf()], false).unwrap();
+    let discovered = macinmeter::Application::new()
+        .discover_inputs(&[root.path().to_path_buf()], false)
+        .unwrap();
     let names: Vec<String> = discovered
         .iter()
         .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())

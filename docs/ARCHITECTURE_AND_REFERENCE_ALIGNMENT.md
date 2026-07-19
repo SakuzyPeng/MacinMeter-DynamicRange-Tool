@@ -1,6 +1,6 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`；
+> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DOING`；
 > foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
@@ -22,6 +22,8 @@
 > M1 范围决策：[ADR-0002：限定 M1 的参考数值契约](adr/0002-m1-reference-numeric-scope.md)
 >
 > M2 范围决策：[ADR-0003：M2 原生解码面与工程契约加固](adr/0003-m2-native-decoder-contract-hardening.md)
+>
+> M3 范围决策：[ADR-0004：M3 application 执行预算与串行准入](adr/0004-m3-application-execution-budget.md)
 
 ## 1. 文档目的
 
@@ -168,7 +170,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | META-002 | DONE | 拆分格式和进度状态 | expected 与 decoded 独立 | `SourceInfo / PcmStreamInfo / DecodeProgress / Diagnostics` |
 | META-003 | DONE | 建立 LFE 三态模型 | 未知布局不猜测 | `Unknown / KnownNoLfe / Known(positions)` |
 | ERROR-001 | DONE | 结构化错误 | 稳定 code/stage + backend/path/details | CLI、JSON 与 Tauri 共用 |
-| CONC-001 | TODO | 建立全局资源预算 | 文件并发、包并发、codec 线程池相互嵌套 | application 层统一 CPU、内存和任务配额 |
+| CONC-001 | DOING | 建立全局资源预算 | 第一切片已将 CLI/Tauri 顶层任务收口到共享 `Application`：1 active + 64 queued 的有界 FIFO；精确 decoder 内存预算与条件性多 backend 仍待需求驱动 | application 层统一 CPU、内存和任务配额 |
 | GUI-001 | DONE | 请求级取消与进度 | `jobId -> CancellationToken` registry | 取消隔离与 RAII 清理测试 |
 | GUI-002 | DONE | 移除全局 FFmpeg 环境变量修改 | GUI 不再包含 FFmpeg 配置 | 无环境变量修改 |
 | SECURITY-001 | DONE | 收紧 Tauri 权限 | 生产/开发 CSP 已设置 | 仅 core default + dialog open |
@@ -196,7 +198,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
 | TEST-002 | DONE | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer、39 项 accepted 隔离 core、38 项 accepted numeric-boundary 及 block/repeat 辅助检查已固定；它是 M1 判别 corpus，不冒充任意音频的穷尽 oracle |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
-| TEST-004 | DONE | 建立 malformed corpus 与手动 fuzz | 34-case 固定 corpus、隐藏 byte fuzz seam、逐例独立 timeout；发现的问题最小化后回灌本地 corpus |
+| TEST-004 | DONE | 建立 malformed corpus 与手动 fuzz | 41-case 固定 corpus、隐藏 byte fuzz seam、逐例独立 timeout；发现的问题最小化后回灌本地 corpus |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
 | CI-001 | DONE | 缩减为 opt-in workspace 验证 | 单手动 Ubuntu job，不再使用旧 path filter/release |
 | CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
@@ -321,9 +323,10 @@ codecs
 └── Symphonia adapter（M0：WAV/FLAC/AIFF）
 
 application
-├── analyze_file / serial BatchRunner
+├── Application::analyze_file / run_batch / discover_inputs
+├── bounded FIFO admission / request cancellation
 ├── explicit AlbumAggregator
-├── progress / cancellation
+├── progress
 └── versioned WireEnvelope
 
 adapters
@@ -561,6 +564,16 @@ Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例�
 
 ### M3：多 backend 与资源编排
 
+状态：`DOING`（第一切片见
+[ADR-0004](adr/0004-m3-application-execution-budget.md)）。
+
+- application 已建立显式共享 `Application` 执行域；CLI 与 Tauri 使用同一入口；
+- Tauri 在进入 `spawn_blocking` 前预留 `ApplicationJob`，默认最多 1 个 active、
+  64 个 queued，按 reservation ticket FIFO 执行；
+- queued cancellation、queue full、drop/unwind 释放和跨 job 隔离已有本地门禁；
+- 这只是粗粒度 task/CPU 边界：单 session 的 64 声道限制继续有效，但不声称已
+  量化 Symphonia/OS 的精确 byte allocation；
+
 - 只有出现明确的外部或多 backend 产品需求时，才引入显式 `DecodePlan` 与
   backend registry；
 - 对实际选中的外部 decoder 建立完整进程 supervisor 契约，包括启动、取消、
@@ -641,9 +654,16 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 16. [ ] `feat: graduate evidence-backed native routes`（只有实际通过准入时；
     M2 收口评审结论为零毕业批次，首批评审与 wire schema v4 评估同场进行，
     见 ADR-0003 §9）
+17. [x] `feat: coordinate application jobs within a serial budget`
+    - CLI/Tauri 共用共享 `Application`；
+    - blocking work 提交前执行有界 FIFO admission；
+    - queued cancellation、RAII 释放与两个 GUI job 隔离形成门禁；
+    - 不增加 backend、并行轴或 wire variant。
+18. [ ] `feat: add an evidence-backed backend plan`（仅在出现明确格式/部署需求时；
+    先写独立 backend ADR，再实现 registry 或外部 supervisor）
 
-多 backend/application 资源预算继续属于 M3；文件级并发是否启用与其他可复现
-性能工程继续属于 M6。
+M3 后续继续收紧可实际执行的资源维度；文件级并发是否启用与其他可复现性能工程
+继续属于 M6。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

@@ -130,13 +130,18 @@ profile 继续是 `Unverified`。
 公共门面位于 `macinmeter` crate：
 
 ```rust
-use macinmeter::{AnalyzeRequest, Analyzer};
+use macinmeter::{AnalyzeRequest, Application};
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
-    let _report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let application = Application::new();
+    let _report = application.analyze_file(AnalyzeRequest::new("track.flac"))?;
     Ok(())
 }
 ```
+
+同一个 `Application` 的 clone 共享一个有界 FIFO 执行域。当前 M3 产品策略同时
+只运行一个顶层 analyze、batch 或 discovery job，最多允许 64 个 job 排队；CLI
+与 Tauri 因而保持全局串行，同时不依赖隐藏的进程全局单例或第二套 scheduler。
 
 更底层的分析入口是 frame-aligned 的流式 session：
 
@@ -165,11 +170,11 @@ Album 聚合是显式库操作，不会把 batch 隐式当成 album：
 
 ```rust
 use macinmeter::{
-    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Analyzer,
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Application,
 };
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
-    let report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let report = Application::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
     let track = AlbumTrackMetrics::try_from(&report)?;
     let _album = AlbumAggregator::aggregate(&[track], AlbumWeighting::Unweighted)?;
     Ok(())
@@ -191,8 +196,9 @@ npm install
 npm run tauri dev
 ```
 
-每个 GUI job 拥有独立取消 token。GUI 不再配置 FFmpeg、不修改进程环境变量，也不再
-维护另一套批处理引擎。
+每个 GUI job 拥有独立取消 token。job 会在进入 blocking runtime 前预留共享
+application 预算，取消排队 job 不会影响 active job。GUI 不再配置 FFmpeg、不修改
+进程环境变量，也不再维护另一套批处理引擎。
 
 ## 架构
 
@@ -214,6 +220,8 @@ macinmeter-domain
 
 - [M0 架构决策](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
 - [M1 参考数值范围决策](docs/adr/0002-m1-reference-numeric-scope.md)
+- [M2 原生 decoder 契约决策](docs/adr/0003-m2-native-decoder-contract-hardening.md)
+- [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [支持格式](docs/SUPPORTED_FORMATS_CN.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)

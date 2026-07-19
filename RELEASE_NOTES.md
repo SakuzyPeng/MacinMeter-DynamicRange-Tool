@@ -1,6 +1,6 @@
 # Release Notes / 发布说明
 
-## v0.2.0 (M0) – Trusted trunk rebuild / 可信主干重建
+## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 
 > Status: development branch. All analysis output is
 > `foo_dr_meter 1.0.8 Candidate V1 / Unverified`; this release does not claim
@@ -68,6 +68,13 @@
   DR0 track 仍会纳入。
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
+- File analysis, batch, and controlled discovery now share one public
+  `Application` façade. Its M3 budget runs one active top-level job and admits
+  at most 64 additional FIFO reservations; queued cancellation and release are
+  isolated.
+  文件分析、批处理和受控发现现在共用唯一公开的 `Application` 门面。M3 预算同时
+  只运行一个顶层 job，最多接纳 64 个 FIFO 排队 reservation；排队取消与释放彼此
+  隔离。
 
 ### Engineering / 工程
 
@@ -87,9 +94,9 @@
   overall RMS 39/39、channel RMS 62/62 与渲染时长 39/39。严格限域的 footer
   检查确认 track/采样率/声道集合和 DR token，但不验证 host metadata、精确
   album 内部状态或 duration weighting；profile 继续保持 `Unverified`。
-- CI is intentionally manual-only during M0; the local pre-commit hook performs
+- CI is intentionally manual-only during M3; the local pre-commit hook performs
   only format and workspace compile checks.
-  M0 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。
+  M3 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.

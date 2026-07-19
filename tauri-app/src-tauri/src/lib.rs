@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisStage, AnalyzeRequest, Analyzer,
-    BatchRequest, BatchRunner, CancellationToken, CapabilitySnapshot, ErrorCode, ExecutionControl,
-    NoopProgressSink, WireEnvelope, discover_inputs_with_control as discover_paths,
+    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisStage, AnalyzeRequest, Application,
+    ApplicationJob, BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode,
+    NoopProgressSink, WireEnvelope,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -120,6 +120,7 @@ struct JobEvent {
 async fn run_analysis(
     window: tauri::Window,
     registry: tauri::State<'_, JobRegistry>,
+    application: tauri::State<'_, Application>,
     request: RunAnalysisRequest,
 ) -> Result<WireEnvelope, AnalysisError> {
     if let Err(error) = validate_job_id(&request.job_id) {
@@ -127,6 +128,10 @@ async fn run_analysis(
     }
     let registry = registry.inner().clone();
     let active_job = match registry.register(&request.job_id) {
+        Ok(job) => job,
+        Err(error) => return Ok(WireEnvelope::error(error)),
+    };
+    let application_job = match application.reserve(&active_job.token) {
         Ok(job) => job,
         Err(error) => return Ok(WireEnvelope::error(error)),
     };
@@ -144,8 +149,9 @@ async fn run_analysis(
                 },
             );
         };
-        let control = ExecutionControl::new(&active_job.token, &sink);
-        execute_analysis(request.path, &control)
+        let envelope = execute_analysis(application_job, request.path, &sink);
+        drop(active_job);
+        envelope
     })
     .await
     {
@@ -157,9 +163,12 @@ async fn run_analysis(
     Ok(envelope)
 }
 
-fn execute_analysis(path: PathBuf, control: &ExecutionControl<'_>) -> WireEnvelope {
-    Analyzer::new()
-        .analyze_file_with_control(AnalyzeRequest::new(path), control)
+fn execute_analysis(
+    job: ApplicationJob,
+    path: PathBuf,
+    progress: &dyn macinmeter::ProgressSink,
+) -> WireEnvelope {
+    job.analyze_file(AnalyzeRequest::new(path), progress)
         .map(WireEnvelope::analysis)
         .unwrap_or_else(WireEnvelope::error)
 }
@@ -168,6 +177,7 @@ fn execute_analysis(path: PathBuf, control: &ExecutionControl<'_>) -> WireEnvelo
 async fn run_batch(
     window: tauri::Window,
     registry: tauri::State<'_, JobRegistry>,
+    application: tauri::State<'_, Application>,
     request: RunBatchRequest,
 ) -> Result<WireEnvelope, AnalysisError> {
     if let Err(error) = validate_job_id(&request.job_id) {
@@ -175,6 +185,10 @@ async fn run_batch(
     }
     let registry = registry.inner().clone();
     let active_job = match registry.register(&request.job_id) {
+        Ok(job) => job,
+        Err(error) => return Ok(WireEnvelope::error(error)),
+    };
+    let application_job = match application.reserve(&active_job.token) {
         Ok(job) => job,
         Err(error) => return Ok(WireEnvelope::error(error)),
     };
@@ -192,16 +206,17 @@ async fn run_batch(
                 },
             );
         };
-        let control = ExecutionControl::new(&active_job.token, &sink);
         let batch_request = BatchRequest {
             inputs: request.inputs,
             recursive: request.recursive,
             profile: AnalysisProfile::FooDrMeter108CandidateV1,
         };
-        BatchRunner::new()
-            .run(batch_request, &control)
+        let envelope = application_job
+            .run_batch(batch_request, &sink)
             .map(WireEnvelope::batch)
-            .unwrap_or_else(WireEnvelope::error)
+            .unwrap_or_else(WireEnvelope::error);
+        drop(active_job);
+        envelope
     })
     .await
     {
@@ -216,19 +231,22 @@ async fn run_batch(
 #[tauri::command]
 async fn discover_inputs(
     registry: tauri::State<'_, JobRegistry>,
+    application: tauri::State<'_, Application>,
     request: DiscoverRequest,
 ) -> Result<DiscoveryResponse, AnalysisError> {
     validate_job_id(&request.job_id)?;
     let registry = registry.inner().clone();
     let active_job = registry.register(&request.job_id)?;
+    let application_job = application.reserve(&active_job.token)?;
 
     tauri::async_runtime::spawn_blocking(move || {
         let progress = NoopProgressSink;
-        let control = ExecutionControl::new(&active_job.token, &progress);
-        let files = discover_paths(&request.inputs, request.recursive, &control)?
+        let files = application_job
+            .discover_inputs(&request.inputs, request.recursive, &progress)?
             .into_iter()
             .map(|path| path.display().to_string())
             .collect();
+        drop(active_job);
         Ok(DiscoveryResponse { files })
     })
     .await
@@ -269,6 +287,7 @@ fn internal_error(message: impl Into<String>) -> AnalysisError {
 pub fn run() {
     let result = tauri::Builder::<tauri::Wry>::default()
         .manage(JobRegistry::default())
+        .manage(Application::new())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             run_analysis,
@@ -287,6 +306,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use macinmeter::WirePayload;
+    use std::{
+        sync::{Condvar, mpsc},
+        thread,
+        time::Duration,
+    };
 
     #[test]
     fn cancellation_is_scoped_to_one_job() {
@@ -335,14 +360,87 @@ mod tests {
             .join("../../tests/fixtures/tiny_duration.wav");
         let cancellation = CancellationToken::new();
         let progress = macinmeter::NoopProgressSink;
-        let control = ExecutionControl::new(&cancellation, &progress);
+        let application = Application::new();
+        let job = application.reserve(&cancellation).unwrap();
 
-        let from_tauri_adapter = execute_analysis(path.clone(), &control);
-        let from_application = Analyzer::new()
+        let from_tauri_adapter = execute_analysis(job, path.clone(), &progress);
+        let from_application = Application::new()
             .analyze_file(AnalyzeRequest::new(path))
             .map(WireEnvelope::analysis)
             .unwrap_or_else(WireEnvelope::error);
 
         assert_eq!(from_tauri_adapter, from_application);
+    }
+
+    #[test]
+    fn shared_application_serializes_jobs_and_queued_cancellation_is_isolated() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/tiny_duration.wav");
+        let application = Application::new();
+        let registry = JobRegistry::default();
+        let first_active = registry.register("first").unwrap();
+        let second_active = registry.register("second").unwrap();
+        let first_token = first_active.token.clone();
+        let first_job = application.reserve(&first_active.token).unwrap();
+        let second_job = application.reserve(&second_active.token).unwrap();
+        let (first_started_tx, first_started_rx) = mpsc::channel();
+        let (second_started_tx, second_started_rx) = mpsc::channel();
+        let first_gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let first_gate_for_sink = Arc::clone(&first_gate);
+        let first_path = path.clone();
+
+        let first_thread = thread::spawn(move || {
+            let sink = move |event: AnalysisEvent| {
+                if matches!(event, AnalysisEvent::FileStarted { .. }) {
+                    first_started_tx.send(()).unwrap();
+                    let (released, changed) = &*first_gate_for_sink;
+                    let guard = released.lock().unwrap();
+                    drop(changed.wait_while(guard, |released| !*released).unwrap());
+                }
+            };
+            let envelope = execute_analysis(first_job, first_path, &sink);
+            drop(first_active);
+            envelope
+        });
+        first_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the first Tauri job should enter analysis");
+
+        let second_thread = thread::spawn(move || {
+            let sink = move |event: AnalysisEvent| {
+                if matches!(event, AnalysisEvent::FileStarted { .. }) {
+                    second_started_tx.send(()).unwrap();
+                }
+            };
+            let envelope = execute_analysis(second_job, path, &sink);
+            drop(second_active);
+            envelope
+        });
+        assert!(
+            second_started_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "the second Tauri job must remain queued while the first is active"
+        );
+
+        assert!(registry.cancel("second").unwrap());
+        let second_envelope = second_thread.join().unwrap();
+        assert!(matches!(
+            second_envelope.payload,
+            WirePayload::Error(AnalysisError {
+                code: ErrorCode::Cancelled,
+                ..
+            })
+        ));
+        assert!(
+            !first_token.is_cancelled(),
+            "cancelling the queued job must not affect the active job"
+        );
+
+        let (released, changed) = &*first_gate;
+        *released.lock().unwrap() = true;
+        changed.notify_all();
+        let first_envelope = first_thread.join().unwrap();
+        assert!(matches!(first_envelope.payload, WirePayload::Analysis(_)));
     }
 }

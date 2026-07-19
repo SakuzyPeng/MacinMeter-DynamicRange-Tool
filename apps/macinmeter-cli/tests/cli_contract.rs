@@ -126,7 +126,7 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert!(value["data"]["analysis"]["channels"][0]["report"]["overallRmsLinear"].is_number());
     assert!(value["data"]["analysis"]["report"]["primaryPeakLinear"].is_number());
     assert!(value["data"]["analysis"]["report"]["overallRmsLinear"].is_number());
-    let api_report = macinmeter::Analyzer::new()
+    let api_report = macinmeter::Application::new()
         .analyze_file(macinmeter::AnalyzeRequest::new(&input))
         .expect("the same fixture should analyze through the Rust API");
     let api_json = serde_json::to_vec(&macinmeter::WireEnvelope::analysis(api_report))
@@ -187,7 +187,7 @@ fn aiff_and_flac_json_are_the_shared_application_report() {
             "{relative_path}"
         );
 
-        let api_report = macinmeter::Analyzer::new()
+        let api_report = macinmeter::Application::new()
             .analyze_file(macinmeter::AnalyzeRequest::new(&input))
             .unwrap_or_else(|error| panic!("{relative_path} should analyze via API: {error}"));
         let api_json = serde_json::to_vec(&macinmeter::WireEnvelope::analysis(api_report))

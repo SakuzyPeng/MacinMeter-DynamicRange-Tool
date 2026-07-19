@@ -1,6 +1,6 @@
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, AnalysisStage, AnalyzeRequest,
-    Analyzer, CancellationToken, ErrorCode, ExecutionControl,
+    CancellationToken, ErrorCode, ExecutionControl, application::Analyzer,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -66,16 +66,16 @@ pub struct BatchReport {
 }
 
 #[derive(Debug, Default)]
-pub struct BatchRunner {
+pub(crate) struct BatchRunner {
     analyzer: Analyzer,
 }
 
 impl BatchRunner {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    pub fn run(
+    pub(crate) fn run(
         &self,
         request: BatchRequest,
         control: &ExecutionControl<'_>,
@@ -140,11 +140,7 @@ impl BatchRunner {
     }
 }
 
-pub fn discover_inputs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<PathBuf>, AnalysisError> {
-    discover_inputs_with_cancellation(inputs, recursive, None)
-}
-
-pub fn discover_inputs_with_control(
+pub(crate) fn discover_inputs_with_control(
     inputs: &[PathBuf],
     recursive: bool,
     control: &ExecutionControl<'_>,
@@ -252,12 +248,15 @@ mod tests {
         std::fs::write(root.path().join("nested/c.aiff"), b"x").unwrap();
 
         let direct = root.path().join("b.wav");
-        let files = discover_inputs(&[root.path().to_path_buf(), direct], false).unwrap();
+        let files =
+            discover_inputs_with_cancellation(&[root.path().to_path_buf(), direct], false, None)
+                .unwrap();
         assert_eq!(files.len(), 2);
         assert!(files[0].ends_with("a.flac"));
         assert!(files[1].ends_with("b.wav"));
 
-        let recursive = discover_inputs(&[root.path().to_path_buf()], true).unwrap();
+        let recursive =
+            discover_inputs_with_cancellation(&[root.path().to_path_buf()], true, None).unwrap();
         assert_eq!(recursive.len(), 3);
     }
 }

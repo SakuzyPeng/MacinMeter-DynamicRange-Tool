@@ -1,10 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisEvent, AnalysisProfile, AnalyzeRequest, Analyzer, BatchItemOutcome, BatchRequest,
-    BatchRunner, BatchStatus, CancellationToken, ContainerFormat, DecodeProgress, ErrorCode,
-    ExecutionControl, NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope,
-    WirePayload,
+    AnalysisEvent, AnalysisProfile, AnalyzeRequest, Application, BatchItemOutcome, BatchRequest,
+    BatchStatus, CancellationToken, ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl,
+    NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
 };
 use serde_json::Value;
 use std::{
@@ -21,8 +20,8 @@ fn fixture(name: &str) -> PathBuf {
 fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
-    BatchRunner::new()
-        .run(
+    Application::new()
+        .run_batch(
             BatchRequest::new(inputs, false),
             &ExecutionControl::new(&cancellation, &progress),
         )
@@ -32,7 +31,7 @@ fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {
 #[test]
 fn rust_api_analyzes_a_repository_wave_fixture() {
     let path = fixture("tiny_duration.wav");
-    let report = Analyzer::new()
+    let report = Application::new()
         .analyze_file(AnalyzeRequest::new(&path))
         .expect("valid PCM WAV fixture should analyze");
 
@@ -80,7 +79,7 @@ fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
         ),
     ] {
         let path = fixture(relative_path);
-        let report = Analyzer::new()
+        let report = Application::new()
             .analyze_file(AnalyzeRequest::new(&path))
             .unwrap_or_else(|error| panic!("{relative_path} should analyze: {error}"));
 
@@ -109,14 +108,14 @@ fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
 
 #[test]
 fn rust_api_distinguishes_unsupported_content_and_truncated_media() {
-    let analyzer = Analyzer::new();
+    let application = Application::new();
 
-    let unsupported = analyzer
+    let unsupported = application
         .analyze_file(AnalyzeRequest::new(fixture("fake_audio.wav")))
         .expect_err("text with a WAV extension must not pass content probing");
     assert_eq!(unsupported.code, ErrorCode::UnsupportedFormat);
 
-    let truncated = analyzer
+    let truncated = application
         .analyze_file(AnalyzeRequest::new(fixture("truncated.wav")))
         .expect_err("a truncated WAV must not yield a partial report");
     assert_eq!(truncated.code, ErrorCode::MalformedMedia);
@@ -183,8 +182,8 @@ fn batch_reports_full_partial_and_zero_success_without_short_circuiting() {
 fn batch_rejects_an_empty_request_before_processing() {
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
-    let error = BatchRunner::new()
-        .run(
+    let error = Application::new()
+        .run_batch(
             BatchRequest::new(Vec::new(), false),
             &ExecutionControl::new(&cancellation, &progress),
         )
@@ -210,8 +209,8 @@ fn request_cancellation_stops_batch_before_a_result_is_published() {
     };
     let control = ExecutionControl::new(&cancellation, &progress);
 
-    let error = BatchRunner::new()
-        .run(
+    let error = Application::new()
+        .run_batch(
             BatchRequest::new(vec![fixture("edge_cases.wav")], false),
             &control,
         )
@@ -249,8 +248,8 @@ fn cancellation_requested_at_discovery_start_stops_before_walking_inputs() {
         }
     };
 
-    let error = BatchRunner::new()
-        .run(
+    let error = Application::new()
+        .run_batch(
             BatchRequest::new(vec![fixture("tiny_duration.wav")], false),
             &ExecutionControl::new(&cancellation, &progress),
         )
@@ -270,7 +269,7 @@ fn analysis_emits_ordered_file_and_terminal_progress_events() {
         events_for_sink.lock().unwrap().push(event);
     };
 
-    Analyzer::new()
+    Application::new()
         .analyze_file_with_control(
             AnalyzeRequest::new(path),
             &ExecutionControl::new(&cancellation, &progress),
@@ -325,7 +324,7 @@ fn probe_failure_emits_started_then_finished_without_decode_progress() {
         events_for_sink.lock().unwrap().push(event);
     };
 
-    let error = Analyzer::new()
+    let error = Application::new()
         .analyze_file_with_control(
             AnalyzeRequest::new(fixture("fake_audio.wav")),
             &ExecutionControl::new(&cancellation, &progress),
@@ -351,7 +350,7 @@ fn probe_failure_emits_started_then_finished_without_decode_progress() {
 
 #[test]
 fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
-    let report = Analyzer::new()
+    let report = Application::new()
         .analyze_file(AnalyzeRequest::new(fixture("tiny_duration.wav")))
         .expect("valid fixture should analyze");
     let envelope = WireEnvelope::analysis(report);

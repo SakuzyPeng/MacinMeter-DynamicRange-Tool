@@ -4,8 +4,8 @@ mod render;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use macinmeter::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, BatchItemOutcome, BatchReport,
-    BatchRequest, BatchRunner, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode,
+    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, Application, BatchItemOutcome,
+    BatchReport, BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode,
     ExecutionControl, ProgressSink, WireEnvelope,
 };
 use render::{format_dbfs, format_duration_token};
@@ -90,36 +90,44 @@ fn main() {
     }
     let progress = StderrProgress;
     let control = ExecutionControl::new(&cancellation, &progress);
+    let application = Application::new();
 
     let exit_code = match cli.command {
         Command::Analyze {
             file,
             format,
             output,
-        } => run_analyze(file, format, output.as_deref(), &control),
+        } => run_analyze(&application, file, format, output.as_deref(), &control),
         Command::Batch {
             inputs,
             recursive,
             format,
             output,
-        } => run_batch(inputs, recursive, format, output.as_deref(), &control),
+        } => run_batch(
+            &application,
+            inputs,
+            recursive,
+            format,
+            output.as_deref(),
+            &control,
+        ),
     };
     process::exit(exit_code);
 }
 
 fn run_analyze(
+    application: &Application,
     file: PathBuf,
     format: OutputFormat,
     output: Option<&Path>,
     control: &ExecutionControl<'_>,
 ) -> i32 {
-    let analyzer = macinmeter::Analyzer::new();
     let request = macinmeter::AnalyzeRequest {
         path: file,
         profile: AnalysisProfile::FooDrMeter108CandidateV1,
     };
 
-    match analyzer.analyze_file_with_control(request, control) {
+    match application.analyze_file_with_control(request, control) {
         Ok(report) => {
             let rendered = match format {
                 OutputFormat::Human => render_analysis(&report),
@@ -132,19 +140,19 @@ fn run_analyze(
 }
 
 fn run_batch(
+    application: &Application,
     inputs: Vec<PathBuf>,
     recursive: bool,
     format: OutputFormat,
     output: Option<&Path>,
     control: &ExecutionControl<'_>,
 ) -> i32 {
-    let runner = BatchRunner::new();
     let request = BatchRequest {
         inputs,
         recursive,
         profile: AnalysisProfile::FooDrMeter108CandidateV1,
     };
-    match runner.run(request, control) {
+    match application.run_batch(request, control) {
         Ok(report) => {
             let status = report.status;
             let rendered = match format {

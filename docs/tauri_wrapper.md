@@ -22,6 +22,12 @@ The frontend creates each `jobId`. Tauri state maps that ID to an independent
 events have the single shape `{ jobId, event }`, so simultaneous jobs cannot
 cancel or overwrite each other.
 
+Before submitting blocking work, each command reserves an `ApplicationJob`
+from the single managed `Application`. The M3 budget admits one active job and
+at most 64 waiting jobs in FIFO order. No file/discovery progress is emitted
+until a reservation becomes active; cancelling a queued job removes only that
+reservation.
+
 Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch
 directory walk.
@@ -52,9 +58,11 @@ Workspace Rust builds place artifacts under the root `target/` directory.
 The current bundle targets are macOS `.app` and `.dmg`; Windows/Linux packaging
 is outside M0.
 
-The backend performs blocking analysis through Tauri's blocking task facility,
-leaving the UI event loop responsive. It does not modify environment variables,
-look for FFmpeg, use a global cancel flag, or create a Rayon batch pool.
+The backend performs admitted blocking analysis through Tauri's blocking task
+facility, leaving the UI event loop responsive. Admission happens first so the
+runtime is not used as an unbounded hidden queue. The backend does not modify
+environment variables, look for FFmpeg, use a global cancel flag, or create a
+Rayon batch pool.
 
 Current GUI results are always labelled
 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This identifies the evidence

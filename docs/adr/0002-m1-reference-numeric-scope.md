@@ -44,7 +44,7 @@ M1 固定研究目标是 `foo_dr_meter 1.0.8 x64` 的可复现数值契约。
 - 报告措辞、列布局、模板、换行、编码和 byte-for-byte 文本 parity；
 - 参考实现与 MacinMeter 的内部结构、内存布局或逐检查点状态相等。
 
-`BatchRunner` 仍只产生独立 track report；只有调用方显式构造
+`Application::run_batch` 仍只产生独立 track report；只有调用方显式构造
 `AlbumTrackMetrics` 并调用 `AlbumAggregator` 时才具有 album 数值语义。
 
 ## 证据与验证规则

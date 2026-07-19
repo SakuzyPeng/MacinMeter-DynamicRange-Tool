@@ -2,7 +2,7 @@
 
 use macinmeter::{
     AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalysisProfile, AnalysisReport,
-    AnalyzeRequest, Analyzer, AnalyzerSession, DecodeDiagnostics, DecodedDuration, ErrorCode,
+    AnalyzeRequest, AnalyzerSession, Application, DecodeDiagnostics, DecodedDuration, ErrorCode,
     FiniteF32, PcmStreamInfo, SampleRate,
 };
 use std::path::PathBuf;
@@ -182,7 +182,7 @@ fn a_negative_track_dr_is_rejected_before_display_rounding() {
 
 #[test]
 fn report_conversion_uses_its_decoded_duration_and_rejects_missing_track_dr() {
-    let report = Analyzer::new()
+    let report = Application::new()
         .analyze_file(AnalyzeRequest::new(fixture("tiny_duration.wav")))
         .expect("repository fixture should analyze");
     let expected_dr = report

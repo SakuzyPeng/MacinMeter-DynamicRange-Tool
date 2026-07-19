@@ -143,13 +143,19 @@ audio remain outside the claim. The profile therefore remains `Unverified`.
 The public façade is the `macinmeter` crate:
 
 ```rust
-use macinmeter::{AnalyzeRequest, Analyzer};
+use macinmeter::{AnalyzeRequest, Application};
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
-    let _report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let application = Application::new();
+    let _report = application.analyze_file(AnalyzeRequest::new("track.flac"))?;
     Ok(())
 }
 ```
+
+Clones of one `Application` share a bounded FIFO execution domain. The current
+M3 product policy admits one active top-level analyze, batch, or discovery job
+and at most 64 queued jobs. This keeps CLI/Tauri execution serial without a
+hidden process-global singleton or a second scheduler.
 
 Lower-level analysis is available through a frame-aligned streaming session:
 
@@ -180,11 +186,11 @@ of a batch:
 
 ```rust
 use macinmeter::{
-    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Analyzer,
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Application,
 };
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
-    let report = Analyzer::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let report = Application::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
     let track = AlbumTrackMetrics::try_from(&report)?;
     let _album = AlbumAggregator::aggregate(&[track], AlbumWeighting::Unweighted)?;
     Ok(())
@@ -208,8 +214,10 @@ npm install
 npm run tauri dev
 ```
 
-Each GUI job owns an independent cancellation token. The GUI does not configure
-FFmpeg, mutate process environment variables, or run a separate batch engine.
+Each GUI job owns an independent cancellation token. Jobs reserve the shared
+application budget before entering the blocking runtime; queued cancellation
+does not affect the active job. The GUI does not configure FFmpeg, mutate
+process environment variables, or run a separate batch engine.
 
 ## Architecture
 
@@ -232,6 +240,8 @@ See:
 
 - [M0 architecture decision](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
 - [M1 reference-numeric scope decision](docs/adr/0002-m1-reference-numeric-scope.md)
+- [M2 native-decoder contract decision](docs/adr/0003-m2-native-decoder-contract-hardening.md)
+- [M3 application execution-budget decision](docs/adr/0004-m3-application-execution-budget.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)

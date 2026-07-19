@@ -616,7 +616,7 @@ integer_cast(album_dr_f32 + 0.5)
 
 当前 application 门面通过显式 `AlbumAggregator::aggregate` 实现这条候选公式：
 
-- 输入是调用方明确构造的 `AlbumTrackMetrics`，不会把任意 `BatchRunner` 结果
+- 输入是调用方明确构造的 `AlbumTrackMetrics`，不会把任意 batch report
   自动解释为 album；
 - 产品 API 将参考公式的候选重建命名为 Rust `unweighted_dr_db`（序列化为
   `unweightedDrDb`），不把 MacinMeter 输出称为官方结果；该值对 public-f32

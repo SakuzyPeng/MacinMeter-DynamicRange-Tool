@@ -5,13 +5,13 @@ mod application;
 mod batch;
 mod capability;
 mod control;
+mod execution;
 mod wire;
 
 pub use album::{AlbumAggregate, AlbumAggregator, AlbumTrackMetrics, AlbumWeighting};
-pub use application::{AnalyzeRequest, Analyzer};
+pub use application::AnalyzeRequest;
 pub use batch::{
-    BatchItem, BatchItemOutcome, BatchReport, BatchRequest, BatchRunner, BatchStatus, BatchSummary,
-    discover_inputs, discover_inputs_with_control,
+    BatchItem, BatchItemOutcome, BatchReport, BatchRequest, BatchStatus, BatchSummary,
 };
 pub use capability::{
     CapabilityRoute, CapabilitySnapshot, CapabilityStatus, NativeRouteCapability, capabilities,
@@ -19,6 +19,7 @@ pub use capability::{
 pub use control::{
     AnalysisEvent, CancellationToken, ExecutionControl, NoopProgressSink, ProgressSink,
 };
+pub use execution::{Application, ApplicationJob, ExecutionBudget};
 pub use macinmeter_analysis::AnalyzerSession;
 pub use macinmeter_domain::*;
 pub use wire::{WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload};

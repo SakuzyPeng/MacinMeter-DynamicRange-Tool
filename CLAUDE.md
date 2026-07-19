@@ -28,8 +28,11 @@ domain
 - `codecs` owns content probing and strict sequential PCM sources.
 - The shared PCM contract is finite interleaved `f64`; do not narrow float64
   sources before analysis.
-- `macinmeter` composes decoding, analysis, discovery, cancellation, progress,
-  serial batch execution, and the shared wire envelope.
+- `macinmeter::Application` is the only public file-analysis, batch, and
+  controlled-discovery façade. Its clones share an M3 execution domain with
+  one active job and at most 64 queued FIFO reservations.
+- Tauri reserves an `ApplicationJob` before `spawn_blocking`; queued
+  cancellation and RAII release are part of the application contract.
 - CLI and GUI only parse, render, and adapt I/O.
 
 All first-party Rust code forbids unsafe code. M0 supports only WAV linear
@@ -47,10 +50,11 @@ cd tauri-app
 npm run build
 ```
 
-GitHub Actions is intentionally `workflow_dispatch` only during M0. Local
+GitHub Actions is intentionally `workflow_dispatch` only during M3. Local
 pre-commit performs format and workspace compile checks without network audit.
 
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
+`docs/adr/0004-m3-application-execution-budget.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
 `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
 or algorithm behavior.
