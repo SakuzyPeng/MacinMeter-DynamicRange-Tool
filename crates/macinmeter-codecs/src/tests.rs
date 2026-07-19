@@ -1293,3 +1293,53 @@ fn container_parsers_consume_in_memory_bytes_through_the_byte_seam() {
     assert_eq!(error.code, ErrorCode::MalformedMedia);
     assert_eq!(error.stage, AnalysisStage::Probe);
 }
+
+#[test]
+fn flac_without_a_declared_total_sample_count_is_rejected_at_probe() {
+    let source = fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("committed FLAC fixture must exist");
+
+    // Zero the 36-bit STREAMINFO total-sample count and the MD5 signature so
+    // neither the end-of-stream frame check nor decoder verification could
+    // observe a lost tail frame.
+    let mut unverifiable = source.clone();
+    unverifiable[21] &= 0xF0;
+    unverifiable[22..26].fill(0);
+    unverifiable[26..42].fill(0);
+
+    // Both the full stream and a stream truncated exactly on a frame boundary
+    // must be rejected before any decode: the truncated variant previously
+    // produced a silent partial success.
+    let frame_boundary = 916;
+    for (name, bytes) in [
+        ("full", unverifiable.clone()),
+        (
+            "boundary-truncated",
+            unverifiable[..frame_boundary].to_vec(),
+        ),
+    ] {
+        let file = TestFile::new("flac", &bytes);
+        let error = match DecoderFactory::new().open(file.path()) {
+            Err(error) => error,
+            Ok(_) => panic!("unknown-total FLAC must not open ({name})"),
+        };
+        assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{name} code");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name} stage");
+    }
+
+    // The same boundary truncation with the declared count intact keeps
+    // failing through the end-of-stream frame check.
+    let file = TestFile::new("flac", &source[..frame_boundary]);
+    let mut opened = DecoderFactory::new()
+        .open(file.path())
+        .expect("declared-count FLAC opens");
+    let error = loop {
+        match opened.reader.read_block() {
+            Ok(ReadOutcome::Data(_)) => continue,
+            Ok(ReadOutcome::Eof) => panic!("boundary truncation must not reach EOF"),
+            Err(error) => break error,
+        }
+    };
+    assert_eq!(error.code, ErrorCode::DecodeFailed);
+    assert_eq!(error.stage, AnalysisStage::Decode);
+}

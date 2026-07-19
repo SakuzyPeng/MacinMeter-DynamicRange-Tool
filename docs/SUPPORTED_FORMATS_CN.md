@@ -40,8 +40,10 @@ multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这
 - 包级并行或文件级并行解码。
 
 稳定 AIFF 路径还要求 80-bit sample rate 为有限、正数、可由 `u32` 精确表示的
-整数、COMM chunk 恰好为 18 bytes，且 SSND offset/block-size 均为零。产品会拒绝
-这些尚未毕业的容器变体，而不会让 backend 静默舍入或自行扩张支持面。
+整数、COMM chunk 恰好为 18 bytes，且 SSND offset/block-size 均为零。稳定 FLAC
+路径要求 STREAMINFO 声明非零总样本数：缺少该声明时流末帧数核对失效，若 MD5
+签名同样缺失，整帧尾部丢失将原理上不可检测。产品会拒绝这些尚未毕业的容器
+变体，而不会让 backend 静默舍入或自行扩张支持面。
 
 能够识别但不属于 M0 的内容返回稳定错误码 `unsupported_format`。受支持格式内可
 检测的损坏内容返回探测或解码错误，不会变成空的或部分成功的报告。物理 EOF 只能

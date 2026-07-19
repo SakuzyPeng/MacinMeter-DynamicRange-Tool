@@ -314,6 +314,54 @@
     },
     {
       "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "flac-huge-metadata-length",
+      "operation": "set the VORBIS_COMMENT block length to 0xFFFFFF (u24be at offset 43)",
+      "path": "flac-huge-metadata-length.flac",
+      "sha256": "0ba3e177ab14c0c2da18596f13565750cf0da2b95dc7fc37b051d657e7ec715a",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "flac-unknown-total-samples",
+      "operation": "zero the STREAMINFO total-sample count and MD5 signature",
+      "path": "flac-unknown-total-samples.flac",
+      "sha256": "a7d33fe26da607b2ad9647ed873aa7328d3bd7641816a2c7df64aa421140c51b",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "flac-unknown-total-samples-boundary-truncation",
+      "operation": "zero the STREAMINFO total-sample count and MD5 signature, then truncate at the final frame boundary (offset 916)",
+      "path": "flac-unknown-total-samples-boundary-truncation.flac",
+      "sha256": "0d80c1868c9dcb526118ecde824848178d317d39af8aff33812d4f14a455eee1",
+      "sizeBytes": 916,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "decode_failed",
+        "stage": "decode"
+      },
+      "id": "flac-frame-boundary-truncation",
+      "operation": "truncate at the final frame boundary (offset 916)",
+      "path": "flac-frame-boundary-truncation.flac",
+      "sha256": "b6504bff82f5151dccc77cd310bb6c89805ca50728cfb40d0f06a4bd376801fa",
+      "sizeBytes": 916,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
         "code": "unsupported_format",
         "stage": "probe"
       },

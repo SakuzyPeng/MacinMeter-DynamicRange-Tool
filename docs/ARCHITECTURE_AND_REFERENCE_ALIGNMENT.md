@@ -514,9 +514,10 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
   constructor 加只读 getter/view；成功结果裸浮点改用透明 finite wrapper，
   不作为产品输入的 result/report、batch/event/wire 类型删除反序列化入口，并固定
   六条跨字段关系，schema-v3 wire 形状不变；
-- `malformed-media-v1` 固定回归 corpus 已提交：34 个确定性字节级派生 case
-  覆盖 WAV/AIFF chunk 结构、FLAC 包失败与跨容器输入，逐例登记预期错误码/
-  阶段；WAV/AIFF parser 改为 `Read + Seek` 字节接缝，非默认 `malformed-dev`
+- `malformed-media-v1` 固定回归 corpus 已提交：38 个确定性字节级派生 case
+  覆盖 WAV/AIFF chunk 结构、FLAC 包/metadata/帧边界失败与跨容器输入，逐例
+  登记预期错误码/阶段；稳定 FLAC 路径同时收窄为要求 STREAMINFO 声明非零
+  总样本数，关闭未知计数 + 无 MD5 时帧边界截断的静默 partial success；WAV/AIFF parser 改为 `Read + Seek` 字节接缝，非默认 `malformed-dev`
   feature 提供隐藏 fuzz 入口；workspace 测试、逐 case 子进程 verifier（30s
   timeout；Linux 加 `RLIMIT_AS`，其他平台明确为 timeout-only）与再生成审计
   三层验证；

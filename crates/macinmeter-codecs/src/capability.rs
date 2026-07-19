@@ -85,6 +85,7 @@ pub const NATIVE_CAPABILITY_CATALOG: &[NativeRouteCapability] = &[
         discovery_extensions: &["flac"],
         limitations: &[
             "native FLAC container only; Ogg FLAC is not probed",
+            "STREAMINFO must declare a nonzero total sample count",
             MAX_CHANNELS_LIMIT,
         ],
     },

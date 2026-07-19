@@ -72,6 +72,20 @@ def extended80(sign_exponent: int, significand: int) -> bytes:
     return struct.pack(">HQ", sign_exponent, significand)
 
 
+def zero_flac_verification(flac: bytes) -> bytes:
+    """Zero the STREAMINFO 36-bit total-sample count and the MD5 signature.
+
+    With both fields absent, a stream truncated exactly on a frame boundary is
+    undetectable in principle, which is why the stable FLAC route rejects such
+    streams at probe time.
+    """
+    mutated = bytearray(flac)
+    mutated[21] &= 0xF0
+    mutated[22:26] = b"\x00" * 4
+    mutated[26:42] = b"\x00" * 16
+    return bytes(mutated)
+
+
 def deterministic_noise(seed: int, length: int) -> bytes:
     out = bytearray()
     state = seed
@@ -273,6 +287,37 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "source": FLAC_S16,
             "operation": "xor the final byte with 0xFF",
             "bytes": xor_at(flac, len(flac) - 1, b"\xff"),
+            "expected": {"code": "decode_failed", "stage": "decode"},
+        },
+        {
+            "id": "flac-huge-metadata-length",
+            "source": FLAC_S16,
+            "operation": "set the VORBIS_COMMENT block length to 0xFFFFFF (u24be at offset 43)",
+            "bytes": patch(flac, 43, b"\xff\xff\xff"),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "flac-unknown-total-samples",
+            "source": FLAC_S16,
+            "operation": "zero the STREAMINFO total-sample count and MD5 signature",
+            "bytes": zero_flac_verification(flac),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "flac-unknown-total-samples-boundary-truncation",
+            "source": FLAC_S16,
+            "operation": (
+                "zero the STREAMINFO total-sample count and MD5 signature, "
+                "then truncate at the final frame boundary (offset 916)"
+            ),
+            "bytes": truncate(zero_flac_verification(flac), 916),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "flac-frame-boundary-truncation",
+            "source": FLAC_S16,
+            "operation": "truncate at the final frame boundary (offset 916)",
+            "bytes": truncate(flac, 916),
             "expected": {"code": "decode_failed", "stage": "decode"},
         },
         {

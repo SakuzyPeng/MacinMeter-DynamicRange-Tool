@@ -9,7 +9,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 
-const MINIMUM_CASES: usize = 34;
+const MINIMUM_CASES: usize = 38;
 const MAXIMUM_BLOCKS_PER_CASE: usize = 10_000;
 
 fn corpus_path(name: &str) -> PathBuf {

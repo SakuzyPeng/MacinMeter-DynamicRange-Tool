@@ -103,6 +103,19 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     let expected_frames = container_pcm
         .map(|(_, expected_frames)| expected_frames)
         .or_else(|| codec_params.n_frames.filter(|frames| *frames > 0));
+    // Without a declared total sample count the end-of-stream frame check is
+    // inert, and a stream whose STREAMINFO MD5 is also absent can lose whole
+    // tail frames undetectably. The stable FLAC route therefore requires a
+    // declared count instead of accepting silently unverifiable streams.
+    if expected_frames.is_none() {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "media without a declared total frame count is outside the stable native matrix",
+            None,
+        ));
+    }
 
     let decoder = symphonia::default::get_codecs()
         .make(&codec_params, &DecoderOptions { verify: true })

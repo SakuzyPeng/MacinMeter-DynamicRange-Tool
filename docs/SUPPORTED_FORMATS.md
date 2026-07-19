@@ -46,8 +46,11 @@ The following routes are not built into 0.2.0:
 
 The stable AIFF route also requires a finite, positive, exactly integral
 80-bit sample rate representable as `u32`, an exact 18-byte COMM chunk, plus
-zero SSND offset and block-size fields. Unsupported container variants are
-rejected rather than silently rounded or inherited from backend behavior.
+zero SSND offset and block-size fields. The stable FLAC route requires a
+nonzero STREAMINFO total sample count: without it the end-of-stream frame
+check is inert, and a stream whose MD5 signature is also absent could lose
+whole tail frames undetectably. Unsupported container variants are rejected
+rather than silently rounded or inherited from backend behavior.
 
 Recognized but unavailable content returns the stable
 `unsupported_format` error code. Detectable malformed content within a
