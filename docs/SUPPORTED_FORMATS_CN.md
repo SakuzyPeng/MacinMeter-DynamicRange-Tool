@@ -42,6 +42,10 @@ decoder 归一化已经逐位一致。
 frame 对齐的 block，sticky EOF，或结构化错误；空等候和解码失败不能伪装成 EOF。
 预期 frame 与已解码 frame 分开记录，M0 遇到坏包会失败，不会静默跳过后生成结果。
 
+产品分析最多接受 64 个 PCM 声道。这是资源契约，不表示每一种当前容器或 backend
+都能表达 64 声道；格式自身的上限可能更低。声明超过 64 声道的源会在创建 decoder
+之前，于探测阶段以 `unsupported_format` 拒绝。
+
 系统不会根据声道数猜布局；backend 无法确认布局时报告 `unknown`。Candidate V1
 只生成一个 `track` 聚合，并按照当前证据支持的候选规则纳入 LFE，而不再生成单独的
 `without_lfe` 结果。静音声道仍明确显示为 `silent`，并以 DR0 参与聚合；只有数据

@@ -9,6 +9,6 @@ pub use model::{
     AnalysisResult, ChannelCount, ChannelLayout, ChannelMeasurement, ChannelOutcome,
     ChannelReportMetrics, ChannelResult, ChannelRole, CompatibilityStatus, ContainerFormat,
     DecodeDiagnostics, DecodeProgress, DecodedDuration, ExcludedChannel, ExclusionReason,
-    FiniteF32, FiniteF64, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec, SourceInfo, StreamSpec,
-    TrackAggregate, TrackReportMetrics,
+    FiniteF32, FiniteF64, MAX_ANALYSIS_CHANNELS, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec,
+    SourceInfo, StreamSpec, TrackAggregate, TrackReportMetrics,
 };

@@ -78,6 +78,12 @@ impl SampleRate {
     }
 }
 
+/// Maximum channel count accepted by the product analysis pipeline.
+///
+/// [`ChannelCount`] remains capable of representing larger source geometries so
+/// codecs can report and reject them without losing the declared channel count.
+pub const MAX_ANALYSIS_CHANNELS: u16 = 64;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelCount(NonZeroU16);
@@ -469,6 +475,23 @@ mod tests {
                 }
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn analysis_limit_does_not_narrow_source_channel_geometry() {
+        assert_eq!(MAX_ANALYSIS_CHANNELS, 64);
+        assert_eq!(
+            ChannelCount::new(MAX_ANALYSIS_CHANNELS + 1).unwrap().get(),
+            65
+        );
+        assert_eq!(ChannelCount::new(u16::MAX).unwrap().get(), u16::MAX);
+        assert_eq!(
+            StreamSpec::new(48_000, MAX_ANALYSIS_CHANNELS + 1, ChannelLayout::Unknown)
+                .unwrap()
+                .channels
+                .get(),
+            65
         );
     }
 

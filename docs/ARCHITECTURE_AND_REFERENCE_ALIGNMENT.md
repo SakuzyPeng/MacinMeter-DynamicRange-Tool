@@ -599,15 +599,15 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 
 M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增加格式数量作为进度：
 
-8. `fix: bind PCM blocks to their channel geometry`
-9. `fix: enforce analyzer session resource limits`
-10. `test: establish the shared PcmSource contract matrix`
-11. `test: close the declared native PCM matrix`
-12. `test: expand bit-exact analyzer invariants`
-13. `refactor: enforce valid domain result construction`
-14. `test: add malformed media regression corpus`
-15. `refactor: centralize native codec capabilities`
-16. `feat: graduate evidence-backed native routes`（只有实际通过准入时）
+8. [x] `fix: bind PCM blocks to their channel geometry`
+9. [x] `fix: enforce analyzer session resource limits`
+10. [ ] `test: establish the shared PcmSource contract matrix`
+11. [ ] `test: close the declared native PCM matrix`
+12. [ ] `test: expand bit-exact analyzer invariants`
+13. [ ] `refactor: enforce valid domain result construction`
+14. [ ] `test: add malformed media regression corpus`
+15. [ ] `refactor: centralize native codec capabilities`
+16. [ ] `feat: graduate evidence-backed native routes`（只有实际通过准入时）
 
 多 backend/application 资源预算继续属于 M3；文件级并发是否启用与其他可复现
 性能工程继续属于 M6。

@@ -1,4 +1,7 @@
-use crate::{container::ContainerSignature, error::analysis_error};
+use crate::{
+    container::ContainerSignature,
+    error::{analysis_error, validate_analysis_channel_count},
+};
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ErrorCode, SourceCodec, StreamSpec,
 };
@@ -73,6 +76,7 @@ pub(crate) fn stream_spec(
             None,
         )
     })?;
+    validate_analysis_channel_count(path, channel_count)?;
     let spec =
         StreamSpec::new(sample_rate, channel_count, ChannelLayout::Unknown).map_err(|error| {
             analysis_error(

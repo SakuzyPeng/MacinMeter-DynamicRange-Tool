@@ -1,8 +1,28 @@
-use macinmeter_domain::{AnalysisError, AnalysisStage, ErrorCode};
+use macinmeter_domain::{AnalysisError, AnalysisStage, ErrorCode, MAX_ANALYSIS_CHANNELS};
 use std::{io, path::Path};
 use symphonia::core::errors::Error as SymphoniaError;
 
 pub(crate) const BACKEND: &str = "symphonia";
+
+pub(crate) fn validate_analysis_channel_count(
+    path: &Path,
+    channels: u16,
+) -> Result<(), AnalysisError> {
+    if channels > MAX_ANALYSIS_CHANNELS {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            format!(
+                "audio stream declares {channels} channels; analysis supports at most {MAX_ANALYSIS_CHANNELS}"
+            ),
+            Some(format!(
+                "declared_channels={channels}; max_analysis_channels={MAX_ANALYSIS_CHANNELS}"
+            )),
+        ));
+    }
+    Ok(())
+}
 
 pub(crate) fn file_open_error(path: &Path, error: io::Error) -> AnalysisError {
     let (code, stage, message) = match error.kind() {

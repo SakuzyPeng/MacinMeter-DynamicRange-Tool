@@ -49,6 +49,11 @@ error. Empty waits and decoder failures are not reported as EOF. Expected and
 decoded frame counts are tracked separately, and M0 fails rather than silently
 skipping a damaged packet.
 
+Product analysis accepts at most 64 PCM channels. This is a resource contract,
+not a claim that every current container/backend can represent 64 channels;
+format-specific limits may be lower. A source declaring more than 64 channels
+is rejected during probing with `unsupported_format`, before decoder creation.
+
 Channel layout is never inferred from channel count. If the backend cannot
 establish a trustworthy layout, the report uses `unknown`. Candidate V1
 produces one `track` aggregate and, following the evidence-backed candidate

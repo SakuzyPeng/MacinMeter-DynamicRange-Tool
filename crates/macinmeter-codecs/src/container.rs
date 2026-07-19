@@ -1,4 +1,4 @@
-use crate::error::{analysis_error, io_analysis_error};
+use crate::error::{analysis_error, io_analysis_error, validate_analysis_channel_count};
 use macinmeter_domain::{AnalysisError, AnalysisStage, ContainerFormat, ErrorCode};
 use std::{
     fs::File,
@@ -224,6 +224,7 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
             file.read_exact(&mut format_prefix)
                 .map_err(|error| malformed_wave_io(path, error))?;
             let channels = u16::from_le_bytes([format_prefix[2], format_prefix[3]]);
+            validate_analysis_channel_count(path, channels)?;
             let sample_rate = u32::from_le_bytes([
                 format_prefix[4],
                 format_prefix[5],
@@ -410,7 +411,27 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
             let mut common_prefix = [0_u8; 18];
             file.read_exact(&mut common_prefix)
                 .map_err(|error| malformed_aiff_io(path, error))?;
-            let channels = u64::from(u16::from_be_bytes([common_prefix[0], common_prefix[1]]));
+            let declared_channels = i16::from_be_bytes([common_prefix[0], common_prefix[1]]);
+            if declared_channels <= 0 {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::MalformedMedia,
+                    AnalysisStage::Probe,
+                    "AIFF channel count must be positive",
+                    None,
+                ));
+            }
+            let declared_channels = u16::try_from(declared_channels).map_err(|_| {
+                analysis_error(
+                    path,
+                    ErrorCode::MalformedMedia,
+                    AnalysisStage::Probe,
+                    "AIFF channel count cannot be represented",
+                    None,
+                )
+            })?;
+            validate_analysis_channel_count(path, declared_channels)?;
+            let channels = u64::from(declared_channels);
             let declared_frames = u64::from(u32::from_be_bytes([
                 common_prefix[2],
                 common_prefix[3],
@@ -419,12 +440,12 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
             ]));
             let sample_size = u64::from(u16::from_be_bytes([common_prefix[6], common_prefix[7]]));
             let sample_rate_is_zero = common_prefix[8..18].iter().all(|byte| *byte == 0);
-            if channels == 0 || sample_size == 0 || sample_rate_is_zero {
+            if sample_size == 0 || sample_rate_is_zero {
                 return Err(analysis_error(
                     path,
                     ErrorCode::MalformedMedia,
                     AnalysisStage::Probe,
-                    "AIFF channel count, sample size, and sample rate must be nonzero",
+                    "AIFF sample size and sample rate must be nonzero",
                     None,
                 ));
             }

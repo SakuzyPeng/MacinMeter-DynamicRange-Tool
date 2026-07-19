@@ -1,6 +1,7 @@
 use crate::{DecoderFactory, ReadOutcome, SUPPORTED_EXTENSIONS};
 use macinmeter_domain::{
-    AnalysisError, ChannelCount, ContainerFormat, ErrorCode, PcmBlock, SourceCodec,
+    AnalysisError, AnalysisStage, ChannelCount, ContainerFormat, ErrorCode, MAX_ANALYSIS_CHANNELS,
+    PcmBlock, SourceCodec,
 };
 use std::{
     fs,
@@ -42,6 +43,18 @@ fn assert_block_geometry(block: &PcmBlock, expected_channels: ChannelCount) {
     );
 }
 
+fn assert_analysis_channel_limit_error(error: &AnalysisError, declared_channels: u16) {
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+    assert_eq!(error.stage, AnalysisStage::Probe);
+    assert_eq!(error.backend.as_deref(), Some("symphonia"));
+    let details = error
+        .details
+        .as_deref()
+        .expect("channel limit error should include declared and maximum counts");
+    assert!(details.contains(&format!("declared_channels={declared_channels}")));
+    assert!(details.contains(&format!("max_analysis_channels={MAX_ANALYSIS_CHANNELS}")));
+}
+
 #[test]
 fn extensions_are_discovery_only_and_exclude_aifc() {
     assert_eq!(
@@ -49,6 +62,45 @@ fn extensions_are_discovery_only_and_exclude_aifc() {
         &["wav", "wave", "flac", "aif", "aiff"]
     );
     assert!(!SUPPORTED_EXTENSIONS.contains(&"aifc"));
+}
+
+#[test]
+fn shared_analysis_channel_limit_accepts_64_and_rejects_larger_geometries() {
+    let path = Path::new("channel-limit.test");
+    crate::error::validate_analysis_channel_count(path, MAX_ANALYSIS_CHANNELS).unwrap();
+
+    for channels in [MAX_ANALYSIS_CHANNELS + 1, u16::MAX] {
+        let error = crate::error::validate_analysis_channel_count(path, channels).unwrap_err();
+        assert_analysis_channel_limit_error(&error, channels);
+        assert_eq!(error.display_path.as_deref(), Some("channel-limit.test"));
+    }
+}
+
+#[test]
+fn rejects_over_limit_wave_and_aiff_before_symphonia_probe() {
+    for channels in [MAX_ANALYSIS_CHANNELS + 1, u16::MAX] {
+        let file = TestFile::new("wav", &empty_pcm8_wave(channels));
+        let error = expect_open_error(file.path());
+        assert_analysis_channel_limit_error(&error, channels);
+        let display_path = file.path().display().to_string();
+        assert_eq!(error.display_path.as_deref(), Some(display_path.as_str()));
+    }
+
+    let channels = MAX_ANALYSIS_CHANNELS + 1;
+    let file = TestFile::new("aiff", &empty_pcm8_aiff(channels));
+    let error = expect_open_error(file.path());
+    assert_analysis_channel_limit_error(&error, channels);
+    let display_path = file.path().display().to_string();
+    assert_eq!(error.display_path.as_deref(), Some(display_path.as_str()));
+}
+
+#[test]
+fn rejects_negative_aiff_channel_count_as_malformed() {
+    let file = TestFile::new("aiff", &empty_pcm8_aiff(u16::MAX));
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::MalformedMedia);
+    assert_eq!(error.stage, AnalysisStage::Probe);
+    assert!(error.message.contains("channel count must be positive"));
 }
 
 #[test]
@@ -361,6 +413,10 @@ fn alaw_wave() -> Vec<u8> {
     bytes
 }
 
+fn empty_pcm8_wave(channels: u16) -> Vec<u8> {
+    wave_header(1, channels, 8_000, 8, 0)
+}
+
 fn wave_header(
     format_tag: u16,
     channels: u16,
@@ -384,6 +440,25 @@ fn wave_header(
     bytes.extend_from_slice(&bits_per_sample.to_le_bytes());
     bytes.extend_from_slice(b"data");
     bytes.extend_from_slice(&data_size.to_le_bytes());
+    bytes
+}
+
+fn empty_pcm8_aiff(channels: u16) -> Vec<u8> {
+    let form_size = 4_u32 + (8 + 18) + (8 + 8);
+    let mut bytes = Vec::with_capacity((form_size + 8) as usize);
+    bytes.extend_from_slice(b"FORM");
+    bytes.extend_from_slice(&form_size.to_be_bytes());
+    bytes.extend_from_slice(b"AIFF");
+    bytes.extend_from_slice(b"COMM");
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
+    bytes.extend_from_slice(&channels.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&8_u16.to_be_bytes());
+    bytes.extend_from_slice(&[0x40, 0x0e, 0xac, 0x44, 0, 0, 0, 0, 0, 0]);
+    bytes.extend_from_slice(b"SSND");
+    bytes.extend_from_slice(&8_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
     bytes
 }
 

@@ -5,9 +5,9 @@ use crate::profile::{
 };
 use macinmeter_domain::{
     AggregateResults, AlgorithmDescriptor, AnalysisError, AnalysisProfile, AnalysisResult,
-    AnalysisStage, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics, ChannelResult,
-    DecodedDuration, ErrorCode, ExcludedChannel, ExclusionReason, FiniteF32, FiniteF64, StreamSpec,
-    TrackAggregate, TrackReportMetrics,
+    AnalysisStage, ChannelCount, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics,
+    ChannelResult, DecodedDuration, ErrorCode, ExcludedChannel, ExclusionReason, FiniteF32,
+    FiniteF64, MAX_ANALYSIS_CHANNELS, StreamSpec, TrackAggregate, TrackReportMetrics,
 };
 
 /// A one-pass analysis session for a single PCM stream.
@@ -28,7 +28,11 @@ pub struct AnalyzerSession {
 
 impl AnalyzerSession {
     /// Creates an analyzer with the fixed rules of the requested profile.
+    ///
+    /// Streams above [`MAX_ANALYSIS_CHANNELS`] are rejected before per-channel
+    /// analysis state is allocated.
     pub fn new(stream: StreamSpec, profile: AnalysisProfile) -> Result<Self, AnalysisError> {
+        validate_session_resources(stream.channels)?;
         stream.channel_layout.validate(stream.channels)?;
 
         let window_frames_f64 =
@@ -224,6 +228,32 @@ impl AnalyzerSession {
         }
         self.frames_in_window = 0;
     }
+}
+
+fn validate_session_resources(channels: ChannelCount) -> Result<(), AnalysisError> {
+    let channel_count = channels.as_usize();
+    if channels.get() > MAX_ANALYSIS_CHANNELS {
+        return Err(resource_error(format!(
+            "analysis supports at most {MAX_ANALYSIS_CHANNELS} channels; stream declares {}",
+            channels.get()
+        )));
+    }
+
+    checked_requested_session_state_bytes(channel_count)?;
+    Ok(())
+}
+
+fn checked_requested_session_state_bytes(channel_count: usize) -> Result<usize, AnalysisError> {
+    let histogram_bytes = HISTOGRAM_BINS
+        .checked_mul(std::mem::size_of::<u64>())
+        .ok_or_else(|| resource_error("per-channel histogram size exceeds the supported range"))?;
+    let per_channel_bytes = std::mem::size_of::<ChannelAccumulator>()
+        .checked_add(histogram_bytes)
+        .ok_or_else(|| resource_error("per-channel analysis state exceeds the supported range"))?;
+
+    channel_count
+        .checked_mul(per_channel_bytes)
+        .ok_or_else(|| resource_error("analysis session state exceeds the supported range"))
 }
 
 #[derive(Debug)]
@@ -621,6 +651,25 @@ mod tests {
                 .iter()
                 .all(|channel| channel.histogram.len() == HISTOGRAM_BINS)
         );
+    }
+
+    #[test]
+    fn channel_state_size_is_checked_without_allocating_the_requested_state() {
+        let histogram_bytes = HISTOGRAM_BINS * std::mem::size_of::<u64>();
+        assert_eq!(
+            histogram_bytes * usize::from(MAX_ANALYSIS_CHANNELS),
+            5_120_512
+        );
+        let per_channel_bytes = std::mem::size_of::<ChannelAccumulator>() + histogram_bytes;
+        assert_eq!(
+            checked_requested_session_state_bytes(usize::from(MAX_ANALYSIS_CHANNELS)).unwrap(),
+            usize::from(MAX_ANALYSIS_CHANNELS) * per_channel_bytes
+        );
+
+        let overflowing_channel_count = usize::MAX / per_channel_bytes + 1;
+        let error = checked_requested_session_state_bytes(overflowing_channel_count).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Analysis);
     }
 
     #[test]

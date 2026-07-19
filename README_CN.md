@@ -19,6 +19,7 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 - AIFF：8/16/24/32-bit 整数 PCM
 - 串行解码与串行批处理
 - 有界内存的流式分析
+- 产品分析上限为 64 声道（具体格式或 backend 的上限可能更低）
 - 唯一的 `FooDrMeter108CandidateV1` profile
 - 结构化错误、取消、进度与带版本的 JSON
 

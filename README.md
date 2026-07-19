@@ -22,6 +22,7 @@ The 0.2.0 baseline deliberately keeps a small trusted surface:
 - AIFF: 8/16/24/32-bit integer PCM
 - serial decoding and serial batch execution
 - streaming, bounded-memory analysis
+- a 64-channel product analysis limit (individual formats/backends may be lower)
 - one `FooDrMeter108CandidateV1` profile
 - structured errors, cancellation, progress, and versioned JSON
 

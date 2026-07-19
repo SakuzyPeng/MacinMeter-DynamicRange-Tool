@@ -3,8 +3,8 @@
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_domain::{
     AnalysisProfile, AnalysisStage, ChannelCount, ChannelLayout, ChannelMeasurement,
-    ChannelOutcome, ChannelRole, CompatibilityStatus, ErrorCode, ExclusionReason, SampleRate,
-    StreamSpec,
+    ChannelOutcome, ChannelRole, CompatibilityStatus, ErrorCode, ExclusionReason,
+    MAX_ANALYSIS_CHANNELS, SampleRate, StreamSpec,
 };
 
 const SAMPLE_RATE: u32 = 8_000;
@@ -422,6 +422,35 @@ fn constructor_revalidates_public_stream_spec_fields() {
         AnalyzerSession::new(malformed, AnalysisProfile::FooDrMeter108CandidateV1).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidRequest);
     assert_eq!(error.stage, AnalysisStage::Validation);
+}
+
+#[test]
+fn constructor_enforces_the_product_channel_limit_before_allocation() {
+    let at_limit = AnalyzerSession::new(
+        stream(48_000, MAX_ANALYSIS_CHANNELS, ChannelLayout::Unknown),
+        AnalysisProfile::FooDrMeter108CandidateV1,
+    )
+    .expect("the documented maximum channel count should be accepted");
+    assert_eq!(at_limit.stream().channels.get(), MAX_ANALYSIS_CHANNELS);
+    let at_limit_result = at_limit
+        .finish()
+        .expect("an empty session at the channel limit should finish");
+    assert_eq!(
+        at_limit_result.channels.len(),
+        usize::from(MAX_ANALYSIS_CHANNELS)
+    );
+
+    for channels in [MAX_ANALYSIS_CHANNELS + 1, u16::MAX] {
+        let error = AnalyzerSession::new(
+            stream(48_000, channels, ChannelLayout::Unknown),
+            AnalysisProfile::FooDrMeter108CandidateV1,
+        )
+        .expect_err("over-limit sessions must fail before allocating per-channel state");
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Analysis);
+        assert!(error.message.contains(&channels.to_string()));
+        assert!(error.message.contains(&MAX_ANALYSIS_CHANNELS.to_string()));
+    }
 }
 
 #[test]
