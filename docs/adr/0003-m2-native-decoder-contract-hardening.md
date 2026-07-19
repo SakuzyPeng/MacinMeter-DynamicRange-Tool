@@ -1,7 +1,7 @@
 # ADR-0003：M2 原生解码面与工程契约加固
 
 - 状态：Accepted
-- 实施状态：DOING
+- 实施状态：DONE
 - 日期：2026-07-19
 - 决策范围：M2
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
@@ -333,6 +333,20 @@ M2 首选评估顺序为：
 
 这是调查顺序，不是支持承诺。可以在完成当前矩阵后一次评审一个原生能力批次，
 但每条 route 仍独立满足毕业条件。
+
+截至 2026-07-20，本切片以“零毕业批次”收口：
+
+- AIFC linear PCM 保持首位评估候选，与 MP4/ALAC、MP3、Ogg/Vorbis、MP4/AAC
+  一起以 `planned` 状态登记在第 12 节的 capability catalog 中，不进入默认
+  discovery，也不出现在用户稳定支持文档；
+- 本次未毕业任何新 route。首条新增 stable route 会给 schema-v3 report 的
+  container/codec enum 引入新值，因此必须伴随显式 wire schema 升级评估；该
+  评估连同 fixture 证据、PCM oracle、损坏样本和跨 adapter 验收，构成一项独立
+  的产品决策，不应作为 M2 契约加固的收尾顺带发生；
+- 本 ADR 第 1 节已确定 M2 不以格式数量作为完成标准；当前 WAV/FLAC/AIFF 矩阵
+  的证据闭合即满足出口条件；
+- 后续毕业批次按本节十项准入条件逐条执行，首批评审应与 wire schema v4 评估
+  同场进行。
 
 ### 10. Candidate 在 M2 冻结
 

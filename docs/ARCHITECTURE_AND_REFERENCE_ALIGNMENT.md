@@ -1,6 +1,6 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DOING`；
+> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`；
 > foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
@@ -479,7 +479,8 @@ M1 的固定目标、输入域、证据与非目标由
 
 ### M2：可信主干扩展
 
-状态：`DOING`。
+状态：`DONE`（2026-07-20，零毕业批次收口，见
+[ADR-0003 §9](adr/0003-m2-native-decoder-contract-hardening.md)）。
 
 M2 不以增加格式数量为完成标准，而是先加固当前可信主干。具体边界与实施顺序见
 [ADR-0003](adr/0003-m2-native-decoder-contract-hardening.md)：
@@ -513,10 +514,18 @@ M2 不以增加格式数量为完成标准，而是先加固当前可信主干�
   constructor 加只读 getter/view；成功结果裸浮点改用透明 finite wrapper，
   不作为产品输入的 result/report、batch/event/wire 类型删除反序列化入口，并固定
   六条跨字段关系，schema-v3 wire 形状不变；
-- 建立固定 malformed corpus 与独立手动 fuzz 入口；
-- 在首次新增 route 前建立单一 Rust capability catalog；
+- `malformed-media-v1` 固定回归 corpus 已提交：34 个确定性字节级派生 case
+  覆盖 WAV/AIFF chunk 结构、FLAC 包失败与跨容器输入，逐例登记预期错误码/
+  阶段；WAV/AIFF parser 改为 `Read + Seek` 字节接缝，非默认 `malformed-dev`
+  feature 提供隐藏 fuzz 入口；workspace 测试、逐 case 子进程 verifier（30s
+  timeout + POSIX `RLIMIT_AS`）与再生成审计三层验证；
+- 单一 Rust capability catalog 已建立：`macinmeter-codecs` 静态 catalog 驱动
+  discovery、application 只读 `capabilities()` 查询与 Tauri
+  `get_capabilities`；前端删除手写 container/codec union，picker 由运行时
+  stable extensions 构造；产品测试固定 stable snapshot，schema-v3 wire 不变；
 - 只有通过共同契约、跨 adapter 和文档同步验收的原生 Symphonia route 才能
-  标为 stable。
+  标为 stable。M2 收口时未毕业任何新 route：首条 stable route 需要伴随显式
+  wire schema 升级评估，作为独立决策执行（ADR-0003 §9）。
 
 Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例或实现转写缺陷，才
 按 ADR-0002 重新打开。只有规格语义变化提升 profile version，修复既有规格的
@@ -624,9 +633,11 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 11. [x] `test: close the declared native PCM matrix`
 12. [x] `test: expand bit-exact analyzer invariants`
 13. [x] `refactor: enforce valid domain result construction`
-14. [ ] `test: add malformed media regression corpus`
-15. [ ] `refactor: centralize native codec capabilities`
-16. [ ] `feat: graduate evidence-backed native routes`（只有实际通过准入时）
+14. [x] `test: add malformed media regression corpus`
+15. [x] `refactor: centralize native codec capabilities`
+16. [ ] `feat: graduate evidence-backed native routes`（只有实际通过准入时；
+    M2 收口评审结论为零毕业批次，首批评审与 wire schema v4 评估同场进行，
+    见 ADR-0003 §9）
 
 多 backend/application 资源预算继续属于 M3；文件级并发是否启用与其他可复现
 性能工程继续属于 M6。
