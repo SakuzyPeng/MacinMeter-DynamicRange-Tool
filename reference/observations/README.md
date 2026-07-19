@@ -4,6 +4,15 @@
 
 当前观测：
 
+- [`OBS-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719`](obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)：
+  固定 `foo_dr_meter` 1.0.8 x64 target `ff3556ad` 的 accepted 隔离
+  analyzer-core 动态观测。它不启动 foobar2000；complete-v2 的 39 项 safe
+  master 各使用一个全新 worker，直接调用 init/push/finish，39/39 均成功并保存
+  result、session、channel state 与浮点控制位。真实、固定的 `shared.dll`
+  被保留用于 load/unload lifecycle，core 执行期间全部 13 个目标普通 IAT 入口
+  由 fail-fast tripwire 接管。该记录没有验证 foobar decode、registration、
+  metadata、album 或 renderer，声明固定为 `compatibility: none`、
+  `foobarParity: not_assessed`。
 - [`OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718`](obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/observation.json)：
   固定 foobar2000 2.25.10 x64 / `foo_dr_meter` 1.0.8 x64 对 complete-v2
   39 项 safe master 的单次原始导出；39 个 track 与 62 个声道值均已按 manifest
@@ -31,3 +40,9 @@
 建立或复核 observation 包。该流程离线重验 manifest、`FILES.sha256`、逐 fixture
 内容哈希、报告哈希与 manifest 顺序，并阻止私人绝对路径进入产物；它不运行
 foobar2000、候选模型或 MacinMeter。
+
+固定 x64 analyzer core 使用
+[`isolated core harness`](CORE_HARNESS.md)。该流程独立于 foobar process，以
+manifest 或显式有限 interleaved binary64 PCM 驱动固定 DLL，并严格绑定
+target、runtime、worker、block size 与输入身份。它是算法 core 观测工具，不是
+foobar host 或兼容性测试替代品。

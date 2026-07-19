@@ -83,6 +83,16 @@ schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39
 与 channel RMS 62/62。这足以关闭当前 corpus 中公开同语义字段的已知系统差分，
 但不等同于完整 conformance；所有输出继续标记 `Unverified`。
 
+2026-07-19 又建立了固定 x64 target `ff3556ad` 的隔离 analyzer-core harness：
+每个输入启动一个全新 worker，在不启动 foobar2000 的前提下直接调用
+init/push/finish，并保存 result、session、channel state 与浮点控制位。固定
+complete-v2 safe-master 的 39 项输入均完成受控执行。真实、固定的
+`shared.dll` 被保留用于 DLL load/unload lifecycle；core 调用期间，目标对
+`shared.dll` 的 13 个普通 IAT 入口全部由 fail-fast tripwire 接管。该记录建立了
+更纯净的算法 core 动态证据，但没有验证 foobar 解码、组件注册、host lifecycle、
+metadata、album 或 renderer；其声明固定为 `compatibility: none`、
+`foobarParity: not_assessed`。
+
 ## 3. 事实来源与术语
 
 后续工作必须区分四类“真值”。
@@ -159,13 +169,13 @@ schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39
 | --- | --- | --- | --- |
 | REF-001 | DONE | 固定参考目标身份 | foo_dr_meter 1.0.8 x64/x86 hash、宿主与配置记录 |
 | REF-002 | DONE | 建立授权与来源档案 | 公开最小摘要、私人打印快照 digest、保管位置与未授权边界均已登记 |
-| REF-003 | DOING | 建立可重复的参考运行 harness | 离线 observation importer 已固定 manifest/fixture/report/target 绑定；受控在线运行仍待验收 |
+| REF-003 | DONE | 建立可重复的参考运行 harness | 离线 observation importer 与隔离 x64 core parent/worker/suite 均固定输入、target、runtime、worker 身份和执行契约；39 项 safe-master 每项使用全新 worker 的首次受控记录已验收，范围不含 foobar host |
 | REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
-| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项与 x64 39 项 safe master 已登记；isolated 属 host 外围，x64 repeat 是否进入 accepted 仍待定 |
-| REF-006 | DOING | 开展静态与动态逆向 | x64 analyzer/result/album 布局与 ASLR-safe 探针计划已固定；guarded runner 尚未形成 accepted 动态记录 |
+| REF-005 | DOING | 完成黑盒行为矩阵 | x86 15 项 foobar 导出、x64 39 项 foobar safe-master 与同 39 项隔离 core 动态记录已登记；host-edge、album 专项及 accepted foobar repeat policy 仍待定 |
+| REF-006 | DOING | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；album、renderer、foobar 注册/解码/metadata 与完整 host lifecycle 仍不在该边界内 |
 | REF-007 | DOING | 编写版本化算法规格 | Candidate 已纳入 x64 精度、短时 `m:ss`、已观测 ordinal `0..5, 9, 10` 标签与 album DR0 E2 子规则；未覆盖 renderer 分支继续保留 |
 | REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的六组公开 DR/report/duration 字段完全匹配，仍不宣称参考兼容 |
-| REF-009 | DOING | 建立参考 conformance suite | clean-commit successor 已覆盖六组字段、四项 footer consistency 与 DR0 反事实；中间状态、精确 album/weighting 与 host metadata 未验收 |
+| REF-009 | DOING | 建立参考 conformance suite | clean-commit successor 已覆盖六组字段、四项 footer consistency 与 DR0 反事实；isolated core 对既有报告的四类字段又达到 39/39、62/62、62/62、39/39，参考 core 中间状态已有 accepted 原始记录，但 production intermediate 差分、精确 album/weighting 与 host metadata 未验收 |
 | REF-010 | TODO | 修订兼容性声明 | 仅在验收通过后恢复明确的参考兼容承诺 |
 
 ### 5.4 P2：测试、发布、性能和维护
@@ -173,7 +183,7 @@ schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39
 | ID | 状态 | 事项 | 目标 |
 | --- | --- | --- | --- |
 | TEST-001 | DONE | 建立 M0 工程不变量测试 | chunk、声道、窗口边界、有限值、长流有界内存 |
-| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track single pass 与确定性离线 importer 已固定；accepted oracle、动态中间状态及可选 repeat policy 待验收 |
+| TEST-002 | DOING | 建立固定参考 observation corpus | x64 39-track foobar single pass、确定性离线 importer 与 39 项 accepted 隔离 core 动态记录已固定；完整 accepted oracle、foobar host repeat policy 与剩余 host/album/renderer 观测待验收 |
 | TEST-003 | DONE | 建立 CLI 黑盒测试 | stdout/stderr、JSON、0/1/2/3/130、原子输出 |
 | TEST-004 | TODO | 后续引入 sanitizer/fuzz | M0 已无第一方 unsafe；重点转为 decoder/parser 异常输入 |
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
@@ -250,6 +260,8 @@ reference/
 ├── experiments/      # 实验定义和输入生成参数
 ├── observations/     # 参考插件原始输出与环境信息
 ├── static-analysis/  # 固定二进制的受控静态事实
+├── native/           # 隔离 core worker 与受控 native 边界
+├── tools/            # observation、core suite 与差分工具
 ├── fixtures/         # 可公开、可重复生成的测试输入
 ├── specs/            # 版本化算法规格和证据等级
 └── conformance/      # 参考结果和差分摘要
@@ -408,20 +420,28 @@ Error
 - 将 M0 `ProvisionalV1` 输出仅保存为历史工程 snapshot。
 
 当前 clean-commit successor 已把六组公开字段固定到可由提交源码重建的实现身份，
-但 M1 不因此自动完成：中间状态仍没有动态证据；若最终 accepted policy 要求参考
-runtime 重复性，还必须补同一 x64 target 的独立 repeat run。
+但 M1 不因此自动完成。隔离 core 动态证据已经补入，foobar host 的解码、组件注册、
+metadata、album 与 renderer 仍未进入同一受控边界；若最终 accepted policy 要求
+foobar runtime 重复性，还必须补同一 x64 target 的独立 host repeat run。
 
-2026-07-18 的后续检查点又补齐了两条证据基础设施：
+2026-07-18 至 2026-07-19 的后续检查点补齐了三条证据基础设施：
 
 - observation importer 会从 canonical manifest、实际 fixture bytes、未经修改的
   report 和显式 target/run metadata 重建并复核 path-free 包；它不运行参考插件，
   也不从 MacinMeter 输出反推 golden；
 - 固定 x64 二进制的 analyzer/session/channel/result/album 布局已有版本化动态
   探针计划；CDB guarded runner 会绑定输入、触发、进程和完整生命周期，IDA
-  模板则只生成 session/result 内部一致、由操作者声明输入身份的 diagnostic。
+  模板则只生成 session/result 内部一致、由操作者声明输入身份的 diagnostic；
+- 隔离 x64 core parent/worker/suite 固定 PCM、target、runtime、worker、block
+  size 和请求身份，每个输入使用全新 worker；固定 39 项 safe-master 已形成
+  accepted 动态记录。真实 `shared.dll` 被保留用于 load/unload lifecycle，core
+  执行期间 13 个目标普通 IAT 入口均由 fail-fast tripwire 接管。
 
-这两项只把“怎样取得可审计证据”固定下来。runner 的首次受控执行、动态 JSONL
-入库和 E3 结论仍未发生，不能把计划或预检升级成参考真值。
+第三项关闭了 analyzer core “首次受控动态记录”这一缺口，并能保存 raw bits
+用于精确比较；它不启动 foobar2000，因此没有把 foobar decode、registration、
+metadata、album、renderer 或 host parity 升级成已验证事实。CDB/IDA 路径仍可
+用于将来的 host/album/renderer 专项证据，当前也没有据此产生 E3 兼容结论。
+M1 因此仍为 `DOING`。
 
 出口条件：
 
@@ -565,7 +585,7 @@ M0 作为一次明确的 breaking branch 完成前七项并整体切换，不发
 - [x] `ProvisionalV1` 不作为生产兼容 profile 保留；
 - [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
 - [x] Reference profile 的未导出中间状态已有固定 x64 布局与 ASLR-safe 探针计划；
-- [ ] 首次受控动态记录如何验收，以及相应数值容差如何定义；
+- [x] 首次受控 analyzer-core 动态记录已按固定 target/runtime/worker/input 身份验收；原始 core bits 使用精确比较，派生显示值及 host/album/renderer 的容差仍随各自 conformance 单独定义；
 - [x] Candidate 结果结构使用 wire schema v3；schema 版本只表示结构契约，不表示算法兼容。
 
 ## 13. 完成定义

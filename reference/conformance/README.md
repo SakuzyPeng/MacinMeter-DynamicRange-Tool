@@ -2,6 +2,12 @@
 
 当前记录：
 
+- [`CONF-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719`](conf-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719/record.md)：
+  将 39 项 accepted isolated-core raw result bits 与既有固定 x64 foobar
+  normalized report 做窄字段对照。整数 track DR 39/39、channel DR 62/62、
+  channel RMS 62/62、overall peak 39/39 精确匹配，差分为 0。它不运行
+  foobar decoder、component registration、album 或 report renderer，声明仍为
+  `compatibility: none`、`foobarParity: not_assessed`。
 - [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718`](conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)：
   从已提交源码重建的 schema-v3 successor。它保持 track DR 39/39、channel DR
   62/62、overall primary peak 39/39、overall RMS 39/39、channel overall RMS

@@ -1,0 +1,4753 @@
+{
+  "claims": {
+    "compatibility": "none",
+    "foobarParity": "not_assessed",
+    "scope": "serial isolated analyzer-core suite"
+  },
+  "corpus": {
+    "id": "foo-dr-meter-108-complete-v2",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "safeCaseCount": 39,
+    "safeCaseIds": [
+      "window-minus-one-control",
+      "exact-window-control",
+      "tail-pair-base",
+      "tail-pair-plus-one",
+      "negative-dr-fallback",
+      "histogram-db-domain",
+      "loud-boundary-bin-ties",
+      "peak-order-low-then-high",
+      "peak-order-high-then-low",
+      "one-frame-nonzero",
+      "two-frame-negative",
+      "silent-mono",
+      "stereo-silent-channel",
+      "three-channel-arithmetic",
+      "six-channel-lfe",
+      "histogram-lower-clamp",
+      "loud-target-n9",
+      "sparse-nonzero-among-zero",
+      "rms-half-f64-stereo",
+      "rms-half-f32-stereo",
+      "peak-half-f64-stereo",
+      "peak-half-f32-stereo",
+      "sr-44100-w-minus-one",
+      "sr-44100-w-plus-one",
+      "sr-48000-w-minus-one",
+      "sr-48000-w-plus-one",
+      "eight-channel-report-map",
+      "album-10-49-a",
+      "album-10-49-b",
+      "album-11-49",
+      "display-10-50",
+      "aggregate-narrow-low",
+      "aggregate-narrow-high",
+      "host-decode-u8",
+      "host-decode-s16",
+      "host-decode-s24",
+      "host-decode-s32",
+      "host-decode-f32",
+      "host-decode-f64"
+    ]
+  },
+  "execution": {
+    "blockFrames": 512,
+    "processModel": "one_worker_process_per_input",
+    "timeoutSeconds": 30.0,
+    "workerByteLength": 278016,
+    "workerSha256": "0e09e6795a10f0d3e368ab5626cc2b0ab792edbc8bd9515baf3b12be6011b92f"
+  },
+  "items": [
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 24031,
+        "inputId": "window-minus-one-control",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 192248,
+        "pcmSha256": "512b874f4fd08455c91c8f24f5ac36a48fb09f9b3bc9b45fc019c4703a76776d",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 96180,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "f635e1475fcdef6cbb8c9b2547e5d0ef564348a1a05d6e7cfe0aa2417f52cd27"
+      },
+      "inputId": "window-minus-one-control",
+      "manifestOrder": 1,
+      "requestId": "3ffb4cbf25a74fffbebf8e0eedfd26b1bd5b9ee3a69076abe8fd7a5afc198017",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4140a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3e800000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fb0000012514536",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 24031,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 24031,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 24031,
+            "submittedFrames": 0,
+            "windowCount": 0
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4140a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 24032,
+        "inputId": "exact-window-control",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 192256,
+        "pcmSha256": "63adba37e7295a755f43eb836c670134d6540977dc2c1abf8882f0b6222dc361",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 96184,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "05c18258fe7a062e167ae5e4eadaaa60e302d7315c29396daea37fd1dbfc05c4"
+      },
+      "inputId": "exact-window-control",
+      "manifestOrder": 2,
+      "requestId": "7f13989ff9f3d4f049edec24a4baed77c3571c34dd9d71c0a329817245f0f2bd",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4140a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3e800000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fb0000003e85cb5",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 24032,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 24032,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 24032,
+            "windowCount": 1
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4140a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "tail-pair-base",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "cf68943fac4888d6bf2e31a5e6801b98589c5848161bf7e5a83090fe4298afa3",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "c7ce1d1eebee758f95de50f1eba1ab3f0bfe3d5b9485350699ab7c900bdff472"
+      },
+      "inputId": "tail-pair-base",
+      "manifestOrder": 3,
+      "requestId": "0006c8fdc8f5df21a4a521870903fa0fd245e21a77f2f0fbeb719c5ca14f82f1",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4198adc6",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3dc2d44c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3f9288ce68274210",
+              "secondaryPeakBits": "3fecccccc0000000",
+              "secondaryPeakKeyBits": "bfed70a3d70a3d71"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4198adc6"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48065,
+        "inputId": "tail-pair-plus-one",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384520,
+        "pcmSha256": "3a4bb60fdca962600d5acc392ea959cebe322221c40cdad7b2a49ef5c018996a",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192316,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "4c0bdf19cd0d206886c40bafe657091b652bde2ca2c5d215a724efcf62dd5229"
+      },
+      "inputId": "tail-pair-plus-one",
+      "manifestOrder": 4,
+      "requestId": "ab64e562ecb291dc3020aadcc12e2ffe16fe250dda47545954e1b0d095be9040",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "40061206",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3ed4c5d7"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe0944673413a10",
+              "secondaryPeakBits": "3fecccccc0000000",
+              "secondaryPeakKeyBits": "bfed70a3d70a3d71"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48065,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48065,
+            "windowCount": 3
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 1,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "40061206"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "negative-dr-fallback",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "478585cf3a82d9ef3b42811679ddd5c423db24918ec8cd2c3839b643df9f8310",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "ef0a10555cb589625fdf1c712fefad00afd0abd695dd99f4efde630e962561f0"
+      },
+      "inputId": "negative-dr-fallback",
+      "manifestOrder": 5,
+      "requestId": "61ee57c0b11b2a870c22be621951ff3879a8917c7773ba7dae7283db4bb6cee8",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "3ff851ec",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3f111919"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe48f5c2d73653a",
+              "secondaryPeakBits": "3fb99999a0000000",
+              "secondaryPeakKeyBits": "c034000000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "3ff851ec"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "histogram-db-domain",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 961280,
+        "pcmSha256": "d9b46b31bdf2ad9c8b922fd480b9a0da10fca02ffa694dca82bc1ba819468335",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 480696,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "c342e1e4fae4487ba79208975edf5047a97691e56a16537cce81d966842309a1"
+      },
+      "inputId": "histogram-db-domain",
+      "manifestOrder": 6,
+      "requestId": "a97116f448e0549fb73f192f11029fb5f96b0dee37665560d971e141f840551c",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "421d0000",
+              "index": 0,
+              "peakBits": "3dcccccd",
+              "rmsBits": "3a868b96"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fb99999a0000000",
+              "primaryPeakKeyBits": "c034000000000000",
+              "rmsSquareSumBits": "3ed619023de528b3",
+              "secondaryPeakBits": "3fb99999a0000000",
+              "secondaryPeakKeyBits": "c034000000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "421d0000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 240320,
+        "inputId": "loud-boundary-bin-ties",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1922560,
+        "pcmSha256": "9cb16d2e8edd38b7558c005081eed21128ac888b273c45adcda620d5854ebe50",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 961336,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "5b21bb6f7f497657c5805dd118ad805c31bad6e9effa7a14506a938368edc34a"
+      },
+      "inputId": "loud-boundary-bin-ties",
+      "manifestOrder": 7,
+      "requestId": "ffe2900cd36a12ca336520b6d78bc8378a468fea2619d41a0dc1c722c84a1d22",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "413f0419",
+              "index": 0,
+              "peakBits": "3f000000",
+              "rmsBits": "3db9744c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe0000000000000",
+              "primaryPeakKeyBits": "c018147ae147ae15",
+              "rmsSquareSumBits": "3fb4fdf3af6ad8e5",
+              "secondaryPeakBits": "3fe0000000000000",
+              "secondaryPeakKeyBits": "c018147ae147ae15"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 240320,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "413f0419"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "peak-order-low-then-high",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 961280,
+        "pcmSha256": "90ccd3cea6b1852cecab4b56ac1bf41ab77598314bb8c4ad3c86f5b2d3c40b40",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 480696,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "680ae1a7d9a480a5665330933be9e9b776a25e8726635163505094fa804d08ad"
+      },
+      "inputId": "peak-order-low-then-high",
+      "manifestOrder": 8,
+      "requestId": "b4a8ed15e83a94519615ee44e94a051b1e621346496f9a3c5057b77a63024665",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41480e56",
+              "index": 0,
+              "peakBits": "3f4b441f",
+              "rmsBits": "3e40e2bb"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe96883e0000000",
+              "primaryPeakKeyBits": "c000000000000000",
+              "rmsSquareSumBits": "3fc6b54345541f09",
+              "secondaryPeakBits": "3fe96dc260000000",
+              "secondaryPeakKeyBits": "c000000000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41480e56"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "peak-order-high-then-low",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 961280,
+        "pcmSha256": "e521ae06b73f57233a28ed1c15989aab5a35abfee6f7dee46ee9366e4ea8d451",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 480696,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "f7884af7a53ffac8915b163fdeb49b01e069858ba2ccf0f9b32db717aebd0df3"
+      },
+      "inputId": "peak-order-high-then-low",
+      "manifestOrder": 9,
+      "requestId": "2e854fc9da8997b3a8915a4bc81ce3b4720253f00efe839e238a33b4d18eac90",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4147f1aa",
+              "index": 0,
+              "peakBits": "3f4b6e13",
+              "rmsBits": "3e40e2bb"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe96dc260000000",
+              "primaryPeakKeyBits": "c000000000000000",
+              "rmsSquareSumBits": "3fc6b54345541f09",
+              "secondaryPeakBits": "3fe96883e0000000",
+              "secondaryPeakKeyBits": "c000000000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4147f1aa"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 1,
+        "inputId": "one-frame-nonzero",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 8,
+        "pcmSha256": "4cfa5b42ca669328764e67cd9a34bb8f90b16ed7ca8d85e8443783d7ccce15ed",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 60,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "9328c71b54bdcf658fb405a06c32b0ec4819b39ddc16a86a3b0616b07d48ba29"
+      },
+      "inputId": "one-frame-nonzero",
+      "manifestOrder": 10,
+      "requestId": "ecd4992936e82c1a28b68560a6ef9d4868f5715d7d08709b98b568099d46fde8",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "00000000",
+              "index": 0,
+              "peakBits": "3f000000",
+              "rmsBits": "3f3504f3"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe0000000000000",
+              "primaryPeakKeyBits": "c018147ae147ae15",
+              "rmsSquareSumBits": "3fe0000000000000",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 1,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 1,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 1,
+            "submittedFrames": 0,
+            "windowCount": 0
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "00000000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 2,
+        "inputId": "two-frame-negative",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 16,
+        "pcmSha256": "606e5166986dd9f186277d16e3d18bae3887a944a829487b59fd8672bbb20251",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 64,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "950f035497a3068b4eb711cac1673b576662467abfd4407d21f7ce1148d29823"
+      },
+      "inputId": "two-frame-negative",
+      "manifestOrder": 11,
+      "requestId": "66c8fda0dd337dadcdb91c2bf142951696cfead25fc26c45abe033e3553fe6df",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "00000000",
+              "index": 0,
+              "peakBits": "3f000000",
+              "rmsBits": "3f3504f3"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe0000000000000",
+              "primaryPeakKeyBits": "c018147ae147ae15",
+              "rmsSquareSumBits": "3fe0000000000000",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 2,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 2,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 2,
+            "submittedFrames": 0,
+            "windowCount": 0
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "00000000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "silent-mono",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "9612908c18c581ffea44e55e4a4b53fea69a400905368beda38ab5ad6134d7f8",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "0d8b5999e67fc2b3491ef2b5bd319a670af5f7f30f03bcdb10b0764d6eecca3b"
+      },
+      "inputId": "silent-mono",
+      "manifestOrder": 12,
+      "requestId": "910ea83f53ae61ec2f4575c980ebfce359e99687af5110425b2c4c5485e381c5",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "00000000",
+              "index": 0,
+              "peakBits": "00000000",
+              "rmsBits": "00000000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "0000000000000000",
+              "primaryPeakKeyBits": "c0f86a0000000000",
+              "rmsSquareSumBits": "0000000000000000",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "00000000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 2,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 240320,
+        "inputId": "stereo-silent-channel",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 3845120,
+        "pcmSha256": "b177bd40678170bd12d82d3e9d2571e4993a4ee764af707a6396a4b4fb073278",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 1922616,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "daa1e30fe6d68cca15d9eae35877caf01a97b49ce6069de63d8e111cb8dc0331"
+      },
+      "inputId": "stereo-silent-channel",
+      "manifestOrder": 13,
+      "requestId": "078f8816c1b843d5596ee47d0e27ad2499b174c5d469240c5aa15bfef5dd834d",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41400000",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3e809bcc"
+            },
+            {
+              "drBits": "00000000",
+              "index": 1,
+              "peakBits": "00000000",
+              "rmsBits": "00000000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe430cd618b7cf5",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "0000000000000000",
+              "primaryPeakKeyBits": "c0f86a0000000000",
+              "rmsSquareSumBits": "0000000000000000",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 2,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 240320,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "40c00000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 3,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 240320,
+        "inputId": "three-channel-arithmetic",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 5767680,
+        "pcmSha256": "f5c74e577aeefc617865ed0337c27a9e2dedd6f25ab9d17bce1a31c1693bc765",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 2883920,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "395d5b96f8f646b7f9400d123fb58175aee48fd7de08b004f28dcad88efa1aa5"
+      },
+      "inputId": "three-channel-arithmetic",
+      "manifestOrder": 14,
+      "requestId": "973224201ec0b2ad95e57df3ffdd786a7e2f4f7f53956b45ad7ab00ba699c56c",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41200000",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3ea1e89b"
+            },
+            {
+              "drBits": "41a00000",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "41f00000",
+              "index": 2,
+              "peakBits": "3f800000",
+              "rmsBits": "3d0186e2"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3ff000000756875c",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fb9999993029ce1",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 2,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3f847ae134c5ad1d",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            }
+          ],
+          "channels": 3,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 240320,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41a00000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 6,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 240320,
+        "inputId": "six-channel-lfe",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 11535360,
+        "pcmSha256": "0c9cda7b67a467ea71136018261634a60950f2d7781f88a4442278eb162512c7",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 5767760,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "aab3f7b406e9c136f5cad0a0f0d11f4754a171e3acd2e5ec84640fe36636e4ef"
+      },
+      "inputId": "six-channel-lfe",
+      "manifestOrder": 15,
+      "requestId": "2dbf1596b94a092d39b4b2e1ce19583de1414566517d9fd6e17a3ffc6a0485b3",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "40c00000",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3f004dce"
+            },
+            {
+              "drBits": "41100000",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3eb5aa1a"
+            },
+            {
+              "drBits": "41400000",
+              "index": 2,
+              "peakBits": "3f800000",
+              "rmsBits": "3e809bcc"
+            },
+            {
+              "drBits": "41f00000",
+              "index": 3,
+              "peakBits": "3f800000",
+              "rmsBits": "3d0186e2"
+            },
+            {
+              "drBits": "41700000",
+              "index": 4,
+              "peakBits": "3f800000",
+              "rmsBits": "3e361887"
+            },
+            {
+              "drBits": "41900000",
+              "index": 5,
+              "peakBits": "3f800000",
+              "rmsBits": "3e00e9f9"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "40041857ce198d95",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3ff4248f1fa94d6c",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 2,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe430cd618b7cf5",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 3,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3f847ae134c5ad1d",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 4,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fd43d135ec7069d",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 5,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fc44960b4c3506d",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            }
+          ],
+          "channels": 6,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 240320,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41700000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "histogram-lower-clamp",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 961280,
+        "pcmSha256": "603ba14918346462ff36780d565b84b511781ef096c72ff2e87bfeeede4041a9",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 480696,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "ab06ac487d20ca0732e4b681b53362d8aa030b14903dcbb4194975e8ef362f85"
+      },
+      "inputId": "histogram-lower-clamp",
+      "manifestOrder": 16,
+      "requestId": "d56778e34103c19387ee6bf53064559d0ebd38f7ceb901597e61ca5d3d7ea8be",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "421d5dcb",
+              "index": 0,
+              "peakBits": "3a83126f",
+              "rmsBits": "3716b44f"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3f50624de0000000",
+              "primaryPeakKeyBits": "c04e000000000000",
+              "rmsSquareSumBits": "3dfbb96f8e1e468a",
+              "secondaryPeakBits": "3f4e603d60000000",
+              "secondaryPeakKeyBits": "c04e547ae147ae15"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "421d5dcb"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 216288,
+        "inputId": "loud-target-n9",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1730304,
+        "pcmSha256": "d4b461f4c1ad8f3f783867ecf06e27375aa1ee225ff0dfd309ebf5241f99a4e0",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 865208,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "e1a94d3f3a2fd7efb7f206b54043d27a8329fada67ad105a1c9530dde98b3e31"
+      },
+      "inputId": "loud-target-n9",
+      "manifestOrder": 17,
+      "requestId": "c3feeec1aba43966e22dca81ad449e44b68fe53a8e55a408d43222b351ade055",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "40feb368",
+              "index": 0,
+              "peakBits": "3f000000",
+              "rmsBits": "3d9cdd67"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fe0000000000000",
+              "primaryPeakKeyBits": "c018147ae147ae15",
+              "rmsSquareSumBits": "3fab0899e8f205b2",
+              "secondaryPeakBits": "3fe0000000000000",
+              "secondaryPeakKeyBits": "c018147ae147ae15"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 216288,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 216288,
+            "windowCount": 9
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 216288,
+            "windowCount": 9
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "40feb368"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 240320,
+        "inputId": "sparse-nonzero-among-zero",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1922560,
+        "pcmSha256": "71f018f4deb3d54b6c7c485b2c785aebec02498103582e92b605ece53f4909a7",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 961336,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "22db06244ad26f29fbb0622ed5bc21d2d7d6276ba1a992a4c59970d698ecee43"
+      },
+      "inputId": "sparse-nonzero-among-zero",
+      "manifestOrder": 18,
+      "requestId": "ab4b88ced2d67bc01fcb292dfe2ea4de522e1bc3a74ef83c4755495e8d76d95d",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41a00000",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3d0186e2"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3f847ae142687d81",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 240320,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 240320,
+            "windowCount": 10
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41a00000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 2,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "rms-half-f64-stereo",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 769024,
+        "pcmSha256": "ad8bd4dc069e07ce289bb8a0da3c72ca775d4bb79c7bc17057a2205a75a637f9",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 769080,
+        "sourceEncoding": "wav-ieee-float64le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "25aa2ca5173905597c766ca34b61a0d61b1d7d591684b3b3cbce7c07b9ba4cca"
+      },
+      "inputId": "rms-half-f64-stereo",
+      "manifestOrder": 19,
+      "requestId": "e69b72ec22f92a15d94622d4aca9ee072aa56812755ad16b558cb7e289c87576",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410028f6",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3ecbb6ac"
+            },
+            {
+              "drBits": "41000000",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3ecbb6ad"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fd44366ed00fbff",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fd4436714a03e87",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            }
+          ],
+          "channels": 2,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4100147b"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 2,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "rms-half-f32-stereo",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 769024,
+        "pcmSha256": "df6f98eae5c78407c3d1de2ccda658f9a81d190a69ef0f789a7464e3d14e606b",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 384568,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "ecf5b3e09f99e9482fe6289e58649eafc6ac43c5644bc57c93f114e7e4408d36"
+      },
+      "inputId": "rms-half-f32-stereo",
+      "manifestOrder": 20,
+      "requestId": "f3bdca3f0af5c56f6d77214bc795b485be9402926b67556b81211a862a68b91e",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410028f6",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3ecbb6ad"
+            },
+            {
+              "drBits": "410028f6",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3ecbb6ad"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fd44366fdd4d156",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fd44366fdd4d156",
+              "secondaryPeakBits": "3ff0000000000000",
+              "secondaryPeakKeyBits": "0000000000000000"
+            }
+          ],
+          "channels": 2,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410028f6"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 2,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "peak-half-f64-stereo",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1922560,
+        "pcmSha256": "b54248fe1d8c2bb99a7e54896172756b34c4af0d1f004fb357808feec693a27d",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 1922616,
+        "sourceEncoding": "wav-ieee-float64le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "6a44778a6ca24bf0e7d9267ed2e50f18ea3ffb4a98ad59ff415f935385db7a23"
+      },
+      "inputId": "peak-half-f64-stereo",
+      "manifestOrder": 21,
+      "requestId": "fcb8da4302d536aad9d12cd576c3955fd35394374caa7c92167411c15c98e83e",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4197e1b1",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "4197f5c3",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fa9999999999bd5",
+              "secondaryPeakBits": "3fec78b2a27b5fbd",
+              "secondaryPeakKeyBits": "bff028f5c28f5c29"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fa9999999999ab7",
+              "secondaryPeakBits": "3fec80ed103df9e2",
+              "secondaryPeakKeyBits": "bff0000000000000"
+            }
+          ],
+          "channels": 2,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4197ebba"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 2,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 120160,
+        "inputId": "peak-half-f32-stereo",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1922560,
+        "pcmSha256": "05d30053e229464112848d7f17620ae419e8a21e2db5ae0a947603525281e2ba",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 961336,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "46df6c734e1de07b881765c7d251fa1e1c9e28f1f7b9cc7f0e1254ea8b280c91"
+      },
+      "inputId": "peak-half-f32-stereo",
+      "manifestOrder": 22,
+      "requestId": "de2b09753911e148f2423e934d2d8997b7c9462c256e08d7ff3e3b66e8030aeb",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4197f5c3",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "4197f5c3",
+              "index": 1,
+              "peakBits": "3f800000",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fa999999309eae0",
+              "secondaryPeakBits": "3fec80ed20000000",
+              "secondaryPeakKeyBits": "bff0000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fa999999309eae0",
+              "secondaryPeakBits": "3fec80ed20000000",
+              "secondaryPeakKeyBits": "bff0000000000000"
+            }
+          ],
+          "channels": 2,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 120160,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 120160,
+            "windowCount": 5
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4197f5c3"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 132479,
+        "inputId": "sr-44100-w-minus-one",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1059832,
+        "pcmSha256": "faa3d9d109ca8448cb996dae9ef6f1a7c2bdc3b66601c5278a64c15b60ae3858",
+        "sampleRateHz": 44100,
+        "sourceByteLength": 529972,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "b588c155933215340838cee7f182d025a6a31a8622d8ee15de1043cfbf95a7f4"
+      },
+      "inputId": "sr-44100-w-minus-one",
+      "manifestOrder": 23,
+      "requestId": "98943941eca3f15bddb396f8fb5ab1de1bd130d40d5ddb3d44c4ecd7842fda44",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4140a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3e800000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3faffffff5f2ca33",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 132479,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 44100,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 132479,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 132479,
+            "submittedFrames": 0,
+            "windowCount": 0
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4140a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 132481,
+        "inputId": "sr-44100-w-plus-one",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1059848,
+        "pcmSha256": "fe6149712d9c10b0777ccda26338e08c873b82e920b98eba43f2471d9da0c310",
+        "sampleRateHz": 44100,
+        "sourceByteLength": 529980,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "576e49b6080003989f104ddd96726f7a56e635bbcbff25efec9b43c84380c401"
+      },
+      "inputId": "sr-44100-w-plus-one",
+      "manifestOrder": 24,
+      "requestId": "bdff3140cce70f4eb1effe34bc1830018820052c85f9542f7319e5309bcafb75",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4040a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3f01460f"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe051eb854fc401",
+              "secondaryPeakBits": "3fe0000000000000",
+              "secondaryPeakKeyBits": "c018147ae147ae15"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 132481,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 44100,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 132481,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 1,
+            "submittedFrames": 132480,
+            "windowCount": 1
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4040a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 144194,
+        "inputId": "sr-48000-w-minus-one",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1153552,
+        "pcmSha256": "2b9ff695338d86ab453e571421d1f30665cdcb2ca70242c4b2bd54aa3d0de130",
+        "sampleRateHz": 48000,
+        "sourceByteLength": 576832,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "14d8e58eba2079b5fda1ba72a066c791d5c3958c74bf72a847c894f0a1c67036"
+      },
+      "inputId": "sr-48000-w-minus-one",
+      "manifestOrder": 25,
+      "requestId": "0b53a0431ca06ccd4292266b898b22239aabaec754dd3ce5ac55b57dd1d663c6",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4140a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3e800000"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fb0000004d700f1",
+              "secondaryPeakBits": "0000000000000000",
+              "secondaryPeakKeyBits": "c0f86a0000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 144194,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 48000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 144194,
+            "windowCount": 1
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 144194,
+            "submittedFrames": 0,
+            "windowCount": 0
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4140a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 144196,
+        "inputId": "sr-48000-w-plus-one",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1153568,
+        "pcmSha256": "61487da1c7bbcdf9d92c6f29dc7b8f2db293e868eace48edf5de0382698efb65",
+        "sampleRateHz": 48000,
+        "sourceByteLength": 576840,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "8fa08e407a1d29f2afacf516e87d2a4da7b547d8a2102b0cec323011948029fd"
+      },
+      "inputId": "sr-48000-w-plus-one",
+      "manifestOrder": 26,
+      "requestId": "0ac8b6d98c0cc15ef49d286998330163ca24089ae52a273c5848260f8093969e",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4040a3d7",
+              "index": 0,
+              "peakBits": "3f800000",
+              "rmsBits": "3f01460f"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3ff0000000000000",
+              "primaryPeakKeyBits": "0000000000000000",
+              "rmsSquareSumBits": "3fe051eb84b51ba3",
+              "secondaryPeakBits": "3fe0000000000000",
+              "secondaryPeakKeyBits": "c018147ae147ae15"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 144196,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 48000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 144196,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 1,
+            "submittedFrames": 144195,
+            "windowCount": 1
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4040a3d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 8,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "eight-channel-report-map",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 3076096,
+        "pcmSha256": "e8203eb21496431db94027b6b95a6cb4e27ab997bd77242ba2b6fd0900cdb8f9",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 1538128,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "5ed6c28587265097035ebc5c1c342996386a3dca4961433e01bc40511d0fc37d"
+      },
+      "inputId": "eight-channel-report-map",
+      "manifestOrder": 27,
+      "requestId": "b628d04c03a28391af22abdebafa5903854ba47e0b77bc4ea906cf52bf53469f",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "408024a2",
+              "index": 0,
+              "peakBits": "3f733333",
+              "rmsBits": "3f1972e6"
+            },
+            {
+              "drBits": "40fff2b8",
+              "index": 1,
+              "peakBits": "3f59999a",
+              "rmsBits": "3ead4199"
+            },
+            {
+              "drBits": "41400505",
+              "index": 2,
+              "peakBits": "3f400000",
+              "rmsBits": "3e40e9b2"
+            },
+            {
+              "drBits": "417ff8e7",
+              "index": 3,
+              "peakBits": "3f266666",
+              "rmsBits": "3dd2fb21"
+            },
+            {
+              "drBits": "419ffa60",
+              "index": 4,
+              "peakBits": "3f0ccccd",
+              "rmsBits": "3d6147ae"
+            },
+            {
+              "drBits": "41c008b4",
+              "index": 5,
+              "peakBits": "3ee66666",
+              "rmsBits": "3ce8989b"
+            },
+            {
+              "drBits": "41e002c9",
+              "index": 6,
+              "peakBits": "3eb33333",
+              "rmsBits": "3c644a62"
+            },
+            {
+              "drBits": "41fffd8b",
+              "index": 7,
+              "peakBits": "3e800000",
+              "rmsBits": "3bcdc614"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fee666660000000",
+              "primaryPeakKeyBits": "bfdccccccccccccd",
+              "rmsSquareSumBits": "3fe6fea2b1954af5",
+              "secondaryPeakBits": "3fee666660000000",
+              "secondaryPeakKeyBits": "bfdccccccccccccd"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3feb333340000000",
+              "primaryPeakKeyBits": "bff68f5c28f5c28f",
+              "rmsSquareSumBits": "3fcd506e5f1d7c3f",
+              "secondaryPeakBits": "3feb333340000000",
+              "secondaryPeakKeyBits": "bff68f5c28f5c28f"
+            },
+            {
+              "index": 2,
+              "primaryPeakBits": "3fe8000000000000",
+              "primaryPeakKeyBits": "c004000000000000",
+              "rmsSquareSumBits": "3fb22bec0afd98fa",
+              "secondaryPeakBits": "3fe8000000000000",
+              "secondaryPeakKeyBits": "c004000000000000"
+            },
+            {
+              "index": 3,
+              "primaryPeakBits": "3fe4ccccc0000000",
+              "primaryPeakKeyBits": "c00deb851eb851ec",
+              "rmsSquareSumBits": "3f95bc1f13ba5ba2",
+              "secondaryPeakBits": "3fe4ccccc0000000",
+              "secondaryPeakKeyBits": "c00deb851eb851ec"
+            },
+            {
+              "index": 4,
+              "primaryPeakBits": "3fe19999a0000000",
+              "primaryPeakKeyBits": "c014c28f5c28f5c3",
+              "rmsSquareSumBits": "3f78c7e283f4877c",
+              "secondaryPeakBits": "3fe19999a0000000",
+              "secondaryPeakKeyBits": "c014c28f5c28f5c3"
+            },
+            {
+              "index": 5,
+              "primaryPeakBits": "3fdcccccc0000000",
+              "primaryPeakKeyBits": "c01bc28f5c28f5c3",
+              "rmsSquareSumBits": "3f5a6a9e8acf6e9b",
+              "secondaryPeakBits": "3fdcccccc0000000",
+              "secondaryPeakKeyBits": "c01bc28f5c28f5c3"
+            },
+            {
+              "index": 6,
+              "primaryPeakBits": "3fd6666660000000",
+              "primaryPeakKeyBits": "c0223d70a3d70a3e",
+              "rmsSquareSumBits": "3f397292a17e2136",
+              "secondaryPeakBits": "3fd6666660000000",
+              "secondaryPeakKeyBits": "c0223d70a3d70a3e"
+            },
+            {
+              "index": 7,
+              "primaryPeakBits": "3fd0000000000000",
+              "primaryPeakKeyBits": "c028147ae147ae15",
+              "rmsSquareSumBits": "3f14acdab3f829e6",
+              "secondaryPeakBits": "3fd0000000000000",
+              "secondaryPeakKeyBits": "c028147ae147ae15"
+            }
+          ],
+          "channels": 8,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41900107"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "album-10-49-a",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e5b2a0cb88088504058b9b080dba5eb634ccfb96e5832b401aef912607ad818d",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "587ff25b5092809357f771341e5088c4917c814a0b532fbbb867898eea351f6c"
+      },
+      "inputId": "album-10-49-a",
+      "manifestOrder": 28,
+      "requestId": "99722b20b8d184ec117963d79e5985aa9622c2b4e2a3329445a6cca97dcb8513",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4127d70a",
+              "index": 0,
+              "peakBits": "3eab4e12",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fd569c240000000",
+              "primaryPeakKeyBits": "c023051eb851eb85",
+              "rmsSquareSumBits": "3f947ae1431b8c62",
+              "secondaryPeakBits": "3fd569c240000000",
+              "secondaryPeakKeyBits": "c023051eb851eb85"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4127d70a"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "album-10-49-b",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "69b24cb16bd78ed5e550f89a634f4e2a5a9aafc58707cdf542a27c02014ce5ff",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "d81ed671d0ea3fc8b6ef6dd1b098e55d3a6faed14618de836dda2390c715d4cd"
+      },
+      "inputId": "album-10-49-b",
+      "manifestOrder": 29,
+      "requestId": "02af5d09286680ec57c2d9edbc25e1286b06af5b79041f9a3bea2b61c63e2744",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4127d70a",
+              "index": 0,
+              "peakBits": "3eab4e12",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fd569c240000000",
+              "primaryPeakKeyBits": "c023051eb851eb85",
+              "rmsSquareSumBits": "3f947ae1431b8c62",
+              "secondaryPeakBits": "3fd569c240000000",
+              "secondaryPeakKeyBits": "c023051eb851eb85"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4127d70a"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "album-11-49",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "0497a2e765696e1ba5a8187b4d33ce3654f8e081d49916097263abfa9b348df5",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "8efb335a0c3cfab161d84a612e505962e43bf7e1953f2d340268940996745a93"
+      },
+      "inputId": "album-11-49",
+      "manifestOrder": 30,
+      "requestId": "f55cbb9b99371ad4cad5df4ac98cd28d98579a7c3f66e0a62bb657b5a326b2f1",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4137d70a",
+              "index": 0,
+              "peakBits": "3ec03514",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fd806a280000000",
+              "primaryPeakKeyBits": "c021051eb851eb85",
+              "rmsSquareSumBits": "3f947ae158777a38",
+              "secondaryPeakBits": "3fd806a280000000",
+              "secondaryPeakKeyBits": "c021051eb851eb85"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4137d70a"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "display-10-50",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "068c1b921ab43220d44d65c19b1bfc044d3c0837452865a5ee6bd1ea37ddcbd3",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "cecd4f01acd0912f1b35cd54dfb20a6dffba2e620cfa323e8f6577d61a280cc7"
+      },
+      "inputId": "display-10-50",
+      "manifestOrder": 31,
+      "requestId": "bd55b450e5d434b02499b00a4eb3fab9a4d600e8afcb6eecbdf2ced987dc5093",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41280000",
+              "index": 0,
+              "peakBits": "3eab8097",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fd57012e0000000",
+              "primaryPeakKeyBits": "c023000000000000",
+              "rmsSquareSumBits": "3f947ae15151ef21",
+              "secondaryPeakBits": "3fd57012e0000000",
+              "secondaryPeakKeyBits": "c023000000000000"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41280000"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 3,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "aggregate-narrow-low",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1153536,
+        "pcmSha256": "889acd7cc9940302e380ca465a7c415fac84087bdd1b3f559e2d226c1e956189",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 576848,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "622f674ef98d523bb17c05bdd9998a2723e82cb03966733c63e1c3582185acef"
+      },
+      "inputId": "aggregate-narrow-low",
+      "manifestOrder": 32,
+      "requestId": "67e28424a14114a4babcd29ec1b92685ab184cdc2502f11c9c02293dea467c1f",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "4147fbe8",
+              "index": 0,
+              "peakBits": "3ed7e23e",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "4147fbe8",
+              "index": 1,
+              "peakBits": "3ed7e23e",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "4147fbe8",
+              "index": 2,
+              "peakBits": "3ed7e23e",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fdafc47c0000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae13a5854bb",
+              "secondaryPeakBits": "3fdafc47c0000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3fdafc47c0000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae13a5854bb",
+              "secondaryPeakBits": "3fdafc47c0000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            },
+            {
+              "index": 2,
+              "primaryPeakBits": "3fdafc47c0000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae13a5854bb",
+              "secondaryPeakBits": "3fdafc47c0000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            }
+          ],
+          "channels": 3,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "4147fbe8"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 3,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "aggregate-narrow-high",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 1153536,
+        "pcmSha256": "e5e3db2d128224816ca8e0b557754c32686121ddccc5742b8f2f7d98668ac267",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 576848,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "336d1768263305076911544b309c344d05dbb26275a56be5c6f4b13aef88dd01"
+      },
+      "inputId": "aggregate-narrow-high",
+      "manifestOrder": 33,
+      "requestId": "ddc9d1ac90a088b74ba7bf637acd42c2edbf8d7a523da73d01d727f99c41787e",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "41480419",
+              "index": 0,
+              "peakBits": "3ed7eef8",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "41480419",
+              "index": 1,
+              "peakBits": "3ed7eef8",
+              "rmsBits": "3dcccccd"
+            },
+            {
+              "drBits": "41480419",
+              "index": 2,
+              "peakBits": "3ed7eef8",
+              "rmsBits": "3dcccccd"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fdafddf00000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae14b73b2aa",
+              "secondaryPeakBits": "3fdafddf00000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            },
+            {
+              "index": 1,
+              "primaryPeakBits": "3fdafddf00000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae14b73b2aa",
+              "secondaryPeakBits": "3fdafddf00000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            },
+            {
+              "index": 2,
+              "primaryPeakBits": "3fdafddf00000000",
+              "primaryPeakKeyBits": "c01e000000000000",
+              "rmsSquareSumBits": "3f947ae14b73b2aa",
+              "secondaryPeakBits": "3fdafddf00000000",
+              "secondaryPeakKeyBits": "c01e000000000000"
+            }
+          ],
+          "channels": 3,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "41480419"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-u8",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 48108,
+        "sourceEncoding": "wav-pcm-u8",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "cc5ec4d60254c2c16a4aaff80e577239c3bb4658e830ad8bff20e0fc9608351d"
+      },
+      "inputId": "host-decode-u8",
+      "manifestOrder": 34,
+      "requestId": "6955bbd443c1051008095e2d4b8fa957dd6984cc1bc7dad11d67f7d3bead5651",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-s16",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 96172,
+        "sourceEncoding": "wav-pcm-s16le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "940fa755f429e6a8484ac5e71837c92e2854975bdb51a860f4ee9cd7f25c0b04"
+      },
+      "inputId": "host-decode-s16",
+      "manifestOrder": 35,
+      "requestId": "3478c8b8d237ce67c41a1361a9438b69d084bd3dd183b6ddd8aceae4b96c4d6f",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-s24",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 144236,
+        "sourceEncoding": "wav-pcm-s24le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "6d5d30dc197044fb349cf289ee6c7b43f43046dd6cdf273dc723efb2b7a21dad"
+      },
+      "inputId": "host-decode-s24",
+      "manifestOrder": 36,
+      "requestId": "732324b40bdd69a02ba195dc66f92ee992113a9507fd346972baece1375a93e7",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-s32",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192300,
+        "sourceEncoding": "wav-pcm-s32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "503ec351fe1a01c0991959208536974586c3da9c03cd11f65d456dbb418813eb"
+      },
+      "inputId": "host-decode-s32",
+      "manifestOrder": 37,
+      "requestId": "502af058d8eb54afb22b00ca54024689b56b428df884ca03f25594ac7bcbf253",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-f32",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 192312,
+        "sourceEncoding": "wav-ieee-float32le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "6020659b806263a5d050d85bc5e7774b18336b641d5706f466a4706b0dd70e62"
+      },
+      "inputId": "host-decode-f32",
+      "manifestOrder": 38,
+      "requestId": "31ed2c3393633a5c219833f781a087cdd321c5de2b8f6136629699cab6c3dc7a",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    },
+    {
+      "claims": {
+        "compatibility": "none",
+        "foobarParity": "not_assessed",
+        "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
+      },
+      "input": {
+        "channels": 1,
+        "conversion": "strict_wav_sample_to_binary64",
+        "frames": 48064,
+        "inputId": "host-decode-f64",
+        "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+        "pcmByteLength": 384512,
+        "pcmSha256": "e18849ccc257d18dc41c79804ed8ebb5a3ff7665a32c65670e8d39f26bb50509",
+        "sampleRateHz": 8000,
+        "sourceByteLength": 384568,
+        "sourceEncoding": "wav-ieee-float64le",
+        "sourceKind": "manifest_wav_fixture",
+        "sourceSha256": "6f2473481ea65ba751b8f6248719381ce4b1a18e4afa5cc673849d8153c27d9e"
+      },
+      "inputId": "host-decode-f64",
+      "manifestOrder": 39,
+      "requestId": "19bc3347889675d5554a7002091a8a3a4c1690ef8393016ba6ecc5c88791e80d",
+      "result": {
+        "data": {
+          "channelResults": [
+            {
+              "drBits": "410f63d7",
+              "index": 0,
+              "peakBits": "3f7e0000",
+              "rmsBits": "3eb5132c"
+            }
+          ],
+          "channelStateAfterFinish": [
+            {
+              "index": 0,
+              "primaryPeakBits": "3fefc00000000000",
+              "primaryPeakKeyBits": "bfb1eb851eb851ec",
+              "rmsSquareSumBits": "3fd002839f30bee4",
+              "secondaryPeakBits": "3fefc00000000000",
+              "secondaryPeakKeyBits": "bfb1eb851eb851ec"
+            }
+          ],
+          "channels": 1,
+          "fpEnvironment": {
+            "after": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "037f"
+            },
+            "applied": {
+              "daz": false,
+              "exceptionsMasked": true,
+              "ftz": false,
+              "mxcsrBits": "00001f80",
+              "rounding": "nearest",
+              "x87ControlWordBits": "037f"
+            },
+            "before": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            },
+            "restored": {
+              "mxcsrBits": "00001fa0",
+              "x87ControlWordBits": "027f"
+            }
+          },
+          "frames": 48064,
+          "loaderMode": "private_staging_dll_load_dir_system32",
+          "runtimeArtifacts": [
+            {
+              "byteLength": 142336,
+              "name": "shared.dll",
+              "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+            },
+            {
+              "byteLength": 579920,
+              "name": "msvcp140.dll",
+              "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+            },
+            {
+              "byteLength": 109392,
+              "name": "vcruntime140.dll",
+              "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+            },
+            {
+              "byteLength": 49520,
+              "name": "vcruntime140_1.dll",
+              "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+            }
+          ],
+          "sampleRateHz": 8000,
+          "sessionAfterFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sessionBeforeFinish": {
+            "currentWindowFrames": 0,
+            "submittedFrames": 48064,
+            "windowCount": 2
+          },
+          "sharedServiceBoundary": {
+            "armedImportCount": 13,
+            "coreExecution": "fail_fast_iat_tripwire",
+            "loadLifecycle": "real_shared"
+          },
+          "trackDrBits": "410f63d7"
+        },
+        "kind": "success"
+      }
+    }
+  ],
+  "kind": "foo_dr_meter_108_core_suite_record",
+  "limitations": [
+    "No foobar decoder, component lifecycle, metadata, album grouping, or renderer was exercised.",
+    "Manifest WAV conversion is a harness operation, not a foobar decoder observation."
+  ],
+  "schemaVersion": 1,
+  "suiteId": "10e8d433a74dba864743692106d90f4f6a31ea6b742adde10149047e48b1697f",
+  "summary": {
+    "failed": 0,
+    "status": "success",
+    "succeeded": 39,
+    "total": 39
+  },
+  "target": {
+    "byteLength": 424448,
+    "runtimeArtifacts": [
+      {
+        "byteLength": 142336,
+        "name": "shared.dll",
+        "sha256": "f860ee48f9e88a4da575c8114a82a11e3d25ceb9c8ce3405f646917cf07c7e4d"
+      },
+      {
+        "byteLength": 579920,
+        "name": "msvcp140.dll",
+        "sha256": "003da4807acdc912e67edba49be574daa5238bb7acff871d8666d16f8072ff89"
+      },
+      {
+        "byteLength": 109392,
+        "name": "vcruntime140.dll",
+        "sha256": "a8f950b4357ec12cfccddc9094cca56a3d5244b95e09ea6e9a746489f2d58736"
+      },
+      {
+        "byteLength": 49520,
+        "name": "vcruntime140_1.dll",
+        "sha256": "e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f"
+      }
+    ],
+    "runtimeProfile": "fixed_foobar_2_25_10",
+    "sha256": "ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489"
+  }
+}

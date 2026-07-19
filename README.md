@@ -222,6 +222,7 @@ See:
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - [Reference-evidence policy](reference/README.md)
+- [Isolated x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
 
 ## Reference work and attribution
 
@@ -237,6 +238,14 @@ recorded under `reference/`. The current
 [clean-commit schema-v3 x64 safe-master conformance record](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
 documents its exact scope and remaining gaps. The profile remains `Unverified`
 until broader evidence and review justify a stronger statement.
+
+An accepted
+[39-input isolated x64 analyzer-core observation](reference/observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
+now exercises the fixed target directly without starting foobar2000. It verifies
+that boundary with one fresh worker per input and fail-fast tripwires on all 13
+ordinary `shared.dll` IAT entries during core calls. It does not verify foobar
+decoding, registration, metadata, album grouping, or rendering; its claims remain
+`compatibility: none` and `foobarParity: not_assessed`.
 
 ## License
 

@@ -1,0 +1,16 @@
+LIBRARY "shared"
+EXPORTS
+    "??0uCallStackTracker@@QEAA@PEBD@Z"=macinmeter_shared_shim_fail_fast
+    "??1uCallStackTracker@@QEAA@XZ"=macinmeter_shared_shim_fail_fast
+    GetInfiniteWaitEvent=macinmeter_shared_shim_fail_fast
+    stricmp_utf8=macinmeter_shared_shim_fail_fast
+    stricmp_utf8_ex=macinmeter_shared_shim_fail_fast
+    uAppendMenu=macinmeter_shared_shim_fail_fast
+    uBugCheck=macinmeter_shared_shim_fail_fast
+    uExceptFilterProc=macinmeter_shared_shim_fail_fast
+    uFormatSystemErrorMessage=macinmeter_shared_shim_fail_fast
+    uGetOpenFileName=macinmeter_shared_shim_fail_fast
+    uPrintCrashInfo_OnEvent=macinmeter_shared_shim_fail_fast
+    uPrintfV=macinmeter_shared_shim_fail_fast
+    uSetDlgItemText=macinmeter_shared_shim_fail_fast
+    macinmeter_shared_shim_marker_v1

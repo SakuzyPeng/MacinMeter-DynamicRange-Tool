@@ -12,6 +12,8 @@
 | [`experiments/`](experiments/README.md) | 可重复实验定义和输入生成参数 |
 | [`observations/`](observations/README.md) | 参考目标的原始输出和运行环境 |
 | [`static-analysis/`](static-analysis/README.md) | 固定二进制的受控静态分析证据 |
+| [`native/`](native/foo_dr_meter_108_core_worker/README.md) | 固定 x64 core worker 与 fail-fast host-service 边界 |
+| [`tools/`](tools/run_foo_dr_meter_108_core.py) | observation、隔离 core suite 与 conformance 工具 |
 | [`fixtures/`](fixtures/README.md) | 可公开或可重复生成的实验输入 |
 | [`specs/`](specs/README.md) | 带版本和证据等级的算法规格 |
 | [`conformance/`](conformance/README.md) | 参考观测与实现结果的差分摘要 |
@@ -44,6 +46,23 @@ unweighted DR token 四项一致性，以及 DR0 纳入的反事实；不把最�
 外推为精确 internal album mean、length weighting 或 host metadata parity。
 旧产物不因 successor 落地被改写。有限 conformance 不会把 candidate 升级为
 accepted，也不改变 `Unverified` 状态；完整 album 公式仍只有 E1 静态证据。
+
+固定 x64 target `ff3556ad` 现另有
+[`隔离 analyzer-core harness`](observations/CORE_HARNESS.md)。它不启动
+foobar2000，而是让每个输入进入一个全新 Windows x64 worker，直接调用
+init/push/finish。固定 complete-v2 safe-master 的 39 项输入已全部完成受控执行，
+记录见
+[`OBS-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719`](observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)。
+真实、固定的 `shared.dll` 被保留用于 DLL load/unload lifecycle；core 执行期间，
+目标的全部 13 个普通 `shared.dll` IAT 入口均由 fail-fast tripwire 接管。该边界
+可直接观察 session、channel state 与 result，但没有执行 foobar decode、
+registration、metadata、album 或 renderer。记录因此明确声明
+`compatibility: none` 与
+`foobarParity: not_assessed`，不能据此把 candidate 升级为 compatible。
+这些 raw result bits 与既有固定 foobar report 的
+[`窄字段对照`](conformance/conf-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719/record.md)
+得到 track DR 39/39、channel DR 62/62、channel RMS 62/62 和 overall peak
+39/39 精确匹配；该对照不扩大上述执行边界。
 
 ## 五类事实
 

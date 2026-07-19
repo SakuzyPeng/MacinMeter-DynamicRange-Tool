@@ -1,0 +1,61 @@
+{
+  "claims": {
+    "compatibility": "none",
+    "foobarParity": "not_assessed",
+    "scope": "four exported field classes on the fixed safe-master corpus",
+    "status": "compared_fields_match"
+  },
+  "differences": [],
+  "inputs": {
+    "channelValueCount": 62,
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "isolatedCoreSuiteSha256": "a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "normalizedReportSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "safeCaseCount": 39,
+    "targetSha256": "ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489"
+  },
+  "kind": "foo_dr_meter_108_isolated_core_report_comparison",
+  "notCompared": [
+    {
+      "fieldClass": "decoder and source-to-PCM behavior",
+      "reason": "the isolated suite uses deterministic harness conversion"
+    },
+    {
+      "fieldClass": "foobar host services and component lifecycle",
+      "reason": "the isolated worker calls only analyzer-core entry RVAs"
+    },
+    {
+      "fieldClass": "album aggregation and grouping",
+      "reason": "the core suite runs one input per worker and compares no footer"
+    },
+    {
+      "fieldClass": "remaining report renderer fields",
+      "reason": "overall RMS, duration, metadata, footer, labels, layout, encoding, and byte-for-byte text are outside this comparison"
+    }
+  ],
+  "policy": {
+    "channelDrDb": "decode finite non-negative binary32 drBits; fixed C-locale two-decimal renderer",
+    "channelRmsDbfs": "decode non-negative linear binary32 rmsBits; zero renders -inf, otherwise binary64 20*log10, narrow to binary32, then fixed C-locale two-decimal renderer",
+    "fixtureIdentity": "fixed corpus, manifest digest, exact 39 fixture IDs, exact manifest order, and per-item channel geometry",
+    "numericTolerance": 0,
+    "overallPeakDbfs": "maximum non-negative binary32 peakBits across channels; zero renders -inf, otherwise binary64 20*log10, narrow to binary32, then fixed C-locale two-decimal renderer",
+    "trackDr": "decode finite non-negative binary32 trackDrBits; truncate value plus 0.5"
+  },
+  "schemaVersion": 1,
+  "summary": {
+    "channelDrMatched": 62,
+    "channelDrTotal": 62,
+    "channelRmsMatched": 62,
+    "channelRmsTotal": 62,
+    "differenceCount": 0,
+    "fixtureSetExact": true,
+    "manifestOrderExact": true,
+    "overallPeakMatched": 39,
+    "overallPeakTotal": 39,
+    "status": "match",
+    "successfulCoreItems": 39,
+    "trackDrMatched": 39,
+    "trackDrTotal": 39
+  }
+}
