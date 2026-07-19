@@ -25,3 +25,9 @@
 - 已知采集限制。
 
 原始值与解释必须分开。算法解释写入 `specs/`，实现差分写入 `conformance/`。
+
+后续固定报告使用
+[`reference observation import harness`](HARNESS.md)
+建立或复核 observation 包。该流程离线重验 manifest、`FILES.sha256`、逐 fixture
+内容哈希、报告哈希与 manifest 顺序，并阻止私人绝对路径进入产物；它不运行
+foobar2000、候选模型或 MacinMeter。

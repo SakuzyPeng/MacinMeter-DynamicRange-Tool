@@ -1,0 +1,18 @@
+.expr /s masm
+.echo @@MM_CDB_PROBE schema=1 target_sha256=ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489
+sx- -c "" -c2 "" e06d7363
+sxn -h e06d7363
+sxn e06d7363
+.echo @@MM_CDB_EXCEPTION_POLICY_QUERY_BEGIN code=e06d7363
+sx
+.echo @@MM_CDB_EXCEPTION_POLICY_QUERY_END code=e06d7363
+lm m foo_dr_meter
+lm m foobar2000
+.printf "@@MM_CDB_MODULE base=%p init=%p push=%p finish=%p published=%p\n", foo_dr_meter, foo_dr_meter+0x8410, foo_dr_meter+0x89f0, foo_dr_meter+0x8df0, foo_dr_meter+0x91f0
+bp0 foo_dr_meter+0x8410 ".echo @@MM_CDB_EVENT event=INIT_ENTRY rva=0x8410; ~.; .printf \"@@MM_CDB_INIT session=%p sample_rate=%u channels=%u\\n\", @rcx, @edx, @r8d; r xmm3; gc"
+bp1 foo_dr_meter+0x89f0 ".echo @@MM_CDB_EVENT event=PUSH_ENTRY rva=0x89f0; ~.; .printf \"@@MM_CDB_PUSH session=%p pcm=%p frames=%u\\n\", @rcx, @rdx, @r8d; dq @rcx L0xe; gc"
+bp2 foo_dr_meter+0x8df0 ".echo @@MM_CDB_EVENT event=FINISH_ENTRY rva=0x8df0; ~.; .printf \"@@MM_CDB_FINISH session=%p result=%p weighting=%u\\n\", @rcx, @rdx, @r8b; dq @rcx L0xe; gc"
+bp3 foo_dr_meter+0x91f0 "~.; r rbp; .printf \"@@MM_CDB_TERMINAL_BEGIN event=TRACK_PUBLISHED rva=0x91f0 session=%p result=%p\\n\", @r13, @rbp; .if (@rbp == 0) { .echo @@MM_CDB_INVALID reason=null-result-pointer; bc *; qd } .else { r @$t1=dwo(@rbp+0xc); .if ((@$t1 < 1) || (@$t1 > 64)) { .printf \"@@MM_CDB_INVALID reason=channel-count value=%u\\n\", @$t1; bc *; qd } .else { .printf \"@@MM_CDB_RESULT track_dr_bits=0x%08x channel_count=%u sample_rate=%u frames=0x%I64x\\n\", dwo(@rbp), @$t1, dwo(@rbp+0x14), qwo(@rbp+0x20); dq @rbp L0xb; .for (r @$t0=0; @$t0 < @$t1; r @$t0=@$t0+1) { .printf \"@@MM_CDB_CHANNEL index=%u dr_bits=0x%08x peak_bits=0x%08x rms_bits=0x%08x\\n\", @$t0, dwo(poi(@rbp+0x28)+(@$t0*4)), dwo(poi(@rbp+0x38)+(@$t0*4)), dwo(poi(@rbp+0x48)+(@$t0*4)); }; .echo @@MM_CDB_SNAPSHOT_COMPLETE event=TRACK_PUBLISHED; bc *; qd } }"
+bl
+.echo @@MM_CDB_ARMED
+g

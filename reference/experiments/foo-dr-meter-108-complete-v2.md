@@ -166,6 +166,12 @@ Manifest 可以记录实际生成 PCM 的统计量、参数和内容哈希，但
 4. 一次执行测量并导出一份未经清洗的原始报告；
 5. 不为了静态已解规则重复运行，也不拆成逐项人工采集。
 
+导出后使用
+[`reference observation import harness`](../observations/HARNESS.md)
+把固定 target/experiment 元数据、canonical manifest、实际 fixture 内容和原始
+报告绑定成可重复验证的 observation 包。该导入层不会运行 foobar2000、候选模型
+或 MacinMeter，也不会把 CLI 中的本机路径写入证据。
+
 三个 album focused playlist 只用于可选的静态回归诊断，不是本轮常规采集义务。
 现有 safe-master footer 可以支持受限的最终 token/DR0 反事实，但不能替代精确
 internal mean 或 length-weighting 证据；这些规则优先继续静态/动态逆向，不要求

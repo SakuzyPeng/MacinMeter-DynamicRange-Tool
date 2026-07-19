@@ -18,6 +18,10 @@
 - [`SA-foo-dr-meter-108-x64-report-renderer-20260718`](sa-foo-dr-meter-108-x64-report-renderer-20260718.md)：
   固定 1.0.8 x64 duration 舍入与 minute/hour/day/week 格式、channel label
   mapper，以及插件 renderer 与宿主 footer metadata 的边界。
+- [`SA-foo-dr-meter-108-x64-dynamic-probe-plan-20260718`](sa-foo-dr-meter-108-x64-dynamic-probe-plan-20260718.md)：
+  固定 1.0.8 x64 analyzer/session/channel/result 布局，以及可按 ASLR module
+  base 加 RVA 执行的 core、album writer 与 renderer 动态探针计划；该计划尚未
+  动态执行。
 - [`SA-foo-dr-meter-108-x86-cross-arch-20260718`](sa-foo-dr-meter-108-x86-cross-arch-20260718.md)：
   固定 1.0.8 x86 核心、x86/x64 精度差异、album 与报告数据流。
 

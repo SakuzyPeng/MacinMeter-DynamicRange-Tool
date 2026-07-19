@@ -132,13 +132,18 @@ def normalize(report_path: Path, manifest_path: Path, playlist: str) -> dict[str
         if match is None:
             raise ReportError(f"cannot parse track row {index}: {line!r}")
         rest = match.group("rest")
-        if not rest.startswith(expected_stem):
+        stem_suffix = (
+            rest[len(expected_stem) :]
+            if rest.startswith(expected_stem)
+            else ""
+        )
+        if not stem_suffix or not stem_suffix[0].isspace():
             observed = rest.split(maxsplit=1)[0] if rest else ""
             raise ReportError(
                 f"track row {index} is {observed!r}; expected {expected_stem!r}"
             )
 
-        tokens = list(CHANNEL_TOKEN_RE.finditer(rest[len(expected_stem) :]))
+        tokens = list(CHANNEL_TOKEN_RE.finditer(stem_suffix))
         if len(tokens) != channels * 2:
             raise ReportError(
                 f"track {expected_stem!r} has {len(tokens)} channel tokens; "
