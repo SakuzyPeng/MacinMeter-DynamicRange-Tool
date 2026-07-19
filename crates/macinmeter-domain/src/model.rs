@@ -205,10 +205,15 @@ pub struct PcmStreamInfo {
     pub expected_frames: Option<u64>,
 }
 
+/// A non-empty block of finite, frame-aligned interleaved PCM samples.
+///
+/// The retained channel count is the geometry used to interpret the samples;
+/// semantic channel layout remains a stream-level property.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PcmBlock {
     samples: Vec<f64>,
     frames: usize,
+    channels: ChannelCount,
 }
 
 impl PcmBlock {
@@ -235,7 +240,11 @@ impl PcmBlock {
             ));
         }
         let frames = samples.len() / channels.as_usize();
-        Ok(Self { samples, frames })
+        Ok(Self {
+            samples,
+            frames,
+            channels,
+        })
     }
 
     pub fn samples(&self) -> &[f64] {
@@ -244,6 +253,11 @@ impl PcmBlock {
 
     pub const fn frames(&self) -> usize {
         self.frames
+    }
+
+    /// Return the channel geometry used when this block was constructed.
+    pub const fn channels(&self) -> ChannelCount {
+        self.channels
     }
 }
 
@@ -461,17 +475,34 @@ mod tests {
     #[test]
     fn pcm_block_requires_finite_complete_frames() {
         let channels = ChannelCount::new(2).unwrap();
-        assert!(PcmBlock::new(Vec::new(), channels).is_err());
-        assert!(PcmBlock::new(vec![0.0], channels).is_err());
-        assert!(PcmBlock::new(vec![0.0, f64::NAN], channels).is_err());
-        assert!(PcmBlock::new(vec![f64::INFINITY, 0.0], channels).is_err());
-        assert!(PcmBlock::new(vec![0.0, f64::NEG_INFINITY], channels).is_err());
-        assert_eq!(
-            PcmBlock::new(vec![0.0, 0.0, 0.5, -0.5], channels)
-                .unwrap()
-                .frames(),
-            2
-        );
+        for error in [
+            PcmBlock::new(Vec::new(), channels).unwrap_err(),
+            PcmBlock::new(vec![0.0], channels).unwrap_err(),
+            PcmBlock::new(vec![0.0, f64::NAN], channels).unwrap_err(),
+            PcmBlock::new(vec![f64::INFINITY, 0.0], channels).unwrap_err(),
+            PcmBlock::new(vec![0.0, f64::NEG_INFINITY], channels).unwrap_err(),
+        ] {
+            assert_eq!(error.code, ErrorCode::DecodeFailed);
+            assert_eq!(error.stage, AnalysisStage::Decode);
+        }
+
+        let samples = vec![0.0, 0.0, 0.5, -0.5];
+        let block = PcmBlock::new(samples.clone(), channels).unwrap();
+        assert_eq!(block.samples(), samples);
+        assert_eq!(block.frames(), 2);
+        assert_eq!(block.channels(), channels);
+    }
+
+    #[test]
+    fn pcm_block_preserves_the_geometry_used_for_construction() {
+        let samples = vec![0.0; 6];
+        let stereo = PcmBlock::new(samples.clone(), ChannelCount::new(2).unwrap()).unwrap();
+        let three_channel = PcmBlock::new(samples, ChannelCount::new(3).unwrap()).unwrap();
+
+        assert_eq!(stereo.channels().get(), 2);
+        assert_eq!(stereo.frames(), 3);
+        assert_eq!(three_channel.channels().get(), 3);
+        assert_eq!(three_channel.frames(), 2);
     }
 
     #[test]

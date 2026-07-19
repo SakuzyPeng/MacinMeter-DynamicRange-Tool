@@ -40,6 +40,8 @@ fn rust_api_analyzes_a_repository_wave_fixture() {
     assert_eq!(report.source.channels.get(), 2);
     assert_eq!(report.source.expected_frames, Some(441));
     assert_eq!(report.pcm.expected_frames, Some(441));
+    assert_eq!(report.source.channels, report.pcm.spec.channels);
+    assert_eq!(report.pcm.spec.channels, report.analysis.stream.channels);
     assert_eq!(report.analysis.frames_seen, 441);
     assert_eq!(report.analysis.channels.len(), 2);
     assert_eq!(
@@ -167,6 +169,14 @@ fn request_cancellation_stops_batch_before_a_result_is_published() {
             .iter()
             .any(|event| matches!(event, AnalysisEvent::FileStarted { index: 0, .. }))
     );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AnalysisEvent::FileFinished {
+            index: 0,
+            success: false,
+            ..
+        }
+    )));
     assert!(
         !events
             .iter()
@@ -195,7 +205,9 @@ fn cancellation_requested_at_discovery_start_stops_before_walking_inputs() {
 }
 
 #[test]
-fn analysis_emits_a_terminal_eof_progress_event() {
+fn analysis_emits_ordered_file_and_terminal_progress_events() {
+    let path = fixture("tiny_duration.wav");
+    let display_path = path.display().to_string();
     let cancellation = CancellationToken::new();
     let events = Arc::new(Mutex::new(Vec::new()));
     let events_for_sink = Arc::clone(&events);
@@ -205,19 +217,81 @@ fn analysis_emits_a_terminal_eof_progress_event() {
 
     Analyzer::new()
         .analyze_file_with_control(
-            AnalyzeRequest::new(fixture("tiny_duration.wav")),
+            AnalyzeRequest::new(path),
             &ExecutionControl::new(&cancellation, &progress),
         )
         .unwrap();
 
     let events = events.lock().unwrap();
-    assert!(events.iter().any(|event| matches!(
-        event,
-        AnalysisEvent::DecodeProgress {
-            progress: macinmeter::DecodeProgress { eof: true, .. },
+    assert!(matches!(
+        events.first(),
+        Some(AnalysisEvent::FileStarted { index: 0, .. })
+    ));
+    assert!(matches!(
+        events.last(),
+        Some(AnalysisEvent::FileFinished {
+            index: 0,
+            success: true,
+            ..
+        })
+    ));
+
+    let progress_events = &events[1..events.len() - 1];
+    assert!(!progress_events.is_empty());
+    let mut previous_decoded_frames = 0;
+    let mut eof_events = 0;
+    for (position, event) in progress_events.iter().enumerate() {
+        let AnalysisEvent::DecodeProgress {
+            index,
+            display_path: event_path,
+            progress,
+        } = event
+        else {
+            panic!("only decode progress may occur between file lifecycle events");
+        };
+        assert_eq!(*index, 0);
+        assert_eq!(event_path, &display_path);
+        assert!(progress.decoded_frames >= previous_decoded_frames);
+        previous_decoded_frames = progress.decoded_frames;
+        if progress.eof {
+            eof_events += 1;
+            assert_eq!(position, progress_events.len() - 1);
+        }
+    }
+    assert_eq!(eof_events, 1);
+}
+
+#[test]
+fn probe_failure_emits_started_then_finished_without_decode_progress() {
+    let cancellation = CancellationToken::new();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let events_for_sink = Arc::clone(&events);
+    let progress = move |event: AnalysisEvent| {
+        events_for_sink.lock().unwrap().push(event);
+    };
+
+    let error = Analyzer::new()
+        .analyze_file_with_control(
+            AnalyzeRequest::new(fixture("fake_audio.wav")),
+            &ExecutionControl::new(&cancellation, &progress),
+        )
+        .expect_err("unsupported content must fail probing");
+
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+    let events = events.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0],
+        AnalysisEvent::FileStarted { index: 0, .. }
+    ));
+    assert!(matches!(
+        &events[1],
+        AnalysisEvent::FileFinished {
+            index: 0,
+            success: false,
             ..
         }
-    )));
+    ));
 }
 
 #[test]

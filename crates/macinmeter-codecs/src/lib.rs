@@ -42,6 +42,9 @@ pub trait PcmSource {
 
     /// Decode the next non-empty, frame-aligned PCM block.
     ///
+    /// Every returned block's channel geometry must equal
+    /// `self.stream_info().spec.channels`.
+    ///
     /// Once EOF is returned, every later call must also return EOF. Once an
     /// error is returned, later calls must return the same structured error
     /// and may never resume with data.

@@ -1,5 +1,7 @@
 use crate::{DecoderFactory, ReadOutcome, SUPPORTED_EXTENSIONS};
-use macinmeter_domain::{AnalysisError, ContainerFormat, ErrorCode, SourceCodec};
+use macinmeter_domain::{
+    AnalysisError, ChannelCount, ContainerFormat, ErrorCode, PcmBlock, SourceCodec,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -32,6 +34,14 @@ impl Drop for TestFile {
     }
 }
 
+fn assert_block_geometry(block: &PcmBlock, expected_channels: ChannelCount) {
+    assert_eq!(block.channels(), expected_channels);
+    assert_eq!(
+        block.samples().len(),
+        block.frames() * block.channels().as_usize()
+    );
+}
+
 #[test]
 fn extensions_are_discovery_only_and_exclude_aifc() {
     assert_eq!(
@@ -59,11 +69,13 @@ fn decodes_pcm_wave_by_content_with_a_wrong_extension() {
     );
     assert_eq!(opened.reader.stream_info().expected_frames, Some(3));
     assert_eq!(opened.reader.progress().decoded_frames, 0);
+    let expected_channels = opened.reader.stream_info().spec.channels;
 
     let block = match opened.reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
     };
+    assert_block_geometry(&block, expected_channels);
     assert_eq!(block.frames(), 3);
     assert_eq!(block.samples().len(), 6);
     assert!((block.samples()[0] + 1.0).abs() < 0.0001);
@@ -86,10 +98,12 @@ fn decodes_float32_wave_to_f64_pcm() {
 
     assert_eq!(opened.source.codec, SourceCodec::PcmFloat);
     assert_eq!(opened.source.bits_per_sample, Some(32));
+    let expected_channels = opened.reader.stream_info().spec.channels;
     let block = match opened.reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
     };
+    assert_block_geometry(&block, expected_channels);
     let expected: Vec<f64> = samples.iter().map(|sample| f64::from(*sample)).collect();
     assert_eq!(block.samples(), expected);
     assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
@@ -109,10 +123,12 @@ fn preserves_float64_wave_samples_without_f32_narrowing() {
 
     assert_eq!(opened.source.codec, SourceCodec::PcmFloat);
     assert_eq!(opened.source.bits_per_sample, Some(64));
+    let expected_channels = opened.reader.stream_info().spec.channels;
     let block = match opened.reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated WAV unexpectedly contained no PCM"),
     };
+    assert_block_geometry(&block, expected_channels);
     assert_eq!(block.samples(), samples);
     assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
 }
@@ -142,11 +158,13 @@ fn decodes_uncompressed_aiff() {
     assert_eq!(opened.source.sample_rate.get(), 44_100);
     assert_eq!(opened.source.channels.get(), 1);
     assert_eq!(opened.source.expected_frames, Some(5));
+    let expected_channels = opened.reader.stream_info().spec.channels;
 
     let block = match opened.reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("generated AIFF unexpectedly contained no PCM"),
     };
+    assert_block_geometry(&block, expected_channels);
     assert_eq!(block.frames(), 5);
     assert!((block.samples()[0] + 1.0).abs() < 0.0001);
     assert!(block.samples()[4] > 0.999);
@@ -177,11 +195,13 @@ fn decodes_embedded_flac_and_verifies_its_frame_count() {
     assert_eq!(opened.source.channels.get(), 1);
     assert_eq!(opened.source.bits_per_sample, Some(16));
     assert_eq!(opened.source.expected_frames, Some(8));
+    let expected_channels = opened.reader.stream_info().spec.channels;
 
     let block = match opened.reader.read_block().unwrap() {
         ReadOutcome::Data(block) => block,
         ReadOutcome::Eof => panic!("embedded FLAC unexpectedly contained no PCM"),
     };
+    assert_block_geometry(&block, expected_channels);
     assert_eq!(block.frames(), 8);
     assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
     assert_eq!(opened.reader.diagnostics().decoded_frames, 8);
