@@ -16,6 +16,23 @@ bytes and do not require libFLAC, FFmpeg, network access, or personal audio.
 Corpus geometry, hashes, PCM oracles, and provenance are recorded in its
 [`manifest.json`](../tests/fixtures/native-pcm-v1/manifest.json).
 
+## Malformed media regression corpus
+
+The committed `tests/fixtures/malformed-media-v1` corpus is generated,
+audited, and verified with:
+
+```bash
+python3 scripts/generate-malformed-media-v1.py           # regenerate
+python3 scripts/generate-malformed-media-v1.py --check   # audit committed bytes
+python3 scripts/verify-malformed-corpus.py               # per-case subprocess + timeout
+```
+
+The verifier needs a built CLI (`cargo build`). Every case runs in its own
+subprocess with a wall-clock timeout; POSIX platforms additionally apply
+`RLIMIT_AS`. See
+[`tests/fixtures/malformed-media-v1/README.md`](../tests/fixtures/malformed-media-v1/README.md)
+for the corpus contract and the hidden `malformed-dev` fuzz seam.
+
 M0 期间，预提交钩子只提供快速、本地、确定性的基础反馈：
 
 ```bash

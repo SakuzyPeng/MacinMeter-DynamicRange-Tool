@@ -8,6 +8,36 @@ mod symphonia_source;
 #[cfg(test)]
 mod tests;
 
+/// Hidden byte-oriented dev entry for local fuzz runners.
+///
+/// This module is not part of the product decode surface: the default API stays
+/// the `Path`-based [`DecoderFactory`]. It only exists behind the non-default
+/// `malformed-dev` feature so an external fuzz harness can drive the
+/// first-party WAV/AIFF chunk parsers directly from in-memory bytes.
+#[cfg(feature = "malformed-dev")]
+#[doc(hidden)]
+pub mod dev {
+    use crate::container::{ContainerSignature, identify_container, inspect_aiff, inspect_wave};
+    use macinmeter_domain::AnalysisError;
+    use std::{io::Cursor, path::Path};
+
+    /// Run container signature identification and, for WAV/AIFF, the full
+    /// structural chunk inspection over `bytes`.
+    ///
+    /// FLAC bytes stop after signature identification: FLAC structure is owned
+    /// by the Symphonia probe, not by the first-party chunk parsers this entry
+    /// is meant to fuzz.
+    pub fn probe_container_bytes(bytes: &[u8]) -> Result<(), AnalysisError> {
+        let path = Path::new("<memory>");
+        let mut cursor = Cursor::new(bytes);
+        match identify_container(&mut cursor, path)? {
+            ContainerSignature::Wave => inspect_wave(&mut cursor, path).map(|_| ()),
+            ContainerSignature::Aiff => inspect_aiff(&mut cursor, path).map(|_| ()),
+            ContainerSignature::Flac => Ok(()),
+        }
+    }
+}
+
 use macinmeter_domain::{
     AnalysisError, DecodeDiagnostics, DecodeProgress, PcmBlock, PcmStreamInfo, SourceInfo,
 };

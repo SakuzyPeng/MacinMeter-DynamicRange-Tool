@@ -40,14 +40,14 @@ struct AiffLengthPatch {
     bytes: [u8; 4],
 }
 
-pub(crate) fn identify_container(
-    file: &mut File,
+pub(crate) fn identify_container<R: Read + Seek>(
+    reader: &mut R,
     path: &Path,
 ) -> Result<ContainerSignature, AnalysisError> {
     let mut header = [0_u8; 12];
     let mut read = 0;
     while read < header.len() {
-        match file.read(&mut header[read..]) {
+        match reader.read(&mut header[read..]) {
             Ok(0) => break,
             Ok(count) => read += count,
             Err(error) => {
@@ -108,11 +108,17 @@ fn is_truncated_signature(observed: &[u8], signature: &[u8], minimum_header: usi
     }
 }
 
-pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, AnalysisError> {
-    file.seek(SeekFrom::Start(0))
+pub(crate) fn inspect_wave<R: Read + Seek>(
+    reader: &mut R,
+    path: &Path,
+) -> Result<WaveInfo, AnalysisError> {
+    let file_len = stream_len(reader, path)?;
+    reader
+        .seek(SeekFrom::Start(0))
         .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?;
     let mut riff_header = [0_u8; 12];
-    file.read_exact(&mut riff_header)
+    reader
+        .read_exact(&mut riff_header)
         .map_err(|error| malformed_wave_io(path, error))?;
 
     let riff_size = u64::from(u32::from_le_bytes([
@@ -130,10 +136,6 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
             None,
         )
     })?;
-    let file_len = file
-        .metadata()
-        .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?
-        .len();
     if riff_end > file_len || riff_end < 12 {
         return Err(analysis_error(
             path,
@@ -167,10 +169,12 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
             ));
         }
 
-        file.seek(SeekFrom::Start(position))
+        reader
+            .seek(SeekFrom::Start(position))
             .map_err(|error| malformed_wave_io(path, error))?;
         let mut chunk_header = [0_u8; 8];
-        file.read_exact(&mut chunk_header)
+        reader
+            .read_exact(&mut chunk_header)
             .map_err(|error| malformed_wave_io(path, error))?;
         let chunk_len = u32::from_le_bytes([
             chunk_header[4],
@@ -227,10 +231,12 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
                     None,
                 ));
             }
-            file.seek(SeekFrom::Start(header_end))
+            reader
+                .seek(SeekFrom::Start(header_end))
                 .map_err(|error| malformed_wave_io(path, error))?;
             let mut format_prefix = [0_u8; 16];
-            file.read_exact(&mut format_prefix)
+            reader
+                .read_exact(&mut format_prefix)
                 .map_err(|error| malformed_wave_io(path, error))?;
             let format_tag = u16::from_le_bytes([format_prefix[0], format_prefix[1]]);
             let channels = u16::from_le_bytes([format_prefix[2], format_prefix[3]]);
@@ -304,7 +310,8 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
             }
             if chunk_len == 18 {
                 let mut extension_size = [0_u8; 2];
-                file.read_exact(&mut extension_size)
+                reader
+                    .read_exact(&mut extension_size)
                     .map_err(|error| malformed_wave_io(path, error))?;
                 let extension_size = u16::from_le_bytes(extension_size);
                 if extension_size != 0 {
@@ -406,11 +413,17 @@ pub(crate) fn inspect_wave(file: &mut File, path: &Path) -> Result<WaveInfo, Ana
     })
 }
 
-pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, AnalysisError> {
-    file.seek(SeekFrom::Start(0))
+pub(crate) fn inspect_aiff<R: Read + Seek>(
+    reader: &mut R,
+    path: &Path,
+) -> Result<AiffInfo, AnalysisError> {
+    let file_len = stream_len(reader, path)?;
+    reader
+        .seek(SeekFrom::Start(0))
         .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?;
     let mut form_header = [0_u8; 12];
-    file.read_exact(&mut form_header)
+    reader
+        .read_exact(&mut form_header)
         .map_err(|error| malformed_aiff_io(path, error))?;
 
     let form_size = u64::from(u32::from_be_bytes([
@@ -428,10 +441,6 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
             None,
         )
     })?;
-    let file_len = file
-        .metadata()
-        .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?
-        .len();
     if form_end > file_len || form_end < 12 {
         return Err(analysis_error(
             path,
@@ -466,10 +475,12 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
             ));
         }
 
-        file.seek(SeekFrom::Start(position))
+        reader
+            .seek(SeekFrom::Start(position))
             .map_err(|error| malformed_aiff_io(path, error))?;
         let mut chunk_header = [0_u8; 8];
-        file.read_exact(&mut chunk_header)
+        reader
+            .read_exact(&mut chunk_header)
             .map_err(|error| malformed_aiff_io(path, error))?;
         let chunk_len = u32::from_be_bytes([
             chunk_header[4],
@@ -527,7 +538,8 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
                 ));
             }
             let mut common_prefix = [0_u8; 18];
-            file.read_exact(&mut common_prefix)
+            reader
+                .read_exact(&mut common_prefix)
                 .map_err(|error| malformed_aiff_io(path, error))?;
             let declared_channels = i16::from_be_bytes([common_prefix[0], common_prefix[1]]);
             if declared_channels <= 0 {
@@ -596,7 +608,8 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
                 )
             })?;
             let mut sound_header = [0_u8; 8];
-            file.read_exact(&mut sound_header)
+            reader
+                .read_exact(&mut sound_header)
                 .map_err(|error| malformed_aiff_io(path, error))?;
             let offset = u32::from_be_bytes([
                 sound_header[0],
@@ -701,6 +714,12 @@ pub(crate) fn inspect_aiff(file: &mut File, path: &Path) -> Result<AiffInfo, Ana
         pcm,
         length_patch,
     })
+}
+
+fn stream_len<R: Read + Seek>(reader: &mut R, path: &Path) -> Result<u64, AnalysisError> {
+    reader
+        .seek(SeekFrom::End(0))
+        .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))
 }
 
 fn parse_aiff_integer_sample_rate(path: &Path, bytes: [u8; 10]) -> Result<u32, AnalysisError> {

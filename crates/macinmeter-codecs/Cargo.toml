@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Hidden dev-only seam for local fuzz runners; never enabled by the product.
+malformed-dev = []
+
 [dependencies]
 macinmeter-domain = { path = "../macinmeter-domain" }
 symphonia.workspace = true

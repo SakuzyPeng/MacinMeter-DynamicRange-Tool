@@ -1161,3 +1161,45 @@ fn aiff_with_ssnd_embedded_in_overlong_comm() -> Vec<u8> {
     bytes.splice(38..38, competing_ssnd);
     bytes
 }
+
+#[test]
+fn container_parsers_consume_in_memory_bytes_through_the_byte_seam() {
+    use crate::container::{ContainerSignature, identify_container, inspect_aiff, inspect_wave};
+    use std::io::Cursor;
+
+    let path = Path::new("in-memory.bin");
+
+    let wave = pcm16_wave(48_000, &multiblock_pcm16_wave_frames());
+    let mut cursor = Cursor::new(wave.as_slice());
+    assert_eq!(
+        identify_container(&mut cursor, path).unwrap(),
+        ContainerSignature::Wave
+    );
+    let info = inspect_wave(&mut cursor, path).unwrap();
+    assert_eq!(info.pcm.sample_rate, 48_000);
+    assert_eq!(info.pcm.channels, 2);
+    assert_eq!(
+        info.declared_frames,
+        multiblock_pcm16_wave_frames().len() as u64
+    );
+
+    let aiff = pcm16_aiff(44_100, &[i16::MIN, i16::MAX]);
+    let mut cursor = Cursor::new(aiff.as_slice());
+    assert_eq!(
+        identify_container(&mut cursor, path).unwrap(),
+        ContainerSignature::Aiff
+    );
+    let info = inspect_aiff(&mut cursor, path).unwrap();
+    assert_eq!(info.pcm.sample_rate, 44_100);
+    assert_eq!(info.pcm.bits_per_sample, 16);
+
+    // Structural failures surface directly from bytes, without any file.
+    let mut truncated = Cursor::new(&wave[..30]);
+    assert_eq!(
+        identify_container(&mut truncated, path).unwrap(),
+        ContainerSignature::Wave
+    );
+    let error = inspect_wave(&mut truncated, path).unwrap_err();
+    assert_eq!(error.code, ErrorCode::MalformedMedia);
+    assert_eq!(error.stage, AnalysisStage::Probe);
+}

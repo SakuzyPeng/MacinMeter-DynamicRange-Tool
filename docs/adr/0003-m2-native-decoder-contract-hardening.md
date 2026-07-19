@@ -292,6 +292,22 @@ fuzz/sanitizer 是独立的本地或手动任务：
 内存上限并记录限制方式。M2 的声明只覆盖已保存 corpus，不声称证明所有字节输入
 永不 hang 或分配有界。
 
+截至 2026-07-20，本切片已完成：
+
+- 提交 `tests/fixtures/malformed-media-v1`：34 个确定性 case，覆盖 WAV/AIFF
+  chunk 结构（截断、长度越界/下溢、非法字段、重复 chunk、固定 seed 的
+  尺寸域 XOR）、FLAC 包失败（magic、STREAMINFO 截断、帧内字节翻转、中途截断、
+  末字节翻转）与跨容器输入（未知内容、空文件）；manifest 记录每 case 的派生
+  操作、SHA-256 与预期错误码/阶段；
+- 第一方 WAV/AIFF parser 改为接受 `Read + Seek` 的字节接缝，crate 内测试可
+  直接消费 in-memory bytes；非默认 `malformed-dev` feature 暴露隐藏
+  `dev::probe_container_bytes` fuzz 入口，默认产品 API 不变；
+- workspace 回归测试逐 case 校验字节身份、结构化失败、无 EOF/partial success
+  与 decode 终态 sticky；`scripts/verify-malformed-corpus.py` 以逐 case 子进程
+  + 30s timeout 执行，POSIX 上施加 `RLIMIT_AS`（默认 2 GiB），无该接口平台
+  跳过并记录；`scripts/generate-malformed-media-v1.py --check` 审计提交字节与
+  确定性再生成一致。
+
 ### 9. 新能力必须经过明确准入
 
 新增 container/codec route 合并为 stable 前必须：

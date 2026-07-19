@@ -1,0 +1,421 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-truncated-signature",
+      "operation": "truncate to the first 8 bytes",
+      "path": "wav-truncated-signature.wav",
+      "sha256": "990101b7fe647c61094c8ba47a3c2066d37449b8f233852ea3cf9e03b756e45a",
+      "sizeBytes": 8,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-truncated-mid-fmt",
+      "operation": "truncate to the first 30 bytes",
+      "path": "wav-truncated-mid-fmt.wav",
+      "sha256": "eec590db570bde576927220686d861239003498e7ed4641aff164b40ad4ae9d9",
+      "sizeBytes": 30,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-riff-size-overrun",
+      "operation": "set the RIFF size field to 60 (u32le at offset 4)",
+      "path": "wav-riff-size-overrun.wav",
+      "sha256": "2e33d26aad10b27f633282dde52d254470c541887dfcba27f35e74411dbae2d9",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-riff-size-underrun",
+      "operation": "set the RIFF size field to 28 (u32le at offset 4)",
+      "path": "wav-riff-size-underrun.wav",
+      "sha256": "cfe11d718b1ec69a6259637d38d76191fc5a821ef2deec20486974f01e68a465",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-data-length-overrun",
+      "operation": "set the data chunk length to 0xFFFFFF00 (u32le at offset 40)",
+      "path": "wav-data-length-overrun.wav",
+      "sha256": "a093b1e0b1cb74bec919dabb5d2d9b86f5676d0f2745058fb83ed821719b7f67",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-zero-channels",
+      "operation": "set the fmt channel count to 0 (u16le at offset 22)",
+      "path": "wav-zero-channels.wav",
+      "sha256": "0ae7b230ee0b591ecc5446b613ad5cd7db52e2f814ff86128dd566f026a23b13",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-mp3-format-tag",
+      "operation": "set the fmt format tag to 0x0055 (u16le at offset 20)",
+      "path": "wav-mp3-format-tag.wav",
+      "sha256": "0533e47af448b872d7513f23171f8698e23432227ca70a2ba64b7f6722c57fcf",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-format-tag",
+      "operation": "set the fmt format tag to 0xFFFE (u16le at offset 20)",
+      "path": "wav-extensible-format-tag.wav",
+      "sha256": "6a0d747bb39dd0b03b202d96d018486a2ac512a8f0788995f3ff4bf939437385",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-unaligned-data-length",
+      "operation": "set the data chunk length to 15 (u32le at offset 40)",
+      "path": "wav-unaligned-data-length.wav",
+      "sha256": "108d4a864568f9702b0234aa2c01cebb2529eeca5086f5b52f7adb903b9fcfe4",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-12bit-depth",
+      "operation": "set the fmt bits per sample to 12 (u16le at offset 34)",
+      "path": "wav-12bit-depth.wav",
+      "sha256": "1087625904c4c4a571ac770b4a9d9a3cadb9da20706c2df66366fa9775c88cb5",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-float-48bit-depth",
+      "operation": "set the fmt bits per sample to 48 (u16le at offset 34)",
+      "path": "wav-float-48bit-depth.wav",
+      "sha256": "2007b35928d66db56b7100e6587220a9acd6b3efcb6dd1ea219fe884a2cbc3b3",
+      "sizeBytes": 76,
+      "source": "wav-float32-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-duplicate-fmt",
+      "operation": "rename the data chunk id to \"fmt \" (offset 36)",
+      "path": "wav-duplicate-fmt.wav",
+      "sha256": "90732d5a8aac39587cdc24906162537e221560bf6d4a9d314780bd91240f704d",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-truncated-comm",
+      "operation": "truncate to the first 20 bytes",
+      "path": "aiff-truncated-comm.aiff",
+      "sha256": "5f860b38b880777eb8a9c62fe1f2900fec751d677f16538838c63487edd7e59f",
+      "sizeBytes": 20,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-comm-size-19",
+      "operation": "set the COMM chunk length to 19 (u32be at offset 16)",
+      "path": "aiff-comm-size-19.aiff",
+      "sha256": "5187165bb4149898f2067e241b58ffa29e898261d3ac466deec8782cc4b82707",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-negative-channels",
+      "operation": "set the COMM channel count to -2 (i16be at offset 20)",
+      "path": "aiff-negative-channels.aiff",
+      "sha256": "715bac7073244b30fd76bb1c1ddddc7b9d8c4a10d3bee8ddace3f6b5476b534f",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-frame-count-mismatch",
+      "operation": "set the COMM frame count to 5 (u32be at offset 22)",
+      "path": "aiff-frame-count-mismatch.aiff",
+      "sha256": "05c92430dd0403cc73a45c3c07f21f94f1047bb70688cc6432db7d2f80d86fce",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-nan-sample-rate",
+      "operation": "set the 80-bit sample rate exponent to 0x7FFF (offset 28)",
+      "path": "aiff-nan-sample-rate.aiff",
+      "sha256": "d30d3657a280ef13699e9758abe86e34b79a360da11bc6838d3c0060dd33b43d",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "aiff-fractional-sample-rate",
+      "operation": "set the 80-bit sample rate to 44100.5 (offset 28)",
+      "path": "aiff-fractional-sample-rate.aiff",
+      "sha256": "8029cf3064f8bb916f7c4a3b5eced39481205a5804b530ddc1f2c6bf4c7fd4f6",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "aiff-nonzero-ssnd-offset",
+      "operation": "set the SSND offset to 2 (u32be at offset 46)",
+      "path": "aiff-nonzero-ssnd-offset.aiff",
+      "sha256": "e42eebd8aafd880bc8f1d69bb31ae12701d64f474c1de5299fb2fbcf57d24b4c",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-duplicate-ssnd",
+      "operation": "append a copy of the SSND chunk and grow the FORM size by 32",
+      "path": "aiff-duplicate-ssnd.aiff",
+      "sha256": "bcf27f658706379731a879ca8c753c648b379d2f7836ad886358ebe697e408fa",
+      "sizeBytes": 102,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "aifc-signature",
+      "operation": "replace the form type with \"AIFC\" (offset 8)",
+      "path": "aifc-signature.aiff",
+      "sha256": "d21eff12f840863914e084be5839849452d11276a585be95b79a6ab3d699bf02",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "flac-bad-magic",
+      "operation": "replace the stream marker with \"fLaX\" (offset 0)",
+      "path": "flac-bad-magic.flac",
+      "sha256": "2d9291e3bab635b47468dbf8e5373b0009ab2375e8ca970d8d1e8546ddf0a7a3",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "flac-truncated-streaminfo",
+      "operation": "truncate to the first 20 bytes",
+      "path": "flac-truncated-streaminfo.flac",
+      "sha256": "b1e29c030344dffb2a99a638622d209aea7b0adaff192ab7c9603a27d9ca5a9f",
+      "sizeBytes": 20,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "decode_failed",
+        "stage": "decode"
+      },
+      "id": "flac-frame-byte-flip",
+      "operation": "xor the byte at offset 641 with 0x01",
+      "path": "flac-frame-byte-flip.flac",
+      "sha256": "7f3e5699e711ca959c4e2f27654da7a749a19ac235749c9356f7f5f2e6119cae",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "decode_failed",
+        "stage": "decode"
+      },
+      "id": "flac-truncated-mid-frame",
+      "operation": "truncate to the first 600 bytes",
+      "path": "flac-truncated-mid-frame.flac",
+      "sha256": "b4c484d70d6196a3ff81ccd7aec6383510a11b287c354bc22c4a46afac2783c0",
+      "sizeBytes": 600,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "decode_failed",
+        "stage": "decode"
+      },
+      "id": "flac-terminal-byte-corruption",
+      "operation": "xor the final byte with 0xFF",
+      "path": "flac-terminal-byte-corruption.flac",
+      "sha256": "cf782a053114bedbd065d98ffba804ae117aadbc393931d3e76148af5e13181b",
+      "sizeBytes": 941,
+      "source": "flac-pcm-s16-stereo-multiblock.flac"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "unknown-content",
+      "operation": "64 deterministic xorshift64 bytes from seed 0x4D4D_0001",
+      "path": "unknown-content.bin",
+      "sha256": "4e9f67bfe29dea2ba07d2389c5e73fbc2e44972e1e4315626ae4b07be3be5016",
+      "sizeBytes": 64,
+      "source": null
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "empty-file",
+      "operation": "zero bytes",
+      "path": "empty-file.bin",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "source": null
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-seeded-riff-flip-1",
+      "operation": "xor the RIFF size field with xorshift64(1) mask 0x40822041",
+      "path": "wav-seeded-riff-flip-1.wav",
+      "seed": 1,
+      "sha256": "d7fddc805daf41becb6ffe242bfccb5d5e1017010f20570bd0119ab65a220098",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-seeded-form-flip-1",
+      "operation": "xor the FORM size field with xorshift64(1) mask 0x40822041",
+      "path": "aiff-seeded-form-flip-1.aiff",
+      "seed": 1,
+      "sha256": "962d1ca404eaa90a9fdd945e1745adfdd5514f701898e026ed92db99ad31af16",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-seeded-riff-flip-2",
+      "operation": "xor the RIFF size field with xorshift64(2) mask 0x81044082",
+      "path": "wav-seeded-riff-flip-2.wav",
+      "seed": 2,
+      "sha256": "439896d1a20b38f43f306a41e63e8268391a3b70f54eac2a0af5b001c50ffe8c",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-seeded-form-flip-2",
+      "operation": "xor the FORM size field with xorshift64(2) mask 0x81044082",
+      "path": "aiff-seeded-form-flip-2.aiff",
+      "seed": 2,
+      "sha256": "914a54ffbd8a10cceec260ec673c914b13cd6932a97fc0fb489efa83b9bd7bc1",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-seeded-riff-flip-3",
+      "operation": "xor the RIFF size field with xorshift64(3) mask 0xc18660c3",
+      "path": "wav-seeded-riff-flip-3.wav",
+      "seed": 3,
+      "sha256": "d2b913dff5c52d1470eea5b257f87e2d505bc18813093e7dcd142741832c70c8",
+      "sizeBytes": 60,
+      "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "aiff-seeded-form-flip-3",
+      "operation": "xor the FORM size field with xorshift64(3) mask 0xc18660c3",
+      "path": "aiff-seeded-form-flip-3.aiff",
+      "seed": 3,
+      "sha256": "4cb7574fec86793fd049843f76e450f0b2d4f02f00e97dab41a79b72b931c948",
+      "sizeBytes": 70,
+      "source": "aiff-pcm-s16-stereo.aiff"
+    }
+  ],
+  "corpusId": "malformed-media-v1",
+  "notes": "Deterministic byte-level derivations of committed native-pcm-v1 fixtures. Expected codes/stages are product regression targets for exactly these files; they do not claim behavior for all byte inputs.",
+  "sourceCorpus": "native-pcm-v1"
+}
