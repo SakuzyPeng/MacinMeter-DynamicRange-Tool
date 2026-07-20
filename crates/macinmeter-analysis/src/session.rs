@@ -10,6 +10,8 @@ use macinmeter_domain::{
     FiniteF64, MAX_ANALYSIS_CHANNELS, StreamSpec, TrackAggregate, TrackReportMetrics,
 };
 
+const FRAME_MAJOR_VALIDATION_MIN_CHANNELS: usize = 5;
+
 /// A one-pass analysis session for a single PCM stream.
 ///
 /// The stream specification and algorithm profile are immutable after
@@ -96,7 +98,9 @@ impl AnalyzerSession {
                 channel_count
             )));
         }
-        if samples.iter().any(|sample| !sample.is_finite()) {
+
+        let numeric_safety = self.inspect_numeric_safety(samples);
+        if numeric_safety == NumericSafetyInspection::NonFinite {
             return Err(analysis_error(
                 "interleaved PCM chunk contains a non-finite sample",
             ));
@@ -110,7 +114,13 @@ impl AnalyzerSession {
             .checked_add(chunk_frames_u64)
             .ok_or_else(|| resource_error("total PCM frame count exceeds the supported range"))?;
 
-        self.validate_numeric_safety(samples)?;
+        if let NumericSafetyInspection::Overflow {
+            channel_index,
+            failure,
+        } = numeric_safety
+        {
+            return Err(failure.into_error(channel_index));
+        }
 
         for frame in samples.chunks_exact(channel_count) {
             for (channel, sample) in self.channels.iter_mut().zip(frame) {
@@ -127,8 +137,26 @@ impl AnalyzerSession {
         Ok(())
     }
 
-    fn validate_numeric_safety(&self, samples: &[f64]) -> Result<(), AnalysisError> {
+    fn inspect_numeric_safety(&self, samples: &[f64]) -> NumericSafetyInspection {
         let channel_count = self.stream.channels.as_usize();
+        // The contiguous finite scan and lane strides remain cheaper at small
+        // geometries. From five channels onward, one frame-major pass avoids
+        // repeatedly walking the interleaved block with a widening stride.
+        if channel_count < FRAME_MAJOR_VALIDATION_MIN_CHANNELS {
+            self.inspect_numeric_safety_channel_major(samples, channel_count)
+        } else {
+            self.inspect_numeric_safety_frame_major(samples, channel_count)
+        }
+    }
+
+    fn inspect_numeric_safety_channel_major(
+        &self,
+        samples: &[f64],
+        channel_count: usize,
+    ) -> NumericSafetyInspection {
+        if samples.iter().any(|sample| !sample.is_finite()) {
+            return NumericSafetyInspection::NonFinite;
+        }
 
         for (channel_index, channel) in self.channels.iter().enumerate() {
             let mut sum_squares = channel.current_sum_squares;
@@ -139,32 +167,36 @@ impl AnalyzerSession {
                 let magnitude = sample.abs();
                 let square = magnitude * magnitude;
                 if !square.is_finite() {
-                    return Err(analysis_error(format!(
-                        "PCM sample in channel {channel_index} is too large to square without overflow"
-                    )));
+                    return NumericSafetyInspection::Overflow {
+                        channel_index,
+                        failure: NumericSafetyFailure::SampleSquare,
+                    };
                 }
 
                 sum_squares += square;
                 if !sum_squares.is_finite() {
-                    return Err(analysis_error(format!(
-                        "PCM square accumulation in channel {channel_index} exceeds the finite f64 range"
-                    )));
+                    return NumericSafetyInspection::Overflow {
+                        channel_index,
+                        failure: NumericSafetyFailure::SquareAccumulation,
+                    };
                 }
 
                 frames_in_window += 1;
                 let rms2 = window_rms_squared(sum_squares, frames_in_window);
                 if !rms2.is_finite() {
-                    return Err(analysis_error(format!(
-                        "PCM window RMS in channel {channel_index} exceeds the finite f64 range"
-                    )));
+                    return NumericSafetyInspection::Overflow {
+                        channel_index,
+                        failure: NumericSafetyFailure::WindowRms,
+                    };
                 }
 
                 if frames_in_window == self.window_frames {
                     sum_window_rms2 += rms2;
                     if !sum_window_rms2.is_finite() {
-                        return Err(analysis_error(format!(
-                            "overall RMS accumulation in channel {channel_index} exceeds the finite f64 range"
-                        )));
+                        return NumericSafetyInspection::Overflow {
+                            channel_index,
+                            failure: NumericSafetyFailure::OverallRmsAccumulation,
+                        };
                     }
                     sum_squares = 0.0;
                     frames_in_window = 0;
@@ -172,7 +204,53 @@ impl AnalyzerSession {
             }
         }
 
-        Ok(())
+        NumericSafetyInspection::Valid
+    }
+
+    fn inspect_numeric_safety_frame_major(
+        &self,
+        samples: &[f64],
+        channel_count: usize,
+    ) -> NumericSafetyInspection {
+        debug_assert!(channel_count >= FRAME_MAJOR_VALIDATION_MIN_CHANNELS);
+        debug_assert_eq!(channel_count, self.channels.len());
+        debug_assert!(channel_count <= usize::from(MAX_ANALYSIS_CHANNELS));
+
+        let mut shadows = [NumericSafetyShadow::EMPTY; MAX_ANALYSIS_CHANNELS as usize];
+        for (shadow, channel) in shadows.iter_mut().zip(&self.channels) {
+            *shadow = NumericSafetyShadow::from_channel(channel);
+        }
+
+        let mut frames_in_window = self.frames_in_window;
+        for frame in samples.chunks_exact(channel_count) {
+            frames_in_window += 1;
+            let completes_window = frames_in_window == self.window_frames;
+
+            for (channel_index, sample) in frame.iter().copied().enumerate() {
+                if !sample.is_finite() {
+                    return NumericSafetyInspection::NonFinite;
+                }
+
+                shadows[channel_index].observe(sample, frames_in_window, completes_window);
+            }
+
+            if completes_window {
+                frames_in_window = 0;
+            }
+        }
+
+        shadows[..channel_count]
+            .iter()
+            .enumerate()
+            .find_map(|(channel_index, shadow)| {
+                shadow
+                    .failure
+                    .map(|failure| NumericSafetyInspection::Overflow {
+                        channel_index,
+                        failure,
+                    })
+            })
+            .unwrap_or(NumericSafetyInspection::Valid)
     }
 
     /// Finalizes every non-empty tail window and returns the complete analysis.
@@ -227,6 +305,101 @@ impl AnalyzerSession {
             channel.finalize_window(frames);
         }
         self.frames_in_window = 0;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NumericSafetyShadow {
+    sum_squares: f64,
+    sum_window_rms2: f64,
+    failure: Option<NumericSafetyFailure>,
+}
+
+impl NumericSafetyShadow {
+    const EMPTY: Self = Self {
+        sum_squares: 0.0,
+        sum_window_rms2: 0.0,
+        failure: None,
+    };
+
+    fn from_channel(channel: &ChannelAccumulator) -> Self {
+        Self {
+            sum_squares: channel.current_sum_squares,
+            sum_window_rms2: channel.sum_window_rms2,
+            failure: None,
+        }
+    }
+
+    #[inline]
+    fn observe(&mut self, sample: f64, frames_in_window: usize, completes_window: bool) {
+        if self.failure.is_some() {
+            return;
+        }
+
+        let magnitude = sample.abs();
+        let square = magnitude * magnitude;
+        if !square.is_finite() {
+            self.failure = Some(NumericSafetyFailure::SampleSquare);
+            return;
+        }
+
+        self.sum_squares += square;
+        if !self.sum_squares.is_finite() {
+            self.failure = Some(NumericSafetyFailure::SquareAccumulation);
+            return;
+        }
+
+        let rms2 = window_rms_squared(self.sum_squares, frames_in_window);
+        if !rms2.is_finite() {
+            self.failure = Some(NumericSafetyFailure::WindowRms);
+            return;
+        }
+
+        if completes_window {
+            self.sum_window_rms2 += rms2;
+            if !self.sum_window_rms2.is_finite() {
+                self.failure = Some(NumericSafetyFailure::OverallRmsAccumulation);
+                return;
+            }
+            self.sum_squares = 0.0;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericSafetyInspection {
+    Valid,
+    NonFinite,
+    Overflow {
+        channel_index: usize,
+        failure: NumericSafetyFailure,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericSafetyFailure {
+    SampleSquare,
+    SquareAccumulation,
+    WindowRms,
+    OverallRmsAccumulation,
+}
+
+impl NumericSafetyFailure {
+    fn into_error(self, channel_index: usize) -> AnalysisError {
+        match self {
+            Self::SampleSquare => analysis_error(format!(
+                "PCM sample in channel {channel_index} is too large to square without overflow"
+            )),
+            Self::SquareAccumulation => analysis_error(format!(
+                "PCM square accumulation in channel {channel_index} exceeds the finite f64 range"
+            )),
+            Self::WindowRms => analysis_error(format!(
+                "PCM window RMS in channel {channel_index} exceeds the finite f64 range"
+            )),
+            Self::OverallRmsAccumulation => analysis_error(format!(
+                "overall RMS accumulation in channel {channel_index} exceeds the finite f64 range"
+            )),
+        }
     }
 }
 

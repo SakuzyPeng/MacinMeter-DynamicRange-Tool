@@ -252,6 +252,64 @@ fn safe_signal(frames: usize, channels: usize, frame_offset: usize) -> Vec<f64> 
     samples
 }
 
+fn channel_major_numeric_safety_reference(
+    session: &AnalyzerSession,
+    samples: &[f64],
+) -> NumericSafetyInspection {
+    if samples.iter().any(|sample| !sample.is_finite()) {
+        return NumericSafetyInspection::NonFinite;
+    }
+
+    let channel_count = session.stream.channels.as_usize();
+    for (channel_index, channel) in session.channels.iter().enumerate() {
+        let mut sum_squares = channel.current_sum_squares;
+        let mut sum_window_rms2 = channel.sum_window_rms2;
+        let mut frames_in_window = session.frames_in_window;
+
+        for sample in samples.iter().skip(channel_index).step_by(channel_count) {
+            let magnitude = sample.abs();
+            let square = magnitude * magnitude;
+            if !square.is_finite() {
+                return NumericSafetyInspection::Overflow {
+                    channel_index,
+                    failure: NumericSafetyFailure::SampleSquare,
+                };
+            }
+
+            sum_squares += square;
+            if !sum_squares.is_finite() {
+                return NumericSafetyInspection::Overflow {
+                    channel_index,
+                    failure: NumericSafetyFailure::SquareAccumulation,
+                };
+            }
+
+            frames_in_window += 1;
+            let rms2 = window_rms_squared(sum_squares, frames_in_window);
+            if !rms2.is_finite() {
+                return NumericSafetyInspection::Overflow {
+                    channel_index,
+                    failure: NumericSafetyFailure::WindowRms,
+                };
+            }
+
+            if frames_in_window == session.window_frames {
+                sum_window_rms2 += rms2;
+                if !sum_window_rms2.is_finite() {
+                    return NumericSafetyInspection::Overflow {
+                        channel_index,
+                        failure: NumericSafetyFailure::OverallRmsAccumulation,
+                    };
+                }
+                sum_squares = 0.0;
+                frames_in_window = 0;
+            }
+        }
+    }
+
+    NumericSafetyInspection::Valid
+}
+
 #[test]
 fn chunk_plans_preserve_complete_session_bits_matrix() {
     let window = 3;
@@ -293,6 +351,67 @@ fn chunk_plans_preserve_complete_session_bits_matrix() {
                     SessionBits::from(&actual),
                     expected,
                     "{channel_count} channels, {frames} frames, {variant}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn frame_major_numeric_inspection_matches_the_channel_major_error_contract() {
+    let rms_overflow = f64::MAX.sqrt() * 0.75;
+    assert!((rms_overflow * rms_overflow).is_finite());
+
+    for channel_count in [1, 2, 3, 4, 5, 6, 8, 16, usize::from(MAX_ANALYSIS_CHANNELS)] {
+        for prefix_frames in [0, 1, 2, 3, 4, 7] {
+            let mut actual = session(1, channel_count, ChannelLayout::Unknown);
+            actual
+                .push_interleaved(&safe_signal(prefix_frames, channel_count, 0))
+                .unwrap();
+
+            let mut cases = vec![
+                ("empty", Vec::new()),
+                ("finite", safe_signal(7, channel_count, prefix_frames + 10)),
+            ];
+
+            for (label, sample_index, value) in [
+                ("NaN first", 0, f64::NAN),
+                (
+                    "positive infinity middle",
+                    channel_count + channel_count / 2,
+                    f64::INFINITY,
+                ),
+                (
+                    "negative infinity last",
+                    3 * channel_count - 1,
+                    f64::NEG_INFINITY,
+                ),
+                ("square overflow", 2 * channel_count, f64::MAX),
+                ("window RMS overflow", channel_count, rms_overflow),
+            ] {
+                let mut samples = safe_signal(3, channel_count, prefix_frames + 100);
+                samples[sample_index] = value;
+                cases.push((label, samples));
+            }
+
+            let mut non_finite_precedence = safe_signal(3, channel_count, prefix_frames + 200);
+            non_finite_precedence[0] = f64::MAX;
+            non_finite_precedence[3 * channel_count - 1] = f64::NAN;
+            cases.push(("non-finite precedence", non_finite_precedence));
+
+            if channel_count > 1 {
+                let mut lower_channel_precedence =
+                    safe_signal(3, channel_count, prefix_frames + 300);
+                lower_channel_precedence[1] = rms_overflow;
+                lower_channel_precedence[2 * channel_count] = f64::MAX;
+                cases.push(("lower channel precedence", lower_channel_precedence));
+            }
+
+            for (label, samples) in cases {
+                assert_eq!(
+                    actual.inspect_numeric_safety(&samples),
+                    channel_major_numeric_safety_reference(&actual, &samples),
+                    "{channel_count} channels, {prefix_frames} prefix frames, {label}"
                 );
             }
         }
@@ -410,6 +529,38 @@ fn invalid_pushes_are_bitwise_transactional() {
         &high_window,
         "overall RMS accumulation overflow in last lane",
     );
+}
+
+#[test]
+fn numeric_rejection_preserves_non_finite_and_channel_error_precedence() {
+    let channel_count = 3;
+    let rms_overflow = f64::MAX.sqrt() * 0.75;
+
+    let mut lower_channel_wins = session(1, channel_count, ChannelLayout::Unknown);
+    let mut numeric_failures = safe_signal(3, channel_count, 0);
+    numeric_failures[1] = rms_overflow;
+    numeric_failures[2 * channel_count] = f64::MAX;
+    let error = lower_channel_wins
+        .push_interleaved(&numeric_failures)
+        .unwrap_err();
+    assert_eq!(
+        error.message,
+        "PCM sample in channel 0 is too large to square without overflow"
+    );
+    assert_eq!(lower_channel_wins.frames_seen(), 0);
+
+    let mut non_finite_wins = session(1, channel_count, ChannelLayout::Unknown);
+    let mut mixed_failures = safe_signal(3, channel_count, 0);
+    mixed_failures[0] = f64::MAX;
+    mixed_failures[3 * channel_count - 1] = f64::NAN;
+    let error = non_finite_wins
+        .push_interleaved(&mixed_failures)
+        .unwrap_err();
+    assert_eq!(
+        error.message,
+        "interleaved PCM chunk contains a non-finite sample"
+    );
+    assert_eq!(non_finite_wins.frames_seen(), 0);
 }
 
 #[test]
