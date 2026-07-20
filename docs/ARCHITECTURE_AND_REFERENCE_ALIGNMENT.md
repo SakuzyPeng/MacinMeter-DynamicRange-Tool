@@ -205,9 +205,9 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | TEST-005 | DONE | 处理 ignored/弱断言测试 | 旧弱测试随 legacy 路径删除；新测试使用明确 oracle |
 | CI-001 | DONE | 缩减为 opt-in workspace 验证 | 单手动 Ubuntu job，不再使用旧 path filter/release |
 | CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
-| CI-003 | TODO | 修复 GUI release 链 | release 依赖 GUI build 并上传实际 GUI 制品 |
+| CI-003 | DONE | 隔离 GUI release 链 | M5 改为显式本地 current-host DMG staging 与实际制品验证；按 opt-in CI 决策不上传、不自动发布 |
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
-| RELEASE-001 | TODO | 增加制品验证 | smoke test、checksum；后续评估签名、SBOM、provenance |
+| RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | TODO | 重建 benchmark 方法 | 随机/交错 A/B、进程树监控、环境与二进制哈希 |
 | DOC-001 | DONE | 修正过度兼容性声明 | 所有当前输出标记 `foo_dr_meter 1.0.8 Candidate V1 / Unverified` |
@@ -633,8 +633,8 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 把普通 workspace gate 与 hostile corpus 隔离 verifier 分层，远端验证
   继续保持纯手动；
 - [x] 完成 CLI、GUI、支持格式、兼容性声明和贡献者文档的活跃状态审计；
-- [ ] 清理剩余遗留脚本、无效依赖和过期构建文件；
-- [ ] 建立 release staging、制品 smoke test 和 checksum；
+- [x] 清理剩余遗留脚本、无效依赖和过期构建文件；
+- [x] 建立 release staging、制品 smoke test 和 checksum；
 - [ ] 完成本地全门禁并形成 M5 收口记录。
 
 决策与出口条件见
@@ -700,9 +700,24 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 用户、GUI、格式、性能、第三方许可与贡献者文档不再把 M0 写作当前阶段；
     - M4 有界 direct-PCM conformance 与 `CandidateV1 / Unverified` 限制同时可见；
     - 手动 validation、版本同步和 hostile corpus 风险边界与实际入口一致。
+23. [x] `build: verify local release artifacts`
+    - clean tree 默认门禁记录 source commit、toolchain、host target 与两个 lock hash；
+    - CLI archive 固定 payload manifest，解包后验证版本、WAV route、schema v3、
+      Candidate profile 与 `Unverified`；
+    - 当前 host macOS DMG 通过镜像、挂载 bundle identity、executable 与 arm64
+      architecture 检查；
+    - release manifest 与全部制品由 `SHA256SUMS` 精确覆盖并可反向重跑 smoke；
+    - 当前 GUI 制品严格记录为未签名、未 notarize、仅供本地 staging，不冒充
+      Gatekeeper 或公开发行。
+24. [x] `chore: remove stale repository artifacts`
+    - Rust/npm 顶层依赖逐项对应到实际生产或测试入口，无无效直接依赖；
+    - 删除空 `.claude/package.json`、已归档 foobar 分支专用 ignore 规则和五个
+      零引用旧 WAV；
+    - 保留仍由 adapter integration 使用的 legacy fixture，以及明确不动
+      `audio/`、`dr14_t.meter/`、`master-branch/` 等本地数据。
 
-M4 已收口，M5 正在推进产品与仓库收敛。下一切片建立 release staging、制品
-smoke/checksum，并完成剩余脚本、依赖与生成物审计；文件级并发是否启用与其他
+M4 已收口，M5 正在推进产品与仓库收敛。下一切片完成剩余脚本、依赖与生成物审计，
+执行 clean-source staging 与本地全门禁后形成 M5 收口；文件级并发是否启用与其他
 可复现性能工程继续属于 M6。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
@@ -839,4 +854,4 @@ smoke/checksum，并完成剩余脚本、依赖与生成物审计；文件级并
 | 批处理退出行为 | `src/main.rs` |
 | Tauri 状态与命令 | `tauri-app/src-tauri/src/lib.rs` |
 | CPU 构建标志 | `.cargo/config.toml` |
-| CI 和 release | [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml) |
+| CI 和 release | [`.github/workflows/workspace-validation.yml`](../.github/workflows/workspace-validation.yml) |

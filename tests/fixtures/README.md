@@ -12,8 +12,9 @@ whose recorded structured failures gate the decoder against panics, hangs, and
 partial success. See
 [`malformed-media-v1/README.md`](malformed-media-v1/README.md).
 
-The older WAV files directly in this directory predate the product manifest.
-They remain deterministic regression inputs used by existing application and
-CLI tests, but their original generation and provenance are not retroactively
-claimed by `native-pcm-v1`. Replace or register them explicitly before using
-them as evidence for any new codec capability.
+The remaining older WAV files directly in this directory predate the product
+manifest and are still used by application, CLI, or Tauri integration tests.
+Their original generation and provenance are not retroactively claimed by
+`native-pcm-v1`. Five unreferenced legacy WAVs were removed during M5; add a
+new fixture only with an active test contract and record it explicitly before
+using it as evidence for any codec capability.
