@@ -244,6 +244,7 @@ See:
 - [M3 application execution-budget decision](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 bounded x64 numeric-claim decision](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
+- [M4 bounded x64 numeric-conformance report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)

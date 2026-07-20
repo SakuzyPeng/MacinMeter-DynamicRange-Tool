@@ -8,6 +8,12 @@ comparator 已建立；新的当前实现记录只有在工具源码提交、输
 
 当前记录：
 
+- [`CONF-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720`](conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)：
+  从 clean commit 重建 Candidate worker，以 reference-side finite interleaved
+  `f64` 直接驱动 `AnalyzerSession`。4096/997 frames-per-block 两次 39 项运行
+  的 track raw bits 39/39、三组 channel raw bits 各 62/62、六组 report token
+  均完全匹配，差分为 0；decoder 未使用，中间状态未比较，身份仍为
+  `CandidateV1 / Unverified`。
 - [`CONF-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719`](conf-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719/record.md)：
   将 39 项 accepted isolated-core raw result bits 与既有固定 x64 foobar
   normalized report 做窄字段对照。整数 track DR 39/39、channel DR 62/62、

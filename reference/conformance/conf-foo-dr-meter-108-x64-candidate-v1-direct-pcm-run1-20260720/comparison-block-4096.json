@@ -1,0 +1,110 @@
+{
+  "claims": {
+    "compatibility": "unverified",
+    "profile": "foo_dr_meter_1_0_8_candidate_v1",
+    "scope": "bounded foo_dr_meter 1.0.8 x64 numeric fields"
+  },
+  "corpus": {
+    "id": "foo-dr-meter-108-complete-v2",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "safeCaseCount": 39,
+    "safeCaseIds": [
+      "window-minus-one-control",
+      "exact-window-control",
+      "tail-pair-base",
+      "tail-pair-plus-one",
+      "negative-dr-fallback",
+      "histogram-db-domain",
+      "loud-boundary-bin-ties",
+      "peak-order-low-then-high",
+      "peak-order-high-then-low",
+      "one-frame-nonzero",
+      "two-frame-negative",
+      "silent-mono",
+      "stereo-silent-channel",
+      "three-channel-arithmetic",
+      "six-channel-lfe",
+      "histogram-lower-clamp",
+      "loud-target-n9",
+      "sparse-nonzero-among-zero",
+      "rms-half-f64-stereo",
+      "rms-half-f32-stereo",
+      "peak-half-f64-stereo",
+      "peak-half-f32-stereo",
+      "sr-44100-w-minus-one",
+      "sr-44100-w-plus-one",
+      "sr-48000-w-minus-one",
+      "sr-48000-w-plus-one",
+      "eight-channel-report-map",
+      "album-10-49-a",
+      "album-10-49-b",
+      "album-11-49",
+      "display-10-50",
+      "aggregate-narrow-low",
+      "aggregate-narrow-high",
+      "host-decode-u8",
+      "host-decode-s16",
+      "host-decode-s24",
+      "host-decode-s32",
+      "host-decode-f32",
+      "host-decode-f64"
+    ]
+  },
+  "differences": [],
+  "evidence": {
+    "normalizedReportSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "referenceCoreSuiteSha256": "a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93"
+  },
+  "implementation": {
+    "candidateSuiteSha256": "93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4",
+    "compatibility": "unverified",
+    "profile": "foo_dr_meter_1_0_8_candidate_v1",
+    "profileVersion": 1,
+    "sourceCommit": "76d0f2eab5cdfce9de6a9d76ab971c333eab8e71",
+    "workerByteLength": 424336,
+    "workerSha256": "ae42263881d6a76f6bfc675fb9e52e1141a03a87dd0d91363616e14e9c4b669d"
+  },
+  "kind": "macinmeter_candidate_v1_x64_numeric_comparison",
+  "limitations": [
+    "This comparison does not establish decoder, host lifecycle, metadata, grouping, optional weighting, or text parity.",
+    "Exact results apply to the fixed target, fixed corpus, declared public fields, and recorded implementation identity."
+  ],
+  "policy": {
+    "decoderUsed": false,
+    "intermediateStateCompared": false,
+    "numericToleranceDb": 0.0,
+    "rawPublicBinary32": "exact lowercase IEEE-754 bits",
+    "reportTokens": "exact fixed renderer tokens"
+  },
+  "schemaVersion": 1,
+  "summary": {
+    "channelDrBitsMatched": 62,
+    "channelDrBitsTotal": 62,
+    "channelDrTokenMatched": 62,
+    "channelDrTokenTotal": 62,
+    "channelPeakBitsMatched": 62,
+    "channelPeakBitsTotal": 62,
+    "channelRmsBitsMatched": 62,
+    "channelRmsBitsTotal": 62,
+    "channelRmsTokenMatched": 62,
+    "channelRmsTokenTotal": 62,
+    "differenceCount": 0,
+    "durationTokenMatched": 39,
+    "durationTokenTotal": 39,
+    "fixtureSetExact": true,
+    "manifestOrderExact": true,
+    "overallPeakTokenMatched": 39,
+    "overallPeakTokenTotal": 39,
+    "overallRmsTokenMatched": 39,
+    "overallRmsTokenTotal": 39,
+    "status": "match",
+    "trackDrBitsMatched": 39,
+    "trackDrBitsTotal": 39,
+    "trackDrTokenMatched": 39,
+    "trackDrTokenTotal": 39
+  },
+  "target": {
+    "runtimeProfile": "fixed_foobar_2_25_10",
+    "sha256": "ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489"
+  }
+}

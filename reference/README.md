@@ -14,6 +14,10 @@ M4 的声明收口、decoder-independent 验收方式和当前缺口见
 [`ADR-0005`](../docs/adr/0005-m4-bounded-x64-numeric-claim.md) 与
 [`M4 x64 数值声明证据矩阵`](../docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)。M4 不会
 为了让历史 fixture 通过产品 decoder 而扩大稳定 codec 能力面。
+当前 clean implementation 的两次 39 项 direct-PCM 精确比较见
+[`M4 conformance record`](conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)；
+最终边界结论见
+[`M4 收口报告`](../docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)。
 
 ## 目录
 

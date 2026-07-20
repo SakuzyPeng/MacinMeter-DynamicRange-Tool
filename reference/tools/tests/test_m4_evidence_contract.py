@@ -24,6 +24,22 @@ CLEAN_COMPARISON_SHA256 = (
 )
 CLEAN_WIRE_SHA256 = "7e1bb26d2c4d88d39e87ec438507e4817dc6e599a4c2e2a79cb0a9311626214b"
 GENERATOR_SHA256 = "f83fdcd0b88f2f414c53f8aa52a5b03f4fd4c8ee25024c4dce603df9a2179054"
+DIRECT_SOURCE_COMMIT = "76d0f2eab5cdfce9de6a9d76ab971c333eab8e71"
+DIRECT_WORKER_SHA256 = (
+    "ae42263881d6a76f6bfc675fb9e52e1141a03a87dd0d91363616e14e9c4b669d"
+)
+DIRECT_SUITE_4096_SHA256 = (
+    "93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4"
+)
+DIRECT_COMPARISON_4096_SHA256 = (
+    "cb2f6ea43f4c46d7cb6164f6124e720192c144012a1cecec0d4535dbc8b395fd"
+)
+DIRECT_SUITE_997_SHA256 = (
+    "1506b76b61452111fdaced4c2075eb6919d64bf52a06e2a3ed18742ac740af6c"
+)
+DIRECT_COMPARISON_997_SHA256 = (
+    "822ec149d28369c856ef4a01f9656ac8e9383746dc4feab8e177c23bb8356c1e"
+)
 
 MANIFEST_PATH = (
     REPOSITORY_ROOT
@@ -59,6 +75,19 @@ GENERATOR_PATH = (
     REPOSITORY_ROOT
     / "reference/tools/generate_foo_dr_meter_108_complete_v2.py"
 )
+DIRECT_CONFORMANCE_ROOT = (
+    REPOSITORY_ROOT
+    / "reference/conformance/"
+    "conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720"
+)
+DIRECT_SUITE_4096_PATH = DIRECT_CONFORMANCE_ROOT / "suite-block-4096.json"
+DIRECT_COMPARISON_4096_PATH = (
+    DIRECT_CONFORMANCE_ROOT / "comparison-block-4096.json"
+)
+DIRECT_SUITE_997_PATH = DIRECT_CONFORMANCE_ROOT / "suite-block-997.json"
+DIRECT_COMPARISON_997_PATH = (
+    DIRECT_CONFORMANCE_ROOT / "comparison-block-997.json"
+)
 
 EXTENSIBLE_SAFE_IDS = {
     "three-channel-arithmetic",
@@ -90,6 +119,10 @@ class M4EvidenceContractTests(unittest.TestCase):
             CLEAN_COMPARISON_PATH: CLEAN_COMPARISON_SHA256,
             CLEAN_WIRE_PATH: CLEAN_WIRE_SHA256,
             GENERATOR_PATH: GENERATOR_SHA256,
+            DIRECT_SUITE_4096_PATH: DIRECT_SUITE_4096_SHA256,
+            DIRECT_COMPARISON_4096_PATH: DIRECT_COMPARISON_4096_SHA256,
+            DIRECT_SUITE_997_PATH: DIRECT_SUITE_997_SHA256,
+            DIRECT_COMPARISON_997_PATH: DIRECT_COMPARISON_997_SHA256,
         }
         for path, digest in expected.items():
             with self.subTest(path=path.relative_to(REPOSITORY_ROOT)):
@@ -230,6 +263,137 @@ class M4EvidenceContractTests(unittest.TestCase):
         self.assertEqual(len(classic), 34)
         self.assertTrue(extensible.isdisjoint(classic))
         self.assertEqual(len(extensible | classic), 39)
+
+    def test_current_direct_pcm_suites_are_exact_and_chunk_independent(self) -> None:
+        expected_summary = {
+            "status": "match",
+            "trackDrBitsMatched": 39,
+            "trackDrBitsTotal": 39,
+            "channelDrBitsMatched": 62,
+            "channelDrBitsTotal": 62,
+            "channelRmsBitsMatched": 62,
+            "channelRmsBitsTotal": 62,
+            "channelPeakBitsMatched": 62,
+            "channelPeakBitsTotal": 62,
+            "trackDrTokenMatched": 39,
+            "trackDrTokenTotal": 39,
+            "channelDrTokenMatched": 62,
+            "channelDrTokenTotal": 62,
+            "overallPeakTokenMatched": 39,
+            "overallPeakTokenTotal": 39,
+            "overallRmsTokenMatched": 39,
+            "overallRmsTokenTotal": 39,
+            "channelRmsTokenMatched": 62,
+            "channelRmsTokenTotal": 62,
+            "durationTokenMatched": 39,
+            "durationTokenTotal": 39,
+            "differenceCount": 0,
+            "fixtureSetExact": True,
+            "manifestOrderExact": True,
+        }
+        artifacts = (
+            (
+                4096,
+                DIRECT_SUITE_4096_PATH,
+                DIRECT_SUITE_4096_SHA256,
+                DIRECT_COMPARISON_4096_PATH,
+            ),
+            (
+                997,
+                DIRECT_SUITE_997_PATH,
+                DIRECT_SUITE_997_SHA256,
+                DIRECT_COMPARISON_997_PATH,
+            ),
+        )
+        projections = []
+        for block_frames, suite_path, suite_sha, comparison_path in artifacts:
+            with self.subTest(block_frames=block_frames):
+                suite = load_object(suite_path)
+                comparison = load_object(comparison_path)
+
+                self.assertEqual(
+                    suite["kind"],
+                    "macinmeter_candidate_v1_direct_pcm_suite",
+                )
+                self.assertEqual(
+                    suite["summary"],
+                    {
+                        "failed": 0,
+                        "status": "success",
+                        "succeeded": 39,
+                        "total": 39,
+                    },
+                )
+                self.assertEqual(len(suite["items"]), 39)
+                self.assertEqual(
+                    suite["corpus"]["manifestSha256"],
+                    MANIFEST_SHA256,
+                )
+                self.assertEqual(
+                    suite["implementation"]["sourceCommit"],
+                    DIRECT_SOURCE_COMMIT,
+                )
+                self.assertEqual(
+                    suite["implementation"]["workerSha256"],
+                    DIRECT_WORKER_SHA256,
+                )
+                self.assertEqual(
+                    suite["implementation"]["compatibility"],
+                    "unverified",
+                )
+                self.assertEqual(
+                    suite["execution"]["blockFrames"], block_frames
+                )
+                self.assertFalse(suite["execution"]["decoderUsed"])
+                self.assertEqual(
+                    suite["execution"]["processModel"],
+                    "one_worker_process_per_input",
+                )
+
+                self.assertEqual(
+                    comparison["kind"],
+                    "macinmeter_candidate_v1_x64_numeric_comparison",
+                )
+                self.assertEqual(
+                    comparison["target"]["sha256"], TARGET_SHA256
+                )
+                self.assertEqual(
+                    comparison["evidence"]["referenceCoreSuiteSha256"],
+                    CORE_SUITE_SHA256,
+                )
+                self.assertEqual(
+                    comparison["evidence"]["normalizedReportSha256"],
+                    NORMALIZED_REPORT_SHA256,
+                )
+                self.assertEqual(
+                    comparison["implementation"]["candidateSuiteSha256"],
+                    suite_sha,
+                )
+                self.assertEqual(comparison["summary"], expected_summary)
+                self.assertEqual(comparison["differences"], [])
+                self.assertEqual(
+                    comparison["policy"]["numericToleranceDb"], 0.0
+                )
+                self.assertFalse(
+                    comparison["policy"]["intermediateStateCompared"]
+                )
+                self.assertFalse(comparison["policy"]["decoderUsed"])
+                self.assertEqual(
+                    comparison["claims"]["compatibility"], "unverified"
+                )
+
+                projections.append(
+                    [
+                        {
+                            "inputId": item["result"]["data"]["inputId"],
+                            "coreBits": item["result"]["data"]["coreBits"],
+                            "analysis": item["result"]["data"]["analysis"],
+                        }
+                        for item in suite["items"]
+                    ]
+                )
+
+        self.assertEqual(projections[0], projections[1])
 
 
 if __name__ == "__main__":

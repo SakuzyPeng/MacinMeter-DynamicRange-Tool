@@ -793,6 +793,8 @@ M4 的当前目标不是自动把本规格改名为 `accepted`，而是按
 [`ADR-0005`](../../docs/adr/0005-m4-bounded-x64-numeric-claim.md) 完成固定 x64
 字段范围内的有界声明与 decoder-independent 验收。即使以下条件形成审计结论，
 生产 profile 仍保持 `CandidateV1 / Unverified`，状态升级必须另立决策。
+M4 的最终审计与限制已登记在
+[`固定 x64 数值声明收口报告`](../../docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)。
 
 1. 固定项目实际要兼容的插件版本和架构；
 2. 对窗口数、loud 边界 bin、peak 排名/回退和聚合输入等规则保存可审计的固定

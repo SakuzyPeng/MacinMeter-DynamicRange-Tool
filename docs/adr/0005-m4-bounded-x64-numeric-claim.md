@@ -1,11 +1,14 @@
 # ADR-0005：M4 固定 x64 数值声明与 decoder-independent 验收
 
 - 状态：Accepted
-- 实施状态：DOING
+- 实施状态：DONE
 - 日期：2026-07-20
 - 决策范围：M4
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - 证据矩阵：[M4 x64 数值声明证据矩阵](../M4_X64_NUMERIC_CLAIM_MATRIX.md)
+- 收口报告：[M4 固定 x64 数值声明收口报告](../M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
+- 当前记录：
+  [direct-PCM Candidate conformance](../../reference/conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)
 - 前置决策：
   - [ADR-0002：限定 M1 的参考数值契约](0002-m1-reference-numeric-scope.md)
   - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)

@@ -224,6 +224,7 @@ macinmeter-domain
 - [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
+- [M4 固定 x64 数值声明收口报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [支持格式](docs/SUPPORTED_FORMATS_CN.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)

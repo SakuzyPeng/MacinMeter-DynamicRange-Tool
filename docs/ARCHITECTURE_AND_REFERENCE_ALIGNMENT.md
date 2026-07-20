@@ -1,7 +1,7 @@
 # 架构整改与参考插件重新对齐路线图
 
 > 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DONE`，
-> M4：`DOING`；
+> M4：`DONE`；
 > foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
@@ -594,9 +594,10 @@ EdgeTrimmer 和其他 preprocessing 没有需求时不实施，有需求时另�
 
 ### M4：参考兼容声明收口
 
-状态：`DOING`（范围与验收决策见
+状态：`DONE`（范围与验收决策见
 [ADR-0005](adr/0005-m4-bounded-x64-numeric-claim.md)，逐项审计见
-[M4 x64 数值声明证据矩阵](M4_X64_NUMERIC_CLAIM_MATRIX.md)）。
+[M4 x64 数值声明证据矩阵](M4_X64_NUMERIC_CLAIM_MATRIX.md)，结论见
+[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)）。
 
 - 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
@@ -615,15 +616,15 @@ M4 启动审计确认：complete-v2 的 39 项 safe-master 中有 5 项使用
 `WAVE_FORMAT_EXTENSIBLE`，当前稳定 decoder 按 ADR-0003 正确拒绝，因此不能用
 扩大 codec 支持面来完成 reference profile 验收。现已建立直接接收受控 finite
 interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
-和 final-field comparator；探索性 39 项重放的 raw bits 与 report tokens 均为
-零差分。正式记录将在工具源码提交身份固定后生成；历史 file-level 39/39 记录
-保留其原提交身份。
+和 final-field comparator。绑定 clean commit 的 4096/997 frames-per-block
+两次正式 39 项重放均为零差分，且完整公开 projection 相同；历史 file-level
+39/39 记录保留其原提交身份。
 
 出口条件：
 
-- 满足第 6.5 节全部标准；
-- 不再存在“已知有偏但归因不明”的结果族；
-- 参考 profile 可独立于 decoder、chunk 和任何实际存在的可选执行路径验证。
+- [x] 满足第 6.5 节全部标准；
+- [x] 不再存在“已知有偏但归因不明”的结果族；
+- [x] 参考 profile 可独立于 decoder、chunk 和任何实际存在的可选执行路径验证。
 
 ### M5：产品与仓库收敛
 
@@ -676,9 +677,17 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 当前没有第二 backend、外部 decoder 或独立部署需求；
     - 不创建空 registry/supervisor，也不把精确 byte sandbox 写成虚假能力；
     - 后续真实格式、部署或硬隔离需求必须重新立 ADR，并重新验收 backend 生命周期。
+19. [x] `feat: establish decoder-independent m4 conformance`
+    - 固定 x64 数值声明边界、证据矩阵与本地 evidence contract；
+    - direct-f64 worker、serial runner 和 final-field comparator 不依赖 decoder；
+    - 工具测试不启动 Windows 或 foobar。
+20. [x] `docs: close m4 with exact direct-pcm conformance`
+    - clean implementation commit 与 release worker 身份固定；
+    - 4096/997 frames-per-block 两次 39 项运行均为零差分；
+    - 最终报告公开限制，profile 保持 `CandidateV1 / Unverified`。
 
-M3 已收口。文件级并发是否启用与其他可复现性能工程继续属于 M6；下一阶段进入
-M4 的固定范围兼容性声明审计。
+M4 已收口。下一阶段进入 M5 的产品与仓库收敛；文件级并发是否启用与其他可复现
+性能工程继续属于 M6。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -713,7 +722,7 @@ M4 的固定范围兼容性声明审计。
 | 决策 | 建议 |
 | --- | --- |
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
-| 默认算法 | 当前使用 `FooDrMeter108CandidateV1 / Unverified`；只有完成 conformance 后才升级声明 |
+| 默认算法 | 当前使用 `FooDrMeter108CandidateV1 / Unverified`；M4 有界 conformance 已完成，任何名称/状态升级仍需独立决策 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
 | 默认并发 | M0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |

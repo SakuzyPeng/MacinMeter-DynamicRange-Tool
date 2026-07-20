@@ -1,8 +1,10 @@
 # M4 x64 数值声明证据矩阵
 
-> 状态：`DOING`
+> 状态：`DONE`
 >
 > 决策：[ADR-0005](adr/0005-m4-bounded-x64-numeric-claim.md)
+>
+> 结论：[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 >
 > 固定目标：`foo_dr_meter 1.0.8 x64`
 > `ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489`
@@ -29,6 +31,10 @@
 | numeric-boundary suite | SHA-256 `28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b` | duration 24/24、weighting 8/8、pair 4/4、histogram 6/6 |
 | clean schema-v3 comparison | SHA-256 `6e890323ca5d2338344695e5ad1129703dbcb32d20e11c483deea5af811d1f1f` | 六组公开字段历史零差分基线 |
 | normalized x64 report | SHA-256 `50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce` | 公开 report token reference |
+| direct Candidate suite，4096 frames/block | SHA-256 `93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4`；39/39 success | 当前 clean implementation 主记录 |
+| direct Candidate comparison，4096 frames/block | SHA-256 `cb2f6ea43f4c46d7cb6164f6124e720192c144012a1cecec0d4535dbc8b395fd`；全部 final fields 精确匹配 | 当前主 conformance 结论 |
+| direct Candidate suite，997 frames/block | SHA-256 `1506b76b61452111fdaced4c2075eb6919d64bf52a06e2a3ed18742ac740af6c`；39/39 success | 非整齐 chunk 复核 |
+| direct Candidate comparison，997 frames/block | SHA-256 `822ec149d28369c856ef4a01f9656ac8e9383746dc4feab8e177c23bb8356c1e`；全部 final fields 精确匹配 | chunk-independent 复核 |
 
 ## 规则矩阵
 
@@ -60,12 +66,12 @@
 
 | 标准 | 当前结论 | 剩余工作 |
 | --- | --- | --- |
-| 固定 corpus 同语义最终字段完全一致 | 历史 clean comparison 六组字段零差分 | `GAP-M4-001`：为当前提交建立 direct-PCM 39 项记录 |
+| 固定 corpus 同语义最终字段完全一致 | 历史 comparison 与当前两次 direct comparison 均零差分 | 无 |
 | window/RMS/histogram/peak/aggregate 可追溯 | Candidate §5 已逐规则登记 E1/E2 | 无算法证据空白 |
-| album/renderer 数值边界有产品测试 | album contract、duration/dbFS renderer、histogram clamp 已覆盖 | 收口时复核测试名称与最终报告链接 |
-| 残差无系统趋势 | 当前保存 comparison differenceCount=0 | 新 direct suite 必须继续为零 |
+| album/renderer 数值边界有产品测试 | album contract、duration/dbFS renderer、histogram clamp 已覆盖 | 无 |
+| 残差无系统趋势 | 两次当前 comparison `differenceCount=0` | 无 |
 | 极短/tail/tie/silence/multichannel 无未解释例外 | safe-master、OBS-core 与产品边界测试覆盖 | square-underflow 保持 E1 限制，不伪装动态事实 |
-| profile 不依赖 decoder/chunk/优化路径 | chunk raw-bit matrix 已满足；当前文件 replay 暴露 decoder 耦合 | `GAP-M4-001` |
+| profile 不依赖 decoder/chunk/优化路径 | direct f64 绕过 decoder；4096/997 block 的公开 projection 相同 | 无 |
 | 忠实保留目标的奇怪规则 | 一帧尾窗、whole-bin、arrival-order tie、DR0/LFE 纳入均已实现 | 新反例出现时才重开 |
 
 ## 当前文件级 replay 结论
@@ -80,19 +86,20 @@
   `aggregate-narrow-low`、`aggregate-narrow-high`；
 - 当前错误与 ADR-0003 的稳定能力矩阵一致，不是数值 residual。
 
-本段是可重复的 M4 架构审计，不是新的正式 conformance record。正式记录必须在
-direct-PCM worker、suite runner、输入/worker 身份和 comparison artifact 一起
-落地后建立。
+本段是可重复的 M4 架构审计，不是算法失败。当前正式
+[direct-PCM conformance record](../reference/conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)
+已经把算法验证与该 decoder split 分开。
 
-## M4 缺口
+## M4 缺口处置
 
 ### GAP-M4-001：当前提交的 decoder-independent Candidate suite
 
-状态：`DOING`
+状态：`DONE`
 
-已新增 reference-side
+reference-side
 `candidate_v1_conformance_worker`、`run_macinmeter_candidate_v1_suite.py` 和
-`compare_macinmeter_candidate_v1_suite.py`。探索性全量重放已得到：
+`compare_macinmeter_candidate_v1_suite.py` 已绑定 commit
+`76d0f2eab5cdfce9de6a9d76ab971c333eab8e71` 形成正式记录：
 
 - track DR bits 39/39；
 - channel DR/RMS/primary-peak bits 各 62/62；
@@ -100,9 +107,9 @@ direct-PCM worker、suite runner、输入/worker 身份和 comparison artifact �
   全部精确匹配；
 - `differenceCount = 0`，中间状态未比较，decoder 未使用。
 
-剩余工作是固定工具源码 commit 后重建 release worker，生成身份明确的正式 suite
-与 comparison artifact，并验证另一组 block size 不改变公开结果。不比较
-histogram、session layout 或其他 production/reference 中间状态。
+4096 与 997 frames/block 两次运行的完整公开 projection SHA-256 都为
+`afee42eebfde4646a7bc2c60cda9070b97a709a1c8d3e468b1baade365977969`。
+不比较 histogram、session layout 或其他 production/reference 中间状态。
 
 ### GAP-M4-002：关键证据身份本地门禁
 
@@ -115,8 +122,8 @@ histogram、session layout 或其他 production/reference 中间状态。
 
 ### GAP-M4-003：最终兼容性报告
 
-状态：`TODO`
+状态：`DONE`
 
-在 GAP-M4-001 完成且本矩阵没有纳入范围 residual 后，发布固定 target、字段、
-精确匹配、证据等级、限制和非目标的最终报告；profile 仍保持
-`FooDrMeter108CandidateV1 / Unverified`。
+[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md) 已发布
+固定 target、字段、精确匹配、证据等级、限制和非目标。profile 仍保持
+`FooDrMeter108CandidateV1 / Unverified`，状态升级需要另立决策。
