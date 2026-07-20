@@ -234,6 +234,8 @@ macinmeter-domain
 - [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
+- [M6 可复现性能基线决策](docs/adr/0007-m6-reproducible-performance-baseline.md)
+- [性能测量契约](docs/BENCHMARKS_CN.md)
 - [本地发行制品契约](docs/RELEASE_CN.md)
 - [M5 产品与仓库收敛报告](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)

@@ -61,6 +61,11 @@ dependencies into lower layers.
 - Local release staging must start clean unless it is explicitly marked dirty.
   It verifies the extracted CLI and current-host DMG bytes plus SHA-256, but
   never signs, notarizes, uploads, or implies public-distribution readiness.
+- M6 performance evidence uses the release `m6_baseline_worker` and
+  `scripts/run-performance-baseline.py`. Formal runs start clean, bind source,
+  binary, suite, corpus, toolchain, environment, and raw samples, and require
+  exact result/PCM fingerprints before comparison. Benchmarks are explicit
+  local tasks, never ordinary test/CI gates or cross-host performance claims.
 
 ## Commands
 
@@ -87,6 +92,13 @@ Local artifact staging is separate from ordinary verification:
 python3 scripts/stage-release.py stage
 # macOS current-host GUI, still unsigned/unnotarized:
 python3 scripts/stage-release.py stage --include-gui
+```
+
+Performance measurement is also explicit and separate:
+
+```bash
+python3 scripts/generate-performance-corpus.py
+python3 scripts/run-performance-baseline.py
 ```
 
 ## Style and tests

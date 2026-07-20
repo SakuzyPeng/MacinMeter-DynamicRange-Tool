@@ -102,6 +102,35 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 The matching GitHub Actions workflow remains `workflow_dispatch` only.
 
+## M6 performance baseline
+
+The performance corpus is deterministic, contains no personal audio, and stays
+under ignored `target/`:
+
+```bash
+python3 scripts/generate-performance-corpus.py
+python3 scripts/generate-performance-corpus.py --check
+```
+
+The default generator requires the reference `flac` command to create the FLAC
+route, and records its exact version. From a clean worktree, run the release
+scalar baseline with:
+
+```bash
+python3 scripts/run-performance-baseline.py
+```
+
+This is an explicit local task, not a pre-commit, workspace-test, or CI gate.
+It records all raw samples and rejects result/PCM/work-unit drift before
+summarizing. Dirty runs require `--allow-dirty` and are development evidence
+only. Use `--list-cases` and `--case ID` for scoped harness checks. Future A/B
+comparisons pass every prebuilt worker through repeated
+`--variant NAME=EXECUTABLE` arguments plus matching
+`--variant-source NAME=COMMIT` identities in the same interleaved run.
+
+See [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md) and
+[`ADR-0007`](../docs/adr/0007-m6-reproducible-performance-baseline.md).
+
 ## Local release staging
 
 From a clean worktree, build and verify the current-host CLI artifact:

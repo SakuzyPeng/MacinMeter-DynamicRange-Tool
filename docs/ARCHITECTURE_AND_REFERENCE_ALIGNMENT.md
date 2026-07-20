@@ -209,7 +209,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
 | RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
-| PERF-002 | TODO | 重建 benchmark 方法 | 随机/交错 A/B、进程树监控、环境与二进制哈希 |
+| PERF-002 | IN PROGRESS | 重建 benchmark 方法 | ADR-0007 已固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；待 clean baseline 记录后关闭 |
 | DOC-001 | DONE | 修正过度兼容性声明 | 所有当前输出标记 `foo_dr_meter 1.0.8 Candidate V1 / Unverified` |
 | DOC-002 | DONE | 清理陈旧文档和脚本 | Tauri、格式、MSRV、CLI、性能与法律文档已同步 |
 
@@ -643,8 +643,11 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 
 ### M6：重新性能工程
 
-- 删除未实现 AVX/AVX2 的理论加速报告；
-- 使用可复现 benchmark 重新 profile；
+- [x] 删除未实现 AVX/AVX2 的理论加速报告；
+- [x] 接受 ADR-0007，建立 deterministic corpus、分层 release worker、完全交错
+  runner、结果 oracle 与进程树资源记录；
+- [ ] 从 clean harness commit 运行 15-case × 7-sample 标量基线并保存原始记录；
+- [ ] 根据基线对占主导的生产 scope 做 sampling profile；
 - 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
   除非出现新的必要性证据，否则维持删除状态；
 - 只优化已确认瓶颈；
@@ -721,10 +724,18 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - release manifest 固定 source/toolchain/lock identity 与最终 artifact hash；
     - GUI strict code signature 失败被明确保留为 local-only 限制；
     - 本地 Rust、repository/reference tools、frontend 与 release 门禁全部通过。
+26. [x] `perf: establish reproducible m6 baseline harness`
+    - ADR-0007 固定 scope、语料、身份、统计与声明边界；
+    - ignored deterministic corpus 覆盖四个同源稳定 route、6ch、serial batch 与
+      discovery；
+    - release worker 分开计时 analysis/decode/application/batch/discovery/render；
+    - runner 保存原始样本，采样 descendant RSS，并在摘要前验证完整结果、PCM
+      oracle、work units 与同 PCM application fingerprint；
+    - clean 正式 baseline 与 sampling profile 属于随后切片。
 
-M5 已收口。下一阶段进入 M6 的可复现性能工程；文件级并发、SIMD 或其他优化必须
-先由 benchmark/profile 证明需求，并继续受 application 统一预算与标量差分门禁
-约束。
+M5 已收口，M6 基线 harness 已建立。下一切片从 clean harness commit 采集正式
+标量基线，再按占比做 sampling profile；文件级并发、SIMD 或其他优化仍必须由
+数据证明需求，并继续受 application 统一预算与标量差分门禁约束。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

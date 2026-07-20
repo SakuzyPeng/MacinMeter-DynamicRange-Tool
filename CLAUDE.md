@@ -70,9 +70,22 @@ python3 scripts/stage-release.py stage
 python3 scripts/stage-release.py stage --include-gui
 ```
 
+M6 performance measurement is another explicit local operation. It uses a
+generated, untracked corpus and refuses dirty formal runs:
+
+```bash
+python3 scripts/generate-performance-corpus.py
+python3 scripts/run-performance-baseline.py
+```
+
+Do not turn elapsed time or RSS into ordinary test/CI thresholds. Optimization
+claims require exact result/PCM fingerprints and a same-run interleaved A/B as
+defined by ADR-0007.
+
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0004-m3-application-execution-budget.md`,
 `docs/adr/0006-m5-product-repository-convergence.md`,
+`docs/adr/0007-m6-reproducible-performance-baseline.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
 `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
 or algorithm behavior.
