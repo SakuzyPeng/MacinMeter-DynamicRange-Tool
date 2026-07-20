@@ -7,10 +7,10 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 
 > **兼容性状态：`foo_dr_meter 1.0.8 Candidate V1 / Unverified`。**
 > 当前 profile 是依据 foo_dr_meter 1.0.8 证据形成的候选解释；有界的 M1 证据
-> 里程碑已经完成，但这不等于任意输入或完整 foobar/component 兼容。结果不得称为
-> “官方”、已认证或可与参考结果互换。
+> 里程碑和 M4 direct-PCM conformance 已经完成，但这不等于任意输入或完整
+> foobar/component 兼容。结果不得称为“官方”、已认证或可与参考结果互换。
 
-## M0 范围
+## 0.2.0 可信能力边界
 
 0.2.0 有意只保留一小块可信能力：
 
@@ -25,7 +25,7 @@ MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2
 
 输入按内容探测；扩展名只用于目录发现。WAVE_FORMAT_EXTENSIBLE、AIFC、MP3、
 AAC、ALAC、Vorbis、Opus、FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于
-M0，遇到时返回 `unsupported_format`。
+0.2.0 稳定能力，遇到时返回 `unsupported_format`。
 
 ## 构建与测试
 
@@ -223,6 +223,7 @@ macinmeter-domain
 - [M2 原生 decoder 契约决策](docs/adr/0003-m2-native-decoder-contract-hardening.md)
 - [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
+- [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 固定 x64 数值声明收口报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)

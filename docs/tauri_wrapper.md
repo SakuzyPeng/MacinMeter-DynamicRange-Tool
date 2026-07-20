@@ -56,7 +56,7 @@ Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
 Workspace Rust builds place artifacts under the root `target/` directory.
 The current bundle targets are macOS `.app` and `.dmg`; Windows/Linux packaging
-is outside M0.
+is outside the current 0.2.0 release contract.
 
 The backend performs admitted blocking analysis through Tauri's blocking task
 facility, leaving the UI event loop responsive. Admission happens first so the

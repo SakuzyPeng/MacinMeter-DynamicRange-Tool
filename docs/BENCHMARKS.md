@@ -6,11 +6,11 @@ MacinMeter 0.2.0 has no published performance claim yet.
 
 The benchmark numbers previously stored here measured the removed 0.1.x
 packet-parallel, file-parallel, SIMD, and FFmpeg/DSD paths. They do not describe
-the M0 architecture and cannot be used as a correctness or throughput
+the current architecture and cannot be used as a correctness or throughput
 commitment.
 
-M0 intentionally establishes a safe scalar, serial baseline. A new benchmark
-suite will be introduced only after:
+Version 0.2.0 intentionally retains a safe scalar, serial baseline. A new
+benchmark suite will be introduced only after:
 
 - the workspace contracts and reference-facing result semantics are stable;
 - datasets, commands, environment, and binary hashes are recorded;

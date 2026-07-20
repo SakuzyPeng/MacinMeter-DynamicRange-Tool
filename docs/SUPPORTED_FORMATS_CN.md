@@ -1,9 +1,9 @@
 [English](SUPPORTED_FORMATS.md) | [中文](SUPPORTED_FORMATS_CN.md)
 
-# M0 支持的音频格式
+# 0.2.0 稳定音频格式
 
 MacinMeter 0.2.0 有意只公开一小块以正确性为先的解码面。列为可用表示该路径进入
-M0 契约，不表示它已经与 foo_dr_meter 1.0.8 兼容。当前分析 profile 仍是
+0.2.0 稳定契约，不表示它已经与 foo_dr_meter 1.0.8 兼容。当前分析 profile 仍是
 `Unverified` 的 Candidate。
 
 | 容器 | 接受的编码 | 送入分析器的 PCM |
@@ -28,7 +28,7 @@ raw-bit 归一化 oracle 固定了每一个已声明 PCM 位深；其中 FLAC �
 multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这些是产品
 契约 fixture，不是参考插件 golden。
 
-## M0 明确不可用
+## 0.2.0 明确不可用
 
 0.2.0 不包含：
 
@@ -45,7 +45,7 @@ multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这
 签名同样缺失，整帧尾部丢失将原理上不可检测。产品会拒绝这些尚未毕业的容器
 变体，而不会让 backend 静默舍入或自行扩张支持面。
 
-能够识别但不属于 M0 的内容返回稳定错误码 `unsupported_format`。受支持格式内可
+能够识别但不属于 0.2.0 稳定面的内容返回稳定错误码 `unsupported_format`。受支持格式内可
 检测的损坏内容返回探测或解码错误，不会变成空的或部分成功的报告。物理 EOF 只能
 依据声明的 frame 数或 codec 完整性证据核对；输入同时缺失两者时，解码器不声称能
 识别每一种恰好落在完整 frame 边界上的尾部截断。
@@ -54,7 +54,7 @@ multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这
 
 打开后的 PCM stream 信息不可动态改变。`read_block` 只会返回非空、有限、完整
 frame 对齐的 block，sticky EOF，或结构化错误；空等候和解码失败不能伪装成 EOF。
-预期 frame 与已解码 frame 分开记录，M0 遇到坏包会失败，不会静默跳过后生成结果。
+预期 frame 与已解码 frame 分开记录，稳定路径遇到坏包会失败，不会静默跳过后生成结果。
 
 产品分析最多接受 64 个 PCM 声道。这是资源契约，不表示每一种当前容器或 backend
 都能表达 64 声道；格式自身的上限可能更低。声明超过 64 声道的源会在创建 decoder

@@ -628,11 +628,17 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 
 ### M5：产品与仓库收敛
 
-- 在 M0 建立的 Cargo workspace 上收紧依赖和 feature 边界；
-- 统一 CLI、GUI、版本、MSRV、lockfile 和 release；
-- 修订用户文档、支持格式和兼容性声明；
-- 清理遗留脚本、无效依赖和过期构建文件；
-- 建立制品 smoke test 和 checksum。
+- [x] 接受 ADR-0006，在 M0 建立的 Cargo workspace 上收紧直接依赖、feature、
+  package identity、版本镜像和 lockfile 边界；
+- [x] 把普通 workspace gate 与 hostile corpus 隔离 verifier 分层，远端验证
+  继续保持纯手动；
+- [x] 完成 CLI、GUI、支持格式、兼容性声明和贡献者文档的活跃状态审计；
+- [ ] 清理剩余遗留脚本、无效依赖和过期构建文件；
+- [ ] 建立 release staging、制品 smoke test 和 checksum；
+- [ ] 完成本地全门禁并形成 M5 收口记录。
+
+决策与出口条件见
+[`ADR-0006`](adr/0006-m5-product-repository-convergence.md)。
 
 ### M6：重新性能工程
 
@@ -685,9 +691,19 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - clean implementation commit 与 release worker 身份固定；
     - 4096/997 frames-per-block 两次 39 项运行均为零差分；
     - 最终报告公开限制，profile 保持 `CandidateV1 / Unverified`。
+21. [x] `build: establish m5 repository contract`
+    - 根 workspace 统一所有直接第三方依赖与 package identity；
+    - GUI build 改为只读版本核对，显式命令才同步版本镜像；
+    - 根 Cargo/npm lockfile、纯手动 workflow trigger 与验证层级进入本地门禁；
+    - hostile corpus 不再于普通 Cargo test 进程中解码。
+22. [x] `docs: converge active 0.2.0 product claims`
+    - 用户、GUI、格式、性能、第三方许可与贡献者文档不再把 M0 写作当前阶段；
+    - M4 有界 direct-PCM conformance 与 `CandidateV1 / Unverified` 限制同时可见；
+    - 手动 validation、版本同步和 hostile corpus 风险边界与实际入口一致。
 
-M4 已收口。下一阶段进入 M5 的产品与仓库收敛；文件级并发是否启用与其他可复现
-性能工程继续属于 M6。
+M4 已收口，M5 正在推进产品与仓库收敛。下一切片建立 release staging、制品
+smoke/checksum，并完成剩余脚本、依赖与生成物审计；文件级并发是否启用与其他
+可复现性能工程继续属于 M6。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

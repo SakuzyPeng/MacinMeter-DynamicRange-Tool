@@ -27,8 +27,9 @@
 
 ### Supported surface / 支持范围
 
-- M0 supports content-probed WAV integer/float PCM, FLAC, and AIFF integer PCM.
-  M0 只支持按内容探测的 WAV 整数/浮点 PCM、FLAC 与 AIFF 整数 PCM。
+- The 0.2.0 stable surface supports content-probed WAV integer/float PCM,
+  FLAC, and AIFF integer PCM.
+  0.2.0 稳定能力只支持按内容探测的 WAV 整数/浮点 PCM、FLAC 与 AIFF 整数 PCM。
 - Supported decoders and the streaming analyzer share finite interleaved
   `f64` PCM, preserving float64 WAV values until analysis.
   受支持的解码器与流式分析器统一使用有限、交错的 `f64` PCM，float64 WAV
@@ -96,11 +97,20 @@
   overall RMS 39/39、channel RMS 62/62 与渲染时长 39/39。严格限域的 footer
   检查确认 track/采样率/声道集合和 DR token，但不验证 host metadata、精确
   album 内部状态或 duration weighting；profile 继续保持 `Unverified`。
-- CI remains intentionally manual-only until an explicit release-stage
-  decision; the local pre-commit hook performs only format and workspace
-  compile checks.
-  在发布阶段另行明确决策前，CI 继续仅手动触发；本地 pre-commit 只进行格式与
-  workspace 编译检查。
+- M5 centralizes direct Rust dependency policy and package identity at the
+  workspace root. GUI builds now check version mirrors without rewriting
+  tracked files; explicit `npm run sync-version` is the only synchronization
+  command.
+  M5 将 Rust 直接依赖策略与 package identity 集中到根 workspace。GUI build
+  只读核对版本镜像，不再改写 tracked files；只有显式
+  `npm run sync-version` 才执行同步。
+- GitHub Actions remains manual-only. The local pre-commit checks repository
+  identity, formatting, and locked workspace compilation. Hostile malformed
+  media is decoded only by the opt-in, per-process verifier with an enforceable
+  memory limit by default.
+  GitHub Actions 继续仅手动触发。本地 pre-commit 核对仓库身份、格式与 locked
+  workspace 编译。hostile malformed media 只由 opt-in 的逐进程 verifier
+  解码，且默认要求可执行的内存上限。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.

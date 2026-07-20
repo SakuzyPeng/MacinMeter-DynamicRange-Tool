@@ -1,11 +1,11 @@
 [English](SUPPORTED_FORMATS.md) | [中文](SUPPORTED_FORMATS_CN.md)
 
-# M0 supported audio formats
+# 0.2.0 stable audio formats
 
 MacinMeter 0.2.0 intentionally exposes a small, correctness-first decoder
-surface. Availability means that the route is part of the M0 contract; it does
-not imply compatibility with foo_dr_meter 1.0.8. The current analysis profile
-is a candidate and remains `Unverified`.
+surface. Availability means that the route is part of the 0.2.0 stable
+contract; it does not imply compatibility with foo_dr_meter 1.0.8. The current
+analysis profile is a candidate and remains `Unverified`.
 
 | Container | Accepted codec | PCM delivered to analysis |
 |---|---|---|
@@ -32,7 +32,7 @@ oracle. Its FLAC case is stereo and multi-block, and AIFF/FLAC also pass the
 shared Rust API and CLI report boundary. These are product contract fixtures,
 not reference-plugin goldens.
 
-## Deliberately unavailable in M0
+## Deliberately unavailable in 0.2.0
 
 The following routes are not built into 0.2.0:
 
@@ -65,8 +65,8 @@ detectable.
 Each opened source has immutable PCM stream information. `read_block` returns
 only a non-empty, finite, frame-aligned block, sticky EOF, or a structured
 error. Empty waits and decoder failures are not reported as EOF. Expected and
-decoded frame counts are tracked separately, and M0 fails rather than silently
-skipping a damaged packet.
+decoded frame counts are tracked separately, and the stable route fails rather
+than silently skipping a damaged packet.
 
 Product analysis accepts at most 64 PCM channels. This is a resource contract,
 not a claim that every current container/backend can represent 64 channels;

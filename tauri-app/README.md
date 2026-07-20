@@ -3,10 +3,11 @@
 MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace 中的 `macinmeter` application façade，不维护独立的解码、分析或批处理实现。
 
 > 当前输出固定标记为 `FooDrMeter108CandidateV1 / Unverified`。它实现了基于
-> `foo_dr_meter` 1.0.8 固定目标建立的候选规格，但尚未完成 accepted
-> conformance，不能称为“官方”或“参考兼容”结果。
+> `foo_dr_meter` 1.0.8 固定目标建立的候选规格，并已完成 M4 有界 direct-PCM
+> conformance；这仍不证明任意输入或完整 host/component parity，不能称为
+> “官方”或“参考兼容”结果。
 
-## M0 能力边界
+## 0.2.0 能力边界
 
 - 支持单文件与串行批量分析。
 - 稳定格式为 WAV（PCM integer / IEEE float）、FLAC 与 AIFF（PCM integer）。
@@ -82,18 +83,21 @@ npm run tauri dev
 npm run tauri build
 ```
 
-M0 尚未恢复 Windows/Linux 打包目标。workspace 模式下，Rust/Tauri 产物位于仓库
+0.2.0 当前不声明 Windows/Linux GUI 打包目标。workspace 模式下，Rust/Tauri 产物位于仓库
 根目录的 `target/`。本地构建不会自动触发 GitHub Actions。
 
 ## 版本同步
 
-`npm run sync-version` 从根 `Cargo.toml` 的 `[workspace.package].version` 同步：
+普通 `npm run build` 与 `npm run tauri ...` 会先用 `npm run check-version`
+只读核对版本。只有显式执行 `npm run sync-version` 才会从根 `Cargo.toml` 的
+`[workspace.package].version` 写入：
 
 - `tauri-app/package.json`
 - `tauri-app/package-lock.json`
 - `tauri-app/src-tauri/tauri.conf.json`
 
-`src-tauri/Cargo.toml` 必须保留 `version.workspace = true`，脚本只验证这一约束，不把继承版本改回硬编码值。
+`src-tauri/Cargo.toml` 必须保留 `version.workspace = true`。版本不一致时普通
+build 会失败而不会改写 tracked files。
 
 ## 目录
 

@@ -8,12 +8,13 @@ the library, CLI, and Tauri GUI.
 
 > **Compatibility status: `foo_dr_meter 1.0.8 Candidate V1 / Unverified`.**
 > The current profile implements a candidate interpretation of evidence gathered
-> from foo_dr_meter 1.0.8. The scoped M1 evidence milestone is complete, but this
-> does not establish arbitrary-input or full foobar/component compatibility.
+> from foo_dr_meter 1.0.8. The bounded M4 direct-PCM conformance milestone is
+> complete, but this does not establish arbitrary-input or full
+> foobar/component compatibility.
 > Values must not be described as “official,” certified, or interchangeable with
 > reference results.
 
-## M0 scope
+## 0.2.0 trusted surface
 
 The 0.2.0 baseline deliberately keeps a small trusted surface:
 
@@ -29,7 +30,8 @@ The 0.2.0 baseline deliberately keeps a small trusted surface:
 Input is probed by content. File extensions are used only while discovering
 files in directories. WAVE_FORMAT_EXTENSIBLE, AIFC, MP3, AAC, ALAC, Vorbis,
 Opus, FFmpeg routes, DSD, preprocessing, packet-level parallelism, and SIMD
-paths are not part of M0 and return `unsupported_format` when encountered.
+paths are not part of the 0.2.0 stable surface and return `unsupported_format`
+when encountered.
 
 ## Build and test
 
@@ -243,6 +245,7 @@ See:
 - [M2 native-decoder contract decision](docs/adr/0003-m2-native-decoder-contract-hardening.md)
 - [M3 application execution-budget decision](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 bounded x64 numeric-claim decision](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
+- [M5 product/repository convergence decision](docs/adr/0006-m5-product-repository-convergence.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 bounded x64 numeric-conformance report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)

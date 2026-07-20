@@ -9,8 +9,8 @@ The current result profile is `FooDrMeter108CandidateV1` with compatibility
 status `Unverified`. It follows the versioned candidate specification backed by
 the recorded 1.0.8 target hashes, static analysis, fixed x86/x64 observations,
 and scoped conformance records under `reference/`; it is not a claim of
-accepted conformance. No generic “small floating-point tolerance” or
-compatibility percentage is valid.
+arbitrary-input or complete host/component parity. No generic “small
+floating-point tolerance” or compatibility percentage is valid.
 
 ## Workspace
 
@@ -39,28 +39,32 @@ domain
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.
 
-All first-party Rust code forbids unsafe code. M0 supports only WAV linear
-integer/IEEE float PCM, FLAC, and AIFF integer PCM. Unknown layout stays
-unknown; it is never guessed from channel count.
+All first-party Rust code forbids unsafe code. The 0.2.0 stable surface
+supports only WAV linear integer/IEEE float PCM, FLAC, and AIFF integer PCM.
+Unknown layout stays unknown; it is never guessed from channel count.
 
 ## Verification
 
 ```bash
+python3 scripts/check-repository-contract.py
 cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo test --locked --workspace
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo test --locked --workspace --all-targets
+cargo build --locked --release -p macinmeter-cli
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 cd tauri-app
 npm run build
 ```
 
-GitHub Actions remains intentionally `workflow_dispatch` only until an explicit
-release-stage decision. Local pre-commit performs format and workspace compile
+GitHub Actions remains intentionally `workflow_dispatch` only. Local
+pre-commit performs the repository contract, format, and workspace compile
 checks without network audit.
 
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0004-m3-application-execution-budget.md`,
+`docs/adr/0006-m5-product-repository-convergence.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
 `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
 or algorithm behavior.
