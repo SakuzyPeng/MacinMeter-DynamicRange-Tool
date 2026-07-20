@@ -62,6 +62,14 @@ GitHub Actions remains intentionally `workflow_dispatch` only. Local
 pre-commit performs the repository contract, format, and workspace compile
 checks without network audit.
 
+Release staging is a separate local operation:
+
+```bash
+python3 scripts/stage-release.py stage
+# current-host macOS DMG, explicitly local and unsigned/unnotarized
+python3 scripts/stage-release.py stage --include-gui
+```
+
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0004-m3-application-execution-budget.md`,
 `docs/adr/0006-m5-product-repository-convergence.md`,

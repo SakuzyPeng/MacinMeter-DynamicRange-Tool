@@ -52,6 +52,15 @@ dependencies into lower layers.
   partial successful reports.
 - Library/application code does not print or write files. CLI/Tauri are
   adapters over the shared façade and `WireEnvelope`.
+- M5 centralizes every direct third-party Rust dependency in the root
+  `[workspace.dependencies]`; member manifests use `.workspace = true`.
+  Package identity, the two lockfiles, GUI version mirrors, and manual-only
+  workflow triggers are enforced by `scripts/check-repository-contract.py`.
+- Ordinary GUI build/dev commands only check version mirrors. Version changes
+  are written only by the explicit `npm run sync-version` command.
+- Local release staging must start clean unless it is explicitly marked dirty.
+  It verifies the extracted CLI and current-host DMG bytes plus SHA-256, but
+  never signs, notarizes, uploads, or implies public-distribution readiness.
 
 ## Commands
 
@@ -60,6 +69,7 @@ cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 cargo build --locked --release -p macinmeter-cli
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 cd tauri-app
@@ -70,6 +80,14 @@ npm run tauri dev
 
 Remote CI remains manual-only until an explicit release-stage decision. Do not
 trigger or wait for it as part of ordinary development.
+
+Local artifact staging is separate from ordinary verification:
+
+```bash
+python3 scripts/stage-release.py stage
+# macOS current-host GUI, still unsigned/unnotarized:
+python3 scripts/stage-release.py stage --include-gui
+```
 
 ## Style and tests
 

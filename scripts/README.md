@@ -102,6 +102,29 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 The matching GitHub Actions workflow remains `workflow_dispatch` only.
 
+## Local release staging
+
+From a clean worktree, build and verify the current-host CLI artifact:
+
+```bash
+python3 scripts/stage-release.py stage
+```
+
+On macOS, explicitly include the current-host Tauri DMG:
+
+```bash
+python3 scripts/stage-release.py stage --include-gui
+```
+
+Both commands create `RELEASE_MANIFEST.json` and `SHA256SUMS`, then verify the
+final files. CLI verification extracts and runs the distributed binary. GUI
+verification checks and mounts the DMG, validates its bundle identity and
+architecture, records strict code-signature status, and does not launch it.
+No staging command uploads, signs, notarizes, or creates a GitHub release.
+
+See [`docs/RELEASE.md`](../docs/RELEASE.md) for the exact artifact and dirty-tree
+contracts.
+
 ## Failure handling
 
 - Repository contract failure: repair the reported source-of-truth drift; use

@@ -39,6 +39,16 @@ cargo build --locked --release -p macinmeter-cli
 
 Release CLI 位于 `target/release/macinmeter`。
 
+经过验证的本地 staging 会对解包后的 CLI 做 smoke，并生成 SHA-256 manifest，
+但不上传或签名：
+
+```bash
+python3 scripts/stage-release.py stage
+```
+
+macOS 上使用 `--include-gui` 还会构建并结构化验证当前 host 的 DMG。当前 GUI
+staging 仅供本地使用，尚未签名或公证。详见[发行制品契约](docs/RELEASE_CN.md)。
+
 ## CLI
 
 CLI 不再隐式扫描目录，也不会在未指定 `--output` 时自动保存报告。
@@ -224,6 +234,7 @@ macinmeter-domain
 - [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
+- [本地发行制品契约](docs/RELEASE_CN.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 固定 x64 数值声明收口报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)

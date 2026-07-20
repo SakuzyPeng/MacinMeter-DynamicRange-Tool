@@ -111,6 +111,14 @@
   GitHub Actions 继续仅手动触发。本地 pre-commit 核对仓库身份、格式与 locked
   workspace 编译。hostile malformed media 只由 opt-in 的逐进程 verifier
   解码，且默认要求可执行的内存上限。
+- Added explicit local release staging. The distributed CLI archive is
+  extracted and smoke-tested against the versioned JSON/profile contract;
+  release manifests and every artifact are covered by SHA-256. Current-host
+  macOS DMGs receive image, mounted-bundle, and architecture checks, while
+  remaining explicitly unsigned, unnotarized, and local-only.
+  新增显式本地发行 staging：解包后的 CLI 会通过版本化 JSON/profile smoke，
+  release manifest 与全部制品由 SHA-256 覆盖；当前 host 的 macOS DMG 会核对
+  镜像、挂载 bundle 与 architecture，同时明确保持未签名、未公证、仅供本地。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.

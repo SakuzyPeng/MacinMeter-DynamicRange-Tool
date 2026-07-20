@@ -45,6 +45,17 @@ cargo build --locked --release -p macinmeter-cli
 
 The release CLI is written to `target/release/macinmeter`.
 
+Verified local staging packages the extracted CLI smoke test and SHA-256
+manifests without uploading or signing:
+
+```bash
+python3 scripts/stage-release.py stage
+```
+
+On macOS, `--include-gui` additionally builds and structurally verifies the
+current-host DMG. Current GUI staging is local-only and
+unsigned/unnotarized. See [the release artifact contract](docs/RELEASE.md).
+
 ## CLI
 
 The CLI has no implicit directory scan and never saves reports unless
@@ -246,6 +257,7 @@ See:
 - [M3 application execution-budget decision](docs/adr/0004-m3-application-execution-budget.md)
 - [M4 bounded x64 numeric-claim decision](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M5 product/repository convergence decision](docs/adr/0006-m5-product-repository-convergence.md)
+- [Local release artifact contract](docs/RELEASE.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 bounded x64 numeric-conformance report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)

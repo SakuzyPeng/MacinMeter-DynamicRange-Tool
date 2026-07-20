@@ -58,6 +58,13 @@ Workspace Rust builds place artifacts under the root `target/` directory.
 The current bundle targets are macOS `.app` and `.dmg`; Windows/Linux packaging
 is outside the current 0.2.0 release contract.
 
+`python3 scripts/stage-release.py stage --include-gui` builds the current-host
+DMG and verifies its image integrity, mounted bundle version/identifier,
+executable, and exact architecture before adding it to the SHA-256 release
+manifest. It does not launch, sign, notarize, or upload the app. The current
+result is local-only; a structural smoke pass is not a public-distribution or
+Gatekeeper claim. See [`RELEASE.md`](RELEASE.md).
+
 The backend performs admitted blocking analysis through Tauri's blocking task
 facility, leaving the UI event loop responsive. Admission happens first so the
 runtime is not used as an unbounded hidden queue. The backend does not modify

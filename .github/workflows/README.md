@@ -19,8 +19,9 @@ The repository has one opt-in workflow:
   default and is deliberately outside this workflow.
 
 The workflow does not publish artifacts, create a release, run network
-advisory databases, or build a platform matrix. M5 release packaging and smoke
-checks remain local and explicit until their artifact contract is accepted.
+advisory databases, or build a platform matrix. The accepted M5 artifact
+contract remains local and explicit; ordinary manual validation does not stage
+or upload a release.
 
 ## Manual use
 
