@@ -1,0 +1,2772 @@
+{
+  "cases": [
+    {
+      "aggregate": {
+        "allWeightNs": 10913000000,
+        "captures": 3,
+        "foldedStacks": [
+          {
+            "percentOfScopedWeight": 36.45785563606347,
+            "samples": 3975,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next"
+            ],
+            "weightNs": 3975000000
+          },
+          {
+            "percentOfScopedWeight": 22.791892139778042,
+            "samples": 2485,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "macinmeter_analysis::session::NumericSafetyShadow::observe"
+            ],
+            "weightNs": 2485000000
+          },
+          {
+            "percentOfScopedWeight": 15.21599559754196,
+            "samples": 1659,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major"
+            ],
+            "weightNs": 1659000000
+          },
+          {
+            "percentOfScopedWeight": 11.024488672842336,
+            "samples": 1202,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "macinmeter_analysis::session::NumericSafetyShadow::observe",
+              "macinmeter_analysis::session::window_rms_squared"
+            ],
+            "weightNs": 1202000000
+          },
+          {
+            "percentOfScopedWeight": 8.722369989911034,
+            "samples": 951,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "core::option::Option$LT$$RF$T$GT$::copied"
+            ],
+            "weightNs": 951000000
+          },
+          {
+            "percentOfScopedWeight": 2.9900027515362746,
+            "samples": 326,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "macinmeter_analysis::session::NumericSafetyShadow::observe",
+              "core::option::Option$LT$T$GT$::is_some"
+            ],
+            "weightNs": 326000000
+          },
+          {
+            "percentOfScopedWeight": 1.4216270751169402,
+            "samples": 155,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::ChannelAccumulator::add_sample"
+            ],
+            "weightNs": 155000000
+          },
+          {
+            "percentOfScopedWeight": 0.4952765293955792,
+            "samples": 54,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next"
+            ],
+            "weightNs": 54000000
+          },
+          {
+            "percentOfScopedWeight": 0.3668715032559846,
+            "samples": 40,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+              "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked"
+            ],
+            "weightNs": 40000000
+          },
+          {
+            "percentOfScopedWeight": 0.34852792809318534,
+            "samples": 38,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved"
+            ],
+            "weightNs": 38000000
+          },
+          {
+            "percentOfScopedWeight": 0.119233238558195,
+            "samples": 13,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+              "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice"
+            ],
+            "weightNs": 13000000
+          },
+          {
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "core::result::Result$LT$T$C$E$GT$::map_err"
+            ],
+            "weightNs": 1000000
+          },
+          {
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::finalize_current_window",
+              "macinmeter_analysis::session::ChannelAccumulator::finalize_window"
+            ],
+            "weightNs": 1000000
+          },
+          {
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite"
+            ],
+            "weightNs": 1000000
+          },
+          {
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "core::iter::traits::iterator::Iterator::find_map",
+              "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::try_fold",
+              "core::iter::traits::iterator::Iterator::try_fold"
+            ],
+            "weightNs": 1000000
+          },
+          {
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "stack": [
+              "m6_baseline_worker::timed_analysis_workload",
+              "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+              "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+              "macinmeter_analysis::session::NumericSafetyShadow::observe",
+              "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite"
+            ],
+            "weightNs": 1000000
+          }
+        ],
+        "inclusiveFunctions": [
+          {
+            "binary": "m6_baseline_worker",
+            "function": "m6_baseline_worker::timed_analysis_workload",
+            "line": 122,
+            "percentOfScopedWeight": 100.0,
+            "samples": 10903,
+            "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+            "weightNs": 10903000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+            "line": 126,
+            "percentOfScopedWeight": 99.9908282124186,
+            "samples": 10902,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 10902000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+            "line": 148,
+            "percentOfScopedWeight": 61.267541043749425,
+            "samples": 6680,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 6680000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+            "line": 234,
+            "percentOfScopedWeight": 61.267541043749425,
+            "samples": 6680,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 6680000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 352,
+            "percentOfScopedWeight": 36.815555351738055,
+            "samples": 4014,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 4014000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+            "line": 306,
+            "percentOfScopedWeight": 36.45785563606347,
+            "samples": 3975,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+            "weightNs": 3975000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 85,
+            "percentOfScopedWeight": 36.45785563606347,
+            "samples": 3975,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+            "weightNs": 3975000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::window_rms_squared",
+            "line": 555,
+            "percentOfScopedWeight": 11.024488672842336,
+            "samples": 1202,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1202000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 52,
+            "percentOfScopedWeight": 9.217646519306612,
+            "samples": 1005,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/copied.rs",
+            "weightNs": 1005000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 80,
+            "percentOfScopedWeight": 9.217646519306612,
+            "samples": 1005,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+            "weightNs": 1005000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::option::Option$LT$$RF$T$GT$::copied",
+            "line": 2141,
+            "percentOfScopedWeight": 8.722369989911034,
+            "samples": 951,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+            "weightNs": 951000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::option::Option$LT$T$GT$::is_some",
+            "line": 636,
+            "percentOfScopedWeight": 2.9900027515362746,
+            "samples": 326,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+            "weightNs": 326000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+            "line": 465,
+            "percentOfScopedWeight": 1.4216270751169402,
+            "samples": 155,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 155000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 180,
+            "percentOfScopedWeight": 0.4952765293955792,
+            "samples": 54,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+            "weightNs": 54000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 1897,
+            "percentOfScopedWeight": 0.3668715032559846,
+            "samples": 40,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter.rs",
+            "weightNs": 40000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+            "line": 2154,
+            "percentOfScopedWeight": 0.3668715032559846,
+            "samples": 40,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+            "weightNs": 40000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+            "line": 3763,
+            "percentOfScopedWeight": 0.119233238558195,
+            "samples": 13,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+            "weightNs": 13000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+            "line": 1876,
+            "percentOfScopedWeight": 0.119233238558195,
+            "samples": 13,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+            "weightNs": 13000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite",
+            "line": 654,
+            "percentOfScopedWeight": 0.01834357516279923,
+            "samples": 2,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/f64.rs",
+            "weightNs": 2000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::try_fold",
+            "line": 125,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::iter::traits::iterator::Iterator::find_map",
+            "line": 3006,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::iter::traits::iterator::Iterator::try_fold",
+            "line": 2496,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::result::Result$LT$T$C$E$GT$::map_err",
+            "line": 966,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::finalize_current_window",
+            "line": 305,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+            "line": 476,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          }
+        ],
+        "leafCategories": [
+          {
+            "category": "macinmeter_analysis",
+            "percentOfScopedWeight": 50.811703200953865,
+            "samples": 5540,
+            "weightNs": 5540000000
+          },
+          {
+            "category": "rust_runtime",
+            "percentOfScopedWeight": 49.188296799046135,
+            "samples": 5363,
+            "weightNs": 5363000000
+          }
+        ],
+        "leafFunctions": [
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+            "line": 306,
+            "percentOfScopedWeight": 36.45785563606347,
+            "samples": 3975,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+            "weightNs": 3975000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 352,
+            "percentOfScopedWeight": 22.791892139778042,
+            "samples": 2485,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 2485000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+            "line": 234,
+            "percentOfScopedWeight": 15.21599559754196,
+            "samples": 1659,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1659000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::window_rms_squared",
+            "line": 555,
+            "percentOfScopedWeight": 11.024488672842336,
+            "samples": 1202,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1202000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::option::Option$LT$$RF$T$GT$::copied",
+            "line": 2141,
+            "percentOfScopedWeight": 8.722369989911034,
+            "samples": 951,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+            "weightNs": 951000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::option::Option$LT$T$GT$::is_some",
+            "line": 636,
+            "percentOfScopedWeight": 2.9900027515362746,
+            "samples": 326,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+            "weightNs": 326000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+            "line": 465,
+            "percentOfScopedWeight": 1.4216270751169402,
+            "samples": 155,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 155000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+            "line": 180,
+            "percentOfScopedWeight": 0.4952765293955792,
+            "samples": 54,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+            "weightNs": 54000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+            "line": 2154,
+            "percentOfScopedWeight": 0.3668715032559846,
+            "samples": 40,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+            "weightNs": 40000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+            "line": 126,
+            "percentOfScopedWeight": 0.34852792809318534,
+            "samples": 38,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 38000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+            "line": 1876,
+            "percentOfScopedWeight": 0.119233238558195,
+            "samples": 13,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+            "weightNs": 13000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite",
+            "line": 654,
+            "percentOfScopedWeight": 0.01834357516279923,
+            "samples": 2,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/f64.rs",
+            "weightNs": 2000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::iter::traits::iterator::Iterator::try_fold",
+            "line": 2496,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "core::result::Result$LT$T$C$E$GT$::map_err",
+            "line": 966,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+            "line": 476,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          }
+        ],
+        "projectLeafFunctions": [
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+            "line": 126,
+            "percentOfScopedWeight": 37.292488305970835,
+            "samples": 4066,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 4066000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 352,
+            "percentOfScopedWeight": 25.791066678895717,
+            "samples": 2812,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 2812000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+            "line": 234,
+            "percentOfScopedWeight": 24.451985692011373,
+            "samples": 2666,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 2666000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::window_rms_squared",
+            "line": 555,
+            "percentOfScopedWeight": 11.024488672842336,
+            "samples": 1202,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1202000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+            "line": 465,
+            "percentOfScopedWeight": 1.4216270751169402,
+            "samples": 155,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 155000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "m6_baseline_worker::timed_analysis_workload",
+            "line": 122,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+            "weightNs": 1000000
+          },
+          {
+            "binary": "m6_baseline_worker",
+            "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+            "line": 476,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          }
+        ],
+        "projectSourceLines": [
+          {
+            "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+            "line": 126,
+            "percentOfScopedWeight": 24.55287535540677,
+            "samples": 2677,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 2677000000
+          },
+          {
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+            "line": 234,
+            "percentOfScopedWeight": 24.442813904429972,
+            "samples": 2665,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 2665000000
+          },
+          {
+            "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+            "line": 102,
+            "percentOfScopedWeight": 12.739612950564064,
+            "samples": 1389,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1389000000
+          },
+          {
+            "function": "macinmeter_analysis::session::window_rms_squared",
+            "line": 555,
+            "percentOfScopedWeight": 11.024488672842336,
+            "samples": 1202,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1202000000
+          },
+          {
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 346,
+            "percentOfScopedWeight": 8.933321104283225,
+            "samples": 974,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 974000000
+          },
+          {
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 353,
+            "percentOfScopedWeight": 8.924149316701826,
+            "samples": 973,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 973000000
+          },
+          {
+            "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+            "line": 352,
+            "percentOfScopedWeight": 7.933596257910667,
+            "samples": 865,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 865000000
+          },
+          {
+            "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+            "line": 465,
+            "percentOfScopedWeight": 0.999724846372558,
+            "samples": 109,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 109000000
+          },
+          {
+            "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+            "line": 466,
+            "percentOfScopedWeight": 0.42190222874438227,
+            "samples": 46,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 46000000
+          },
+          {
+            "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+            "line": 245,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          },
+          {
+            "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+            "line": 476,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+            "weightNs": 1000000
+          },
+          {
+            "function": "m6_baseline_worker::timed_analysis_workload",
+            "line": 122,
+            "percentOfScopedWeight": 0.009171787581399615,
+            "samples": 1,
+            "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+            "weightNs": 1000000
+          }
+        ],
+        "rows": 10913,
+        "rowsWithStack": 10912,
+        "scopedSamples": 10903,
+        "scopedWeightNs": 10903000000,
+        "scopedWeightToWorkerElapsedRatio": {
+          "max": 0.9995762372168153,
+          "median": 0.9979116793256602,
+          "medianAbsoluteDeviation": 0.0008084674171841,
+          "min": 0.9971032119084761,
+          "p10": 0.9972649053919129,
+          "p90": 0.9992433256385843
+        },
+        "workerElapsedNs": {
+          "max": 3649546542.0,
+          "median": 3645560416.0,
+          "medianAbsoluteDeviation": 3986126.0,
+          "min": 3627575541.0,
+          "p10": 3631172516.0,
+          "p90": 3648749316.8
+        }
+      },
+      "captures": [
+        {
+          "captureIndex": 1,
+          "profile": {
+            "allWeightNs": 3624000000,
+            "foldedStacks": [
+              {
+                "percentOfScopedWeight": 36.629834254143645,
+                "samples": 1326,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next"
+                ],
+                "weightNs": 1326000000
+              },
+              {
+                "percentOfScopedWeight": 21.933701657458563,
+                "samples": 794,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe"
+                ],
+                "weightNs": 794000000
+              },
+              {
+                "percentOfScopedWeight": 14.585635359116022,
+                "samples": 528,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major"
+                ],
+                "weightNs": 528000000
+              },
+              {
+                "percentOfScopedWeight": 11.049723756906078,
+                "samples": 400,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "macinmeter_analysis::session::window_rms_squared"
+                ],
+                "weightNs": 400000000
+              },
+              {
+                "percentOfScopedWeight": 11.022099447513812,
+                "samples": 399,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::option::Option$LT$$RF$T$GT$::copied"
+                ],
+                "weightNs": 399000000
+              },
+              {
+                "percentOfScopedWeight": 1.9613259668508287,
+                "samples": 71,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "core::option::Option$LT$T$GT$::is_some"
+                ],
+                "weightNs": 71000000
+              },
+              {
+                "percentOfScopedWeight": 1.4640883977900552,
+                "samples": 53,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::ChannelAccumulator::add_sample"
+                ],
+                "weightNs": 53000000
+              },
+              {
+                "percentOfScopedWeight": 0.580110497237569,
+                "samples": 21,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next"
+                ],
+                "weightNs": 21000000
+              },
+              {
+                "percentOfScopedWeight": 0.4143646408839779,
+                "samples": 15,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked"
+                ],
+                "weightNs": 15000000
+              },
+              {
+                "percentOfScopedWeight": 0.19337016574585636,
+                "samples": 7,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved"
+                ],
+                "weightNs": 7000000
+              },
+              {
+                "percentOfScopedWeight": 0.13812154696132597,
+                "samples": 5,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                  "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice"
+                ],
+                "weightNs": 5000000
+              },
+              {
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "core::iter::traits::iterator::Iterator::find_map",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::try_fold",
+                  "core::iter::traits::iterator::Iterator::try_fold"
+                ],
+                "weightNs": 1000000
+              }
+            ],
+            "inclusiveFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "m6_baseline_worker::timed_analysis_workload",
+                "line": 122,
+                "percentOfScopedWeight": 100.0,
+                "samples": 3620,
+                "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+                "weightNs": 3620000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 100.0,
+                "samples": 3620,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 3620000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                "line": 148,
+                "percentOfScopedWeight": 61.16022099447514,
+                "samples": 2214,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2214000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 61.16022099447514,
+                "samples": 2214,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2214000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 36.629834254143645,
+                "samples": 1326,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1326000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 85,
+                "percentOfScopedWeight": 36.629834254143645,
+                "samples": 1326,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1326000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 352,
+                "percentOfScopedWeight": 34.94475138121547,
+                "samples": 1265,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1265000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 52,
+                "percentOfScopedWeight": 11.602209944751381,
+                "samples": 420,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/copied.rs",
+                "weightNs": 420000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 80,
+                "percentOfScopedWeight": 11.602209944751381,
+                "samples": 420,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+                "weightNs": 420000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.049723756906078,
+                "samples": 400,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 400000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 11.022099447513812,
+                "samples": 399,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 399000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 1.9613259668508287,
+                "samples": 71,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 71000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.4640883977900552,
+                "samples": 53,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 53000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.580110497237569,
+                "samples": 21,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 21000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 1897,
+                "percentOfScopedWeight": 0.4143646408839779,
+                "samples": 15,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter.rs",
+                "weightNs": 15000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.4143646408839779,
+                "samples": 15,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 15000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                "line": 3763,
+                "percentOfScopedWeight": 0.13812154696132597,
+                "samples": 5,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 5000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.13812154696132597,
+                "samples": 5,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 5000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::try_fold",
+                "line": 125,
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::iter::traits::iterator::Iterator::find_map",
+                "line": 3006,
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::iter::traits::iterator::Iterator::try_fold",
+                "line": 2496,
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "leafCategories": [
+              {
+                "category": "rust_runtime",
+                "percentOfScopedWeight": 50.773480662983424,
+                "samples": 1838,
+                "weightNs": 1838000000
+              },
+              {
+                "category": "macinmeter_analysis",
+                "percentOfScopedWeight": 49.226519337016576,
+                "samples": 1782,
+                "weightNs": 1782000000
+              }
+            ],
+            "leafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 36.629834254143645,
+                "samples": 1326,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1326000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 352,
+                "percentOfScopedWeight": 21.933701657458563,
+                "samples": 794,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 794000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 14.585635359116022,
+                "samples": 528,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 528000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.049723756906078,
+                "samples": 400,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 400000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 11.022099447513812,
+                "samples": 399,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 399000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 1.9613259668508287,
+                "samples": 71,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 71000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.4640883977900552,
+                "samples": 53,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 53000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.580110497237569,
+                "samples": 21,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 21000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.4143646408839779,
+                "samples": 15,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 15000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 0.19337016574585636,
+                "samples": 7,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 7000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.13812154696132597,
+                "samples": 5,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 5000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::iter::traits::iterator::Iterator::try_fold",
+                "line": 2496,
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "projectLeafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 37.3756906077348,
+                "samples": 1353,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1353000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 26.215469613259668,
+                "samples": 949,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 949000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 352,
+                "percentOfScopedWeight": 23.895027624309392,
+                "samples": 865,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 865000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.049723756906078,
+                "samples": 400,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 400000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.4640883977900552,
+                "samples": 53,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 53000000
+              }
+            ],
+            "projectSourceLines": [
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 37.3756906077348,
+                "samples": 1353,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1353000000
+              },
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 26.1878453038674,
+                "samples": 948,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 948000000
+              },
+              {
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 352,
+                "percentOfScopedWeight": 23.895027624309392,
+                "samples": 865,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 865000000
+              },
+              {
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.049723756906078,
+                "samples": 400,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 400000000
+              },
+              {
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.4640883977900552,
+                "samples": 53,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 53000000
+              },
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 245,
+                "percentOfScopedWeight": 0.027624309392265192,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "rows": 3624,
+            "rowsWithStack": 3624,
+            "scopedSamples": 3620,
+            "scopedWeightNs": 3620000000,
+            "scopedWeightToWorkerElapsedRatio": 0.9979116793256602
+          },
+          "toc": {
+            "recording": {
+              "contextSwitchSampling": "0",
+              "durationSeconds": 4.492079,
+              "endDate": "2026-07-21T02:14:19.254+08:00",
+              "endReason": "Target app exited",
+              "highFrequencySampling": "0",
+              "instrumentsVersion": "16.0 (27A5194q)",
+              "kernelCallstacks": "0",
+              "recordWaitingThreads": "0",
+              "recordingMode": "Deferred",
+              "sampleIntervalNs": 1000000,
+              "startDate": "2026-07-21T02:14:14.762+08:00",
+              "template": "Time Profiler"
+            },
+            "target": {
+              "arguments": "analysis 64 48000 43200000 4096",
+              "name": "m6_baseline_worker",
+              "pid": 31829,
+              "returnExitStatus": 0,
+              "terminationReason": "exit(0)"
+            }
+          },
+          "trace": {
+            "bundleSha256": "a209814b2a4fb0df3a036754704f24e5dcc8d6b3b9abfa16ebb05b301d34e874",
+            "committed": false,
+            "files": 179,
+            "sizeBytes": 7365672,
+            "timeProfileXmlSha256": "896e059d5cfd988aa3469240887aceea5ff4ddf72c9aeaa2616c4a4fd5f7e216",
+            "tocSha256": "3daf34e05a775f54d06ee87b832ccc65ca5f1b731261c1d4bce1c7bc937efe4d"
+          },
+          "workerOutput": {
+            "details": {
+              "blockFrames": 4096,
+              "pattern": "deterministic_dense_v1",
+              "profile": "foo_dr_meter_1_0_8_candidate_v1"
+            },
+            "mode": "analysis",
+            "resultBytes": 25207,
+            "resultFingerprintSha256": "bd111ded4ddc723607fa0291fd97eabdac8a2fe329a87419f910bf45e7e7d7b6",
+            "schemaVersion": 1,
+            "work": {
+              "audioFrames": 43200000,
+              "audioSeconds": 900.0,
+              "interleavedSamples": 2764800000,
+              "iterations": 1,
+              "logicalItems": 1
+            },
+            "workerElapsedNs": 3627575541
+          }
+        },
+        {
+          "captureIndex": 2,
+          "profile": {
+            "allWeightNs": 3637000000,
+            "foldedStacks": [
+              {
+                "percentOfScopedWeight": 35.43328748280605,
+                "samples": 1288,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next"
+                ],
+                "weightNs": 1288000000
+              },
+              {
+                "percentOfScopedWeight": 23.576341127922973,
+                "samples": 857,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe"
+                ],
+                "weightNs": 857000000
+              },
+              {
+                "percentOfScopedWeight": 15.213204951856946,
+                "samples": 553,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major"
+                ],
+                "weightNs": 553000000
+              },
+              {
+                "percentOfScopedWeight": 11.141678129298487,
+                "samples": 405,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "macinmeter_analysis::session::window_rms_squared"
+                ],
+                "weightNs": 405000000
+              },
+              {
+                "percentOfScopedWeight": 8.335625859697387,
+                "samples": 303,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::option::Option$LT$$RF$T$GT$::copied"
+                ],
+                "weightNs": 303000000
+              },
+              {
+                "percentOfScopedWeight": 3.191196698762036,
+                "samples": 116,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "core::option::Option$LT$T$GT$::is_some"
+                ],
+                "weightNs": 116000000
+              },
+              {
+                "percentOfScopedWeight": 1.5405777166437413,
+                "samples": 56,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::ChannelAccumulator::add_sample"
+                ],
+                "weightNs": 56000000
+              },
+              {
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked"
+                ],
+                "weightNs": 17000000
+              },
+              {
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next"
+                ],
+                "weightNs": 17000000
+              },
+              {
+                "percentOfScopedWeight": 0.4126547455295736,
+                "samples": 15,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved"
+                ],
+                "weightNs": 15000000
+              },
+              {
+                "percentOfScopedWeight": 0.11004126547455295,
+                "samples": 4,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                  "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice"
+                ],
+                "weightNs": 4000000
+              },
+              {
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "core::result::Result$LT$T$C$E$GT$::map_err"
+                ],
+                "weightNs": 1000000
+              },
+              {
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::finalize_current_window",
+                  "macinmeter_analysis::session::ChannelAccumulator::finalize_window"
+                ],
+                "weightNs": 1000000
+              },
+              {
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite"
+                ],
+                "weightNs": 1000000
+              },
+              {
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite"
+                ],
+                "weightNs": 1000000
+              }
+            ],
+            "inclusiveFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "m6_baseline_worker::timed_analysis_workload",
+                "line": 122,
+                "percentOfScopedWeight": 100.0,
+                "samples": 3635,
+                "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+                "weightNs": 3635000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 99.97248968363137,
+                "samples": 3634,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 3634000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                "line": 148,
+                "percentOfScopedWeight": 61.98074277854195,
+                "samples": 2253,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2253000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 61.98074277854195,
+                "samples": 2253,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2253000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 346,
+                "percentOfScopedWeight": 37.93672627235213,
+                "samples": 1379,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1379000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 35.43328748280605,
+                "samples": 1288,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1288000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 85,
+                "percentOfScopedWeight": 35.43328748280605,
+                "samples": 1288,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1288000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.141678129298487,
+                "samples": 405,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 405000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 52,
+                "percentOfScopedWeight": 8.803301237964236,
+                "samples": 320,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/copied.rs",
+                "weightNs": 320000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 80,
+                "percentOfScopedWeight": 8.803301237964236,
+                "samples": 320,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+                "weightNs": 320000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 8.335625859697387,
+                "samples": 303,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 303000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 3.191196698762036,
+                "samples": 116,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 116000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.5405777166437413,
+                "samples": 56,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 56000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 1897,
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter.rs",
+                "weightNs": 17000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 17000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 17000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                "line": 3763,
+                "percentOfScopedWeight": 0.11004126547455295,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.11004126547455295,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite",
+                "line": 654,
+                "percentOfScopedWeight": 0.055020632737276476,
+                "samples": 2,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/f64.rs",
+                "weightNs": 2000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::result::Result$LT$T$C$E$GT$::map_err",
+                "line": 966,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::finalize_current_window",
+                "line": 305,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+                "line": 476,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "leafCategories": [
+              {
+                "category": "macinmeter_analysis",
+                "percentOfScopedWeight": 51.91196698762036,
+                "samples": 1887,
+                "weightNs": 1887000000
+              },
+              {
+                "category": "rust_runtime",
+                "percentOfScopedWeight": 48.08803301237964,
+                "samples": 1748,
+                "weightNs": 1748000000
+              }
+            ],
+            "leafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 35.43328748280605,
+                "samples": 1288,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1288000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 346,
+                "percentOfScopedWeight": 23.576341127922973,
+                "samples": 857,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 857000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 15.213204951856946,
+                "samples": 553,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 553000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.141678129298487,
+                "samples": 405,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 405000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 8.335625859697387,
+                "samples": 303,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 303000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 3.191196698762036,
+                "samples": 116,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 116000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.5405777166437413,
+                "samples": 56,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 56000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 17000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.4676753782668501,
+                "samples": 17,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 17000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 0.4126547455295736,
+                "samples": 15,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 15000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.11004126547455295,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_RNvMNtCs6sq8b9ugfBC_4core3f64d9is_finite",
+                "line": 654,
+                "percentOfScopedWeight": 0.055020632737276476,
+                "samples": 2,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/f64.rs",
+                "weightNs": 2000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::result::Result$LT$T$C$E$GT$::map_err",
+                "line": 966,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+                "line": 476,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "projectLeafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 36.42365887207703,
+                "samples": 1324,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1324000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 346,
+                "percentOfScopedWeight": 26.795048143053645,
+                "samples": 974,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 974000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 24.04401650618982,
+                "samples": 874,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 874000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.141678129298487,
+                "samples": 405,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 405000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.5405777166437413,
+                "samples": 56,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 56000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "m6_baseline_worker::timed_analysis_workload",
+                "line": 122,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+                "weightNs": 1000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+                "line": 476,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "projectSourceLines": [
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 126,
+                "percentOfScopedWeight": 36.42365887207703,
+                "samples": 1324,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1324000000
+              },
+              {
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 346,
+                "percentOfScopedWeight": 26.795048143053645,
+                "samples": 974,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 974000000
+              },
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 24.04401650618982,
+                "samples": 874,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 874000000
+              },
+              {
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 11.141678129298487,
+                "samples": 405,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 405000000
+              },
+              {
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 465,
+                "percentOfScopedWeight": 1.5405777166437413,
+                "samples": 56,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 56000000
+              },
+              {
+                "function": "macinmeter_analysis::session::ChannelAccumulator::finalize_window",
+                "line": 476,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1000000
+              },
+              {
+                "function": "m6_baseline_worker::timed_analysis_workload",
+                "line": 122,
+                "percentOfScopedWeight": 0.027510316368638238,
+                "samples": 1,
+                "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+                "weightNs": 1000000
+              }
+            ],
+            "rows": 3637,
+            "rowsWithStack": 3637,
+            "scopedSamples": 3635,
+            "scopedWeightNs": 3635000000,
+            "scopedWeightToWorkerElapsedRatio": 0.9971032119084761
+          },
+          "toc": {
+            "recording": {
+              "contextSwitchSampling": "0",
+              "durationSeconds": 4.341136,
+              "endDate": "2026-07-21T02:14:30.788+08:00",
+              "endReason": "Target app exited",
+              "highFrequencySampling": "0",
+              "instrumentsVersion": "16.0 (27A5194q)",
+              "kernelCallstacks": "0",
+              "recordWaitingThreads": "0",
+              "recordingMode": "Deferred",
+              "sampleIntervalNs": 1000000,
+              "startDate": "2026-07-21T02:14:26.447+08:00",
+              "template": "Time Profiler"
+            },
+            "target": {
+              "arguments": "analysis 64 48000 43200000 4096",
+              "name": "m6_baseline_worker",
+              "pid": 31892,
+              "returnExitStatus": 0,
+              "terminationReason": "exit(0)"
+            }
+          },
+          "trace": {
+            "bundleSha256": "aeb43e9a3b44c6d1a6bbb70a326945ccf4ba2de3e8b7325f083787d0fff8ba1f",
+            "committed": false,
+            "files": 179,
+            "sizeBytes": 7271706,
+            "timeProfileXmlSha256": "00aff41997a4c28083440e814435b5eb6753c976dfd92577fe3cedd629046432",
+            "tocSha256": "db94d815739672eebef189b3fd6ad542935015ee81ea70bee709605331e36686"
+          },
+          "workerOutput": {
+            "details": {
+              "blockFrames": 4096,
+              "pattern": "deterministic_dense_v1",
+              "profile": "foo_dr_meter_1_0_8_candidate_v1"
+            },
+            "mode": "analysis",
+            "resultBytes": 25207,
+            "resultFingerprintSha256": "bd111ded4ddc723607fa0291fd97eabdac8a2fe329a87419f910bf45e7e7d7b6",
+            "schemaVersion": 1,
+            "work": {
+              "audioFrames": 43200000,
+              "audioSeconds": 900.0,
+              "interleavedSamples": 2764800000,
+              "iterations": 1,
+              "logicalItems": 1
+            },
+            "workerElapsedNs": 3645560416
+          }
+        },
+        {
+          "captureIndex": 3,
+          "profile": {
+            "allWeightNs": 3652000000,
+            "foldedStacks": [
+              {
+                "percentOfScopedWeight": 37.30811403508772,
+                "samples": 1361,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next"
+                ],
+                "weightNs": 1361000000
+              },
+              {
+                "percentOfScopedWeight": 22.861842105263158,
+                "samples": 834,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe"
+                ],
+                "weightNs": 834000000
+              },
+              {
+                "percentOfScopedWeight": 15.844298245614034,
+                "samples": 578,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major"
+                ],
+                "weightNs": 578000000
+              },
+              {
+                "percentOfScopedWeight": 10.882675438596491,
+                "samples": 397,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "macinmeter_analysis::session::window_rms_squared"
+                ],
+                "weightNs": 397000000
+              },
+              {
+                "percentOfScopedWeight": 6.8256578947368425,
+                "samples": 249,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::option::Option$LT$$RF$T$GT$::copied"
+                ],
+                "weightNs": 249000000
+              },
+              {
+                "percentOfScopedWeight": 3.8103070175438596,
+                "samples": 139,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                  "core::option::Option$LT$T$GT$::is_some"
+                ],
+                "weightNs": 139000000
+              },
+              {
+                "percentOfScopedWeight": 1.2609649122807018,
+                "samples": 46,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::ChannelAccumulator::add_sample"
+                ],
+                "weightNs": 46000000
+              },
+              {
+                "percentOfScopedWeight": 0.43859649122807015,
+                "samples": 16,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved"
+                ],
+                "weightNs": 16000000
+              },
+              {
+                "percentOfScopedWeight": 0.43859649122807015,
+                "samples": 16,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                  "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                  "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next"
+                ],
+                "weightNs": 16000000
+              },
+              {
+                "percentOfScopedWeight": 0.21929824561403508,
+                "samples": 8,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                  "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked"
+                ],
+                "weightNs": 8000000
+              },
+              {
+                "percentOfScopedWeight": 0.10964912280701754,
+                "samples": 4,
+                "stack": [
+                  "m6_baseline_worker::timed_analysis_workload",
+                  "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                  "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                  "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice"
+                ],
+                "weightNs": 4000000
+              }
+            ],
+            "inclusiveFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "m6_baseline_worker::timed_analysis_workload",
+                "line": 122,
+                "percentOfScopedWeight": 100.0,
+                "samples": 3648,
+                "source": "$REPO/crates/macinmeter/examples/m6_baseline_worker.rs",
+                "weightNs": 3648000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 102,
+                "percentOfScopedWeight": 100.0,
+                "samples": 3648,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 3648000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety",
+                "line": 148,
+                "percentOfScopedWeight": 60.66337719298246,
+                "samples": 2213,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2213000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 60.66337719298246,
+                "samples": 2213,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 2213000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 353,
+                "percentOfScopedWeight": 37.55482456140351,
+                "samples": 1370,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1370000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 37.30811403508772,
+                "samples": 1361,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1361000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 85,
+                "percentOfScopedWeight": 37.30811403508772,
+                "samples": 1361,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1361000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 10.882675438596491,
+                "samples": 397,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 397000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..copied..Copied$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 52,
+                "percentOfScopedWeight": 7.264254385964913,
+                "samples": 265,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/copied.rs",
+                "weightNs": 265000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..enumerate..Enumerate$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 80,
+                "percentOfScopedWeight": 7.264254385964913,
+                "samples": 265,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs",
+                "weightNs": 265000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 6.8256578947368425,
+                "samples": 249,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 249000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 3.8103070175438596,
+                "samples": 139,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 139000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 466,
+                "percentOfScopedWeight": 1.2609649122807018,
+                "samples": 46,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 46000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.43859649122807015,
+                "samples": 16,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 16000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 1897,
+                "percentOfScopedWeight": 0.21929824561403508,
+                "samples": 8,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter.rs",
+                "weightNs": 8000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.21929824561403508,
+                "samples": 8,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 8000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$alloc..vec..Vec$LT$T$C$A$GT$$u20$as$u20$core..ops..deref..DerefMut$GT$::deref_mut",
+                "line": 3763,
+                "percentOfScopedWeight": 0.10964912280701754,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.10964912280701754,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              }
+            ],
+            "leafCategories": [
+              {
+                "category": "macinmeter_analysis",
+                "percentOfScopedWeight": 51.28837719298246,
+                "samples": 1871,
+                "weightNs": 1871000000
+              },
+              {
+                "category": "rust_runtime",
+                "percentOfScopedWeight": 48.71162280701754,
+                "samples": 1777,
+                "weightNs": 1777000000
+              }
+            ],
+            "leafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..iter..adapters..zip..Zip$LT$A$C$B$GT$$u20$as$u20$core..iter..adapters..zip..ZipImpl$LT$A$C$B$GT$$GT$::next",
+                "line": 306,
+                "percentOfScopedWeight": 37.30811403508772,
+                "samples": 1361,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs",
+                "weightNs": 1361000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 353,
+                "percentOfScopedWeight": 22.861842105263158,
+                "samples": 834,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 834000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 15.844298245614034,
+                "samples": 578,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 578000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 10.882675438596491,
+                "samples": 397,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 397000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$$RF$T$GT$::copied",
+                "line": 2141,
+                "percentOfScopedWeight": 6.8256578947368425,
+                "samples": 249,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 249000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::option::Option$LT$T$GT$::is_some",
+                "line": 636,
+                "percentOfScopedWeight": 3.8103070175438596,
+                "samples": 139,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs",
+                "weightNs": 139000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 466,
+                "percentOfScopedWeight": 1.2609649122807018,
+                "samples": 46,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 46000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next",
+                "line": 180,
+                "percentOfScopedWeight": 0.43859649122807015,
+                "samples": 16,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs",
+                "weightNs": 16000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 102,
+                "percentOfScopedWeight": 0.43859649122807015,
+                "samples": 16,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 16000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "core::slice::_$LT$impl$u20$$u5b$T$u5d$$GT$::split_at_checked",
+                "line": 2154,
+                "percentOfScopedWeight": 0.21929824561403508,
+                "samples": 8,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs",
+                "weightNs": 8000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "alloc::vec::Vec$LT$T$C$A$GT$::as_mut_slice",
+                "line": 1876,
+                "percentOfScopedWeight": 0.10964912280701754,
+                "samples": 4,
+                "source": "$RUSTUP_HOME/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+                "weightNs": 4000000
+              }
+            ],
+            "projectLeafFunctions": [
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 102,
+                "percentOfScopedWeight": 38.07565789473684,
+                "samples": 1389,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1389000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 353,
+                "percentOfScopedWeight": 26.672149122807017,
+                "samples": 973,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 973000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 23.10855263157895,
+                "samples": 843,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 843000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 10.882675438596491,
+                "samples": 397,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 397000000
+              },
+              {
+                "binary": "m6_baseline_worker",
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 466,
+                "percentOfScopedWeight": 1.2609649122807018,
+                "samples": 46,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 46000000
+              }
+            ],
+            "projectSourceLines": [
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::push_interleaved",
+                "line": 102,
+                "percentOfScopedWeight": 38.07565789473684,
+                "samples": 1389,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 1389000000
+              },
+              {
+                "function": "macinmeter_analysis::session::NumericSafetyShadow::observe",
+                "line": 353,
+                "percentOfScopedWeight": 26.672149122807017,
+                "samples": 973,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 973000000
+              },
+              {
+                "function": "macinmeter_analysis::session::AnalyzerSession::inspect_numeric_safety_frame_major",
+                "line": 234,
+                "percentOfScopedWeight": 23.10855263157895,
+                "samples": 843,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 843000000
+              },
+              {
+                "function": "macinmeter_analysis::session::window_rms_squared",
+                "line": 555,
+                "percentOfScopedWeight": 10.882675438596491,
+                "samples": 397,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 397000000
+              },
+              {
+                "function": "macinmeter_analysis::session::ChannelAccumulator::add_sample",
+                "line": 466,
+                "percentOfScopedWeight": 1.2609649122807018,
+                "samples": 46,
+                "source": "$REPO/crates/macinmeter-analysis/src/session.rs",
+                "weightNs": 46000000
+              }
+            ],
+            "rows": 3652,
+            "rowsWithStack": 3651,
+            "scopedSamples": 3648,
+            "scopedWeightNs": 3648000000,
+            "scopedWeightToWorkerElapsedRatio": 0.9995762372168153
+          },
+          "toc": {
+            "recording": {
+              "contextSwitchSampling": "0",
+              "durationSeconds": 4.358643,
+              "endDate": "2026-07-21T02:14:41.855+08:00",
+              "endReason": "Target app exited",
+              "highFrequencySampling": "0",
+              "instrumentsVersion": "16.0 (27A5194q)",
+              "kernelCallstacks": "0",
+              "recordWaitingThreads": "0",
+              "recordingMode": "Deferred",
+              "sampleIntervalNs": 1000000,
+              "startDate": "2026-07-21T02:14:37.497+08:00",
+              "template": "Time Profiler"
+            },
+            "target": {
+              "arguments": "analysis 64 48000 43200000 4096",
+              "name": "m6_baseline_worker",
+              "pid": 31935,
+              "returnExitStatus": 0,
+              "terminationReason": "exit(0)"
+            }
+          },
+          "trace": {
+            "bundleSha256": "ef80ac75b03af12fbf067fe540053868add1ea581d39a82de090137dc35446bb",
+            "committed": false,
+            "files": 179,
+            "sizeBytes": 7350168,
+            "timeProfileXmlSha256": "69823fda3896b88397f2fd40891c4e71bfb50cb7e36cf8e5e09870a47e3ff95f",
+            "tocSha256": "ebc436cca0934cdc2f27aad87666bbaa295a9ecf5939f87f04f573326bb90979"
+          },
+          "workerOutput": {
+            "details": {
+              "blockFrames": 4096,
+              "pattern": "deterministic_dense_v1",
+              "profile": "foo_dr_meter_1_0_8_candidate_v1"
+            },
+            "mode": "analysis",
+            "resultBytes": 25207,
+            "resultFingerprintSha256": "bd111ded4ddc723607fa0291fd97eabdac8a2fe329a87419f910bf45e7e7d7b6",
+            "schemaVersion": 1,
+            "work": {
+              "audioFrames": 43200000,
+              "audioSeconds": 900.0,
+              "interleavedSamples": 2764800000,
+              "iterations": 1,
+              "logicalItems": 1
+            },
+            "workerElapsedNs": 3649546542
+          }
+        }
+      ],
+      "caseId": "analysis/64ch",
+      "scope": "analysis"
+    }
+  ],
+  "corpus": {
+    "committed": false,
+    "generator": {
+      "blockFrames": 4096,
+      "path": "scripts/generate-performance-corpus.py",
+      "sha256": "d352afc10a9964bbbee10d123f95e4e2ff7b7677a081e2bbd0d561497ccb535d"
+    },
+    "id": "m6-performance-baseline-v1",
+    "manifestSha256": "c985486a6317b927e95c5933f6b8e76eb5f2b6a8b1a0dd9c38f451fab27946b0",
+    "mediaFiles": 13
+  },
+  "environment": {
+    "build": {
+      "cargoBuildTarget": "",
+      "codegenUnits": 1,
+      "debugInfo": 1,
+      "environmentOverrides": {
+        "CARGO_INCREMENTAL": "0",
+        "CARGO_PROFILE_RELEASE_DEBUG": "1",
+        "CARGO_PROFILE_RELEASE_STRIP": "false",
+        "CARGO_TARGET_DIR": "$REPO/target/m6-profile-build"
+      },
+      "incremental": false,
+      "lto": "thin",
+      "optLevel": 3,
+      "overflowChecks": true,
+      "profile": "release",
+      "rustflags": "",
+      "strip": false
+    },
+    "hardware": {
+      "cpuBrand": "Apple M4 Pro",
+      "logicalCpu": 12,
+      "memoryBytes": 51539607552,
+      "model": "Mac16,8",
+      "physicalCpu": 12
+    },
+    "os": {
+      "machine": "arm64",
+      "release": "27.0.0",
+      "swVers": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5378n",
+      "system": "Darwin",
+      "version": "Darwin Kernel Version 27.0.0: Mon Jun 29 21:25:02 PDT 2026; root:xnu-13432.0.50.501.3~1/RELEASE_ARM64_T6041"
+    },
+    "power": {
+      "policy": "Battery Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           0\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 1\n networkoversleep     0\n sleep                1\n tcpkeepalive         1\n disksleep            10",
+      "source": "AC Power"
+    },
+    "repositoryRootName": "MacinMeter-DynamicRange-Tool",
+    "runner": {
+      "path": "scripts/run-performance-profile.py",
+      "sha256": "e43314695d437cda3b26e18b1a03d549bef5cf8d2c000fba0c00d91d51e91095"
+    },
+    "toolchain": {
+      "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+      "python": "3.13.2",
+      "rustc": {
+        "LLVM version": "22.1.2",
+        "binary": "rustc",
+        "commit-date": "2026-05-25",
+        "commit-hash": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+        "host": "aarch64-apple-darwin",
+        "release": "1.96.0"
+      }
+    }
+  },
+  "kind": "m6_sampling_profile",
+  "profiler": {
+    "developerDir": "/Applications/Xcode-beta.app/Contents/Developer",
+    "kind": "xcode_time_profiler",
+    "traceBundlesCommitted": false,
+    "traceRoot": "$REPO/target/performance-profiles/2f6c26207ed9-20260720T181413Z",
+    "xcodeVersion": "Xcode 27.0\nBuild version 27A5194q",
+    "xctraceExecutable": "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xctrace",
+    "xctraceVersion": "xctrace version 16.0 (27A5194q)"
+  },
+  "run": {
+    "completedAtUtc": "2026-07-20T18:14:47.017589Z",
+    "loadAverageEnd": [
+      12.47802734375,
+      10.8251953125,
+      9.54150390625
+    ],
+    "loadAverageStart": [
+      7.9375,
+      10.1162109375,
+      9.2607421875
+    ],
+    "startedAtUtc": "2026-07-20T18:14:13.429989Z"
+  },
+  "schemaVersion": 1,
+  "source": {
+    "commit": "2f6c26207ed95b73a2df2c426b001d1375dd2e37",
+    "state": "clean"
+  },
+  "suite": {
+    "capturesPerCase": 3,
+    "cases": [
+      {
+        "arguments": [
+          "analysis",
+          "64",
+          "48000",
+          "43200000",
+          "4096"
+        ],
+        "caseId": "analysis/64ch",
+        "description": "Maximum product geometry, 64 channels, 900 audio seconds",
+        "scope": "analysis",
+        "scopeAnchor": "m6_baseline_worker::timed_analysis_workload"
+      }
+    ],
+    "id": "m6-sampling-profile-v1",
+    "minimumScopedSamplesPerCapture": 1000,
+    "scopeRule": "include a sample only when its symbolicated stack contains the noinline worker function enclosing the worker-timed region",
+    "scopeWeightToWorkerElapsedRange": [
+      0.85,
+      1.15
+    ],
+    "sha256": "aee833b80dfbeb90e2fa2515005d1ccc265955ecb9874b93793e00ad2d36f563"
+  },
+  "worker": {
+    "optimizedReleaseWithDebugSymbols": true,
+    "path": "m6_baseline_worker",
+    "sha256": "f3a5faa35c16fcfcbd6400a5d550aea01edcb25ba6553f448705d16d2cd118c4",
+    "sizeBytes": 1300064
+  }
+}

@@ -120,7 +120,8 @@ candidate 以“高声道改善明确、低声道不退化、结果 bit-exact、
 它不授权继续合并 validation/commit、设计 histogram rollback、恢复文件级并发、
 增加 SIMD/unsafe 或修改 FLAC 完整性校验。
 
-下一切片对 accepted candidate 做一次 source-bound sampling profile，只回答
-64-channel validation 热点是否已按预期下降、剩余成本位于 validation 还是 commit。
-若没有新的、明显且可安全消除的主导成本，M6 在此停止 analyzer 微优化；FLAC 与
-文件级并发仍需新的真实需求和独立证据才重新立项。
+该 source-bound sampling profile 已完成：64-channel validation 的绝对采样权重
+按预期下降，剩余调用树只支持一个不改变算法的 error-slow-path refinement，见
+[`M6_VALIDATION_POST_PROFILE_REPORT.md`](M6_VALIDATION_POST_PROFILE_REPORT.md)。
+refinement 之后若没有新的明显收益，M6 停止 analyzer 微优化；FLAC 与文件级并发
+仍需新的真实需求和独立证据才重新立项。

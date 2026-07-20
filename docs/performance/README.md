@@ -11,6 +11,8 @@ leaderboard or a user-facing throughput guarantee.
 - [`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](M6_VALIDATION_TRAVERSAL_AB_REPORT.md)
   records the bit-exact, source-bound interleaved A/B that accepted the first
   analyzer candidate.
+- [`M6_VALIDATION_POST_PROFILE_REPORT.md`](M6_VALIDATION_POST_PROFILE_REPORT.md)
+  attributes the accepted high-channel path and bounds one final refinement.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,

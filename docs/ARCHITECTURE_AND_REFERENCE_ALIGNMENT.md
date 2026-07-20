@@ -764,11 +764,17 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - stereo 中位差异 −0.04%，8ch elapsed −4.45%，64ch elapsed −19.58%；
     - 三项跨 variant fingerprint 完全一致，raw record 绑定 source、worker、
       suite、corpus、environment 与全部样本。
+31. [x] `perf: profile accepted validation traversal`
+    - clean `2f6c262...` 对 64-channel analysis 完成三次 1 ms capture，共
+      10,903 个 scoped sample，coverage 为 `0.9971..0.9996`；
+    - 合并后的 frame-major validation 为 61.27%，commit loop 为 36.46%；
+    - post-profile 只选择移除有效路径 failure state/iterator overhead、错误时
+      回放只读 inspector 的最终有界 refinement。
 
 M5 已收口，M6 timing baseline、首批 sampling profile 与第一个有证据的优化已经
-完成。下一切片只对 accepted candidate 做 post-profile，确认 64-channel
-validation hotspot 是否按预期下降并决定是否停止 analyzer 微优化；FLAC、文件级
-并发与 SIMD 暂不动。
+完成。post-profile 已确认 64-channel hotspot 下降；下一切片只实现其选定的
+error-slow-path refinement，并以差分门禁和同轮 A/B 决定保留或删除。FLAC、
+文件级并发与 SIMD 暂不动。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
