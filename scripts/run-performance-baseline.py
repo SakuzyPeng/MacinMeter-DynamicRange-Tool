@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -851,6 +852,7 @@ def environment_identity(root: Path) -> dict[str, object]:
         "toolchain": {
             "rustc": rustc_fields,
             "cargo": cargo,
+            "python": platform.python_version(),
         },
         "build": {
             "profile": "release",
@@ -891,6 +893,10 @@ def environment_identity(root: Path) -> dict[str, object]:
             "memoryBytes": linux_memory_bytes(),
         }
     identity["repositoryRootName"] = root.name
+    identity["runner"] = {
+        "path": "scripts/run-performance-baseline.py",
+        "sha256": sha256_file(Path(__file__).resolve()),
+    }
     return identity
 
 
@@ -1016,6 +1022,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -1072,6 +1082,9 @@ def main() -> int:
         manifest_cases = case_manifest(cases, corpus)
         suite_sha = sha256_bytes(canonical_json_bytes(manifest_cases))
         interval_seconds = args.sampling_interval_ms / 1000
+        environment = environment_identity(root)
+        run_started_at = utc_now()
+        load_average_start = list(os.getloadavg())
 
         warmup_results: list[dict[str, object]] = []
         warmup_schedule = randomized_schedule(
@@ -1114,10 +1127,15 @@ def main() -> int:
         validate_cross_variant_fingerprints(samples)
         validate_corpus_work(samples, cases, corpus, corpus_manifest)
         summaries = summarize_samples(samples)
-        environment = environment_identity(root)
         result: dict[str, object] = {
             "schemaVersion": RUN_SCHEMA_VERSION,
             "kind": "m6_performance_baseline",
+            "run": {
+                "startedAtUtc": run_started_at,
+                "completedAtUtc": utc_now(),
+                "loadAverageStart": load_average_start,
+                "loadAverageEnd": list(os.getloadavg()),
+            },
             "source": source,
             "suite": {
                 "id": "m6-scalar-baseline-v1",
