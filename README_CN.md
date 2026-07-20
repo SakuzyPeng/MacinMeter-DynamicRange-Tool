@@ -2,80 +2,74 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-MacinMeter 是一个独立、本地优先的音频动态范围分析项目。0.2.0 将项目重建为一套安全、
-流式的 Rust 核心，并由公共库、CLI 与 Tauri GUI 共同使用。
+MacinMeter 是一个独立、本地优先的音频动态范围（DR）分析工具。它按照对
+foobar2000 DR Meter 1.0.8 算法的候选重建，对 WAV、FLAC、AIFF 文件计算逐声道与
+逐轨 DR 值，并以一套安全、流式的 Rust 核心同时驱动公共库、CLI 与 Tauri GUI。
 
 > **兼容性状态：`foo_dr_meter 1.0.8 Candidate V1 / Unverified`。**
-> 当前 profile 是依据 foo_dr_meter 1.0.8 证据形成的候选解释；有界的 M1 证据
-> 里程碑和 M4 direct-PCM conformance 已经完成，但这不等于任意输入或完整
+> 当前 profile 是依据 foo_dr_meter 1.0.8 x64 证据形成的候选解释；有界的 M4
+> direct-PCM conformance 里程碑已经完成，但这不等于任意输入或完整
 > foobar/component 兼容。结果不得称为“官方”、已认证或可与参考结果互换。
 
-## 0.2.0 可信能力边界
+## 特点
 
-0.2.0 有意只保留一小块可信能力：
+- **唯一分析核心。** 库、CLI 与 GUI 通过同一 application façade 驱动同一
+  `AnalyzerSession`，前端无法悄悄分叉算法行为。
+- **流式且有界。** 分析基于在线窗口与直方图；内存随声道数增长，不随流长增长。
+- **构造即安全。** 所有第一方 crate 使用 `#![forbid(unsafe_code)]`；成功报告
+  只能经检查构造器建立，无法表示非有限值。
+- **声明以证据为界。** 参考 profile、规格与全部 conformance 记录连同固定哈希
+  保存在仓库内，声明永不超出已记录的证据。
+- **性能只测量、不承诺。** 标量核心有可复现的本机基线、采样归因和一条以
+  bit-exact 差分为门禁的优化链；不做跨机器吞吐承诺。
 
-- 经典 RIFF/WAVE：8/16/24/32-bit 整数 PCM 与 IEEE 32/64-bit float
-- FLAC
-- AIFF：8/16/24/32-bit 整数 PCM
-- 串行解码与串行批处理
-- 有界内存的流式分析
-- 产品分析上限为 64 声道（具体格式或 backend 的上限可能更低）
-- 唯一的 `FooDrMeter108CandidateV1` profile
-- 结构化错误、取消、进度与带版本的 JSON
+## 可信能力边界（0.2.0）
 
-输入按内容探测；扩展名只用于目录发现。WAVE_FORMAT_EXTENSIBLE、AIFC、MP3、
-AAC、ALAC、Vorbis、Opus、FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于
-0.2.0 稳定能力，遇到时返回 `unsupported_format`。
+| 容器 | 接受的编码 |
+| --- | --- |
+| 经典 RIFF/WAVE | 8/16/24/32-bit 整数 PCM；IEEE 32/64-bit float |
+| FLAC（原生容器） | 声明非零总样本数的 FLAC |
+| AIFF | 8/16/24/32-bit 整数 PCM |
 
-## 构建与测试
+一切按内容探测，扩展名只用于目录发现。串行解码、串行批处理与 64 声道产品
+分析上限都是刻意选择。WAVE_FORMAT_EXTENSIBLE、AIFC、MP3、AAC、ALAC、Vorbis、
+Opus、FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于 0.2.0 稳定能力，
+遇到时返回 `unsupported_format`。各 route 的精确限制见
+[支持格式](docs/SUPPORTED_FORMATS_CN.md)。
 
-需要 Rust 1.88 或更高版本。
+## 快速开始
+
+需要 Rust 1.88 及以上与 Cargo。
 
 ```bash
-cargo build --locked --workspace
-cargo test --locked --workspace
 cargo build --locked --release -p macinmeter-cli
+target/release/macinmeter analyze track.flac
+target/release/macinmeter batch Album/ --recursive --format json
 ```
 
-Release CLI 位于 `target/release/macinmeter`。
+### CLI
 
-经过验证的本地 staging 会对解包后的 CLI 做 smoke，并生成 SHA-256 manifest，
-但不上传或签名：
-
-```bash
-python3 scripts/stage-release.py stage
-```
-
-macOS 上使用 `--include-gui` 还会构建并结构化验证当前 host 的 DMG。当前 GUI
-staging 仅供本地使用，尚未签名或公证。详见[发行制品契约](docs/RELEASE_CN.md)。
-
-## CLI
-
-CLI 不再隐式扫描目录，也不会在未指定 `--output` 时自动保存报告。
+CLI 没有隐式模式：不要求就不扫描目录，不给 `--output` 就不写报告文件。
 
 ```bash
 macinmeter analyze FILE [--format human|json] [--output PATH]
 macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 ```
 
-human `analyze` 输出包含每声道 overall RMS 以及 track report peak/RMS。
-`batch` 返回相互独立的逐 track report，不执行 album 聚合。
+标准输出只承载请求的结果；进度与诊断进入标准错误。输出文件先写入目标目录内的
+临时文件，再原子替换。`batch` 返回相互独立的逐轨报告，不做 album 聚合。
 
-标准输出只包含请求的结果；进度与诊断写入标准错误。输出文件先写入目标目录内的临时
-文件，再原子替换目标。
-
-退出码：
-
-| 代码 | 含义 |
+| 退出码 | 含义 |
 |---:|---|
 | `0` | 所有请求均成功 |
 | `1` | 失败、无输入或输出写入失败 |
 | `2` | 命令行参数错误 |
-| `3` | 批处理部分成功 |
+| `3` | 批处理同时存在成功与失败 |
 | `130` | 已取消 |
 
-JSON 与 Tauri 共用 schema v3 封装。下面是突出 report/diagnostic 分层的精简
-analysis 示例：
+### JSON
+
+JSON 与 Tauri GUI 共用同一带版本的 schema-v3 信封。节选示例：
 
 ```json
 {
@@ -112,32 +106,29 @@ analysis 示例：
 }
 ```
 
-payload 不含时间戳。`FiniteF32`/`FiniteF64` wrapper 使非有限 report 数值无法
-构造；零幅度的 dBFS 使用显式 `null`。每声道具有独立的 public-f32 overall RMS
-与 primary peak report metrics。track RMS 按参考路径先做 public-f32 平方、再以
-f64 累加，track peak 则取 public primary peak 的最大值。`DecodedDuration`
-保留精确的 decoded-frame/sample-rate 数对，而不是保存舍入后的秒数。
+report 指标与 DR 状态诊断刻意分离：`loudWindowRms`、`drSelectedPeak`、
+`drPrimaryPeak` 与可空的 `drSecondaryPeak` 描述 DR 状态机使用的值，不得替代
+report 指标。`FiniteF32`/`FiniteF64` 使非有限报告值不可表示；零振幅 dBFS 为
+显式 `null`；`DecodedDuration` 保存精确的解码帧数/采样率对，而不是舍入后的
+秒数。
 
-DR 计算诊断与 report metrics 分离：`loudWindowRms`、`drSelectedPeak`、
-`drPrimaryPeak` 和可空的 `drSecondaryPeak` 只描述 DR 状态机实际使用的值，不能
-替代 report 字段。
+### GUI
 
-解码器会把受支持输入统一为有限、交错的 `f64`，与固定 x64 核心的 PCM 宽度
-一致。固定 39-track schema-v3 safe-master 实测中，track DR 为 39/39、channel
-DR 为 62/62、overall peak 为 39/39、overall RMS 为 39/39、channel RMS 为
-62/62、渲染时长为 39/39。参考 footer 的 track 数、采样率集合、声道数集合和
-`DR12` token 也与实现报告一致；若排除三个数值 DR0 track，则反事实结果会是
-DR13。这个局部 footer 检查不证明 host metadata、精确 album 内部算术、
-duration weighting 或完整文本 parity，也不以内部实现状态同构为目标。M1 数值
-范围纳入静态恢复的 album 算术与 renderer 舍入规则；host 行为、playlist
-grouping、metadata 来源、完整文本 parity 和任意音频仍不在声明范围内。另一个
-38-vector 隔离运行已经交叉验证 duration 半秒/进位、可选多声道 loudness
-weighting 和 RMS histogram 两个 clamp 端点；它没有扩大兼容性范围，因此
-profile 继续是 `Unverified`。
+Tauri 2 前端与 CLI 使用完全相同的 application façade 与 wire schema：
 
-## 公共库
+```bash
+cd tauri-app
+npm install
+npm run tauri dev
+```
 
-公共门面位于 `macinmeter` crate：
+每个 GUI job 拥有独立取消 token，并在进入 blocking runtime 前预留共享
+application 预算；排队中的取消不影响 active job。GUI 不配置 FFmpeg、不修改
+进程环境变量，也没有第二套批处理引擎。
+
+## 库
+
+公共门面是 `macinmeter` crate：
 
 ```rust
 use macinmeter::{AnalyzeRequest, Application};
@@ -149,11 +140,11 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-同一个 `Application` 的 clone 共享一个有界 FIFO 执行域。M3 建立的产品策略同时
-只运行一个顶层 analyze、batch 或 discovery job，最多允许 64 个 job 排队；CLI
-与 Tauri 因而保持全局串行，同时不依赖隐藏的进程全局单例或第二套 scheduler。
+同一 `Application` 的 clone 共享一个有界 FIFO 执行域：同时最多一个 active
+顶层 analyze/batch/discovery job，最多 64 个排队。CLI/Tauri 因此保持串行，
+且不依赖隐藏的进程级全局单例。
 
-更底层的分析入口是 frame-aligned 的流式 session：
+更低层的分析入口是帧对齐的流式会话：
 
 ```rust
 use macinmeter::{AnalysisProfile, AnalyzerSession, ChannelLayout, StreamSpec};
@@ -168,15 +159,13 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-`finish` 会消费 session，并以可失败结果阻止数值/资源错误泄漏成非有限输出；输入
-样本必须有限且按完整 frame 对齐。
+样本必须是有限、交错的 `f64`；`finish` 消费会话且可失败，数值或资源故障不会
+泄漏非有限输出。成功的 `AnalysisResult`/`AnalysisReport` 根不可变，只经只读
+getter 检视；非产品输入的 result/report 与共享 batch/event/wire 类型只支持
+序列化，不支持反序列化。这些 Rust API 约束不改变 schema-v3 JSON 的键、tag 或
+数值表示。
 
-成功的 `AnalysisResult` 和 `AnalysisReport` 根对象不可变，只能通过 checked
-constructor 建立；调用方通过只读 getter 或 `AnalysisResult::view()` 检查结果。
-不作为产品输入的 result/report 与共享 batch/event/wire 类型只支持序列化，不支持
-反序列化。这些 Rust API 约束不改变 schema-v3 JSON 的字段、tag 或数字形状。
-
-Album 聚合是显式库操作，不会把 batch 隐式当成 album：
+album 聚合是显式库操作，永远不是批处理的隐含属性：
 
 ```rust
 use macinmeter::{
@@ -191,28 +180,73 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-unweighted album 值对 public-f32 track DR 做算术平均，并纳入数值 DR0 track；
-可选 duration weighting 使用每首 track 的精确 decoded duration。这个数值 API
-不声明 playlist grouping、footer 或其他 album 子系统 parity；除非调用方显式
-调用它，batch 与 GUI 结果始终只是相互独立的 track report 集合。
+unweighted album 值是公开 f32 轨 DR 的算术均值，包含数值 DR0 轨；可选的时长
+加权使用每轨的精确解码时长。该数值 API 不声明 playlist 分组、footer 或其他
+album 子系统 parity。
 
-## GUI
+## Conformance 证据
 
-Tauri 2 前端与 CLI 使用完全相同的 application façade 和 wire schema：
+解码器把受支持输入归一化为有限、交错的 `f64`，与固定 x64 core 的 PCM 位宽
+一致。针对固定 `foo_dr_meter 1.0.8 x64` 目标（`ff3556ad…`），已记录证据为：
+
+| 证据 | 结果 |
+| --- | --- |
+| 39 轨 schema-v3 safe-master：track DR / overall peak / overall RMS / 渲染时长 | 各 39/39 |
+| 同一 run：channel DR / channel RMS | 各 62/62 |
+| M4 decoder-independent direct-PCM Candidate conformance | 精确匹配 |
+| 39 项隔离 x64 analyzer-core 观测（不启动 foobar2000） | 预注册断言全部满足 |
+| 38 向量隔离数值边界：duration 半秒/进位、可选多声道 loudness weighting、histogram clamp 端点 | 24/24、8/8、6/6 |
+
+参考 footer 的轨数、采样率集合、声道数集合与 `DR12` token 也与实现报告一致。
+宿主行为、playlist 分组、metadata 来源、完整文本 parity、内部实现状态同构与
+任意音频仍在声明之外——这正是 profile 保持 `Unverified` 的原因。精确范围与
+限制见 [M4 证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)、
+[M4 conformance 报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)与
+[候选规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)。
+
+## 性能
+
+0.2.0 不发布性能保证。M6 建立的是可复现的本机测量协议：确定性生成语料、
+15-case 标量基线、采样归因，以及要求先复现 bit-identical 结果才允许比较的
+同轮交错 A/B。一条 analyzer 验证遍历优化链通过该门禁进入产品；在固定基线
+主机上，stereo 分析不变，8/64 声道分析中位耗时约降低 13% 与 27%。这些数字
+只描述一台固定机器、固定工具链与合成负载——它们是工程决策证据，不是面向
+用户的吞吐声明。
+
+复现或扩展测量：
 
 ```bash
-cd tauri-app
-npm install
-npm run tauri dev
+python3 scripts/generate-performance-corpus.py
+python3 scripts/run-performance-baseline.py
 ```
 
-每个 GUI job 拥有独立取消 token。job 会在进入 blocking runtime 前预留共享
-application 预算，取消排队 job 不会影响 active job。GUI 不再配置 FFmpeg、不修改
-进程环境变量，也不再维护另一套批处理引擎。
+详见[性能测量契约](docs/BENCHMARKS_CN.md)与
+[M6 报告](docs/performance/README.md)。
+
+## 验证
+
+本地门禁按资源风险从低到高：
+
+```bash
+python3 scripts/check-repository-contract.py
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo test --locked --workspace --all-targets
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
+cd tauri-app && npm run build
+```
+
+恶意输入验证被刻意隔离：提交的 41-case malformed 媒体 corpus 逐例在带
+wall-clock timeout 与 Linux 地址空间上限的子进程中执行
+（`python3 scripts/verify-malformed-corpus.py`），无法施加内存上限时拒绝解码
+恶意字节。远程 CI 保持仅 `workflow_dispatch` 手动触发。经验证的本地发行
+staging（校验和、CLI 冒烟测试、可选未签名 macOS DMG）见
+[发行制品契约](docs/RELEASE_CN.md)。
 
 ## 架构
 
-仓库根目录是 virtual Cargo workspace：
+仓库是单向依赖的 virtual Cargo workspace：
 
 ```text
 macinmeter-domain
@@ -223,59 +257,38 @@ macinmeter-domain
     └── macinmeter-gui
 ```
 
-所有第一方 crate 均使用 `#![forbid(unsafe_code)]`。只有 application 层组合解码和分析，
-因此前端无法静默分叉算法行为。
+`domain` 拥有有效类型与错误；`analysis` 拥有唯一流式分析器；`codecs` 拥有
+探测、严格 PCM 源与唯一原生 capability catalog；application 层是唯一组合
+解码与分析的位置；CLI 与 GUI 只做解析、渲染和 I/O 适配。
 
-进一步阅读：
+0.2.0 重建按七个受评审的里程碑执行，每个都以架构决策记录收口：
 
-- [M0 架构决策](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)
-- [M1 参考数值范围决策](docs/adr/0002-m1-reference-numeric-scope.md)
-- [M2 原生 decoder 契约决策](docs/adr/0003-m2-native-decoder-contract-hardening.md)
-- [M3 application 执行预算决策](docs/adr/0004-m3-application-execution-budget.md)
-- [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
-- [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
-- [M6 可复现性能基线决策](docs/adr/0007-m6-reproducible-performance-baseline.md)
-- [性能测量契约](docs/BENCHMARKS_CN.md)
-- [M6 clean 标量基线报告](docs/performance/M6_SCALAR_BASELINE_REPORT.md)
-- [本地发行制品契约](docs/RELEASE_CN.md)
-- [M5 产品与仓库收敛报告](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
-- [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
-- [M4 固定 x64 数值声明收口报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
-- [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
-- [支持格式](docs/SUPPORTED_FORMATS_CN.md)
-- [`foo_dr_meter 1.0.8 Candidate V1` 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
-- [参考证据策略](reference/README.md)
-- [隔离 x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
-- [隔离 x64 numeric-boundary 观测](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
+| 里程碑 | 决策记录 |
+| --- | --- |
+| M0 — 可信主干重建 | [ADR-0001](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md) |
+| M1 — 参考数值范围 | [ADR-0002](docs/adr/0002-m1-reference-numeric-scope.md) |
+| M2 — 原生解码契约加固 | [ADR-0003](docs/adr/0003-m2-native-decoder-contract-hardening.md) |
+| M3 — application 执行预算 | [ADR-0004](docs/adr/0004-m3-application-execution-budget.md) |
+| M4 — 固定 x64 数值声明 | [ADR-0005](docs/adr/0005-m4-bounded-x64-numeric-claim.md) |
+| M5 — 产品与仓库收敛 | [ADR-0006](docs/adr/0006-m5-product-repository-convergence.md) |
+| M6 — 可复现性能基线 | [ADR-0007](docs/adr/0007-m6-reproducible-performance-baseline.md) |
 
-## 参考工作与致谢
+总览文档是
+[架构整改与参考插件重新对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)。
 
-当前参考目标是 foobar2000 DR Meter 1.0.8（`foo_dr_meter`，作者 Janne
-Hyvärinen）。
-我们已经取得作者对逆向插件的许可；私人授权原文不存入本仓库，只保留
-[最小公开范围摘要](reference/authorization/README.md)。
+## 参考研究与致谢
 
-授权和致谢不代表数值兼容已经成立。目标 hash、实验、观测和候选规格记录在
-`reference/`；当前
-[绑定干净提交的 schema-v3 x64 safe-master conformance 记录](reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-clean-20260718/record.md)
-明确列出精确比较范围与声明边界。除非未来另行审查并建立更强兼容性声明，profile
-继续保持 `Unverified`。
+当前参考目标是 Janne Hyvärinen 的 foobar2000 DR Meter 1.0.8
+（`foo_dr_meter`）。对该插件进行逆向研究已获得作者许可。私人许可信件不保存在
+本仓库中，仅保留[最小公开范围摘要](reference/authorization/README.md)。
 
-已经验收的
-[39 项隔离 x64 analyzer-core 观测](reference/observations/obs-foo-dr-meter-108-x64-isolated-core-safe-master-run1-20260719/record.md)
-可在不启动 foobar2000 的情况下直接执行固定目标：每个输入使用全新 worker，并在
-core 调用期对 13 个普通 `shared.dll` IAT 入口设置 fail-fast tripwire。它不验证
-foobar 解码、注册、metadata、album grouping 或完整 renderer；这些是明确非目标，
-不是尚未补齐的 M1 证据。该记录的声明仍为 `compatibility: none` 与
-`foobarParity: not_assessed`。
-
-同一个 hardened 边界还完成了
-[38-vector numeric 观测](reference/observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)：
-24 个 duration、8 个多声道 weighting 和 6 个 histogram endpoint worker
-全部满足预注册判据。它关闭这些可能改变 per-track 输出的证据缺口，但没有执行
-完整 renderer，也没有扩大兼容性声明。
+许可与致谢不构成数值兼容性。目标哈希、实验、观测、候选规格与全部 conformance
+记录保存在 [`reference/`](reference/README.md)，各自声明范围与限制——包括
+不启动 foobar2000 而直接执行固定目标的
+[隔离 x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)。
+除非未来经独立评审的兼容性声明支持更强表述，profile 保持 `Unverified`。
 
 ## 许可证
 
-MacinMeter 采用 [MIT License](LICENSE)。另见[法律说明](docs/LEGAL_CN.md)和
-[第三方许可](THIRD_PARTY_NOTICES.md)。
+MacinMeter 以 [MIT License](LICENSE) 发布。另见
+[法律说明](docs/LEGAL_CN.md)与[第三方声明](THIRD_PARTY_NOTICES.md)。
