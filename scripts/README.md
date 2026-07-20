@@ -131,6 +131,22 @@ comparisons pass every prebuilt worker through repeated
 See [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md) and
 [`ADR-0007`](../docs/adr/0007-m6-reproducible-performance-baseline.md).
 
+On macOS with a full Xcode installation, capture the source-bound M6 sampling
+profiles from a clean worktree with:
+
+```bash
+python3 scripts/run-performance-profile.py
+```
+
+The profiler builds the same optimized release worker with debug symbols in a
+separate ignored target directory, then captures three Time Profiler runs for
+stereo analysis, 64-channel analysis, and FLAC decoding. It verifies the
+worker-timed stack boundary, result/work-unit/PCM identities, and retains full
+folded-stack counts in the result JSON. Large `.trace` bundles and XML exports
+remain under ignored `target/performance-profiles`; their hashes and sizes are
+recorded. Use `--list-cases`, repeated `--case ID`, or `--captures 1` for
+non-authoritative harness checks. Dirty runs require `--allow-dirty`.
+
 ## Local release staging
 
 From a clean worktree, build and verify the current-host CLI artifact:

@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisProfile, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
+    AnalysisProfile, AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
     CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
 };
 use macinmeter_codecs::{DecoderFactory, ReadOutcome};
@@ -82,28 +82,7 @@ fn run_analysis(arguments: &[OsString]) -> Result<Value, String> {
     let stream = StreamSpec::new(sample_rate, channels, ChannelLayout::Unknown)
         .map_err(|error| error.to_string())?;
 
-    let started = Instant::now();
-    let mut session = AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1)
-        .map_err(|error| error.to_string())?;
-    let full_blocks = frames / u64::try_from(block_frames).map_err(|error| error.to_string())?;
-    for _ in 0..full_blocks {
-        session
-            .push_interleaved(black_box(&block))
-            .map_err(|error| error.to_string())?;
-    }
-    let tail_frames =
-        usize::try_from(frames % u64::try_from(block_frames).map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())?;
-    if tail_frames > 0 {
-        let tail_samples = tail_frames
-            .checked_mul(channel_count)
-            .ok_or_else(|| "analysis tail sample count overflowed usize".to_owned())?;
-        session
-            .push_interleaved(black_box(&block[..tail_samples]))
-            .map_err(|error| error.to_string())?;
-    }
-    let result = session.finish().map_err(|error| error.to_string())?;
-    let elapsed = started.elapsed();
+    let (result, elapsed) = timed_analysis_workload(stream, &block, frames, block_frames)?;
 
     if result.frames_seen() != frames {
         return Err(format!(
@@ -124,6 +103,39 @@ fn run_analysis(arguments: &[OsString]) -> Result<Value, String> {
             "profile": "foo_dr_meter_1_0_8_candidate_v1",
         }),
     )
+}
+
+#[inline(never)]
+fn timed_analysis_workload(
+    stream: StreamSpec,
+    block: &[f64],
+    frames: u64,
+    block_frames: usize,
+) -> Result<(AnalysisResult, Duration), String> {
+    let channel_count = stream.channels.as_usize();
+    let started = Instant::now();
+    let mut session = AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1)
+        .map_err(|error| error.to_string())?;
+    let full_blocks = frames / u64::try_from(block_frames).map_err(|error| error.to_string())?;
+    for _ in 0..full_blocks {
+        session
+            .push_interleaved(black_box(block))
+            .map_err(|error| error.to_string())?;
+    }
+    let tail_frames =
+        usize::try_from(frames % u64::try_from(block_frames).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+    if tail_frames > 0 {
+        let tail_samples = tail_frames
+            .checked_mul(channel_count)
+            .ok_or_else(|| "analysis tail sample count overflowed usize".to_owned())?;
+        session
+            .push_interleaved(black_box(&block[..tail_samples]))
+            .map_err(|error| error.to_string())?;
+    }
+    let result = session.finish().map_err(|error| error.to_string())?;
+    let elapsed = started.elapsed();
+    Ok((result, elapsed))
 }
 
 fn deterministic_block(sample_count: usize, channels: usize) -> Vec<f64> {
@@ -149,18 +161,7 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
     let path = PathBuf::from(&arguments[0]);
     let iterations = positive_iterations(&arguments[1])?;
 
-    let started = Instant::now();
-    let mut timed_summary = None;
-    for _ in 0..iterations {
-        let summary = decode_once(&path, false)?;
-        if let Some(previous) = &timed_summary {
-            ensure_same_decode_geometry(previous, &summary)?;
-        } else {
-            timed_summary = Some(summary);
-        }
-    }
-    let elapsed = started.elapsed();
-    let timed_summary = timed_summary.ok_or_else(|| "decode produced no iteration".to_owned())?;
+    let (timed_summary, elapsed) = timed_decode_workload(&path, iterations)?;
 
     // Full PCM hashing is deliberately outside the measured interval. It is a
     // correctness oracle for the timed pass, not part of product decoding.
@@ -194,6 +195,26 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
             "verificationHashOutsideTimedRegion": true,
         }),
     )
+}
+
+#[inline(never)]
+fn timed_decode_workload(
+    path: &Path,
+    iterations: u32,
+) -> Result<(DecodeSummary, Duration), String> {
+    let started = Instant::now();
+    let mut timed_summary = None;
+    for _ in 0..iterations {
+        let summary = decode_once(path, false)?;
+        if let Some(previous) = &timed_summary {
+            ensure_same_decode_geometry(previous, &summary)?;
+        } else {
+            timed_summary = Some(summary);
+        }
+    }
+    let elapsed = started.elapsed();
+    let timed_summary = timed_summary.ok_or_else(|| "decode produced no iteration".to_owned())?;
+    Ok((timed_summary, elapsed))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

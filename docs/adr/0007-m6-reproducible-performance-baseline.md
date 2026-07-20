@@ -124,6 +124,33 @@ SHA-256 result fingerprint。runner 在形成 summary 前执行：
 普通 pre-commit、workspace test 和手动 CI 不运行 benchmark。远端 CI 继续保持
 手动且不消费该语料。
 
+### 8. Sampling profile 使用独立的、可核对的捕获协议
+
+M6 的首批 sampling profile 使用 macOS Xcode Time Profiler，不把 profiler
+依赖带入 Rust workspace。`scripts/run-performance-profile.py`：
+
+- 使用与基线相同的 release 优化、thin LTO 与单 codegen unit，只把
+  `debug = 1`、`strip = false` 写入独立的 ignored build 目录以获得可解析符号；
+- 在 worker 内用两个 `#[inline(never)]` 函数精确包住原有 analysis/decode
+  `Instant` 计时区间；它们只建立采样栈边界，不新增产品 API 或算法分支；
+- 默认对 stereo direct analysis、64-channel direct analysis 与 FLAC decode
+  各做三次约 5 秒捕获，使用固定 1 ms Time Profiler sampling；
+- 只纳入栈中含对应计时边界函数的 sample，因此进程启动、结果序列化及 decode
+  的计时区外 PCM hash verification 不进入热点比例；
+- 每次至少要求 1000 个有效 sample，且有效 sample weight / worker elapsed 必须
+  落在 `0.85..1.15`，防止符号丢失或边界错误时仍生成结论；
+- 继续验证 worker result fingerprint、work unit 与 FLAC decoded-f64 corpus
+  oracle，三次捕获之间必须完全一致。
+
+原始 `.trace` bundle 和 XML export 较大，保留在 ignored `target/`；正式 JSON
+记录绑定每个 bundle/export 的 SHA-256 与大小，并保存每次捕获的完整折叠栈计数、
+leaf/inclusive/source-line 聚合、profiler/Xcode 身份及所有 worker 输出。这样能
+复核已提交的比例，也不会把平台专用二进制采样产物永久加入源码仓库。
+
+Sampling 记录只用于同一 source/binary/host 上的函数归因。带 debug symbol 的
+profile worker elapsed 不能替代第 4–7 节的 canonical scalar timing，更不能形成
+跨机器或用户吞吐声明。
+
 ## M6 实施切片
 
 1. 建立本 ADR、deterministic corpus、release worker、interleaved runner 与工具
