@@ -13,13 +13,15 @@ foobar2000 DR Meter 1.0.8 算法的候选重建，对 WAV、FLAC、AIFF 文件�
 
 ## 特点
 
-- **唯一分析核心。** 库、CLI 与 GUI 通过同一 application façade 驱动同一
-  `AnalyzerSession`，前端无法悄悄分叉算法行为。
+- **唯一分析核心。** 库、CLI 与 GUI 的文件分析都通过 `Application`
+  façade 到达同一 `AnalyzerSession`；直接流式调用者也使用这一
+  session 类型，因此适配器无法悄悄分叉算法行为。
 - **流式且有界。** 分析基于在线窗口与直方图；内存随声道数增长，不随流长增长。
 - **构造即安全。** 所有第一方 crate 使用 `#![forbid(unsafe_code)]`；成功报告
   只能经检查构造器建立，无法表示非有限值。
-- **声明以证据为界。** 参考 profile、规格与全部 conformance 记录连同固定哈希
-  保存在仓库内，声明永不超出已记录的证据。
+- **声明以证据为界。** 参考 profile、规格与 conformance 记录保存在
+  仓库内，并绑定固定的目标、corpus 与制品身份；声明永不超出已记录
+  的证据。
 - **性能只测量、不承诺。** 标量核心有可复现的本机基线、采样归因和一条以
   bit-exact 差分为门禁的优化链；不做跨机器吞吐承诺。
 
@@ -33,8 +35,9 @@ foobar2000 DR Meter 1.0.8 算法的候选重建，对 WAV、FLAC、AIFF 文件�
 
 一切按内容探测，扩展名只用于目录发现。串行解码、串行批处理与 64 声道产品
 分析上限都是刻意选择。WAVE_FORMAT_EXTENSIBLE、AIFC、MP3、AAC、ALAC、Vorbis、
-Opus、FFmpeg 路径、DSD、预处理、包级并行和 SIMD 均不属于 0.2.0 稳定能力，
-遇到时返回 `unsupported_format`。各 route 的精确限制见
+Opus 与 DSD 不属于 0.2.0 稳定能力；能识别但不可用的媒体会返回
+`unsupported_format`。FFmpeg backend、预处理、包级并行与 SIMD 执行路径则完全
+不存在，不是可配置选项。各 route 的精确限制见
 [支持格式](docs/SUPPORTED_FORMATS_CN.md)。
 
 ## 快速开始
@@ -193,7 +196,7 @@ album 子系统 parity。
 | --- | --- |
 | 39 轨 schema-v3 safe-master：track DR / overall peak / overall RMS / 渲染时长 | 各 39/39 |
 | 同一 run：channel DR / channel RMS | 各 62/62 |
-| M4 decoder-independent direct-PCM Candidate conformance | 精确匹配 |
+| M4 decoder-independent direct-PCM Candidate conformance | 固定 39 项输入的 final-field projection 差分数为 0 |
 | 39 项隔离 x64 analyzer-core 观测（不启动 foobar2000） | 预注册断言全部满足 |
 | 38 向量隔离数值边界：duration 半秒/进位、可选多声道 loudness weighting、histogram clamp 端点 | 24/24、8/8、6/6 |
 
@@ -209,9 +212,9 @@ album 子系统 parity。
 0.2.0 不发布性能保证。M6 建立的是可复现的本机测量协议：确定性生成语料、
 15-case 标量基线、采样归因，以及要求先复现 bit-identical 结果才允许比较的
 同轮交错 A/B。一条 analyzer 验证遍历优化链通过该门禁进入产品；在固定基线
-主机上，stereo 分析不变，8/64 声道分析中位耗时约降低 13% 与 27%。这些数字
-只描述一台固定机器、固定工具链与合成负载——它们是工程决策证据，不是面向
-用户的吞吐声明。
+主机上，stereo 差异落在测量噪声内，8/64 声道的中位耗时则约降低 13% 与
+27%。这些数字只描述一台固定机器、固定工具链与合成负载——它们是工程
+决策证据，不是面向用户的吞吐声明。
 
 复现或扩展测量：
 

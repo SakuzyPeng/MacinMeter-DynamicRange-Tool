@@ -17,17 +17,18 @@ CLI, and the Tauri GUI.
 
 ## Highlights
 
-- **One analysis core.** Library, CLI, and GUI all drive the same
-  `AnalyzerSession` through the same application façade; frontends cannot fork
-  algorithm behavior.
+- **One analysis core.** File analysis in the library, CLI, and GUI reaches the
+  same `AnalyzerSession` through the `Application` façade; direct streaming
+  callers use that same session type, so adapters cannot fork algorithm
+  behavior.
 - **Streaming and bounded.** Analysis is windowed and histogram-based; memory
   grows with channel count, not stream length.
 - **Safe by construction.** Every first-party crate uses
   `#![forbid(unsafe_code)]`; success reports are built only through checked
   constructors that cannot represent non-finite values.
-- **Evidence-first claims.** The reference profile, its specification, and all
-  conformance records live in-repo with fixed hashes; the claim never exceeds
-  the recorded evidence.
+- **Evidence-first claims.** The reference profile, its specification, and
+  conformance records live in-repo and bind fixed target, corpus, and artifact
+  identities; claims never exceed the recorded evidence.
 - **Measured, not promised, performance.** The scalar core has a reproducible
   local baseline, sampling attribution, and one bit-exact-gated optimization
   chain; no cross-machine throughput promise is made.
@@ -43,9 +44,10 @@ CLI, and the Tauri GUI.
 Everything is probed by content; extensions matter only for directory
 discovery. Serial decoding, serial batch execution, and a 64-channel product
 analysis limit are deliberate. WAVE_FORMAT_EXTENSIBLE, AIFC, MP3, AAC, ALAC,
-Vorbis, Opus, FFmpeg routes, DSD, preprocessing, packet-level parallelism, and
-SIMD paths are not part of the 0.2.0 stable surface and return
-`unsupported_format` when encountered. See
+Vorbis, Opus, and DSD are outside the 0.2.0 stable surface; recognized but
+unavailable media returns `unsupported_format`. FFmpeg backends,
+preprocessing, packet-level parallelism, and SIMD execution paths are absent
+rather than configurable. See
 [supported formats](docs/SUPPORTED_FORMATS.md) for exact route limits.
 
 ## Quick start
@@ -214,7 +216,7 @@ fixed x64 core's PCM width. Against the fixed
 | --- | --- |
 | 39-track schema-v3 safe-master run: track DR / overall peak / overall RMS / rendered duration | 39/39 each |
 | same run: channel DR / channel RMS | 62/62 each |
-| M4 decoder-independent direct-PCM Candidate conformance | exact match |
+| M4 decoder-independent direct-PCM Candidate conformance | 0 differences on the fixed 39-input final-field projection |
 | 39-input isolated x64 analyzer-core observation (no foobar2000 started) | all preregistered assertions met |
 | 38-vector isolated numeric boundaries: duration half-second/carry, optional multichannel loudness weighting, histogram clamp endpoints | 24/24, 8/8, 6/6 |
 
@@ -235,10 +237,11 @@ reproducible local measurement protocol: a deterministic generated corpus, a
 15-case scalar baseline, sampling attribution, and same-run interleaved A/B
 comparisons in which every variant must first reproduce bit-identical results.
 One analyzer-validation optimization chain passed that gate and is in the
-product; on the fixed baseline host it left stereo analysis unchanged and
-reduced 8-/64-channel analysis medians by roughly 13% and 27%. Those numbers
-describe one fixed machine, toolchain, and synthetic workload — they are
-evidence for engineering decisions, not user-facing throughput claims.
+product; on the fixed baseline host the stereo difference remained within
+measurement noise, while 8-/64-channel median elapsed time fell by roughly 13%
+and 27%. Those numbers describe one fixed machine, toolchain, and synthetic
+workload — they are evidence for engineering decisions, not user-facing
+throughput claims.
 
 Reproduce or extend the measurements with:
 
