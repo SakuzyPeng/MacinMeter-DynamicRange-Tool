@@ -174,12 +174,14 @@ content probe、文件打开或 MacinMeter 自建调度。MD5 validator 是 FLAC
   与 direct analysis 的尺度闭合，本轮也未看到 progress/path 构造可能接近上述
   热点的证据。
 
-## 后续结果与下一步
+## 后续结果
 
 candidate 已完成计划中的差分门禁和三项 analysis A/B：stereo 中位差异为
 −0.04%，8ch 为 −4.45%，64ch 为 −19.58%；每项 scalar/candidate fingerprint
 完全相同。因此 candidate 已保留。
 
-下一切片只对 accepted candidate 做 source-bound post-profile，核对 64-channel
-validation hotspot 是否按预期下降并决定是否停止 analyzer 微优化。FLAC、文件级
-并发、SIMD、unsafe、checksum 放宽与第二 backend 仍不在授权范围内。
+accepted candidate 的 source-bound post-profile 与最终 refinement 也已完成。
+相对 pre-optimization scalar 的最终独立同轮比较为 stereo −0.34%（噪声内）、
+8ch −12.92%、64ch −26.72%，且 fingerprint 保持一致。M6 已收口，见
+[`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)。
+FLAC、文件级并发、SIMD、unsafe、checksum 放宽与第二 backend 仍不在授权范围内。

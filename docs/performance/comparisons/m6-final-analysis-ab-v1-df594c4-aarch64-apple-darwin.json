@@ -1,0 +1,2784 @@
+{
+  "corpus": {
+    "committed": false,
+    "generator": {
+      "blockFrames": 4096,
+      "path": "scripts/generate-performance-corpus.py",
+      "sha256": "d352afc10a9964bbbee10d123f95e4e2ff7b7677a081e2bbd0d561497ccb535d"
+    },
+    "id": "m6-performance-baseline-v1",
+    "manifestSha256": "c985486a6317b927e95c5933f6b8e76eb5f2b6a8b1a0dd9c38f451fab27946b0",
+    "mediaFiles": 13
+  },
+  "environment": {
+    "build": {
+      "cargoBuildTarget": "",
+      "codegenUnits": 1,
+      "lto": "thin",
+      "optLevel": 3,
+      "overflowChecks": true,
+      "profile": "release",
+      "rustflags": "",
+      "strip": true
+    },
+    "hardware": {
+      "cpuBrand": "Apple M4 Pro",
+      "logicalCpu": 12,
+      "memoryBytes": 51539607552,
+      "model": "Mac16,8",
+      "physicalCpu": 12
+    },
+    "os": {
+      "machine": "arm64",
+      "release": "27.0.0",
+      "swVers": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5378n",
+      "system": "Darwin",
+      "version": "Darwin Kernel Version 27.0.0: Mon Jun 29 21:25:02 PDT 2026; root:xnu-13432.0.50.501.3~1/RELEASE_ARM64_T6041"
+    },
+    "power": {
+      "policy": "Battery Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           0\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 1\n networkoversleep     0\n sleep                1\n tcpkeepalive         1\n disksleep            10",
+      "source": "AC Power"
+    },
+    "repositoryRootName": "MacinMeter-DynamicRange-Tool",
+    "runner": {
+      "path": "scripts/run-performance-baseline.py",
+      "sha256": "1e17c3dcbbeafc59b68a9dbff32bc8a9a94530c529210cbe80d42b38e6662e48"
+    },
+    "toolchain": {
+      "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+      "python": "3.13.2",
+      "rustc": {
+        "LLVM version": "22.1.2",
+        "binary": "rustc",
+        "commit-date": "2026-05-25",
+        "commit-hash": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+        "host": "aarch64-apple-darwin",
+        "release": "1.96.0"
+      }
+    }
+  },
+  "kind": "m6_performance_baseline",
+  "measurement": {
+    "coldCacheClaim": false,
+    "decodeVerification": "full decoded f64 SHA-256 is outside the timed decode interval",
+    "nativeTimer": "Darwin /usr/bin/time -l",
+    "outliersRemoved": 0,
+    "processTreeRss": "sum of descendant RSS sampled with ps; /usr/bin/time wrapper excluded",
+    "samplingIntervalMs": 10,
+    "workerTimer": "std::time::Instant around the named workload only"
+  },
+  "run": {
+    "completedAtUtc": "2026-07-20T18:22:39.769665Z",
+    "loadAverageEnd": [
+      15.03173828125,
+      13.79052734375,
+      11.07666015625
+    ],
+    "loadAverageStart": [
+      17.021484375,
+      14.1240234375,
+      11.16064453125
+    ],
+    "startedAtUtc": "2026-07-20T18:22:32.473262Z"
+  },
+  "samples": [
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 553510498,
+        "instructionsRetired": 3589213744,
+        "involuntaryContextSwitches": 53,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 166627792,
+      "scheduleIndex": 0,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 131688333
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 558684908,
+        "instructionsRetired": 3589602034,
+        "involuntaryContextSwitches": 62,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 163117416,
+      "scheduleIndex": 1,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 134447666
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 558532066,
+        "instructionsRetired": 3590773524,
+        "involuntaryContextSwitches": 158,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 171476291,
+      "scheduleIndex": 2,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 136663208
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 449685567,
+        "instructionsRetired": 3465864489,
+        "involuntaryContextSwitches": 45,
+        "maxResidentSetBytes": 2686976,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1802672,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2441216,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 128714209,
+      "scheduleIndex": 3,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 108452166
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 550591646,
+        "instructionsRetired": 3589163244,
+        "involuntaryContextSwitches": 39,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 161823208,
+      "scheduleIndex": 4,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 131258334
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 443765795,
+        "instructionsRetired": 3465918510,
+        "involuntaryContextSwitches": 54,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 137900792,
+      "scheduleIndex": 5,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 108670250
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 553718540,
+        "instructionsRetired": 3589155104,
+        "involuntaryContextSwitches": 49,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 164160500,
+      "scheduleIndex": 6,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 132504792
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 556098539,
+        "instructionsRetired": 3589315565,
+        "involuntaryContextSwitches": 61,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 166300583,
+      "scheduleIndex": 7,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 133163167
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 552757784,
+        "instructionsRetired": 3589546428,
+        "involuntaryContextSwitches": 63,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 167520417,
+      "scheduleIndex": 8,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 132511375
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 456080085,
+        "instructionsRetired": 4310157118,
+        "involuntaryContextSwitches": 60,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 134137959,
+      "scheduleIndex": 9,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 110364625
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 642947286,
+        "instructionsRetired": 4847602733,
+        "involuntaryContextSwitches": 65,
+        "maxResidentSetBytes": 5488640,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 164851750,
+      "scheduleIndex": 10,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 155461792
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 554622085,
+        "instructionsRetired": 3589097914,
+        "involuntaryContextSwitches": 47,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 167846500,
+      "scheduleIndex": 11,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 132332209
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 513247232,
+        "instructionsRetired": 3785535893,
+        "involuntaryContextSwitches": 44,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 133285916,
+      "scheduleIndex": 12,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 124167792
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 469797582,
+        "instructionsRetired": 4311099757,
+        "involuntaryContextSwitches": 100,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 134263041,
+      "scheduleIndex": 13,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 115320917
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 555413694,
+        "instructionsRetired": 3589345040,
+        "involuntaryContextSwitches": 60,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 169802541,
+      "scheduleIndex": 14,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 133261333
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 552506180,
+        "instructionsRetired": 3589543287,
+        "involuntaryContextSwitches": 67,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 167261500,
+      "scheduleIndex": 15,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 132713416
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 514486634,
+        "instructionsRetired": 3785648599,
+        "involuntaryContextSwitches": 55,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 132649417,
+      "scheduleIndex": 16,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 124617833
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 467218549,
+        "instructionsRetired": 4310255151,
+        "involuntaryContextSwitches": 64,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 132561500,
+      "scheduleIndex": 17,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 114040041
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 513256142,
+        "instructionsRetired": 3785530721,
+        "involuntaryContextSwitches": 52,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 132644625,
+      "scheduleIndex": 18,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 124177542
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 639254181,
+        "instructionsRetired": 4848064412,
+        "involuntaryContextSwitches": 100,
+        "maxResidentSetBytes": 5488640,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 169458667,
+      "scheduleIndex": 19,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 155620500
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 506409627,
+        "instructionsRetired": 3785636588,
+        "involuntaryContextSwitches": 56,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 137740625,
+      "scheduleIndex": 20,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 123439084
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 643096957,
+        "instructionsRetired": 4848419226,
+        "involuntaryContextSwitches": 124,
+        "maxResidentSetBytes": 5505024,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4653488,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 167847250,
+      "scheduleIndex": 21,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 156494875
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 559534812,
+        "instructionsRetired": 3589083506,
+        "involuntaryContextSwitches": 35,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 159303875,
+      "scheduleIndex": 22,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 132635625
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 443337618,
+        "instructionsRetired": 3465798489,
+        "involuntaryContextSwitches": 42,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1769880,
+        "realSeconds": 0.1,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 124611000,
+      "scheduleIndex": 23,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 106693833
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 435390399,
+        "instructionsRetired": 3465665162,
+        "involuntaryContextSwitches": 35,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.1,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 129319292,
+      "scheduleIndex": 24,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 105759666
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 516405943,
+        "instructionsRetired": 3785962177,
+        "involuntaryContextSwitches": 77,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 157389584,
+      "scheduleIndex": 25,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 126062083
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 443799273,
+        "instructionsRetired": 3465538793,
+        "involuntaryContextSwitches": 24,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 133754708,
+      "scheduleIndex": 26,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 108130584
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 550869729,
+        "instructionsRetired": 3589469370,
+        "involuntaryContextSwitches": 65,
+        "maxResidentSetBytes": 2342912,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1458608,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2113536,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 167798375,
+      "scheduleIndex": 27,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 134221416
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 636674026,
+        "instructionsRetired": 4847908251,
+        "involuntaryContextSwitches": 85,
+        "maxResidentSetBytes": 5472256,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4620720,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 6,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 187702250,
+      "scheduleIndex": 28,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 154217500
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 456699953,
+        "instructionsRetired": 4310375549,
+        "involuntaryContextSwitches": 70,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 137386417,
+      "scheduleIndex": 29,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 111818458
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 471065834,
+        "instructionsRetired": 4310166651,
+        "involuntaryContextSwitches": 55,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 132565875,
+      "scheduleIndex": 30,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 113916917
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 472061344,
+        "instructionsRetired": 4310137061,
+        "involuntaryContextSwitches": 37,
+        "maxResidentSetBytes": 5537792,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4653488,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5210112,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 136178917,
+      "scheduleIndex": 31,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 113973917
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 470420623,
+        "instructionsRetired": 4310535563,
+        "involuntaryContextSwitches": 59,
+        "maxResidentSetBytes": 5537792,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4653488,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 134279375,
+      "scheduleIndex": 32,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 113912542
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 446443794,
+        "instructionsRetired": 3465980303,
+        "involuntaryContextSwitches": 49,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 130636000,
+      "scheduleIndex": 33,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 109365084
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 432230598,
+        "instructionsRetired": 3466151969,
+        "involuntaryContextSwitches": 56,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.1,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 137015542,
+      "scheduleIndex": 34,
+      "scope": "analysis",
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 106590500
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 554516003,
+        "instructionsRetired": 3589428084,
+        "involuntaryContextSwitches": 67,
+        "maxResidentSetBytes": 2310144,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1458608,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2113536,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 163803334,
+      "scheduleIndex": 35,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 134098042
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 552339824,
+        "instructionsRetired": 3591111087,
+        "involuntaryContextSwitches": 92,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 161572083,
+      "scheduleIndex": 36,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 133849167
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 511751741,
+        "instructionsRetired": 3785850424,
+        "involuntaryContextSwitches": 76,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 162601417,
+      "scheduleIndex": 37,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 126041500
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 637353014,
+        "instructionsRetired": 4848161279,
+        "involuntaryContextSwitches": 83,
+        "maxResidentSetBytes": 5488640,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 167074292,
+      "scheduleIndex": 38,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 154958625
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 638257475,
+        "instructionsRetired": 4847785166,
+        "involuntaryContextSwitches": 80,
+        "maxResidentSetBytes": 5505024,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4653488,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 164067708,
+      "scheduleIndex": 39,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 155542083
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 634577342,
+        "instructionsRetired": 4847961408,
+        "involuntaryContextSwitches": 67,
+        "maxResidentSetBytes": 5488640,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 158715917,
+      "scheduleIndex": 40,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 153192833
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 511386017,
+        "instructionsRetired": 3785345114,
+        "involuntaryContextSwitches": 37,
+        "maxResidentSetBytes": 2654208,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1802672,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2441216,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 132843709,
+      "scheduleIndex": 41,
+      "scope": "analysis",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 123913041
+    }
+  ],
+  "schemaVersion": 1,
+  "source": {
+    "commit": "df594c48c67ef7881e446c37259106a3a0666dc9",
+    "state": "clean"
+  },
+  "suite": {
+    "cases": [
+      {
+        "arguments": [
+          "analysis",
+          "2",
+          "48000",
+          "28800000",
+          "4096"
+        ],
+        "caseId": "analysis/stereo-600s",
+        "description": "Direct finite f64 AnalyzerSession, 2 channels, 600 audio seconds",
+        "scope": "analysis"
+      },
+      {
+        "arguments": [
+          "analysis",
+          "8",
+          "48000",
+          "8640000",
+          "4096"
+        ],
+        "caseId": "analysis/8ch-180s",
+        "description": "Direct finite f64 AnalyzerSession, 8 channels, 180 audio seconds",
+        "scope": "analysis"
+      },
+      {
+        "arguments": [
+          "analysis",
+          "64",
+          "48000",
+          "1440000",
+          "4096"
+        ],
+        "caseId": "analysis/64ch-30s",
+        "description": "Maximum product geometry, 64 channels, 30 audio seconds",
+        "scope": "analysis"
+      }
+    ],
+    "id": "m6-scalar-baseline-v1",
+    "outlierPolicy": "retain_all",
+    "samplesPerCaseVariant": 7,
+    "schedule": "seeded_fully_interleaved",
+    "seed": 1295380771,
+    "sha256": "cc4a612bc04701cf01198ce6c682c51abbc039983d320385165072d363844455",
+    "warmupsPerCaseVariant": 1
+  },
+  "summary": [
+    {
+      "caseId": "analysis/64ch-30s",
+      "nativeMaxResidentSetBytes": {
+        "max": 5537792.0,
+        "median": 5521408.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 5521408.0,
+        "p10": 5521408.0,
+        "p90": 5537792.0
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.11,
+        "median": 0.11,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.11,
+        "p10": 0.11000000000000001,
+        "p90": 0.11
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 5210112.0,
+        "median": 5193728.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 5193728.0,
+        "p10": 5193728.0,
+        "p90": 5200281.6
+      },
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 271.82623055168267,
+          "median": 263.3498236262837,
+          "medianAbsoluteDeviation": 0.28432718367895404,
+          "min": 260.1436129752593,
+          "p10": 261.89674305566655,
+          "p90": 269.70570438108405
+        },
+        "logicalItemsPerSecond": {
+          "max": 9.060874351722756,
+          "median": 8.778327454209457,
+          "medianAbsoluteDeviation": 0.009477572789297284,
+          "min": 8.671453765841976,
+          "p10": 8.729891435188886,
+          "p90": 8.990190146036134
+        },
+        "millionSamplesPerSecond": {
+          "max": 835.0501802547692,
+          "median": 809.0106581799434,
+          "medianAbsoluteDeviation": 0.8734531082616286,
+          "min": 799.1611790599966,
+          "p10": 804.5467946670077,
+          "p90": 828.5359238586901
+        }
+      },
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 115320917.0,
+        "median": 113916917.0,
+        "medianAbsoluteDeviation": 123124.0,
+        "min": 110364625.0,
+        "p10": 111236924.80000001,
+        "p90": 114552391.4
+      }
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "nativeMaxResidentSetBytes": {
+        "max": 5505024.0,
+        "median": 5488640.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 5472256.0,
+        "p10": 5482086.4,
+        "p90": 5505024.0
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.15,
+        "median": 0.15,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.15,
+        "p10": 0.15,
+        "p90": 0.15
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 5193728.0,
+        "median": 5193728.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 5193728.0,
+        "p10": 5193728.0,
+        "p90": 5193728.0
+      },
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 195.8316156996718,
+          "median": 192.97346064298551,
+          "medianAbsoluteDeviation": 0.6266051810368936,
+          "min": 191.69956843634654,
+          "p10": 192.3458225358445,
+          "p90": 195.0509175525842
+        },
+        "logicalItemsPerSecond": {
+          "max": 6.527720523322393,
+          "median": 6.432448688099518,
+          "medianAbsoluteDeviation": 0.02088683936789515,
+          "min": 6.3899856145448855,
+          "p10": 6.411527417861484,
+          "p90": 6.501697251752807
+        },
+        "millionSamplesPerSecond": {
+          "max": 601.5947234293917,
+          "median": 592.8144710952515,
+          "medianAbsoluteDeviation": 1.9249311161453306,
+          "min": 588.9010742364567,
+          "p10": 590.8863668301144,
+          "p90": 599.1964187215386
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 156494875.0,
+        "median": 155461792.0,
+        "medianAbsoluteDeviation": 503167.0,
+        "min": 153192833.0,
+        "p10": 153807633.2,
+        "p90": 155970250.0
+      }
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "nativeMaxResidentSetBytes": {
+        "max": 2686976.0,
+        "median": 2670592.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2670592.0,
+        "p10": 2670592.0,
+        "p90": 2677145.5999999996
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.1,
+        "median": 0.1,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.1,
+        "p10": 0.1,
+        "p90": 0.1
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 2441216.0,
+        "median": 2424832.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2424832.0,
+        "p10": 2424832.0,
+        "p90": 2431385.6
+      },
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 1701.9720920828172,
+          "median": 1664.6539151217382,
+          "medianAbsoluteDeviation": 18.790414481991093,
+          "min": 1645.8635006397471,
+          "p10": 1652.1776588547334,
+          "p90": 1694.012341742101
+        },
+        "logicalItemsPerSecond": {
+          "max": 9.455400511571208,
+          "median": 9.24807730623188,
+          "medianAbsoluteDeviation": 0.10439119156661825,
+          "min": 9.143686114665261,
+          "p10": 9.178764771415185,
+          "p90": 9.411179676345006
+        },
+        "millionSamplesPerSecond": {
+          "max": 653.5572833598018,
+          "median": 639.2271034067475,
+          "medianAbsoluteDeviation": 7.215519161084558,
+          "min": 632.0115842456629,
+          "p10": 634.4362210002178,
+          "p90": 650.5007392289667
+        }
+      },
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 109365084.0,
+        "median": 108130584.0,
+        "medianAbsoluteDeviation": 1234500.0,
+        "min": 105759666.0,
+        "p10": 106258166.4,
+        "p90": 108948183.6
+      }
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "nativeMaxResidentSetBytes": {
+        "max": 2654208.0,
+        "median": 2637824.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2637824.0,
+        "p10": 2637824.0,
+        "p90": 2644377.5999999996
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.12,
+        "median": 0.12,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.12,
+        "p10": 0.12,
+        "p90": 0.12
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 2441216.0,
+        "median": 2424832.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2424832.0,
+        "p10": 2424832.0,
+        "p90": 2431385.6
+      },
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 1458.2091357709685,
+          "median": 1449.5374695047515,
+          "medianAbsoluteDeviation": 5.121404269529421,
+          "min": 1427.8678863334346,
+          "p10": 1428.0077917044644,
+          "p90": 1454.8626191083877
+        },
+        "logicalItemsPerSecond": {
+          "max": 8.10116186539427,
+          "median": 8.052985941693064,
+          "medianAbsoluteDeviation": 0.028452245941830157,
+          "min": 7.932599368519082,
+          "p10": 7.933376620580358,
+          "p90": 8.082570106157709
+        },
+        "millionSamplesPerSecond": {
+          "max": 559.9523081360519,
+          "median": 556.6223882898246,
+          "medianAbsoluteDeviation": 1.9666192394993232,
+          "min": 548.301268352039,
+          "p10": 548.3549920145143,
+          "p90": 558.6672457376209
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 126062083.0,
+        "median": 124177542.0,
+        "medianAbsoluteDeviation": 440291.0,
+        "min": 123439084.0,
+        "p10": 123723458.19999999,
+        "p90": 126049733.2
+      }
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "nativeMaxResidentSetBytes": {
+        "max": 2359296.0,
+        "median": 2359296.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2342912.0,
+        "p10": 2352742.4,
+        "p90": 2359296.0
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.13,
+        "median": 0.13,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.13,
+        "p10": 0.13,
+        "p90": 0.13
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 2129920.0,
+        "median": 2129920.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2113536.0,
+        "p10": 2123366.4,
+        "p90": 2129920.0
+      },
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 4571.138317205824,
+          "median": 4521.019939687183,
+          "medianAbsoluteDeviation": 50.118377518640955,
+          "min": 4390.35501054534,
+          "p10": 4433.763793502302,
+          "p90": 4545.203228713399
+        },
+        "logicalItemsPerSecond": {
+          "max": 7.618563862009706,
+          "median": 7.535033232811971,
+          "medianAbsoluteDeviation": 0.08353062919773535,
+          "min": 7.3172583509089,
+          "p10": 7.3896063225038375,
+          "p90": 7.575338714522331
+        },
+        "millionSamplesPerSecond": {
+          "max": 438.8292784517591,
+          "median": 434.01791420996955,
+          "medianAbsoluteDeviation": 4.8113642417895335,
+          "min": 421.47408101235266,
+          "p10": 425.6413241762211,
+          "p90": 436.3395099564864
+        }
+      },
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 136663208.0,
+        "median": 132713416.0,
+        "medianAbsoluteDeviation": 1455082.0,
+        "min": 131258334.0,
+        "p10": 132010158.6,
+        "p90": 135333882.8
+      }
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "nativeMaxResidentSetBytes": {
+        "max": 2326528.0,
+        "median": 2326528.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2310144.0,
+        "p10": 2319974.4,
+        "p90": 2326528.0
+      },
+      "nativeSystemSeconds": {
+        "max": 0.0,
+        "median": 0.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "nativeUserSeconds": {
+        "max": 0.13,
+        "median": 0.13,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.13,
+        "p10": 0.13,
+        "p90": 0.13
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 2129920.0,
+        "median": 2129920.0,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 2113536.0,
+        "p10": 2123366.4,
+        "p90": 2129920.0
+      },
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 4556.2122803999655,
+          "median": 4505.750452750947,
+          "medianAbsoluteDeviation": 23.092745960735556,
+          "min": 4474.338260658571,
+          "p10": 4479.329928337555,
+          "p90": 4542.911048173479
+        },
+        "logicalItemsPerSecond": {
+          "max": 7.593687133999943,
+          "median": 7.509584087918245,
+          "medianAbsoluteDeviation": 0.03848790993455964,
+          "min": 7.457230434430952,
+          "p10": 7.465549880562592,
+          "p90": 7.571518413622465
+        },
+        "millionSamplesPerSecond": {
+          "max": 437.3963789183967,
+          "median": 432.55204346409096,
+          "medianAbsoluteDeviation": 2.2169036122306807,
+          "min": 429.5364730232228,
+          "p10": 430.01567312040527,
+          "p90": 436.119460624654
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 134098042.0,
+        "median": 133163167.0,
+        "medianAbsoluteDeviation": 686000.0,
+        "min": 131688333.0,
+        "p10": 132074658.6,
+        "p90": 133948717.0
+      }
+    }
+  ],
+  "variants": {
+    "final": {
+      "path": "m6-refined-df594c4",
+      "sha256": "72a7e9fd81ab64b53874b3966b0c206d532da01dae0120d7d375051d7590a26b",
+      "sizeBytes": 1030912,
+      "sourceCommit": "df594c48c67ef7881e446c37259106a3a0666dc9"
+    },
+    "scalar": {
+      "path": "m6-scalar-f116f3e",
+      "sha256": "05879505c0dcd745f9f773462bc8ca635c547a82f1a52b8216c9852e52ebadb7",
+      "sizeBytes": 1030912,
+      "sourceCommit": "f116f3e272dfb97d79f08e2924727fbda08083a9"
+    }
+  },
+  "warmups": [
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 468312661,
+        "instructionsRetired": 4309787440,
+        "involuntaryContextSwitches": 45,
+        "maxResidentSetBytes": 5521408,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4637104,
+        "realSeconds": 0.11,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 140703333,
+      "variant": "final",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 114773042
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 509134771,
+        "instructionsRetired": 3786511501,
+        "involuntaryContextSwitches": 35,
+        "maxResidentSetBytes": 2637824,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.12,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 136531875,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 123170209
+    },
+    {
+      "caseId": "analysis/8ch-180s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 438585544,
+        "instructionsRetired": 3466063490,
+        "involuntaryContextSwitches": 47,
+        "maxResidentSetBytes": 2670592,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1786288,
+        "realSeconds": 0.1,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2424832,
+        "samples": 4,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 3938,
+      "resultFingerprintSha256": "70a035ebd128d5009280e3a2dd86ade6e2f907e01680dae21a56ac93cb371a21",
+      "runnerWallNs": 135113000,
+      "variant": "final",
+      "work": {
+        "audioFrames": 8640000,
+        "audioSeconds": 180.0,
+        "interleavedSamples": 69120000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 106649208
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 555689321,
+        "instructionsRetired": 3590105409,
+        "involuntaryContextSwitches": 125,
+        "maxResidentSetBytes": 2326528,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.14,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 172187333,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 138459292
+    },
+    {
+      "caseId": "analysis/stereo-600s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 554070024,
+        "instructionsRetired": 3589467822,
+        "involuntaryContextSwitches": 60,
+        "maxResidentSetBytes": 2359296,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1474992,
+        "realSeconds": 0.13,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 2129920,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 1693,
+      "resultFingerprintSha256": "b5373187a2077229147afef158c67c0ea99889e004ca3bee4a4d93567691e04a",
+      "runnerWallNs": 166070583,
+      "variant": "final",
+      "work": {
+        "audioFrames": 28800000,
+        "audioSeconds": 600.0,
+        "interleavedSamples": 57600000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 131771958
+    },
+    {
+      "caseId": "analysis/64ch-30s",
+      "details": {
+        "blockFrames": 4096,
+        "pattern": "deterministic_dense_v1",
+        "profile": "foo_dr_meter_1_0_8_candidate_v1"
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 640349534,
+        "instructionsRetired": 4847733034,
+        "involuntaryContextSwitches": 68,
+        "maxResidentSetBytes": 5505024,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4653488,
+        "realSeconds": 0.15,
+        "swaps": 0,
+        "systemSeconds": 0.0,
+        "userSeconds": 0.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5193728,
+        "samples": 5,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 25096,
+      "resultFingerprintSha256": "1b60a3e6a307e6ffc455d52a08fffd685aa9a25668595d34973d3bba563f9840",
+      "runnerWallNs": 166394833,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 1440000,
+        "audioSeconds": 30.0,
+        "interleavedSamples": 92160000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 153393500
+    }
+  ]
+}

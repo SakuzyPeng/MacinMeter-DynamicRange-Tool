@@ -263,6 +263,7 @@ See:
 - [M6 clean sampling-profile report](docs/performance/M6_SAMPLING_PROFILE_REPORT.md)
 - [M6 validation-traversal A/B report](docs/performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md)
 - [M6 accepted-validation post-profile report](docs/performance/M6_VALIDATION_POST_PROFILE_REPORT.md)
+- [M6 performance-engineering closure report](docs/performance/M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)
 - [Local release artifact contract](docs/RELEASE.md)
 - [M5 product/repository convergence report](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)

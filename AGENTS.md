@@ -66,6 +66,11 @@ dependencies into lower layers.
   binary, suite, corpus, toolchain, environment, and raw samples, and require
   exact result/PCM fingerprints before comparison. Benchmarks are explicit
   local tasks, never ordinary test/CI gates or cross-host performance claims.
+- Completed M6 keeps validation geometry-sensitive: 1–4 channels use the
+  channel-major path; 5–64 channels use frame-major transactional shadows and
+  replay the immutable channel-major inspector only for numeric-error
+  precedence. Do not merge validation with commit or add SIMD, unsafe,
+  parallelism, or a second backend without a new source-bound decision.
 
 ## Commands
 

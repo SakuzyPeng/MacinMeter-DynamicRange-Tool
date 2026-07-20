@@ -1,6 +1,6 @@
 # M6：Accepted validation traversal post-profile
 
-- 状态：Post-profile established；one bounded refinement selected
+- 状态：Post-profile established；bounded refinement accepted；M6 closed
 - 日期：2026-07-21
 - 方法：ADR-0007 / `m6-sampling-profile-v1` 的 64-channel analysis 子集
 - source：`2f6c26207ed95b73a2df2c426b001d1375dd2e37`（clean）
@@ -37,7 +37,9 @@ refinement：
 4. non-finite 仍直接优先失败，session 仍只在 validation 全部成功后 commit。
 
 错误输入的回放只影响拒绝路径，不改变错误、状态或有效输入结果。该 refinement
-仍需完整差分门禁和同轮 A/B；收益若落在噪声内就删除。
+随后通过完整差分门禁和同轮 A/B：8ch elapsed −9.41%，64ch −10.69%，stereo
+保持在噪声内。最终累计结果与 M6 收口边界见
+[`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)。
 
 ## 捕获质量与身份
 

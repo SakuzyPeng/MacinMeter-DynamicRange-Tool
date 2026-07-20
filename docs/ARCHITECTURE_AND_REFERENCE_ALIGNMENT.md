@@ -770,11 +770,22 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 合并后的 frame-major validation 为 61.27%，commit loop 为 36.46%；
     - post-profile 只选择移除有效路径 failure state/iterator overhead、错误时
       回放只读 inspector 的最终有界 refinement。
+32. [x] `perf: streamline valid numeric inspection`
+    - 5–64 声道有效输入使用无 failure-state shadow 与紧凑索引循环；
+    - 有限数值 overflow 回放 immutable channel-major inspector，保留
+      non-finite 与低 channel index 错误优先级；
+    - 完整 workspace/reference/adapter 门禁与 bit-exact 差分测试通过。
+33. [x] `perf: close m6 after cumulative interleaved A/B`
+    - refinement 对 accepted path 的 8ch/64ch elapsed 再下降 9.41%/10.69%；
+    - final 对 pre-optimization scalar 的独立同轮比较为 stereo −0.34%（噪声
+      内）、8ch −12.92%、64ch −26.72%；
+    - 两次各 42 个 measured sample，全部跨 variant fingerprint 一致；
+    - 不继续 SIMD/unsafe、validation/commit 合并、FLAC backend 或无需求的
+      文件级并发。
 
-M5 已收口，M6 timing baseline、首批 sampling profile 与第一个有证据的优化已经
-完成。post-profile 已确认 64-channel hotspot 下降；下一切片只实现其选定的
-error-slow-path refinement，并以差分门禁和同轮 A/B 决定保留或删除。FLAC、
-文件级并发与 SIMD 暂不动。
+M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
+正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
+文件级并发、SIMD 或新的性能承诺必须由后续真实需求重新立项。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

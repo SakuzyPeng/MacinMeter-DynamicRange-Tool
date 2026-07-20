@@ -123,5 +123,7 @@ candidate 以“高声道改善明确、低声道不退化、结果 bit-exact、
 该 source-bound sampling profile 已完成：64-channel validation 的绝对采样权重
 按预期下降，剩余调用树只支持一个不改变算法的 error-slow-path refinement，见
 [`M6_VALIDATION_POST_PROFILE_REPORT.md`](M6_VALIDATION_POST_PROFILE_REPORT.md)。
-refinement 之后若没有新的明显收益，M6 停止 analyzer 微优化；FLAC 与文件级并发
-仍需新的真实需求和独立证据才重新立项。
+refinement 已通过门禁与 A/B，最终累计 8ch elapsed −12.92%、64ch −26.72%，
+stereo 保持在噪声内。M6 已停止 analyzer 微优化；完整收口见
+[`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)。
+FLAC 与文件级并发仍需新的真实需求和独立证据才重新立项。

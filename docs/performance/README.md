@@ -13,6 +13,9 @@ leaderboard or a user-facing throughput guarantee.
   analyzer candidate.
 - [`M6_VALIDATION_POST_PROFILE_REPORT.md`](M6_VALIDATION_POST_PROFILE_REPORT.md)
   attributes the accepted high-channel path and bounds one final refinement.
+- [`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)
+  records the refinement and scalar-to-final A/B runs and closes active M6
+  optimization.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,

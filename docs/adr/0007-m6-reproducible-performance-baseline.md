@@ -167,6 +167,12 @@ shadow；与直接父提交做同轮交错后，stereo 中位差异 −0.04%，8
 限制见
 [`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](../performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md)。
 
+accepted path 的 post-profile 又选择并验证了一个 error-slow-path refinement。
+最终 `df594c4...` 相对 pre-optimization scalar 的独立同轮比较中，stereo 差异
+−0.34%（噪声内），8ch elapsed −12.92%，64ch elapsed −26.72%，fingerprint
+仍完全相同。M6 因此收口；见
+[`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](../performance/M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)。
+
 ## 初始基线出口条件
 
 - 15 个 case 均达到足以多次 process-tree sampling 的工作量；
