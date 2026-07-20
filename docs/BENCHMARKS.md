@@ -2,8 +2,9 @@
 
 # Performance status
 
-MacinMeter 0.2.0 has no published performance guarantee. M6 now has a
-reproducible local scalar-baseline protocol, but its results remain
+MacinMeter 0.2.0 has no published performance guarantee. M6 now has
+reproducible local scalar-baseline and sampling-profile protocols, but their
+results remain
 source/binary/corpus/environment-specific evidence rather than a user-facing
 throughput promise.
 
@@ -57,10 +58,24 @@ python3 scripts/run-performance-baseline.py \
 The run fails before summarization if result fingerprints, decoded PCM oracles,
 work units, or identical-PCM application results differ.
 
-Future optimization will first consider one application-owned file-level
-parallelism axis with a shared resource budget. Packet-level parallelism, SIMD,
-and external decoder processes are not implied by this document. See
+On macOS with full Xcode, reproduce the three-case sampling profile from a
+clean worktree with:
+
+```bash
+python3 scripts/run-performance-profile.py
+```
+
+The first clean profile attributes 39.48% of stereo analysis and 69.20% of
+64-channel analysis to the independent finite-input scan plus transactional
+numeric-safety shadow traversal. FLAC spends 79.07% in Symphonia's decoder;
+product sample materialization and `PcmBlock` construction are much smaller.
+Accordingly, the first bounded candidate is analyzer validation traversal, not
+file parallelism, SIMD, checksum removal, or another decoder.
+
+Packet-level parallelism, SIMD, unsafe code, and external decoder processes are
+not implied by this document. See
 [ADR-0007](adr/0007-m6-reproducible-performance-baseline.md) for the exact
 measurement and claim boundary. The initial clean-source results and raw
-samples are recorded in the
-[M6 scalar-baseline report](performance/M6_SCALAR_BASELINE_REPORT.md).
+samples are recorded in the [M6 scalar-baseline
+report](performance/M6_SCALAR_BASELINE_REPORT.md) and [M6 sampling-profile
+report](performance/M6_SAMPLING_PROFILE_REPORT.md).

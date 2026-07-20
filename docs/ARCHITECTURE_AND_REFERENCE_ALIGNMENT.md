@@ -647,7 +647,8 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 接受 ADR-0007，建立 deterministic corpus、分层 release worker、完全交错
   runner、结果 oracle 与进程树资源记录；
 - [x] 从 clean harness commit 运行 15-case × 7-sample 标量基线并保存原始记录；
-- [ ] 根据基线对占主导的生产 scope 做 sampling profile；
+- [x] 根据基线对 direct analyzer 与 FLAC decode 做 clean sampling profile，
+  保存完整折叠栈证据并选择首个有界 candidate；
 - 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
   除非出现新的必要性证据，否则维持删除状态；
 - 只优化已确认瓶颈；
@@ -740,10 +741,20 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 四个同源稳定 route 的 decoded f64 与 `AnalysisResult` fingerprint 完全一致；
     - 第二次独立 run 的所有 median 与 canonical record 差异不超过 1.83%；
     - 基线只确定 analysis 与 FLAC decode 为首批 profile scope，不授权任何优化。
+28. [x] `perf: profile dominant m6 scalar paths`
+    - clean `7ad057b...`、arm64 Apple M4 Pro 上对 stereo analysis、64-channel
+      analysis 与 FLAC decode 各完成三次 1 ms Time Profiler capture；
+    - 48,131 个有效 scoped sample 的 weight / worker elapsed 均在
+      `0.9860..0.9911`，三项 fingerprint 与 FLAC decoded-f64 oracle 稳定；
+    - analyzer 的 finite scan + numeric shadow 占 stereo 39.48%、64ch 69.20%；
+    - FLAC 79.07% 位于 Symphonia decoder，产品 sample copy 与 `PcmBlock`
+      构造不构成第一目标；
+    - 首个 candidate 限定为合并 finite scan 并 frame-major 化 atomic shadow
+      validation，不授权并发、SIMD、unsafe、checksum 放宽或第二 backend。
 
-M5 已收口，M6 标量基线已建立。下一切片对 direct analyzer 与 FLAC decode 做
-sampling profile；文件级并发、SIMD 或其他优化仍必须由 profile/A-B 数据证明需求，
-并继续受 application 统一预算与标量差分门禁约束。
+M5 已收口，M6 timing baseline 与首批 sampling profile 已建立。下一切片实现
+analyzer validation-traversal candidate，并先过完整 bit-exact/differential
+门禁，再按 ADR-0007 做同 run interleaved A/B；FLAC、文件级并发与 SIMD 暂不动。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

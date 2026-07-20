@@ -260,6 +260,7 @@ See:
 - [M6 reproducible performance-baseline decision](docs/adr/0007-m6-reproducible-performance-baseline.md)
 - [Performance measurement contract](docs/BENCHMARKS.md)
 - [M6 clean scalar-baseline report](docs/performance/M6_SCALAR_BASELINE_REPORT.md)
+- [M6 clean sampling-profile report](docs/performance/M6_SAMPLING_PROFILE_REPORT.md)
 - [Local release artifact contract](docs/RELEASE.md)
 - [M5 product/repository convergence report](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)

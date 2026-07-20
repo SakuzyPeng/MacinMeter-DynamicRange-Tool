@@ -2,9 +2,9 @@
 
 # 性能状态
 
-MacinMeter 0.2.0 不发布性能保证。M6 现在已经建立可复现的本地标量基线协议，但其
-结果仍只是绑定 source、binary、corpus 与 environment 的证据，不是面向用户的
-吞吐承诺。
+MacinMeter 0.2.0 不发布性能保证。M6 现在已经建立可复现的本地标量基线与
+sampling-profile 协议，但其结果仍只是绑定 source、binary、corpus 与
+environment 的证据，不是面向用户的吞吐承诺。
 
 此前记录在这里的数字来自已经删除的 0.1.x 包级并行、文件级并行、SIMD 和
 FFmpeg/DSD 路径，不能代表当前架构，也不能作为正确性或吞吐承诺。
@@ -50,8 +50,20 @@ python3 scripts/run-performance-baseline.py \
 如果 result fingerprint、decoded PCM oracle、work unit 或同 PCM 的 application
 结果不同，runner 会在形成摘要前失败。
 
-后续优化会优先考虑由 application 统一管理、具有共享资源预算的单一文件级并行轴。
-本文档不暗示包级并行、SIMD 或外部解码进程会恢复。准确测量方法与声明边界见
-[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，首次 clean-source
-结果与原始样本见
-[`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)。
+在装有完整 Xcode 的 macOS 上，从干净工作树复现三项 sampling profile：
+
+```bash
+python3 scripts/run-performance-profile.py
+```
+
+首次 clean profile 把 stereo analysis 的 39.48% 与 64-channel analysis 的
+69.20% 归因到独立 finite-input scan 加事务性 numeric-safety shadow traversal。
+FLAC 有 79.07% 位于 Symphonia decoder 内，产品 sample materialization 与
+`PcmBlock` 构造明显更小。因此首个有界 candidate 是 analyzer validation
+traversal，而不是文件级并发、SIMD、禁用 checksum 或增加 decoder。
+
+本文档不暗示包级并行、SIMD、unsafe 或外部解码进程会恢复。准确测量方法与声明
+边界见 [`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，首次
+clean-source 结果与原始样本见
+[`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)和
+[`M6 sampling-profile 报告`](performance/M6_SAMPLING_PROFILE_REPORT.md)。
