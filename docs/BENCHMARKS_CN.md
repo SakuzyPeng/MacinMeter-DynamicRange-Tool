@@ -52,4 +52,6 @@ python3 scripts/run-performance-baseline.py \
 
 后续优化会优先考虑由 application 统一管理、具有共享资源预算的单一文件级并行轴。
 本文档不暗示包级并行、SIMD 或外部解码进程会恢复。准确测量方法与声明边界见
-[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)。
+[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，首次 clean-source
+结果与原始样本见
+[`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)。

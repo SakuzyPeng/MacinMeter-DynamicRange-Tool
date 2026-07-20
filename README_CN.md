@@ -236,6 +236,7 @@ macinmeter-domain
 - [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
 - [M6 可复现性能基线决策](docs/adr/0007-m6-reproducible-performance-baseline.md)
 - [性能测量契约](docs/BENCHMARKS_CN.md)
+- [M6 clean 标量基线报告](docs/performance/M6_SCALAR_BASELINE_REPORT.md)
 - [本地发行制品契约](docs/RELEASE_CN.md)
 - [M5 产品与仓库收敛报告](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)

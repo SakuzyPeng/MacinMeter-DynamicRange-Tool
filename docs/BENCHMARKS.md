@@ -61,4 +61,6 @@ Future optimization will first consider one application-owned file-level
 parallelism axis with a shared resource budget. Packet-level parallelism, SIMD,
 and external decoder processes are not implied by this document. See
 [ADR-0007](adr/0007-m6-reproducible-performance-baseline.md) for the exact
-measurement and claim boundary.
+measurement and claim boundary. The initial clean-source results and raw
+samples are recorded in the
+[M6 scalar-baseline report](performance/M6_SCALAR_BASELINE_REPORT.md).
