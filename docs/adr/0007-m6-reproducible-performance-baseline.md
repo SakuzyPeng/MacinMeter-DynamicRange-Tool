@@ -160,6 +160,13 @@ profile worker elapsed 不能替代第 4–7 节的 canonical scalar timing，�
 4. 只有 profile 显示明确瓶颈时才提出一个优化 ADR/切片；
 5. candidate 与 scalar 先通过完整差分门禁，再执行同 run 交错 A/B。
 
+首个 candidate 已按该协议完成。`ab09c8b...` 对 1–4 声道保留原 validation
+traversal，对 5–64 声道使用合并 finite check 的 frame-major transactional
+shadow；与直接父提交做同轮交错后，stereo 中位差异 −0.04%，8ch elapsed
+−4.45%，64ch elapsed −19.58%，三项跨 variant fingerprint 均一致。完整身份与
+限制见
+[`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](../performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md)。
+
 ## 初始基线出口条件
 
 - 15 个 case 均达到足以多次 process-tree sampling 的工作量；

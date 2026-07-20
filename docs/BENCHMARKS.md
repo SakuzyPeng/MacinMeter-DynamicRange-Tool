@@ -69,13 +69,17 @@ The first clean profile attributes 39.48% of stereo analysis and 69.20% of
 64-channel analysis to the independent finite-input scan plus transactional
 numeric-safety shadow traversal. FLAC spends 79.07% in Symphonia's decoder;
 product sample materialization and `PcmBlock` construction are much smaller.
-Accordingly, the first bounded candidate is analyzer validation traversal, not
-file parallelism, SIMD, checksum removal, or another decoder.
+Accordingly, the first bounded candidate was analyzer validation traversal,
+not file parallelism, SIMD, checksum removal, or another decoder. Its clean
+interleaved A/B retained stereo performance within noise while reducing median
+elapsed time by 4.45% at 8 channels and 19.58% at 64 channels, with identical
+cross-variant result fingerprints.
 
 Packet-level parallelism, SIMD, unsafe code, and external decoder processes are
 not implied by this document. See
 [ADR-0007](adr/0007-m6-reproducible-performance-baseline.md) for the exact
 measurement and claim boundary. The initial clean-source results and raw
 samples are recorded in the [M6 scalar-baseline
-report](performance/M6_SCALAR_BASELINE_REPORT.md) and [M6 sampling-profile
-report](performance/M6_SAMPLING_PROFILE_REPORT.md).
+report](performance/M6_SCALAR_BASELINE_REPORT.md), [M6 sampling-profile
+report](performance/M6_SAMPLING_PROFILE_REPORT.md), and [validation-traversal
+A/B report](performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md).

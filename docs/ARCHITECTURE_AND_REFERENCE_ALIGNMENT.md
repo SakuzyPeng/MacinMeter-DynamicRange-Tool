@@ -649,10 +649,10 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 从 clean harness commit 运行 15-case × 7-sample 标量基线并保存原始记录；
 - [x] 根据基线对 direct analyzer 与 FLAC decode 做 clean sampling profile，
   保存完整折叠栈证据并选择首个有界 candidate；
-- 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
+- [x] 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
   除非出现新的必要性证据，否则维持删除状态；
-- 只优化已确认瓶颈；
-- 性能路径必须通过与标量参考路径的差分测试。
+- [x] 只优化已确认瓶颈；
+- [x] 性能路径必须通过与标量参考路径的差分测试。
 
 ## 9. 实施顺序记录
 
@@ -751,10 +751,24 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
       构造不构成第一目标；
     - 首个 candidate 限定为合并 finite scan 并 frame-major 化 atomic shadow
       validation，不授权并发、SIMD、unsafe、checksum 放宽或第二 backend。
+29. [x] `perf: optimize multichannel numeric validation`
+    - 1–4 声道保留原 channel-major validation，5–64 声道改用合并 finite check
+      的 frame-major transactional shadow；
+    - 差分测试固定 non-finite 全局优先、低 channel index 优先、失败原子性与完整
+      session bit invariants；
+    - 全 workspace/reference/adapter 门禁通过，未增加公开 API、算法 profile、
+      并发、SIMD 或 unsafe。
+30. [x] `perf: accept validation traversal after interleaved A/B`
+    - clean candidate `ab09c8b...` 与直接父提交完成三项 analysis、42 measured
+      sample 的同轮完全交错比较；
+    - stereo 中位差异 −0.04%，8ch elapsed −4.45%，64ch elapsed −19.58%；
+    - 三项跨 variant fingerprint 完全一致，raw record 绑定 source、worker、
+      suite、corpus、environment 与全部样本。
 
-M5 已收口，M6 timing baseline 与首批 sampling profile 已建立。下一切片实现
-analyzer validation-traversal candidate，并先过完整 bit-exact/differential
-门禁，再按 ADR-0007 做同 run interleaved A/B；FLAC、文件级并发与 SIMD 暂不动。
+M5 已收口，M6 timing baseline、首批 sampling profile 与第一个有证据的优化已经
+完成。下一切片只对 accepted candidate 做 post-profile，确认 64-channel
+validation hotspot 是否按预期下降并决定是否停止 analyzer 微优化；FLAC、文件级
+并发与 SIMD 暂不动。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

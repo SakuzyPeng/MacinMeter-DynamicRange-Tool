@@ -1,6 +1,6 @@
 # M6：0.2.0 标量性能基线
 
-- 状态：Baseline established；optimization not started
+- 状态：Historical scalar baseline；profiling and first candidate completed
 - 日期：2026-07-20
 - 方法：ADR-0007 / `m6-scalar-baseline-v1`
 - source：`923960953ca15303abe31733d6ef153a31712a85`（clean）
@@ -15,7 +15,7 @@
 M6 已经得到第一份可复核的 0.2.0 安全标量/串行基线。它建立了后续比较的零点，但
 没有形成跨机器性能承诺，也没有证明应当恢复文件级并发、SIMD 或其他执行路径。
 
-当前最值得 sampling profile 的两个 scope 是：
+该基线当时选出的两个 sampling-profile scope 是：
 
 1. direct `AnalyzerSession`：它在 WAV/AIFF/float64 application 路径中占据显著
    工作量，且是所有格式共享的优化杠杆；
@@ -134,9 +134,9 @@ canonical run 不删除任何 outlier。多数 case 的 MAD 小于 1.3 ms；WAV 
 - 不能因 direct analyzer 占比显著就预设 SIMD 是正确解法；
 - 不能用两个独立 run 的小差异代替同 run interleaved A/B。
 
-## 下一步
+## 记录中的下一步（已完成）
 
-下一切片只做 profile，不改生产实现：
+该 baseline 当时要求下一切片只做 profile、不改生产实现：
 
 1. 对 `analysis/stereo-600s` 与 `analysis/64ch-30s` 做同一 release worker 的
    sampling profile，确认 finite scan、transactional shadow pass、commit pass、
@@ -148,3 +148,8 @@ canonical run 不删除任何 outlier。多数 case 的 MAD 小于 1.3 ms；WAV 
    scalar worker 做同 run interleaved A/B。
 
 在 profile 之前，不恢复文件级并发、包级并行、SIMD、unsafe 或第二 backend。
+
+上述 profile 已完成并选择 validation-traversal candidate；candidate 随后通过
+完整差分门禁和同轮交错 A/B。当前结论分别见
+[`M6_SAMPLING_PROFILE_REPORT.md`](M6_SAMPLING_PROFILE_REPORT.md)与
+[`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](M6_VALIDATION_TRAVERSAL_AB_REPORT.md)。

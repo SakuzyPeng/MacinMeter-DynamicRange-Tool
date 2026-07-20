@@ -59,11 +59,14 @@ python3 scripts/run-performance-profile.py
 首次 clean profile 把 stereo analysis 的 39.48% 与 64-channel analysis 的
 69.20% 归因到独立 finite-input scan 加事务性 numeric-safety shadow traversal。
 FLAC 有 79.07% 位于 Symphonia decoder 内，产品 sample materialization 与
-`PcmBlock` 构造明显更小。因此首个有界 candidate 是 analyzer validation
-traversal，而不是文件级并发、SIMD、禁用 checksum 或增加 decoder。
+`PcmBlock` 构造明显更小。因此首个有界 candidate 选择了 analyzer validation
+traversal，而不是文件级并发、SIMD、禁用 checksum 或增加 decoder。其 clean
+交错 A/B 中，stereo 保持在噪声内，8 声道中位耗时下降 4.45%，64 声道下降
+19.58%，跨 variant result fingerprint 完全相同。
 
 本文档不暗示包级并行、SIMD、unsafe 或外部解码进程会恢复。准确测量方法与声明
 边界见 [`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，首次
 clean-source 结果与原始样本见
-[`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)和
-[`M6 sampling-profile 报告`](performance/M6_SAMPLING_PROFILE_REPORT.md)。
+[`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)、
+[`M6 sampling-profile 报告`](performance/M6_SAMPLING_PROFILE_REPORT.md)和
+[`validation-traversal A/B 报告`](performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md)。

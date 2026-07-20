@@ -1,6 +1,6 @@
 # M6：0.2.0 采样归因报告
 
-- 状态：Sampling profile established；first candidate selected；optimization not started
+- 状态：Sampling profile established；first candidate accepted after A/B
 - 日期：2026-07-21
 - 方法：ADR-0007 / `m6-sampling-profile-v1`
 - source：`7ad057b167ddac2b6c415958607d95051c77cfb3`（clean）
@@ -21,7 +21,7 @@
 2. FLAC 的主要成本在 Symphonia FLAC decoder 内部，产品 adapter 的 f64
    materialization 与 `PcmBlock` 构造只占较小部分。
 
-因此第一个优化 candidate 固定为：
+因此第一个优化 candidate 当时固定为：
 
 - 把独立的 finite-input scan 合并进事务性 numeric-safety validation；
 - 把当前按声道跨步读取 interleaved PCM 的 shadow validation 改为逐帧遍历；
@@ -29,8 +29,10 @@
   边界、唯一 `AnalyzerSession`、安全标量代码和 bit-exact 最终结果。
 
 这不是授权删除校验、改成单遍就地提交、增加 `unsafe`/SIMD、恢复并发或引入第二
-backend。先做上述窄 candidate，再用完整差分门禁和 ADR-0007 同 run interleaved
-A/B 判断它是否值得保留。
+backend。后续实现根据同源码校准把 frame-major 路径限定到 5–64 声道，1–4 声道
+保留原遍历；完整差分门禁和 ADR-0007 同 run interleaved A/B 已接受该 candidate，
+见
+[`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](M6_VALIDATION_TRAVERSAL_AB_REPORT.md)。
 
 FLAC 暂不形成产品优化 candidate。禁用 checksum、fork Symphonia 或增加另一个
 decoder 都会改变正确性/维护边界，而当前 profile 没有证明这种代价合理。
@@ -119,7 +121,8 @@ capture 中都没有形成 0.1% 以上的可见 subtree。它们不应成为首�
 
 ### 选定 candidate 的安全边界
 
-首个 candidate 仍保持 validation 与 commit 两个阶段：
+首个 candidate 仍保持 validation 与 commit 两个阶段；最终实现只在 5–64 声道
+启用下述 frame-major shadow，避免让低声道为动态遍历承担回归：
 
 1. shadow 阶段逐帧读取，每个 sample 先执行现有 finite check，再按原顺序更新对应
    声道的轻量 shadow 数值；
@@ -171,17 +174,12 @@ content probe、文件打开或 MacinMeter 自建调度。MD5 validator 是 FLAC
   与 direct analysis 的尺度闭合，本轮也未看到 progress/path 构造可能接近上述
   热点的证据。
 
-## 下一步
+## 后续结果与下一步
 
-下一切片只实现 analyzer validation-traversal candidate：
+candidate 已完成计划中的差分门禁和三项 analysis A/B：stereo 中位差异为
+−0.04%，8ch 为 −4.45%，64ch 为 −19.58%；每项 scalar/candidate fingerprint
+完全相同。因此 candidate 已保留。
 
-1. 先补直接验证 invalid chunk 原子性、非有限/平方溢出/累计溢出错误与任意 chunk
-   边界的差分测试；
-2. 合并 finite scan，改写 frame-major shadow validation；
-3. 跑完整 workspace/reference/adapter 门禁，要求所有既有 result fingerprint
-   不变；
-4. 构建 scalar 与 candidate 两个 source-bound worker，在同一次
-   `run-performance-baseline.py` 中只对三个 analysis case 做完全交错 A/B；
-5. 收益若小于噪声或引入复杂度，则删除 candidate；只有稳定且 bit-exact 才保留。
-
-在 A/B 之前不改 FLAC、不恢复并发、不加入 SIMD，也不发布新的性能数字。
+下一切片只对 accepted candidate 做 source-bound post-profile，核对 64-channel
+validation hotspot 是否按预期下降并决定是否停止 analyzer 微优化。FLAC、文件级
+并发、SIMD、unsafe、checksum 放宽与第二 backend 仍不在授权范围内。
