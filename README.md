@@ -258,6 +258,7 @@ See:
 - [M4 bounded x64 numeric-claim decision](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M5 product/repository convergence decision](docs/adr/0006-m5-product-repository-convergence.md)
 - [Local release artifact contract](docs/RELEASE.md)
+- [M5 product/repository convergence report](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 bounded x64 numeric-conformance report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)

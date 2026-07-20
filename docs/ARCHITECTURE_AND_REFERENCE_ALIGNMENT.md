@@ -635,10 +635,11 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 完成 CLI、GUI、支持格式、兼容性声明和贡献者文档的活跃状态审计；
 - [x] 清理剩余遗留脚本、无效依赖和过期构建文件；
 - [x] 建立 release staging、制品 smoke test 和 checksum；
-- [ ] 完成本地全门禁并形成 M5 收口记录。
+- [x] 完成本地全门禁并形成 M5 收口记录。
 
 决策与出口条件见
-[`ADR-0006`](adr/0006-m5-product-repository-convergence.md)。
+[`ADR-0006`](adr/0006-m5-product-repository-convergence.md)，最终结果见
+[`M5 产品与仓库收敛报告`](M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)。
 
 ### M6：重新性能工程
 
@@ -715,10 +716,15 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
       零引用旧 WAV；
     - 保留仍由 adapter integration 使用的 legacy fixture，以及明确不动
       `audio/`、`dr14_t.meter/`、`master-branch/` 等本地数据。
+25. [x] `docs: close m5 with clean artifact staging`
+    - clean source `78fb266...` 的 CLI 与 arm64 DMG staging/二次 verify 通过；
+    - release manifest 固定 source/toolchain/lock identity 与最终 artifact hash；
+    - GUI strict code signature 失败被明确保留为 local-only 限制；
+    - 本地 Rust、repository/reference tools、frontend 与 release 门禁全部通过。
 
-M4 已收口，M5 正在推进产品与仓库收敛。下一切片完成剩余脚本、依赖与生成物审计，
-执行 clean-source staging 与本地全门禁后形成 M5 收口；文件级并发是否启用与其他
-可复现性能工程继续属于 M6。
+M5 已收口。下一阶段进入 M6 的可复现性能工程；文件级并发、SIMD 或其他优化必须
+先由 benchmark/profile 证明需求，并继续受 application 统一预算与标量差分门禁
+约束。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -755,7 +761,7 @@ M4 已收口，M5 正在推进产品与仓库收敛。下一切片完成剩余�
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
 | 默认算法 | 当前使用 `FooDrMeter108CandidateV1 / Unverified`；M4 有界 conformance 已完成，任何名称/状态升级仍需独立决策 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
-| 默认并发 | M0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
+| 默认并发 | 0.2.0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
 | 公共 API | 0.2.0 重置 Rust API、CLI、JSON 和 GUI IPC；不保留 0.1.x 兼容层 |
 | 发行 CPU | portable baseline；任何函数级加速由 M6 profiling 与差分证据决定 |

@@ -235,6 +235,7 @@ macinmeter-domain
 - [M4 有界 x64 数值声明决策](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
 - [M5 产品与仓库收敛决策](docs/adr/0006-m5-product-repository-convergence.md)
 - [本地发行制品契约](docs/RELEASE_CN.md)
+- [M5 产品与仓库收敛报告](docs/M5_PRODUCT_REPOSITORY_CONVERGENCE_REPORT.md)
 - [M4 x64 数值声明证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [M4 固定 x64 数值声明收口报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
