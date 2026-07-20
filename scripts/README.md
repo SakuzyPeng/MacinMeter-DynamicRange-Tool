@@ -1,4 +1,19 @@
-# Pre-commit checks
+# Repository tooling
+
+Repository checks are split by risk and cost. None of these scripts triggers
+GitHub Actions.
+
+## Fast repository contract
+
+Python 3.11 or newer is required for repository tooling. The read-only check:
+
+```bash
+python3 scripts/check-repository-contract.py
+```
+
+enforces the virtual-workspace identity, inherited package metadata, centralized
+direct dependencies, the single Cargo/npm lockfiles, GUI version mirrors, and
+manual-only workflow triggers. It does not resolve or download dependencies.
 
 ## Native PCM product fixtures
 
@@ -16,86 +31,91 @@ bytes and do not require libFLAC, FFmpeg, network access, or personal audio.
 Corpus geometry, hashes, PCM oracles, and provenance are recorded in its
 [`manifest.json`](../tests/fixtures/native-pcm-v1/manifest.json).
 
-## Malformed media regression corpus
+## Hostile malformed-media corpus
 
-The committed `tests/fixtures/malformed-media-v1` corpus is generated,
-audited, and verified with:
+The files under `tests/fixtures/malformed-media-v1` include forged
+multi-gigabyte length declarations. Standard workspace tests only verify their
+committed byte identity; they never decode those hostile cases in the Cargo
+test process.
+
+Regeneration and byte auditing are safe, read-only with respect to decoders:
 
 ```bash
-python3 scripts/generate-malformed-media-v1.py           # regenerate
-python3 scripts/generate-malformed-media-v1.py --check   # audit committed bytes
-python3 scripts/verify-malformed-corpus.py               # per-case subprocess + timeout
+python3 scripts/generate-malformed-media-v1.py
+python3 scripts/generate-malformed-media-v1.py --check
 ```
 
-The verifier needs a built CLI (`cargo build`). Every case runs in its own
-subprocess with a wall-clock timeout; Linux additionally applies `RLIMIT_AS`.
-Other platforms explicitly report timeout-only verification. See
-[`tests/fixtures/malformed-media-v1/README.md`](../tests/fixtures/malformed-media-v1/README.md)
-for the corpus contract and the hidden `malformed-dev` fuzz seam.
-
-M0 期间，预提交钩子只提供快速、本地、确定性的基础反馈：
+Behavioral verification is a separate, opt-in isolation task:
 
 ```bash
+cargo build --locked -p macinmeter-cli
+python3 scripts/verify-malformed-corpus.py
+```
+
+Each case gets its own CLI subprocess and timeout. The default invocation
+requires Linux `RLIMIT_AS`; it refuses to decode the corpus where that memory
+limit cannot be enforced. `--allow-timeout-only` is an explicit risk
+acknowledgement, not a normal gate. See
+[`tests/fixtures/malformed-media-v1/README.md`](../tests/fixtures/malformed-media-v1/README.md)
+for the corpus contract and the non-default `malformed-dev` fuzz seam.
+
+## Pre-commit
+
+The local hook remains fast, deterministic, and offline:
+
+```bash
+python3 scripts/check-repository-contract.py
 cargo fmt --all -- --check
 cargo check --locked --workspace
 ```
 
-钩子不运行 Clippy、完整测试、Docker 或 `cargo audit`，也不会安装或刷新网络审计
-数据库。完整 workspace Clippy 和测试由手动 GitHub Actions 工作流执行；开发者
-也可以在本地按需运行。
+It does not run Clippy, full tests, the hostile corpus verifier, Docker, or
+`cargo audit`, and it never refreshes a network advisory database.
 
-## 安装
-
-在仓库根目录执行：
+Install it from the repository root:
 
 ```bash
 chmod +x scripts/install-pre-commit.sh
 ./scripts/install-pre-commit.sh
 ```
 
-安装脚本会备份现有 `.git/hooks/pre-commit`，复制
-[`scripts/pre-commit`](pre-commit)，并显示当前两项检查。它不会在安装时执行验证。
-
-也可以手动安装：
-
-```bash
-cp scripts/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-```
-
-## 直接运行
+The installer backs up an existing `.git/hooks/pre-commit`, copies
+[`scripts/pre-commit`](pre-commit), and prints the installed checks. Direct use
+is also supported:
 
 ```bash
 scripts/pre-commit
 ```
 
-脚本通过 `git rev-parse --show-toplevel` 定位仓库根目录，因此从子目录或安装后的
-`.git/hooks/pre-commit` 调用都使用同一 workspace。
-
-## 失败处理
-
-- 格式检查失败：运行 `cargo fmt --all`，检查 diff 后重试；
-- 编译检查失败：运行 `cargo check --locked --workspace` 查看完整诊断并修复；
-- 紧急跳过：`git commit --no-verify`。跳过只绕过本地钩子，不代表改动已验证。
-
-## 完整本地验证
-
-提交较大变更或手动触发远程 CI 前，建议运行：
+For a local standard validation, run:
 
 ```bash
+python3 scripts/check-repository-contract.py
+cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-targets --all-features
+cargo test --locked --workspace --all-targets
+cargo build --locked --release -p macinmeter-cli
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
+(cd tauri-app && npm run build)
 ```
 
-安全审计、多平台构建和发布验证将在 0.2.0 workspace 与依赖边界稳定后恢复为
-独立门禁。当前缩减范围记录于
-[`ADR-0001`](../docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)。
+The matching GitHub Actions workflow remains `workflow_dispatch` only.
 
-## 卸载
+## Failure handling
+
+- Repository contract failure: repair the reported source-of-truth drift; use
+  `npm run sync-version` in `tauri-app/` only when intentionally changing the
+  workspace version.
+- Formatting failure: run `cargo fmt --all`, inspect the diff, and retry.
+- Compile failure: run `cargo check --locked --workspace` for full diagnostics.
+- Emergency bypass: `git commit --no-verify`. A bypass is not validation.
+
+To uninstall the copied hook:
 
 ```bash
 rm .git/hooks/pre-commit
 ```
 
-如安装脚本创建了备份，可从 `.git/hooks/pre-commit.backup.*` 中选择需要的版本
-恢复。
+If the installer created a backup, select the desired
+`.git/hooks/pre-commit.backup.*` file manually.

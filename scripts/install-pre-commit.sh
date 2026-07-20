@@ -26,6 +26,7 @@ fi
 cp "$source_hook" "$target_hook"
 chmod +x "$target_hook"
 
-echo "[pre-commit] installed fast M0 guard:"
+echo "[pre-commit] installed fast repository guard:"
+echo "  python3 scripts/check-repository-contract.py"
 echo "  cargo fmt --all -- --check"
 echo "  cargo check --locked --workspace"

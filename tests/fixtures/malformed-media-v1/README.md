@@ -17,9 +17,15 @@ xorshift64 seed 的 XOR），或确定性合成字节串；不含任何个人音
 
 | 层 | 入口 | 说明 |
 | --- | --- | --- |
-| workspace 测试 | `crates/macinmeter-codecs/tests/malformed_corpus.rs` | 进程内快速回归，校验字节身份与错误码/阶段 |
-| 扩展验证 | `python3 scripts/verify-malformed-corpus.py` | 每 case 独立子进程 + 30s timeout；Linux 上加 `RLIMIT_AS`（默认 2 GiB），其他平台使用 timeout-only 并在输出中记录 |
+| workspace 测试 | `crates/macinmeter-codecs/tests/malformed_corpus.rs` | 只校验 manifest 与提交字节身份，不把 hostile bytes 送入进程内 decoder |
+| 隔离验证 | `python3 scripts/verify-malformed-corpus.py` | 每 case 独立子进程 + 30s timeout；默认要求 Linux `RLIMIT_AS`（2 GiB），无法施加内存上限时拒绝执行 |
 | 再生成审计 | `python3 scripts/generate-malformed-media-v1.py --check` | 确认提交字节与确定性再生成一致 |
+
+其中若干 FLAC case 伪造接近 4 GiB 的内部长度字段。即使当前实现会在分配前拒绝，
+也不能在普通 test runner 中把“保护逻辑永不回归”当作前提，否则回归本身可能让
+runner 发生过量分配。结构化失败由隔离 verifier 核对；sticky terminal state
+另由确定性的 route/fault-injection 单元测试覆盖。`--allow-timeout-only` 只用于
+调用者明确接受资源风险的环境，不属于日常门禁。
 
 ## 字节接缝与 fuzz 入口
 

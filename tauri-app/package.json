@@ -7,11 +7,12 @@
     "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
   },
   "scripts": {
-    "sync-version": "node scripts/sync-version.cjs",
+    "check-version": "node scripts/sync-version.cjs --check",
+    "sync-version": "node scripts/sync-version.cjs --write",
     "dev": "vite",
-    "build": "npm run sync-version && tsc && vite build",
+    "build": "npm run check-version && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "npm run sync-version && tauri"
+    "tauri": "npm run check-version && tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

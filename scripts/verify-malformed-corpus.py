@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Run the malformed-media-v1 corpus through the CLI in isolated subprocesses.
 
-This is the extended local verifier described by ADR-0003: every corpus case
-runs in its own subprocess with a wall-clock timeout, and — on platforms that
-reliably support `resource.RLIMIT_AS` for this use (currently Linux) — with an
-address space limit. On other platforms the memory limit is skipped and the
-report records that it was not enforced.
+This is the isolated verifier described by ADR-0003 and ADR-0006: every corpus
+case runs in its own subprocess with a wall-clock timeout and an address-space
+limit. The default invocation refuses to decode the hostile corpus when the
+limit cannot be enforced. A caller may explicitly opt into timeout-only
+execution, but that is not a normal repository gate.
 
 Expectations:
 - the process must exit nonzero within the timeout;
@@ -112,7 +112,15 @@ def main() -> int:
         "--memory-limit-mib",
         type=int,
         default=2048,
-        help="per-case Linux RLIMIT_AS in MiB; 0 disables",
+        help="per-case Linux RLIMIT_AS in MiB; 0 explicitly disables",
+    )
+    parser.add_argument(
+        "--allow-timeout-only",
+        action="store_true",
+        help=(
+            "allow hostile cases without an address-space limit; unsafe if a "
+            "decoder allocation guard regresses"
+        ),
     )
     arguments = parser.parse_args()
 
@@ -124,11 +132,24 @@ def main() -> int:
     memory_limit_bytes: int | None = None
     if arguments.memory_limit_mib > 0:
         if not supports_memory_limit():
-            print(
-                "memory limit NOT enforced: RLIMIT_AS verification is enabled only on Linux"
-            )
+            if not arguments.allow_timeout_only:
+                print(
+                    "refusing timeout-only malformed-corpus execution: an "
+                    "enforceable RLIMIT_AS is available only on Linux; pass "
+                    "--allow-timeout-only to acknowledge the allocation risk",
+                    file=sys.stderr,
+                )
+                return 2
+            print("WARNING: memory limit is not enforced on this platform")
         else:
             memory_limit_bytes = arguments.memory_limit_mib * 1024 * 1024
+    elif not arguments.allow_timeout_only:
+        print(
+            "refusing malformed-corpus execution without a memory limit; pass "
+            "--allow-timeout-only to acknowledge the allocation risk",
+            file=sys.stderr,
+        )
+        return 2
 
     failures: list[str] = []
     for case in manifest["cases"]:

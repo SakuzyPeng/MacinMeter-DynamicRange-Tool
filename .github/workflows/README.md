@@ -1,51 +1,29 @@
-# M0 workspace CI
+# Manual workspace validation
 
-架构重建期间，本目录只保留一个手动触发的最小工作流：
-[`ci-cd.yml`](ci-cd.yml)。
+The repository has one opt-in workflow:
+[`workspace-validation.yml`](workspace-validation.yml).
 
-## 当前行为
+## Contract
 
-- 仅由 GitHub Actions 页面上的 `workflow_dispatch` 手动触发；
-- 仅使用一个 `ubuntu-latest` job；
-- 安装 workspace 中 Tauri/Rust crate 所需的 Linux 系统依赖；
-- 对整个 Cargo workspace 依次执行：
+- `workflow_dispatch` is the only trigger. Pushes, pull requests, and tags do
+  not consume Actions resources.
+- Rust is pinned to the verified MSRV, 1.88. Node.js is pinned to 22 for the
+  frontend build.
+- The job validates the repository identity, formatting, strict workspace
+  Clippy, standard workspace tests, repository/reference-tool unit tests, the
+  release CLI, and the TypeScript/Vite frontend.
+- Cargo always uses the root lockfile with `--locked`; npm uses
+  `tauri-app/package-lock.json` through `npm ci`.
+- The hostile malformed-media corpus is not decoded in-process by standard
+  tests. Its opt-in subprocess verifier requires an enforceable memory limit by
+  default and is deliberately outside this workflow.
 
-  ```bash
-  cargo fmt --all -- --check
-  cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-  cargo test --locked --workspace --all-targets --all-features
-  ```
+The workflow does not publish artifacts, create a release, run network
+advisory databases, or build a platform matrix. M5 release packaging and smoke
+checks remain local and explicit until their artifact contract is accepted.
 
-工作流当前没有：
+## Manual use
 
-- push、pull request 或 tag 自动触发；
-- OS/target 矩阵和跨平台构建；
-- cargo-audit 或 advisory 忽略列表；
-- coverage、benchmark、artifact 上传；
-- Tauri 安装包、GitHub Release 或发布权限。
-
-## 为什么暂时缩减
-
-M0 正在把 0.1.x 单 crate 和旧适配层重建为 0.2.0 workspace。此时保留旧矩阵、
-旧二进制路径和旧发布脚本只会验证即将删除的结构。最小 CI 的目标是持续确认
-workspace 能格式化、通过严格 Clippy 并完成测试，而不是提前恢复发行承诺。
-
-这不是对安全审计、多平台构建或发布验证的永久豁免。恢复条件包括：
-
-1. workspace 成员和依赖边界稳定；
-2. 0.2.0 CLI 与 Tauri 已切换到同一 application API；
-3. lockfile、MSRV 和首批支持平台已固定；
-4. portable CPU baseline、制品 smoke test 和 release 内容已有明确契约；
-5. advisory 例外具有原因、负责人和到期日。
-
-决策背景见
-[`docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`](../../docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md)。
-
-## 手动运行
-
-1. 打开仓库的 **Actions** 页面；
-2. 选择 **M0 Workspace CI**；
-3. 选择 **Run workflow**。
-
-该工作流没有跳过测试或选择目标平台的输入；一次运行总是执行完整的三个
-workspace 门禁。
+Open the repository's **Actions** page, choose **Manual workspace validation**,
+and select **Run workflow**. Ordinary development does not require or wait for
+this workflow.

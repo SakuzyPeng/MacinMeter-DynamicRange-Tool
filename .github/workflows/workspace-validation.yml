@@ -1,0 +1,71 @@
+name: Manual workspace validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    name: Repository, Rust, CLI, and GUI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - name: Install Linux workspace dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Check repository identity
+        run: python3 scripts/check-repository-contract.py
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run standard workspace tests
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Run reference-tool tests
+        run: python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
+
+      - name: Run repository-tool tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Build release CLI
+        run: cargo build --locked --release -p macinmeter-cli
+
+      - name: Install GUI dependencies
+        working-directory: tauri-app
+        run: npm ci
+
+      - name: Build GUI frontend
+        working-directory: tauri-app
+        run: npm run build

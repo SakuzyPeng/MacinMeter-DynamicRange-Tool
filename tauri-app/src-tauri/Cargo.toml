@@ -13,10 +13,10 @@ name = "macinmeter_gui"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build.workspace = true
 
 [dependencies]
 macinmeter = { path = "../../crates/macinmeter" }
 serde.workspace = true
-tauri = { version = "2", default-features = false, features = ["wry"] }
-tauri-plugin-dialog = "2"
+tauri.workspace = true
+tauri-plugin-dialog.workspace = true

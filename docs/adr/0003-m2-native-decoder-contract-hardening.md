@@ -273,8 +273,8 @@ decoded frames 或 EOF/fraction 联动约束。它只封闭本节列出的成功
 
 ### 8. 异常媒体采用“固定回归 corpus + 手动 fuzz”
 
-普通 workspace 测试保存小而确定的 malformed/mutation corpus。任何 fuzz
-发现的 crash、panic、超时、过量分配或错误终态，最小化后进入该 corpus。
+仓库保存小而确定的 malformed/mutation corpus。任何 fuzz 发现的 crash、panic、
+超时、过量分配或错误终态，最小化后进入该 corpus。
 
 低层 WAV/AIFF parser 重构为可接受 `Read + Seek` 的实现，使 crate 内测试可直接
 消费 bytes。若使用外部 fuzz runner，只开放非默认 feature 下的隐藏 dev
@@ -291,6 +291,11 @@ fuzz/sanitizer 是独立的本地或手动任务：
 扩展 verifier 对固定 corpus 使用逐 case 子进程和 timeout；平台支持时同时施加
 内存上限并记录限制方式。M2 的声明只覆盖已保存 corpus，不声称证明所有字节输入
 永不 hang 或分配有界。
+
+M5 的 ADR-0006 收紧了执行边界：因为 corpus 含接近 4 GiB 的伪造内部长度，普通
+workspace test 只校验 manifest/hash/size，不再于 test runner 进程中解码 hostile
+bytes；结构化失败交给默认要求有效地址空间上限的逐 case verifier。这个修正不改变
+固定 corpus、fail-closed 或手动 fuzz 的原则。
 
 截至 2026-07-20，本切片已完成：
 
@@ -309,11 +314,12 @@ fuzz/sanitizer 是独立的本地或手动任务：
 - 第一方 WAV/AIFF parser 改为接受 `Read + Seek` 的字节接缝，crate 内测试可
   直接消费 in-memory bytes；非默认 `malformed-dev` feature 暴露隐藏
   `dev::probe_container_bytes` fuzz 入口，默认产品 API 不变；
-- workspace 回归测试逐 case 校验字节身份、结构化失败、无 EOF/partial success
-  与 decode 终态 sticky；`scripts/verify-malformed-corpus.py` 以逐 case 子进程
-  + 30s timeout 执行，Linux 上施加 `RLIMIT_AS`（默认 2 GiB），其他平台明确
-  使用 timeout-only 并记录；`scripts/generate-malformed-media-v1.py --check`
-  审计提交字节与确定性再生成一致。
+- workspace 回归测试逐 case 校验字节身份；结构化失败、无 EOF/partial success
+  由 `scripts/verify-malformed-corpus.py` 以逐 case 子进程 + 30s timeout
+  验证，默认要求 Linux `RLIMIT_AS`（2 GiB），无法施加内存上限时拒绝执行；
+  decode 终态 sticky 由确定性的 route-specific fault-injection 测试覆盖；
+  `scripts/generate-malformed-media-v1.py --check` 审计提交字节与确定性再生成
+  一致。
 
 ### 9. 新能力必须经过明确准入
 
