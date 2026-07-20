@@ -226,12 +226,23 @@ impl AnalyzerSession {
             frames_in_window += 1;
             let completes_window = frames_in_window == self.window_frames;
 
-            for (channel_index, sample) in frame.iter().copied().enumerate() {
+            let mut channel_index = 0;
+            while channel_index < channel_count {
+                let sample = frame[channel_index];
                 if !sample.is_finite() {
                     return NumericSafetyInspection::NonFinite;
                 }
 
-                shadows[channel_index].observe(sample, frames_in_window, completes_window);
+                if shadows[channel_index]
+                    .observe(sample, frames_in_window, completes_window)
+                    .is_err()
+                {
+                    // Numeric failures are outside the valid-input fast path.
+                    // Replay the immutable chunk with the original traversal
+                    // to retain channel-major error and non-finite precedence.
+                    return self.inspect_numeric_safety_channel_major(samples, channel_count);
+                }
+                channel_index += 1;
             }
 
             if completes_window {
@@ -239,18 +250,7 @@ impl AnalyzerSession {
             }
         }
 
-        shadows[..channel_count]
-            .iter()
-            .enumerate()
-            .find_map(|(channel_index, shadow)| {
-                shadow
-                    .failure
-                    .map(|failure| NumericSafetyInspection::Overflow {
-                        channel_index,
-                        failure,
-                    })
-            })
-            .unwrap_or(NumericSafetyInspection::Valid)
+        NumericSafetyInspection::Valid
     }
 
     /// Finalizes every non-empty tail window and returns the complete analysis.
@@ -312,57 +312,53 @@ impl AnalyzerSession {
 struct NumericSafetyShadow {
     sum_squares: f64,
     sum_window_rms2: f64,
-    failure: Option<NumericSafetyFailure>,
 }
 
 impl NumericSafetyShadow {
     const EMPTY: Self = Self {
         sum_squares: 0.0,
         sum_window_rms2: 0.0,
-        failure: None,
     };
 
     fn from_channel(channel: &ChannelAccumulator) -> Self {
         Self {
             sum_squares: channel.current_sum_squares,
             sum_window_rms2: channel.sum_window_rms2,
-            failure: None,
         }
     }
 
     #[inline]
-    fn observe(&mut self, sample: f64, frames_in_window: usize, completes_window: bool) {
-        if self.failure.is_some() {
-            return;
-        }
-
+    fn observe(
+        &mut self,
+        sample: f64,
+        frames_in_window: usize,
+        completes_window: bool,
+    ) -> Result<(), NumericSafetyFailure> {
         let magnitude = sample.abs();
         let square = magnitude * magnitude;
         if !square.is_finite() {
-            self.failure = Some(NumericSafetyFailure::SampleSquare);
-            return;
+            return Err(NumericSafetyFailure::SampleSquare);
         }
 
         self.sum_squares += square;
         if !self.sum_squares.is_finite() {
-            self.failure = Some(NumericSafetyFailure::SquareAccumulation);
-            return;
+            return Err(NumericSafetyFailure::SquareAccumulation);
         }
 
         let rms2 = window_rms_squared(self.sum_squares, frames_in_window);
         if !rms2.is_finite() {
-            self.failure = Some(NumericSafetyFailure::WindowRms);
-            return;
+            return Err(NumericSafetyFailure::WindowRms);
         }
 
         if completes_window {
             self.sum_window_rms2 += rms2;
             if !self.sum_window_rms2.is_finite() {
-                self.failure = Some(NumericSafetyFailure::OverallRmsAccumulation);
-                return;
+                return Err(NumericSafetyFailure::OverallRmsAccumulation);
             }
             self.sum_squares = 0.0;
         }
+
+        Ok(())
     }
 }
 
