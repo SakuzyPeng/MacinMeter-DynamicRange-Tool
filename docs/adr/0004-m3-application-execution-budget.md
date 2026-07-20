@@ -1,7 +1,7 @@
 # ADR-0004：M3 application 执行预算与串行准入
 
 - 状态：Accepted
-- 实施状态：DOING（第一切片已实现）
+- 实施状态：DONE（2026-07-20，单 backend 需求评审收口）
 - 日期：2026-07-20
 - 决策范围：M3
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
@@ -61,7 +61,7 @@ CLI 和普通 Rust 调用在当前线程完成“预留、等待、执行”。
 
 ### 3. M3 产品策略固定为有界 FIFO 串行
 
-第一切片的 `ExecutionBudget` 只开放串行策略：
+M3 的 `ExecutionBudget` 只开放串行策略：
 
 - active job：固定为 1；
 - queued job：产品默认最多 64；
@@ -94,7 +94,7 @@ crate 不为此引入 Tokio、Rayon 或新的 async trait。
 一个 active job 把并行 CPU/decoder/analyzer 数量收紧到 1；64 声道
 `AnalyzerSession` 上限继续约束单会话 histogram 状态。队列上限约束已接收任务数。
 
-本切片不声称：
+本实现不声称：
 
 - 能测量 Symphonia 或操作系统的精确 byte allocation；
 - 已经给 decoder 建立硬内存 sandbox；
@@ -113,7 +113,7 @@ slot 后才由既有操作发出事件，因此 adapter 不会把“已提交到
 
 ## 验收
 
-第一切片必须固定：
+M3 必须固定：
 
 - FIFO 顺序与同时最多一个 active job；
 - queue capacity 在 blocking work 开始前生效；
@@ -124,9 +124,57 @@ slot 后才由既有操作发出事件，因此 adapter 不会把“已提交到
 - workspace fmt、严格 Clippy、测试和 GUI build/check 通过；
 - 不触发或等待远端 CI。
 
+## M3 收口评审（2026-07-20）
+
+执行预算实现固定于 commit `89a0d07`（`feat: coordinate application jobs within
+a serial budget`）。
+
+### 实际 backend 与产品需求
+
+收口时实际启用的 decoder backend 仍只有进程内 Symphonia。四条 stable route
+是 wave/pcm_integer、wave/pcm_float、flac/flac 与 aiff/pcm_integer；capability
+catalog 中的 AIFC、ALAC、MP3、Vorbis 和 AAC 仍是没有 discovery extension 的
+`planned` 条目，不是可执行 backend。
+
+M0 至 M3 没有记录要求恢复某一外部 decoder、特定未支持格式或独立 decoder
+部署形态的产品需求。因此没有证据支持引入 `DecodePlan`、backend registry、
+FFmpeg supervisor 或第二套错误/取消路径。条件性设计没有被实现，也不作为 M3
+遗留欠账。
+
+### 可执行的资源边界
+
+M3 对当前产品实际能强制执行的资源维度作如下收口：
+
+- 每个共享 `Application` 同时最多一个 active 顶层任务，最多 64 个 reservation
+  排队；analyze、batch 和 discovery 共用同一 FIFO；
+- 一个 batch 在持有 active slot 时逐文件串行，因而同一执行域中同时最多存在一个
+  decoder 和一个 analyzer session；
+- `AnalyzerSession` 的 64 声道上限继续在直接 session 分配前执行，媒体路径在
+  decoder 创建前拒绝超过产品上限的声明；
+- 队列容量限制的是轻量请求/reservation 数量，不把等待任务提前提交到 Tauri
+  blocking pool。
+
+进程内 Symphonia 和操作系统分配器不提供可由 application 精确强制的逐 decoder
+byte quota。M3 因而只声明“并发驻留的 decoder/session 数量有界”，不声明恶意媒体
+下的硬内存 sandbox。若未来产品要求把不受信任媒体放入硬内存限制，必须把隔离
+进程或平台 sandbox 作为明确安全需求另立 ADR；不能把一个不能执行的数字放进
+`ExecutionBudget` 后称为已隔离。
+
+### 出口条件核对
+
+| 出口条件 | 收口证据 | 结论 |
+| --- | --- | --- |
+| 所有实际 backend 使用相同 PCM 契约 | 当前只有 `SymphoniaPcmSource`；ADR-0003 的共同 contract matrix、route 专属损坏输入和 sticky terminal-state harness 已完成 | 满足 |
+| 外部进程失败不成为 EOF | 产品没有外部 backend、进程启动或 supervisor 路径 | 当前不适用；未来引入时必须重新验收 |
+| backend 与任务服从统一预算，取消/失败隔离 | `Application` 是唯一公开文件 façade；FIFO、queue full、queued cancellation、drop/unwind 和两个 Tauri job 的隔离均有本地测试 | 满足 |
+| 支持格式反映真实能力 | 单一 Rust capability catalog 驱动 discovery、application query 与 GUI picker；stable snapshot 有产品测试 | 满足 |
+
+因此 M3 在单 backend 产品面上完成。收口没有增加格式、backend、并行轴、wire
+variant 或兼容性声明。
+
 ## 后续决策门
 
-M3 下一切片先审查实际产品需求：
+M3 收口后，只有新的实际产品需求才能重新打开 backend 设计：
 
 1. 没有第二 backend 需求时，保持单一 Symphonia route 和当前 capability catalog；
 2. 有明确格式/部署需求时，先写独立 backend ADR，定义 `DecodePlan`、运行时探测和
@@ -142,7 +190,8 @@ M3 下一切片先审查实际产品需求：
   公开；0.2.0 Rust API 统一由 `Application` 承担；
 - 默认吞吐仍是一个顶层 job，不产生新的性能承诺；
 - 最多 64 个 queued job 是产品资源契约，超过时调用方收到结构化可恢复错误；
-- 第二 backend 与精确内存预算仍是 M3 后续条件性工作，不伪装为已完成。
+- 第二 backend 与硬内存 sandbox 不是已完成 M3 的隐藏待办；未来若由明确需求
+  触发，作为新的架构/安全决策重新定义和验收。
 
 ## 未采用方案
 
@@ -159,7 +208,7 @@ M3 下一切片先审查实际产品需求：
 
 拒绝。短暂的正常竞争不应被当成用户错误；有界 FIFO 同时保留确定性和背压。
 
-### 在 M3 第一切片恢复文件级并行
+### 在 M3 恢复文件级并行
 
 拒绝。当前没有 M6 benchmark/profile 依据；资源预算先建立约束，不预先证明并发有
 收益。

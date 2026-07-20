@@ -139,7 +139,7 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-同一个 `Application` 的 clone 共享一个有界 FIFO 执行域。当前 M3 产品策略同时
+同一个 `Application` 的 clone 共享一个有界 FIFO 执行域。M3 建立的产品策略同时
 只运行一个顶层 analyze、batch 或 discovery job，最多允许 64 个 job 排队；CLI
 与 Tauri 因而保持全局串行，同时不依赖隐藏的进程全局单例或第二套 scheduler。
 

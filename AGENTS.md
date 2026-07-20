@@ -18,7 +18,7 @@ Dependencies flow from adapters through `macinmeter` to `analysis`/`codecs`,
 which both depend on `domain`. Do not introduce frontend, filesystem, or codec
 dependencies into lower layers.
 
-## Trusted trunk and M3 constraints
+## Trusted trunk and post-M3 constraints
 
 - Every first-party Rust crate uses `#![forbid(unsafe_code)]`.
 - Production analysis has one `AnalyzerSession`; do not add a compatibility
@@ -34,12 +34,12 @@ dependencies into lower layers.
 - `Application` is the only public file-analysis, batch, and controlled
   discovery façade. Keep `Analyzer`/`BatchRunner` crate-private; adapters must
   not bypass the shared execution domain.
-- The M3 product budget remains one active top-level job with at most 64 queued
-  reservations. Tauri must reserve `ApplicationJob` before `spawn_blocking`;
-  queued cancellation and RAII release are contract behavior.
-- M3 does not add a second backend, FFmpeg, DSD, Songbird/Opus, Tokio/Rayon
-  scheduling, SIMD, trimming, silence preprocessing, or file-level parallelism
-  without a separate evidence-backed decision.
+- The product budget established in M3 remains one active top-level job with at
+  most 64 queued reservations. Tauri must reserve `ApplicationJob` before
+  `spawn_blocking`; queued cancellation and RAII release are contract behavior.
+- Completed M3 did not add a second backend, FFmpeg, DSD, Songbird/Opus,
+  Tokio/Rayon scheduling, SIMD, trimming, silence preprocessing, or file-level
+  parallelism. Any such change requires a separate evidence-backed decision.
 - Results are always `FooDrMeter108CandidateV1 / Unverified`; never claim
   reference parity.
 - Extensions are discovery hints only. Decoder errors must not become EOF or
@@ -61,8 +61,8 @@ npm run build
 npm run tauri dev
 ```
 
-Remote CI remains manual-only during M3. Do not trigger or wait for it as part of
-ordinary development.
+Remote CI remains manual-only until an explicit release-stage decision. Do not
+trigger or wait for it as part of ordinary development.
 
 ## Style and tests
 

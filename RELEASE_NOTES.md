@@ -69,12 +69,14 @@
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
 - File analysis, batch, and controlled discovery now share one public
-  `Application` façade. Its M3 budget runs one active top-level job and admits
-  at most 64 additional FIFO reservations; queued cancellation and release are
-  isolated.
-  文件分析、批处理和受控发现现在共用唯一公开的 `Application` 门面。M3 预算同时
-  只运行一个顶层 job，最多接纳 64 个 FIFO 排队 reservation；排队取消与释放彼此
-  隔离。
+  `Application` façade. The budget established in M3 runs one active top-level
+  job and admits at most 64 additional FIFO reservations; queued cancellation
+  and release are isolated. M3 closes with the single in-process Symphonia
+  backend and does not claim a byte-accurate decoder memory sandbox.
+  文件分析、批处理和受控发现现在共用唯一公开的 `Application` 门面。M3 建立的预算
+  同时只运行一个顶层 job，最多接纳 64 个 FIFO 排队 reservation；排队取消与释放
+  彼此隔离。M3 以唯一的进程内 Symphonia backend 收口，不声称具备逐字节精确的
+  decoder 内存沙箱。
 
 ### Engineering / 工程
 
@@ -94,9 +96,11 @@
   overall RMS 39/39、channel RMS 62/62 与渲染时长 39/39。严格限域的 footer
   检查确认 track/采样率/声道集合和 DR token，但不验证 host metadata、精确
   album 内部状态或 duration weighting；profile 继续保持 `Unverified`。
-- CI is intentionally manual-only during M3; the local pre-commit hook performs
-  only format and workspace compile checks.
-  M3 期间 CI 有意仅手动触发；本地 pre-commit 只进行格式与 workspace 编译检查。
+- CI remains intentionally manual-only until an explicit release-stage
+  decision; the local pre-commit hook performs only format and workspace
+  compile checks.
+  在发布阶段另行明确决策前，CI 继续仅手动触发；本地 pre-commit 只进行格式与
+  workspace 编译检查。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.

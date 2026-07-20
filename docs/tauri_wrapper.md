@@ -23,10 +23,10 @@ events have the single shape `{ jobId, event }`, so simultaneous jobs cannot
 cancel or overwrite each other.
 
 Before submitting blocking work, each command reserves an `ApplicationJob`
-from the single managed `Application`. The M3 budget admits one active job and
-at most 64 waiting jobs in FIFO order. No file/discovery progress is emitted
-until a reservation becomes active; cancelling a queued job removes only that
-reservation.
+from the single managed `Application`. The budget established in M3 admits one
+active job and at most 64 waiting jobs in FIFO order. No file/discovery
+progress is emitted until a reservation becomes active; cancelling a queued
+job removes only that reservation.
 
 Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch

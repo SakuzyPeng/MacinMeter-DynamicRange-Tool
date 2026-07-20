@@ -1,6 +1,7 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DOING`；
+> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DONE`，
+> M4：`TODO`；
 > foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
@@ -170,7 +171,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | META-002 | DONE | 拆分格式和进度状态 | expected 与 decoded 独立 | `SourceInfo / PcmStreamInfo / DecodeProgress / Diagnostics` |
 | META-003 | DONE | 建立 LFE 三态模型 | 未知布局不猜测 | `Unknown / KnownNoLfe / Known(positions)` |
 | ERROR-001 | DONE | 结构化错误 | 稳定 code/stage + backend/path/details | CLI、JSON 与 Tauri 共用 |
-| CONC-001 | DOING | 建立全局资源预算 | 第一切片已将 CLI/Tauri 顶层任务收口到共享 `Application`：1 active + 64 queued 的有界 FIFO；精确 decoder 内存预算与条件性多 backend 仍待需求驱动 | application 层统一 CPU、内存和任务配额 |
+| CONC-001 | DONE | 建立 application 执行域资源预算 | CLI/Tauri 顶层任务共用 `Application`：1 active + 64 queued 的有界 FIFO；同一执行域同时最多驻留一个 decoder/session，排队取消与失败隔离 | application 层统一任务/CPU 并发与当前可执行的驻留资源上限；不伪造隐藏全局单例或进程内 decoder 的精确 byte sandbox |
 | GUI-001 | DONE | 请求级取消与进度 | `jobId -> CancellationToken` registry | 取消隔离与 RAII 清理测试 |
 | GUI-002 | DONE | 移除全局 FFmpeg 环境变量修改 | GUI 不再包含 FFmpeg 配置 | 无环境变量修改 |
 | SECURITY-001 | DONE | 收紧 Tauri 权限 | 生产/开发 CSP 已设置 | 仅 core default + dialog open |
@@ -537,9 +538,10 @@ Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例�
 按 ADR-0002 重新打开。只有规格语义变化提升 profile version，修复既有规格的
 实现错误不制造新 profile。
 
-第二 backend、Opus/FFmpeg 与全局资源预算属于 M3；benchmark、是否启用文件级
-并发、SIMD 和其他性能优化属于 M6。EdgeTrimmer 和其他 preprocessing 没有需求
-时不实施，有需求时另立独立 ADR。
+M3 已完成产品 adapter 共用的 application 执行域预算，并在需求评审后不引入
+第二 backend、Opus 或 FFmpeg；未来若出现明确格式、部署或硬隔离需求，重新建立
+独立 ADR。benchmark、是否启用文件级并发、SIMD 和其他性能优化属于 M6。
+EdgeTrimmer 和其他 preprocessing 没有需求时不实施，有需求时另立独立 ADR。
 
 出口条件：
 
@@ -564,34 +566,33 @@ Candidate 在 M2 冻结；只有新的充分静态/动态证据、最终反例�
 
 ### M3：多 backend 与资源编排
 
-状态：`DOING`（第一切片见
+状态：`DONE`（2026-07-20，单 backend 需求评审收口；见
 [ADR-0004](adr/0004-m3-application-execution-budget.md)）。
 
 - application 已建立显式共享 `Application` 执行域；CLI 与 Tauri 使用同一入口；
 - Tauri 在进入 `spawn_blocking` 前预留 `ApplicationJob`，默认最多 1 个 active、
   64 个 queued，按 reservation ticket FIFO 执行；
 - queued cancellation、queue full、drop/unwind 释放和跨 job 隔离已有本地门禁；
-- 这只是粗粒度 task/CPU 边界：单 session 的 64 声道限制继续有效，但不声称已
-  量化 Symphonia/OS 的精确 byte allocation；
-
-- 只有出现明确的外部或多 backend 产品需求时，才引入显式 `DecodePlan` 与
-  backend registry；
-- 对实际选中的外部 decoder 建立完整进程 supervisor 契约，包括启动、取消、
-  timeout、stderr、退出状态、回收和失败传播；Opus/FFmpeg 只是候选，不是承诺；
-- 在 application 层建立统一 CPU、内存和任务预算及调度接口，M3 产品执行仍保持
-  串行；如果 M6 后续由 profile 证明需要并发，唯一允许的轴是 application
-  文件级并发；
+- 同一执行域同时最多驻留一个 decoder/analyzer session；单 session 的 64 声道
+  限制继续有效。该边界不冒充 Symphonia/OS 的逐 decoder byte sandbox；
+- 收口需求评审没有发现要求第二 backend、特定外部 decoder 或独立部署形态的实际
+  产品需求，因而不创建空 `DecodePlan`、backend registry 或进程 supervisor；
+- 若未来明确选择外部 decoder，必须另立 ADR 并完整处理启动、取消、timeout、
+  stderr、退出状态、回收和失败传播；M3 的 `DONE` 状态不向未来 backend 继承；
 - 保持 M0 已完成的请求级取消、job 隔离以及 CLI/Tauri 薄 adapter 边界；
 - capability catalog 必须反映 backend 的编译时和运行时真实可用性。
 
 出口条件：
 
-- 所有实际启用的 backend 满足相同的 `PcmSource` 语义和跨层验收；
-- 外部进程失败不会被视为正常 EOF；
-- 所有 backend 和任务服从统一资源预算，取消和失败互不污染；
-- 支持格式列表反映运行时真实能力。
+- [x] 当前唯一实际 backend 满足共同 `PcmSource` 语义和跨层验收；
+- [x] 当前不存在外部进程路径；未来引入时必须重新证明失败不会成为 EOF；
+- [x] CLI/Tauri 的文件分析、批处理与发现任务服从共享预算，取消和失败互不污染；
+- [x] 单一 capability catalog 驱动 discovery、application 与 GUI，支持列表反映
+  当前真实能力。
 
 ### M4：参考兼容声明收口
+
+状态：`TODO`。
 
 - 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
@@ -659,11 +660,13 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - blocking work 提交前执行有界 FIFO admission；
     - queued cancellation、RAII 释放与两个 GUI job 隔离形成门禁；
     - 不增加 backend、并行轴或 wire variant。
-18. [ ] `feat: add an evidence-backed backend plan`（仅在出现明确格式/部署需求时；
-    先写独立 backend ADR，再实现 registry 或外部 supervisor）
+18. [x] `docs: close m3 after a single-backend demand review`
+    - 当前没有第二 backend、外部 decoder 或独立部署需求；
+    - 不创建空 registry/supervisor，也不把精确 byte sandbox 写成虚假能力；
+    - 后续真实格式、部署或硬隔离需求必须重新立 ADR，并重新验收 backend 生命周期。
 
-M3 后续继续收紧可实际执行的资源维度；文件级并发是否启用与其他可复现性能工程
-继续属于 M6。
+M3 已收口。文件级并发是否启用与其他可复现性能工程继续属于 M6；下一阶段进入
+M4 的固定范围兼容性声明审计。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

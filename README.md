@@ -152,10 +152,10 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-Clones of one `Application` share a bounded FIFO execution domain. The current
-M3 product policy admits one active top-level analyze, batch, or discovery job
-and at most 64 queued jobs. This keeps CLI/Tauri execution serial without a
-hidden process-global singleton or a second scheduler.
+Clones of one `Application` share a bounded FIFO execution domain. The product
+policy established in M3 admits one active top-level analyze, batch, or
+discovery job and at most 64 queued jobs. This keeps CLI/Tauri execution serial
+without a hidden process-global singleton or a second scheduler.
 
 Lower-level analysis is available through a frame-aligned streaming session:
 
