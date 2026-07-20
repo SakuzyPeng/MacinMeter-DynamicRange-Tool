@@ -242,6 +242,8 @@ See:
 - [M1 reference-numeric scope decision](docs/adr/0002-m1-reference-numeric-scope.md)
 - [M2 native-decoder contract decision](docs/adr/0003-m2-native-decoder-contract-hardening.md)
 - [M3 application execution-budget decision](docs/adr/0004-m3-application-execution-budget.md)
+- [M4 bounded x64 numeric-claim decision](docs/adr/0005-m4-bounded-x64-numeric-claim.md)
+- [M4 x64 numeric-claim evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)
 - [Architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [Supported formats](docs/SUPPORTED_FORMATS.md)
 - [`foo_dr_meter 1.0.8 Candidate V1` specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)

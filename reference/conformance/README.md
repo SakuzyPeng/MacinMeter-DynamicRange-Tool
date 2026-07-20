@@ -1,5 +1,11 @@
 # Conformance
 
+M4 对现有记录的汇总审计见
+[`M4 x64 数值声明证据矩阵`](../../docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)。该矩阵
+不是新的 conformance run。direct-PCM worker、serial runner 与 final-field
+comparator 已建立；新的当前实现记录只有在工具源码提交、输入身份、worker 身份
+和 comparison artifact 一起固定后才进入本目录。
+
 当前记录：
 
 - [`CONF-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719`](conf-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719/record.md)：

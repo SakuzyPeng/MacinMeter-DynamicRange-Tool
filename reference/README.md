@@ -10,6 +10,11 @@ renderer 的纯数值规则。M1 证据基础已完成；`CandidateV1 / Unverifi
 声明任意输入或完整 foobar/component parity，不表示仍需补 host、playlist、
 metadata、完整文本或 production 中间状态同构。
 
+M4 的声明收口、decoder-independent 验收方式和当前缺口见
+[`ADR-0005`](../docs/adr/0005-m4-bounded-x64-numeric-claim.md) 与
+[`M4 x64 数值声明证据矩阵`](../docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)。M4 不会
+为了让历史 fixture 通过产品 decoder 而扩大稳定 codec 能力面。
+
 ## 目录
 
 | 目录 | 内容 |
@@ -20,7 +25,7 @@ metadata、完整文本或 production 中间状态同构。
 | [`observations/`](observations/README.md) | 参考目标的原始输出和运行环境 |
 | [`static-analysis/`](static-analysis/README.md) | 固定二进制的受控静态分析证据 |
 | [`native/`](native/foo_dr_meter_108_core_worker/README.md) | 固定 x64 core worker 与 fail-fast host-service 边界 |
-| [`tools/`](tools/run_foo_dr_meter_108_core.py) | observation、隔离 core suite 与 conformance 工具 |
+| [`tools/`](tools/run_foo_dr_meter_108_core.py) | observation、隔离 core suite、M4 direct-PCM Candidate suite 与 conformance 工具 |
 | [`fixtures/`](fixtures/README.md) | 可公开或可重复生成的实验输入 |
 | [`specs/`](specs/README.md) | 带版本和证据等级的算法规格 |
 | [`conformance/`](conformance/README.md) | 参考观测与实现结果的差分摘要 |

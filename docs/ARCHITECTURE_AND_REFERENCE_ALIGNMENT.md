@@ -1,7 +1,7 @@
 # 架构整改与参考插件重新对齐路线图
 
 > 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DONE`，
-> M4：`TODO`；
+> M4：`DOING`；
 > foo_dr_meter 1.0.8 Candidate V1
 > 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
@@ -25,6 +25,8 @@
 > M2 范围决策：[ADR-0003：M2 原生解码面与工程契约加固](adr/0003-m2-native-decoder-contract-hardening.md)
 >
 > M3 范围决策：[ADR-0004：M3 application 执行预算与串行准入](adr/0004-m3-application-execution-budget.md)
+>
+> M4 范围决策：[ADR-0005：M4 固定 x64 数值声明与 decoder-independent 验收](adr/0005-m4-bounded-x64-numeric-claim.md)
 
 ## 1. 文档目的
 
@@ -592,7 +594,9 @@ EdgeTrimmer 和其他 preprocessing 没有需求时不实施，有需求时另�
 
 ### M4：参考兼容声明收口
 
-状态：`TODO`。
+状态：`DOING`（范围与验收决策见
+[ADR-0005](adr/0005-m4-bounded-x64-numeric-claim.md)，逐项审计见
+[M4 x64 数值声明证据矩阵](M4_X64_NUMERIC_CLAIM_MATRIX.md)）。
 
 - 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
@@ -606,6 +610,14 @@ EdgeTrimmer 和其他 preprocessing 没有需求时不实施，有需求时另�
 - 扩展最终可观测数值 conformance，并复核 album/renderer 的纯数值边界；
 - 处理所有系统性残差和未解释边界；
 - 完成固定目标、固定数值字段范围内的兼容性报告；不追求 host 或文本 parity。
+
+M4 启动审计确认：complete-v2 的 39 项 safe-master 中有 5 项使用
+`WAVE_FORMAT_EXTENSIBLE`，当前稳定 decoder 按 ADR-0003 正确拒绝，因此不能用
+扩大 codec 支持面来完成 reference profile 验收。现已建立直接接收受控 finite
+interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
+和 final-field comparator；探索性 39 项重放的 raw bits 与 report tokens 均为
+零差分。正式记录将在工具源码提交身份固定后生成；历史 file-level 39/39 记录
+保留其原提交身份。
 
 出口条件：
 

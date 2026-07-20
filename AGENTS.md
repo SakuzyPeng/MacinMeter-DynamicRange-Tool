@@ -42,6 +42,12 @@ dependencies into lower layers.
   parallelism. Any such change requires a separate evidence-backed decision.
 - Results are always `FooDrMeter108CandidateV1 / Unverified`; never claim
   reference parity.
+- M4 validates the fixed x64 numeric profile through finite interleaved `f64`
+  and `AnalyzerSession`, independently of product decoder support. Do not
+  graduate WAVE_FORMAT_EXTENSIBLE or another codec route merely to replay the
+  reference corpus.
+- Add a new reference observation only for an in-scope unexplained final-output
+  residual that static analysis and existing isolated evidence cannot decide.
 - Extensions are discovery hints only. Decoder errors must not become EOF or
   partial successful reports.
 - Library/application code does not print or write files. CLI/Tauri are
@@ -54,6 +60,7 @@ cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 cargo build --locked --release -p macinmeter-cli
+python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 cd tauri-app
 npm install

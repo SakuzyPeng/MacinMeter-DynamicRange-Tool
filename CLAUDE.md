@@ -35,6 +35,9 @@ domain
 - Tauri reserves an `ApplicationJob` before `spawn_blocking`; queued
   cancellation and RAII release are part of the application contract.
 - CLI and GUI only parse, render, and adapt I/O.
+- M4 conformance drives `AnalyzerSession` from controlled finite interleaved
+  `f64` independently of product codec support. Do not restore a codec route to
+  make a reference fixture pass.
 
 All first-party Rust code forbids unsafe code. M0 supports only WAV linear
 integer/IEEE float PCM, FLAC, and AIFF integer PCM. Unknown layout stays
@@ -46,6 +49,7 @@ unknown; it is never guessed from channel count.
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
+python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 cd tauri-app
 npm run build
