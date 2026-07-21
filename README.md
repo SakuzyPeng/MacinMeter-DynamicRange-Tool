@@ -2,138 +2,141 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-MacinMeter is an independent, local-first audio dynamic-range (DR) analysis
-tool. It measures per-channel and per-track DR values from WAV, FLAC, and AIFF
-files, following a candidate reconstruction of the foobar2000 DR Meter 1.0.8
-algorithm, and ships one safe, streaming Rust core shared by the library, the
-CLI, and the Tauri GUI.
+MacinMeter is an offline, local-first audio dynamic-range (DR) analyzer. It
+reports per-channel and per-track DR values for supported WAV, FLAC, and AIFF
+files. The command-line tool, Tauri desktop frontend, and Rust API all use the
+same streaming analysis engine.
 
-> **Compatibility status: `foo_dr_meter 1.0.8 Candidate V1 / Unverified`.**
-> The current profile implements a candidate interpretation of evidence
-> gathered from foo_dr_meter 1.0.8 x64. The bounded M4 direct-PCM conformance
-> milestone is complete, but this does not establish arbitrary-input or full
-> foobar/component compatibility. Values must not be described as “official,”
-> certified, or interchangeable with reference results.
+> **About reference results.** MacinMeter labels its current profile
+> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`. It is a candidate
+> interpretation of evidence recovered from one fixed `foo_dr_meter 1.0.8
+> x64` target. Recorded projections have zero differences on the fixed
+> conformance corpus. The project presents that as bounded evidence, rather
+> than as official certification or a promise of identical results for every
+> file and every foobar2000 environment.
 
-## Highlights
+## Supported files
 
-- **One analysis core.** File analysis in the library, CLI, and GUI reaches the
-  same `AnalyzerSession` through the `Application` façade; direct streaming
-  callers use that same session type, so adapters cannot fork algorithm
-  behavior.
-- **Streaming and bounded.** Analysis is windowed and histogram-based; memory
-  grows with channel count, not stream length.
-- **Safe by construction.** Every first-party crate uses
-  `#![forbid(unsafe_code)]`; success reports are built only through checked
-  constructors that cannot represent non-finite values.
-- **Evidence-first claims.** The reference profile, its specification, and
-  conformance records live in-repo and bind fixed target, corpus, and artifact
-  identities; claims never exceed the recorded evidence.
-- **Measured, not promised, performance.** The scalar core has a reproducible
-  local baseline, sampling attribution, and one bit-exact-gated optimization
-  chain; no cross-machine throughput promise is made.
-
-## Trusted surface (0.2.0)
-
-| Container | Accepted encodings |
+| Container | Available in 0.2.0 |
 | --- | --- |
 | classic RIFF/WAVE | 8/16/24/32-bit integer PCM; IEEE 32/64-bit float |
-| FLAC (native container) | FLAC with a declared nonzero total sample count |
+| native FLAC | FLAC with a declared nonzero total sample count |
 | AIFF | 8/16/24/32-bit integer PCM |
 
-Everything is probed by content; extensions matter only for directory
-discovery. Serial decoding, serial batch execution, and a 64-channel product
-analysis limit are deliberate. WAVE_FORMAT_EXTENSIBLE, AIFC, MP3, AAC, ALAC,
-Vorbis, Opus, and DSD are outside the 0.2.0 stable surface; recognized but
-unavailable media returns `unsupported_format`. FFmpeg backends,
-preprocessing, packet-level parallelism, and SIMD execution paths are absent
-rather than configurable. See
-[supported formats](docs/SUPPORTED_FORMATS.md) for exact route limits.
+An explicit file path is probed by content and may use any extension. Folder
+scans look for `.wav`, `.wave`, `.flac`, `.aif`, and `.aiff`; a supported file
+with another extension can still be analyzed by passing its path directly.
+Current file analysis covers up to 64 channels.
 
-## Quick start
+Some files with familiar extensions use variants that are not available yet,
+including WAVE_FORMAT_EXTENSIBLE, AIFC, and Ogg FLAC. MP3, AAC, ALAC, Vorbis,
+Opus, and DSD are also unavailable. MacinMeter reports these as unsupported;
+it does not invoke FFmpeg or silently resample or preprocess them. The
+[format guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
 
-Rust 1.88 or later and Cargo are required.
+## Installation
+
+Building from source currently uses Rust 1.88 or later and Cargo:
 
 ```bash
 cargo build --locked --release -p macinmeter-cli
-target/release/macinmeter analyze track.flac
-target/release/macinmeter batch Album/ --recursive --format json
 ```
 
-### CLI
+The CLI is written to `target/release/macinmeter` on Unix-like hosts and
+`target/release/macinmeter.exe` on Windows.
 
-The CLI has no implicit modes: it never scans directories unless asked and
-never writes report files unless `--output` is supplied.
+## Command-line use
 
-```bash
+The CLI is organized around two explicit commands:
+
+```text
 macinmeter analyze FILE [--format human|json] [--output PATH]
 macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
 ```
 
-Standard output carries only the requested result; progress and diagnostics go
-to standard error. Output files are replaced atomically. `batch` returns
-independent per-track reports and performs no album aggregation.
+For example:
 
-| Exit code | Meaning |
-|---:|---|
+```bash
+macinmeter analyze "01 - Song.flac"
+macinmeter batch "My Album/" --recursive
+```
+
+`batch` processes files serially in stable input order. A failed item does not
+prevent later items from running. It produces independent track reports and
+does not implicitly calculate an album DR.
+
+The following is real stdout generated from a committed synthetic fixture:
+
+```bash
+target/release/macinmeter analyze tests/fixtures/edge_cases.wav
+```
+
+```text
+MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified
+Source: tests/fixtures/edge_cases.wav
+PCM: 44100 Hz, 2 channels, 308700 frames
+Duration: 0:07
+
+CH 1: DR2 (2.4300 dB), overall RMS -2.43 dBFS, selected DR peak 1.00000000
+CH 2: DR2 (2.4300 dB), overall RMS -2.43 dBFS, selected DR peak 1.00000000
+
+Track aggregate: DR2 (2.4300 dB; 2 contributing channels)
+Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
+```
+
+Progress for that command is written separately to stderr.
+
+### Reading the result
+
+- `DR2` is the rounded track aggregate produced by the current candidate
+  profile. Within this metric, a larger value represents a larger ratio
+  between the selected peak and loud-window RMS. A high DR value does not by
+  itself mean that a recording sounds good. A very low value, however, is
+  often a warning sign of aggressive compression and is more likely to go
+  with a compromised master, even though genre and artistic intent still
+  matter.
+- Each `CH` line contains that channel's DR result, overall RMS, and the peak
+  selected by the DR state machine.
+- `Report levels` are whole-track report metrics. The report peak is distinct
+  from the selected DR peak.
+- dBFS uses normalized amplitude `1.0` as the 0 dB reference. Supported IEEE
+  float PCM may contain finite samples above that reference, so 0 dBFS is not a
+  universal clipping boundary.
+- Silent channels remain visible and contribute numeric DR0 under Candidate
+  V1; channels with insufficient data are explicitly excluded.
+
+The fixture above is designed for deterministic automated tests, not as an
+example of a typical music release.
+
+### Exit codes
+
+| Code | Meaning |
+| ---: | --- |
 | `0` | all requested analyses succeeded |
-| `1` | failure, no input, or output-write failure |
+| `1` | failure, no input, all batch items failed, or output-write failure |
 | `2` | invalid CLI arguments |
 | `3` | batch completed with both successes and failures |
 | `130` | cancelled |
 
-### JSON
+### Saving and JSON
 
-JSON and the Tauri GUI share the same versioned schema-v3 envelope. Abridged
-analysis example:
+Without `--output`, the result stays on stdout and no report file is created.
+With an output path, the completed report atomically replaces that file.
 
-```json
-{
-  "schemaVersion": 3,
-  "toolVersion": "0.2.0",
-  "kind": "analysis",
-  "data": {
-    "analysis": {
-      "channels": [{
-        "report": {
-          "overallRmsLinear": 0.5,
-          "overallRmsDbfs": -6.0206,
-          "primaryPeakLinear": 1.0
-        },
-        "outcome": {
-          "status": "measured",
-          "measurement": {
-            "loudWindowRms": 0.25,
-            "drSelectedPeak": 0.5,
-            "drPrimaryPeak": 1.0,
-            "drSecondaryPeak": 0.5
-          }
-        }
-      }],
-      "report": {
-        "overallRmsLinear": 0.5,
-        "overallRmsDbfs": -6.0206,
-        "primaryPeakLinear": 1.0,
-        "primaryPeakDbfs": 0.0,
-        "duration": { "decodedFrames": 48000, "sampleRate": 48000 }
-      }
-    }
-  }
-}
+```bash
+macinmeter analyze track.flac --format json
+macinmeter analyze track.flac --format json --output track.json
 ```
 
-Report metrics and DR-state diagnostics are deliberately separate:
-`loudWindowRms`, `drSelectedPeak`, `drPrimaryPeak`, and the nullable
-`drSecondaryPeak` describe the DR state machine and must not be substituted
-for report metrics. `FiniteF32`/`FiniteF64` wrappers make non-finite report
-values unrepresentable; zero-amplitude dBFS values are explicit `null`;
-`DecodedDuration` preserves the exact decoded-frame/sample-rate pair instead
-of a rounded seconds value.
+JSON and Tauri use the same versioned schema-v3 `WireEnvelope`. The envelope
+contains `schemaVersion`, `toolVersion`, `kind`, and `data`, with no timestamp.
+Successful numeric fields are finite; values such as zero-amplitude dBFS are
+represented explicitly as `null` where appropriate. Stdout contains only the
+requested result while progress and diagnostics go to stderr.
 
-### GUI
+## Desktop GUI
 
-The Tauri 2 frontend uses exactly the same application façade and wire schema
-as the CLI:
+The repository includes a Tauri 2 desktop frontend:
 
 ```bash
 cd tauri-app
@@ -141,193 +144,126 @@ npm install
 npm run tauri dev
 ```
 
-Each GUI job owns an independent cancellation token and reserves the shared
-application budget before entering the blocking runtime; queued cancellation
-does not affect the active job. The GUI never configures FFmpeg, mutates
-process environment variables, or runs a separate batch engine.
+It calls the same `Application` façade and consumes the same wire schema as the
+CLI. Each job has its own cancellation token, while the shared application
+budget keeps top-level work bounded and serial.
 
-## Library
+The GUI is currently available as source. Local macOS staging produces an
+unsigned, unnotarized build, while Windows and Linux packages have not yet
+been verified on their target hosts. The current packaging picture is
+summarized in [release and artifact status](docs/RELEASE.md).
 
-The public façade is the `macinmeter` crate:
+## Rust API
+
+The workspace's public façade is the `macinmeter` crate:
 
 ```rust
 use macinmeter::{AnalyzeRequest, Application};
 
 fn main() -> Result<(), macinmeter::AnalysisError> {
     let application = Application::new();
-    let _report = application.analyze_file(AnalyzeRequest::new("track.flac"))?;
+    let report = application.analyze_file(AnalyzeRequest::new("track.flac"))?;
+
+    if let Some(dr) = report.analysis().aggregates().track.rounded_dr {
+        println!("DR{dr}");
+    }
     Ok(())
 }
 ```
 
-Clones of one `Application` share a bounded FIFO execution domain: one active
-top-level analyze, batch, or discovery job and at most 64 queued jobs. This
-keeps CLI/Tauri execution serial without a hidden process-global singleton.
+Clones of one `Application` share a bounded serial execution queue, while
+separately constructed `Application` values remain independent. Queue sizing
+is available through `Application::with_budget`.
 
-Lower-level analysis is available through a frame-aligned streaming session:
+`AnalyzerSession` is available for callers that already have finite,
+frame-aligned, interleaved `f64` PCM. `AlbumAggregator` is a separate numeric
+operation over track reports, with unweighted and decoded-duration weighting.
+Playlist grouping, metadata, footer rendering, and the rest of the album
+subsystem sit outside that numeric API.
 
-```rust
-use macinmeter::{AnalysisProfile, AnalyzerSession, ChannelLayout, StreamSpec};
+## Accuracy
 
-fn main() -> Result<(), macinmeter::AnalysisError> {
-    let spec = StreamSpec::new(48_000, 2, ChannelLayout::Unknown)?;
-    let mut session =
-        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1)?;
-    session.push_interleaved(&[0.25, -0.25, 0.5, -0.5])?;
-    let _result = session.finish()?;
-    Ok(())
-}
-```
+The current target is the fixed `foo_dr_meter 1.0.8 x64` binary identified by
+the `ff3556ad…` hash prefix. Against fixed recorded inputs, the repository
+contains the following bounded results:
 
-Samples must be finite interleaved `f64`; `finish` consumes the session and is
-fallible so numeric or resource failures cannot leak non-finite output.
-Successful `AnalysisResult`/`AnalysisReport` roots are immutable and inspected
-through read-only getters; result, report, and shared batch/event/wire types
-that are not product inputs serialize but do not deserialize.
-
-Album aggregation is an explicit library operation, never an implicit property
-of a batch:
-
-```rust
-use macinmeter::{
-    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalyzeRequest, Application,
-};
-
-fn main() -> Result<(), macinmeter::AnalysisError> {
-    let report = Application::new().analyze_file(AnalyzeRequest::new("track.flac"))?;
-    let track = AlbumTrackMetrics::try_from(&report)?;
-    let _album = AlbumAggregator::aggregate(&[track], AlbumWeighting::Unweighted)?;
-    Ok(())
-}
-```
-
-The unweighted album value is the arithmetic mean of public-f32 track DR
-values, including numeric DR0 tracks; optional duration weighting uses each
-track's exact decoded duration. This numeric API does not claim playlist
-grouping, footer, or other album-subsystem parity.
-
-## Conformance evidence
-
-Decoders normalize supported inputs to finite interleaved `f64`, matching the
-fixed x64 core's PCM width. Against the fixed
-`foo_dr_meter 1.0.8 x64` target (`ff3556ad…`), the recorded evidence is:
-
-| Evidence | Result |
+| Evidence | Recorded result |
 | --- | --- |
-| 39-track schema-v3 safe-master run: track DR / overall peak / overall RMS / rendered duration | 39/39 each |
-| same run: channel DR / channel RMS | 62/62 each |
-| M4 decoder-independent direct-PCM Candidate conformance | 0 differences on the fixed 39-input final-field projection |
-| 39-input isolated x64 analyzer-core observation (no foobar2000 started) | all preregistered assertions met |
-| 38-vector isolated numeric boundaries: duration half-second/carry, optional multichannel loudness weighting, histogram clamp endpoints | 24/24, 8/8, 6/6 |
+| schema-v3 safe-master track DR, overall peak, overall RMS, and rendered duration | 39/39 each |
+| same run: channel DR and channel RMS | 62/62 each |
+| decoder-independent Candidate direct-PCM final-field projection | 0 differences on 39 fixed inputs |
+| isolated x64 analyzer-core run | all preregistered assertions met on 39 inputs |
+| numeric-boundary vectors for duration, weighting, and histogram endpoints | 24/24, 8/8, and 6/6 |
 
-The reference footer's track count, sample-rate set, channel-count set, and
-`DR12` token are also consistent with the implementation reports. Host
-behavior, playlist grouping, metadata provenance, complete text parity,
-internal implementation-state parity, and arbitrary audio remain outside the
-claim, which is why the profile stays `Unverified`. The exact scope and limits
-live in the
+The table describes one named target, corpus, set of fields, and runtime
+boundary. Arbitrary audio, x86 and other plugin versions, foobar2000 decoding,
+host and playlist behavior, metadata provenance, complete text rendering, and
+internal implementation-state identity all remain outside those observations.
+That is the scope represented by `Candidate V1 / Unverified`.
+
+The supporting records are the
 [M4 evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md),
-the [M4 conformance report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md), and
-the [candidate specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md).
+[M4 compatibility report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md), and
+[Candidate V1 specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md).
 
 ## Performance
 
-0.2.0 publishes no performance guarantee. M6 instead established a
-reproducible local measurement protocol: a deterministic generated corpus, a
-15-case scalar baseline, sampling attribution, and same-run interleaved A/B
-comparisons in which every variant must first reproduce bit-identical results.
-One analyzer-validation optimization chain passed that gate and is in the
-product; on the fixed baseline host the stereo difference remained within
-measurement noise, while 8-/64-channel median elapsed time fell by roughly 13%
-and 27%. Those numbers describe one fixed machine, toolchain, and synthetic
-workload — they are evidence for engineering decisions, not user-facing
-throughput claims.
+Analysis is streaming: its analysis-state memory grows with channel count, not
+track duration. The published performance material is a set of local
+measurements rather than a universal throughput or memory figure.
 
-Reproduce or extend the measurements with:
+M6 recorded release-worker measurements on one fixed Apple M4 Pro host,
+toolchain, generated corpus, and synthetic workload. The audio cases ran faster
+than real time on that host, and the accepted optimization reduced fixed
+8-/64-channel analyzer medians while preserving result fingerprints. Actual
+speed and memory use still vary with the machine, format, channel count, and
+input; the recorded figures are a local baseline rather than a prediction for
+another environment.
 
-```bash
-python3 scripts/generate-performance-corpus.py
-python3 scripts/run-performance-baseline.py
-```
+The reproducible measurement scripts and their interpretation are documented
+in the [performance notes](docs/BENCHMARKS.md) and
+[M6 records](docs/performance/README.md).
 
-See the [performance measurement contract](docs/BENCHMARKS.md) and the
-[M6 reports](docs/performance/README.md).
+## Under the hood
 
-## Verification
-
-Local gates, in increasing resource risk:
-
-```bash
-python3 scripts/check-repository-contract.py
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-targets
-python3 -m unittest discover -s scripts/tests -p 'test_*.py'
-python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
-cd tauri-app && npm run build
-```
-
-Hostile-input verification is deliberately isolated: the committed
-41-case malformed-media corpus runs per-case in subprocesses with a wall-clock
-timeout and a Linux address-space limit
-(`python3 scripts/verify-malformed-corpus.py`), and refuses to decode hostile
-bytes when the limit cannot be enforced. Remote CI is intentionally
-`workflow_dispatch` only. Verified local release staging (checksums, CLI smoke
-test, optional unsigned macOS DMG) is documented in the
-[release artifact contract](docs/RELEASE.md).
-
-## Architecture
-
-The repository is a virtual Cargo workspace with one-way dependencies:
+MacinMeter 0.2.0 is a virtual Cargo workspace with one-way dependencies:
 
 ```text
 macinmeter-domain
 ├── macinmeter-analysis
 ├── macinmeter-codecs
-└── macinmeter (application façade)
+└── macinmeter
     ├── macinmeter-cli
     └── macinmeter-gui
 ```
 
-`domain` owns valid types and errors; `analysis` owns the only streaming
-analyzer; `codecs` owns probing and strict PCM sources plus the single native
-capability catalog; the application layer is the only place that composes
-decoding and analysis; CLI and GUI only parse, render, and adapt I/O.
+Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The product has
+one analyzer, serial native decoding, and serial batch execution. Its design
+history and deeper technical material live in:
 
-The 0.2.0 rebuild was executed as seven reviewed milestones, each closed by an
-architecture decision record:
-
-| Milestone | Decision record |
-| --- | --- |
-| M0 — trusted-trunk rebuild | [ADR-0001](docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md) |
-| M1 — reference numeric scope | [ADR-0002](docs/adr/0002-m1-reference-numeric-scope.md) |
-| M2 — native decoder contract hardening | [ADR-0003](docs/adr/0003-m2-native-decoder-contract-hardening.md) |
-| M3 — application execution budget | [ADR-0004](docs/adr/0004-m3-application-execution-budget.md) |
-| M4 — bounded x64 numeric claim | [ADR-0005](docs/adr/0005-m4-bounded-x64-numeric-claim.md) |
-| M5 — product/repository convergence | [ADR-0006](docs/adr/0006-m5-product-repository-convergence.md) |
-| M6 — reproducible performance baseline | [ADR-0007](docs/adr/0007-m6-reproducible-performance-baseline.md) |
-
-The living overview is the
-[architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md).
+- [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
+- [architecture decision records](docs/adr/)
+- [supported formats](docs/SUPPORTED_FORMATS.md)
+- [performance notes](docs/BENCHMARKS.md)
+- [release and packaging notes](docs/RELEASE.md)
 
 ## Reference work and attribution
 
-The current reference target is foobar2000 DR Meter 1.0.8 (`foo_dr_meter`) by
-Janne Hyvärinen. Permission to reverse engineer the plugin has been obtained
-from its author. Private permission correspondence is not stored in this
-repository; only a
-[minimal public scope summary](reference/authorization/README.md) is retained.
+The sole current candidate target is Janne Hyvärinen's `foo_dr_meter 1.0.8
+x64` component. Reverse-engineering that fixed target was performed with the
+author's permission. Private correspondence is not stored in the repository;
+only a [minimal public authorization summary](reference/authorization/README.md)
+is retained.
 
-That permission and attribution do not establish numerical compatibility.
-Target hashes, experiments, observations, the candidate specification, and all
-conformance records are kept under [`reference/`](reference/README.md), each
-with its declared scope and limits — including the
-[isolated x64 analyzer-core harness](reference/observations/CORE_HARNESS.md)
-that exercises the fixed target without starting foobar2000. The profile
-remains `Unverified` unless a later, separately reviewed compatibility claim
-justifies a stronger statement.
+Permission and attribution provide the legal and historical context for the
+research. The numerical status comes from the bounded records above and remains
+`Candidate V1 / Unverified`. Historical M0/1.0.3 material is kept as a
+superseded archive, separate from the current target. Target identities,
+experiments, observations, specifications, and their limits are indexed under
+[`reference/`](reference/README.md).
 
 ## License
 
-MacinMeter is released under the [MIT License](LICENSE). See
-[legal notes](docs/LEGAL.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+MacinMeter is released under the [MIT License](LICENSE). Related material is
+collected in the [legal notes](docs/LEGAL.md) and
+[third-party notices](THIRD_PARTY_NOTICES.md).
