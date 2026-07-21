@@ -1,16 +1,21 @@
-# Provisional DR specification v1
+# Historical M0 DR specification: Provisional v1 (superseded)
 
-- 状态：provisional
+- 文档状态：historical / superseded
+- M0 时原状态：provisional
 - 建立日期：2026-07-18
 - 适用里程碑：M0 / 0.2.0
-- 参考目标候选：foobar2000 DR Meter 1.0.3
+- M0 时参考目标候选：foobar2000 DR Meter 1.0.3（未固定为当前 target）
 - 兼容性声明：未建立
 
-> 本文件冻结 M0 的历史工程基线。当前后继规格是
+> **历史文档，不是当前参考规格或 conformance 依据。** 本文件冻结 M0 的历史
+> 工程基线，其中 1.0.3 只是当时的候选目标；不得据此解释当前实现、当前参考
+> target 或当前兼容性状态。当前唯一生产候选规格是
 > [`foo_dr_meter 1.0.8 candidate v1`](foo-dr-meter-1.0.8-candidate-v1.md)；
-> 后继规格允许逐规则保留 E1/H/U。当前 M1 验收范围由
+> 后继规格允许逐规则保留 E1/H/U。当前参考 target 是固定哈希的
+> `foo_dr_meter 1.0.8 x64`。后继 M1 的验收范围由
 > [`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md) 固定：最终
-> 可观测数值 conformance 与可追溯白盒规则是收口条件，内部状态同构不是条件。
+> 可观测数值 conformance 与可追溯白盒规则是收口条件，内部状态同构不是条件；
+> M1 现已完成。
 
 ## 1. 目的
 

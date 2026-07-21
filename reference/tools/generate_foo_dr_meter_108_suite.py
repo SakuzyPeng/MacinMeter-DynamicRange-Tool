@@ -2,8 +2,8 @@
 """Generate deterministic PCM probes for foo_dr_meter 1.0.8.
 
 The generated WAV files are experimental inputs, not correctness goldens.
-Their questions are chosen to distinguish the current ProvisionalV1 rules from
-the behavior recovered statically from foo_dr_meter 1.0.8.
+Their questions were chosen to distinguish the historical M0 ProvisionalV1
+rules from behavior recovered statically from foo_dr_meter 1.0.8.
 """
 
 from __future__ import annotations

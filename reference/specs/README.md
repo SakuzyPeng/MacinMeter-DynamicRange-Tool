@@ -12,9 +12,8 @@
 - breaking 语义变化创建新版本，不静默改写已用于 conformance 的版本；
 - accepted 规格必须列出适用 target、反例、容差和未决问题。
 
-当前规格：
+规格索引（现行规格优先）：
 
-- [`provisional-v1.md`](provisional-v1.md)：M0 的可信边界和参考算法未知项。
 - [`foo-dr-meter-1.0.8-candidate-v1.md`](foo-dr-meter-1.0.8-candidate-v1.md)：
   基于 1.0.8 x64/x86 静态分析、x86 初步观测和 x64 complete-v2 safe-master
   观测，并由 accepted 39 项 isolated x64 core 记录补充 raw 动态状态的候选算法；
@@ -33,3 +32,6 @@
   renderer 仍保留各自限制。规格保持
   `candidate / unverified`，不声明通用 parity。M1 已完成；host、playlist、
   metadata、完整 renderer 与 production 中间状态同构是非目标。
+- [`provisional-v1.md`](provisional-v1.md)：**历史 / 已取代**的 M0 工程基线；
+  其中 1.0.3 只是当时未固定为当前 target 的候选，不是现行参考规格、
+  conformance 依据或兼容目标。

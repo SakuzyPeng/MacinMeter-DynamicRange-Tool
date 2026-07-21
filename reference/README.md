@@ -36,8 +36,9 @@ M4 的声明收口、decoder-independent 验收方式和当前缺口见
 
 当前生产候选规格是
 [`specs/foo-dr-meter-1.0.8-candidate-v1.md`](specs/foo-dr-meter-1.0.8-candidate-v1.md)。
-[`specs/provisional-v1.md`](specs/provisional-v1.md) 只保留为 M0 历史工程基线；
-两者都不是 accepted 兼容声明。
+[`specs/provisional-v1.md`](specs/provisional-v1.md) 是已取代的 M0 历史工程基线；
+其中 1.0.3 只是当时的候选目标，不是当前 target 或 conformance 依据。当前规格
+也不是 accepted 兼容声明。
 
 当前一次性完整输入协议是
 [`experiments/foo-dr-meter-108-complete-v2.md`](experiments/foo-dr-meter-108-complete-v2.md)；

@@ -1,4 +1,4 @@
-# Changelog v0.1.1 (2025-11-08-14-20)
+# Archived changelog v0.1.1 (2025-11-08-14-20)
 
 > **Historical / superseded:** this file records 0.1.1-era behavior and claims.
 > It is not evidence that 0.2.0 matches the reference plugin. Current output is
@@ -10,6 +10,11 @@
 > 与参考插件一致。当前输出为
 > `foo_dr_meter 1.0.8 Candidate V1 / Unverified`；下文“官方”“完全一致”或
 > “证明正确”等措辞仅是历史陈述，不是现有证据。
+>
+> 本文没有为下文所称 `v1.0.3` / `v1.1.1` 保存可验证的目标 manifest、组件
+> 二进制哈希或宿主身份；原文还把这些标签写成了“foobar2000 版本”。这些标签
+> 因此只能按 0.1.1 时代的未验证记录读取，不能解释为已固定的插件版本，也不能
+> 与当前固定的 `foo_dr_meter 1.0.8 x64` target 混用。
 
 ## 修复：FLAC/ALAC比特率显示错误 / Fix: FLAC/ALAC Bitrate Display Error
 
@@ -168,13 +173,17 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 
 ### 测试2：7.1声道FLAC (48kHz/24bit/8ch)
 
+> 下表中的 `foobar2000 v1.0.3` 是历史原标签，目标身份未固定。该行只保存当时
+> 记录的显示值，不构成与任一参考插件版本的一致性比较。
+
 | 工具 | 比特率 | 差异 |
 |------|--------|------|
 | **MacinMeter (修复后)** | **5561 kbps** | - |
 | foobar2000 v1.0.3 | 5558 kbps | +3 kbps (+0.05%) |
 | ffprobe | 5560 kbps | +1 kbps (+0.02%) |
 
-**结论**: 完全一致
+**历史原结论**：`完全一致`。**当前解释**：显示的整数比特率接近，但没有固定
+目标和计算路径证据，不能据此声明实现一致。
 
 ### 测试3：5.1声道FLAC (48kHz/24bit/6ch)
 
@@ -183,7 +192,7 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 | **MacinMeter** | **4342 kbps** |
 | ffprobe | **4342 kbps** |
 
-**结论**: 完全一致
+**历史原结论**：`完全一致`。**当前解释**：这里只能说明两份历史显示值相近。
 
 ### 测试4：WAV未压缩格式 (192kHz/24bit/2ch)
 
@@ -196,7 +205,11 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 
 ---
 
-## foobar2000 版本对比分析 / foobar2000 Version Comparison
+## 历史版本标签对比（非 conformance） / Historical labels (not conformance)
+
+> 本节保留 0.1.1 changelog 中的原始数值，但版本标签没有可验证的 target 身份。
+> `v1.0.3` / `v1.1.1` 不得与当前固定的 `foo_dr_meter 1.0.8 x64` target 比较或
+> 外推；下列“发现”是已撤回的历史推断，不是现行项目结论。
 
 ### 测试文件
 - flac
@@ -225,24 +238,27 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 | Ch7/SL | 12.69 | 12.79 | 12.70 | ±0.10 |
 | Ch8/SR | 15.03 | 14.61 | 14.41 | ±0.62 |
 
-**Official DR Value**: 所有版本均为 **DR13**
+**历史记录的 overall DR token**：各行均为 **DR13**。这不是“官方值”或
+correctness oracle。
 
-### 重要发现
+### 0.1.1 时代的推断（已撤回）
 
-1. **MacinMeter与最老版本v1.1.1高度一致**
+1. **当时推断 MacinMeter 与标签为 v1.1.1 的结果高度接近**
    - 7/8声道差异 < 0.1 dB
    - FR声道几乎完全一致 (14.39 vs 14.40)
-   - 证明MacinMeter实现正确
+   - ~~证明 MacinMeter 实现正确~~：该结论证据不足，现已撤回
 
-2. **v1.0.3可能存在FR声道计算问题**
+2. **当时推测标签为 v1.0.3 的结果存在 FR 声道问题**
    - FR声道显示13.61 dB
    - 其他版本显示~14.40 dB
    - 差异0.79 dB (显著)
+   - 没有固定二进制和规则证据，不能据此判断参考实现存在缺陷
 
-3. **比特率修复完全成功**
+3. **当时记录的比特率修复结果**
    - 修复前: 9216 kbps (错误65.7%)
    - 修复后: 5561 kbps
    - 与foobar2000差异仅3 kbps (0.05%)
+   - 该显示值比较不证明 DR 算法或参考插件兼容性
 
 ---
 
@@ -299,4 +315,6 @@ fn calculate_actual_bitrate(...) -> AudioResult<u32> {
 
 **文档版本**: v0.1.1 (2025-11-08-14-20)
 **作者**: MacinMeter Development Team
-**审核状态**: 已验证
+**历史原审核状态**：`已验证`
+
+**当前归档状态**：未满足现行 target 身份和证据要求，不作为验证记录。
