@@ -1,12 +1,10 @@
 # 架构整改与参考插件重新对齐路线图
 
-> 状态：执行中（M0：`DONE`，M1：`DONE`，M2：`DONE`，M3：`DONE`，
-> M4：`DONE`；
-> foo_dr_meter 1.0.8 Candidate V1
-> 已实施；schema-v3
+> 状态：本轮路线图已完成（M0、M1、M2、M3、M4、M5、M6：`DONE`）。
+> foo_dr_meter 1.0.8 Candidate V1 已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
-> overall RMS 39/39、channel RMS 62/62、duration 39/39），
-> 作为整改、重构和逆向研究的主记录
+> overall RMS 39/39、channel RMS 62/62、duration 39/39。本文继续作为整改、
+> 重构和逆向研究的主记录。
 >
 > 建立日期：2026-07-17
 >
@@ -27,6 +25,10 @@
 > M3 范围决策：[ADR-0004：M3 application 执行预算与串行准入](adr/0004-m3-application-execution-budget.md)
 >
 > M4 范围决策：[ADR-0005：M4 固定 x64 数值声明与 decoder-independent 验收](adr/0005-m4-bounded-x64-numeric-claim.md)
+>
+> M5 范围决策：[ADR-0006：M5 产品与仓库收敛](adr/0006-m5-product-repository-convergence.md)
+>
+> M6 范围决策：[ADR-0007：M6 可复现性能基线](adr/0007-m6-reproducible-performance-baseline.md)
 
 ## 1. 文档目的
 
