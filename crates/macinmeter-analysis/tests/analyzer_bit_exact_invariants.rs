@@ -2,10 +2,10 @@
 
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_domain::{
-    AggregateResults, AlgorithmDescriptor, AlgorithmParameters, AnalysisProfile, AnalysisResult,
-    AnalysisResultView, AnalysisStage, ChannelLayout, ChannelMeasurement, ChannelOutcome,
-    ChannelReportMetrics, ChannelResult, ChannelRole, CompatibilityStatus, DecodedDuration,
-    ErrorCode, ExcludedChannel, FiniteF32, StreamSpec, TrackAggregate, TrackReportMetrics,
+    AggregateResults, AlgorithmDescriptor, AlgorithmParameters, AnalysisResult, AnalysisResultView,
+    AnalysisStage, ChannelLayout, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics,
+    ChannelResult, ChannelRole, DecodedDuration, ErrorCode, ExcludedChannel, FiniteF32, StreamSpec,
+    TrackAggregate, TrackReportMetrics,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,9 +20,6 @@ struct RawAnalysisProjection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RawAlgorithmProjection {
-    profile: AnalysisProfile,
-    profile_version: u32,
-    compatibility: CompatibilityStatus,
     parameters: RawAlgorithmParametersProjection,
 }
 
@@ -107,12 +104,7 @@ impl From<&AnalysisResult> for RawAnalysisProjection {
             aggregates,
             report,
         } = result.view();
-        let AlgorithmDescriptor {
-            profile,
-            profile_version,
-            compatibility,
-            parameters,
-        } = algorithm;
+        let AlgorithmDescriptor { parameters } = algorithm;
         let AlgorithmParameters {
             window_duration_coefficient,
             rms_sum_multiplier,
@@ -147,9 +139,6 @@ impl From<&AnalysisResult> for RawAnalysisProjection {
 
         Self {
             algorithm: RawAlgorithmProjection {
-                profile: *profile,
-                profile_version: *profile_version,
-                compatibility: *compatibility,
                 parameters: RawAlgorithmParametersProjection {
                     window_duration_coefficient: window_duration_coefficient.get().to_bits(),
                     rms_sum_multiplier: rms_sum_multiplier.get().to_bits(),
@@ -250,8 +239,7 @@ fn stream(sample_rate: u32, channels: usize, layout: ChannelLayout) -> StreamSpe
 }
 
 fn analyze(spec: &StreamSpec, chunks: impl IntoIterator<Item = Vec<f64>>) -> AnalysisResult {
-    let mut session =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec.clone()).unwrap();
     for chunk in chunks {
         session.push_interleaved(&chunk).unwrap();
     }
@@ -422,8 +410,7 @@ fn declared_chunk_and_window_matrix_is_bit_exact_for_complete_results() {
 
     for channel_count in [1, 2, 3, 6, 8, 16] {
         let spec = stream(1, channel_count, ChannelLayout::Unknown);
-        let probe =
-            AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+        let probe = AnalyzerSession::new(spec.clone()).unwrap();
         assert_eq!(probe.window_frames(), window);
 
         for frames in lengths {
@@ -757,8 +744,7 @@ fn invalid_chunk(kind: InvalidChunk, channel_count: usize, target_lane: usize) -
 fn rejected_chunks_leave_no_partial_mutation_before_continued_bit_exact_analysis() {
     let channel_count = 5;
     let spec = stream(10, channel_count, ChannelLayout::Unknown);
-    let probe =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let probe = AnalyzerSession::new(spec.clone()).unwrap();
     let window = probe.window_frames();
     assert_eq!(window, 30);
 
@@ -783,9 +769,7 @@ fn rejected_chunks_leave_no_partial_mutation_before_continued_bit_exact_analysis
                 &[0, channel_count / 2, channel_count - 1]
             };
             for target_lane in target_lanes {
-                let mut session =
-                    AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1)
-                        .unwrap();
+                let mut session = AnalyzerSession::new(spec.clone()).unwrap();
                 session.push_interleaved(&prefix).unwrap();
 
                 let error = session

@@ -169,7 +169,7 @@ report renderer，也不建立 host parity。
 固定 x64 数值边界 observation 见
 [`OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719`](../observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)。
 `suite.json` 的 SHA-256 为
-`28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b`；
+`b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3`；
 固定 worker SHA-256 为
 `9685bf13e69cce2f0920510b70e24c57cff4483b1c3296baada3f165704ca817`。
 它不启动 foobar2000，每个向量使用全新 worker，并在固定 runtime、浮点环境和
@@ -231,8 +231,7 @@ public-f32 mean 与其他同样显示 `DR12` 的聚合，也不验证 length wei
 任意输入的 reference compatibility 声明。第 2.3 节已经补入 reference core raw
 state，但 ADR-0002 不要求把 MacinMeter 的内部结构逐项映射到这些记录。
 album/renderer 只保留纯数值规则；playlist/grouping、host footer metadata、
-完整文本与更广输入空间不在声明范围。profile 继续保持
-`FooDrMeter108CandidateV1 / Unverified`。
+完整文本与更广输入空间不在声明范围。profile 名称只标识本规格的规则修订。
 
 ## 3. 数据与数值约定
 
@@ -283,7 +282,7 @@ x64 全 binary64 peak 路径不同。当前 MacinMeter 已消除 PCM 入口的 b
 窄化，并在 complete-v2 可观察边界上与 x64 结果一致；但它保存 integer key，
 且有限样本不能证明所有运行库和半值边界相同。因此本规格后续伪代码继续只表示
 x64 核心控制与数值路径。当前 MacinMeter 仍是显式派生的
-`CandidateV1 / Unverified`，不是 x64 或 x86 的隐藏兼容别名。
+`CandidateV1` 规则修订，不是 x64 或 x86 的隐藏兼容别名。
 
 ## 4. 候选核心算法
 
@@ -770,7 +769,8 @@ parity 则明确不属于 M1。
 ## 7. 使用规则
 
 - 实现不得把本规格命名成 `Compatible`、`ReferenceExact` 或类似 profile。
-- 按本规格修改算法时，必须保留来源标识和 `candidate / unverified` 状态。
+- 按本规格修改算法时，必须保留来源和规则修订标识；compatibility 不属于分析
+  报告或 wire DTO。
 - 当前 MacinMeter wire schema v3 将第 4.7 节 report metrics 放在独立
   `channel.report` 与 `analysis.report` 中；`loudWindowRms`、
   `drSelectedPeak`、`drPrimaryPeak`、`drSecondaryPeak` 仍只是 DR 计算诊断，
@@ -787,14 +787,14 @@ parity 则明确不属于 M1。
 - 若未来 1.0.3 被固定为正式目标，应建立独立 target、observation 和规格；不得
   静默改名或覆盖本文件。
 
-## 8. 进入 accepted 的最低条件
+## 8. 证据维护条件
 
-M4 的当前目标不是自动把本规格改名为 `accepted`，而是按
+M4 按
 [`ADR-0005`](../../docs/adr/0005-m4-bounded-x64-numeric-claim.md) 完成固定 x64
-字段范围内的有界声明与 decoder-independent 验收。即使以下条件形成审计结论，
-生产 profile 仍保持 `CandidateV1 / Unverified`，状态升级必须另立决策。
+字段范围内的有界声明与 decoder-independent 验收。以下条件用于维护这份证据链，
+不向逐项分析报告附加项目状态。
 M4 的最终审计与限制已登记在
-[`固定 x64 数值声明收口报告`](../../docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)。
+[`固定 x64 数值声明收口报告`](../../docs/M4_X64_NUMERIC_ALIGNMENT_REPORT.md)。
 
 1. 固定项目实际要兼容的插件版本和架构；
 2. 对窗口数、loud 边界 bin、peak 排名/回退和聚合输入等规则保存可审计的固定

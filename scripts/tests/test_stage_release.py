@@ -77,7 +77,7 @@ class StageReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(stage_release.ReleaseError, "invalid"):
             stage_release.parse_checksums(checksum)
 
-    def test_analysis_smoke_pins_wire_profile_and_route(self) -> None:
+    def test_analysis_smoke_pins_parameters_and_route_without_status_fields(self) -> None:
         document = {
             "schemaVersion": 3,
             "toolVersion": "0.2.0",
@@ -86,8 +86,7 @@ class StageReleaseTests(unittest.TestCase):
                 "source": {"container": "wave", "codec": "pcm_integer"},
                 "analysis": {
                     "algorithm": {
-                        "profile": "foo_dr_meter_1_0_8_candidate_v1",
-                        "compatibility": "unverified",
+                        "parameters": {"histogramBins": 10_001},
                     }
                 },
             },
@@ -95,8 +94,13 @@ class StageReleaseTests(unittest.TestCase):
         stage_release.validate_analysis_smoke(document, "0.2.0")
 
         changed = json.loads(json.dumps(document))
-        changed["data"]["analysis"]["algorithm"]["compatibility"] = "verified"
-        with self.assertRaisesRegex(stage_release.ReleaseError, "status drifted"):
+        changed["data"]["analysis"]["algorithm"]["compatibility"] = "legacy_status"
+        with self.assertRaisesRegex(stage_release.ReleaseError, "must not attach"):
+            stage_release.validate_analysis_smoke(changed, "0.2.0")
+
+        changed = json.loads(json.dumps(document))
+        changed["data"]["analysis"]["algorithm"]["profile"] = "internal_name"
+        with self.assertRaisesRegex(stage_release.ReleaseError, "must not expose"):
             stage_release.validate_analysis_smoke(changed, "0.2.0")
 
     def test_version_tuple_accepts_toolchain_suffixes(self) -> None:

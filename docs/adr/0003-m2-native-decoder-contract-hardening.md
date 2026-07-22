@@ -14,8 +14,8 @@
 M0 已经建立 0.2.0 workspace、唯一 `AnalyzerSession`、严格同步
 `PcmSource`、串行 application façade 以及 CLI/Tauri 共用的 wire DTO。M1 又把
 `foo_dr_meter 1.0.8 x64` 的纳入范围收口为
-`FooDrMeter108CandidateV1 / Unverified`，并固定了对应的数值证据、规格和本地
-回归门禁。
+固定分析规则的修订，并固定了对应的数值证据、规格和本地回归
+门禁。
 
 旧 M2 描述仍混合了四类已经不再同阶段的事项：
 

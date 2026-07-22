@@ -78,8 +78,7 @@ successor 对 footer 只登记 track count、sample-rate set、channel-count set
 重建的 unweighted DR token 四项及 DR0 track 纳入/排除反事实；它不验证精确
 internal album mean、length weighting 或 host 生成的 bit depth、bitrate、codec
 metadata。不可见中间状态、三个 isolated 输入、album-focused playlist、x64
-reference 重复运行和更广输入空间仍不在已完成范围，因此 profile 继续保持
-`FooDrMeter108CandidateV1 / Unverified`。
+reference 重复运行和更广输入空间仍不在已完成范围。profile 仅标识对应规则修订。
 
 ## Corpus 布局
 

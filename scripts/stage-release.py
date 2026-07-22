@@ -35,8 +35,6 @@ except ImportError:  # pragma: no cover - Python reports the actionable error.
 
 RELEASE_SCHEMA_VERSION = 1
 WIRE_SCHEMA_VERSION = 3
-ANALYSIS_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
-COMPATIBILITY_STATUS = "unverified"
 APPLE_SILICON_TARGET = "aarch64-apple-darwin"
 MACOS_MINIMUM_SYSTEM_VERSION = "11.0"
 LOCAL_STAGING_SCOPE = "local_staging_only"
@@ -319,10 +317,13 @@ def validate_analysis_smoke(document: dict, version: str) -> None:
             raise ReleaseError(
                 f"CLI smoke JSON {key} is {document.get(key)!r}, expected {value!r}"
             )
-    if algorithm.get("profile") != ANALYSIS_PROFILE:
-        raise ReleaseError("CLI smoke JSON analysis profile drifted")
-    if algorithm.get("compatibility") != COMPATIBILITY_STATUS:
-        raise ReleaseError("CLI smoke JSON compatibility status drifted")
+    if "profile" in algorithm or "profileVersion" in algorithm:
+        raise ReleaseError("CLI smoke JSON must not expose an algorithm profile")
+    if "compatibility" in algorithm:
+        raise ReleaseError("CLI smoke JSON must not attach compatibility to a report")
+    parameters = algorithm.get("parameters")
+    if not isinstance(parameters, dict) or parameters.get("histogramBins") != 10_001:
+        raise ReleaseError("CLI smoke JSON is missing the fixed algorithm parameters")
     if (source.get("container"), source.get("codec")) != (
         "wave",
         "pcm_integer",
@@ -361,8 +362,6 @@ def smoke_cli(binary: Path, version: str, fixture: Path, cwd: Path) -> dict:
         "version": expected_version,
         "wireSchemaVersion": WIRE_SCHEMA_VERSION,
         "fixtureRoute": "wave/pcm_integer",
-        "profile": ANALYSIS_PROFILE,
-        "compatibility": COMPATIBILITY_STATUS,
     }
 
 
@@ -472,8 +471,6 @@ def build_cli_payload(
         "target": target,
         "analysis": {
             "wireSchemaVersion": WIRE_SCHEMA_VERSION,
-            "profile": ANALYSIS_PROFILE,
-            "compatibility": COMPATIBILITY_STATUS,
         },
         "source": source,
         "toolchain": toolchain,
@@ -1040,8 +1037,6 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
             },
             "analysis": {
                 "wireSchemaVersion": WIRE_SCHEMA_VERSION,
-                "profile": ANALYSIS_PROFILE,
-                "compatibility": COMPATIBILITY_STATUS,
             },
             "distribution": distribution_contract(unsigned_candidate),
             "artifacts": artifacts,

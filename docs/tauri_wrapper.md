@@ -43,6 +43,13 @@ aggregate. A batch remains a list of independent reports: the library's
 explicit `AlbumAggregator` is not invoked by Tauri commands. Rendering
 preferences stay in TypeScript and never enter the analysis request.
 
+The product frontend accepts native whole-window drops of files, directories,
+or mixed inputs. Dropped and picker-selected paths share the same cancellable
+discovery and batch commands. Chinese/English presentation, result search,
+precise-DR sorting, path hiding, Markdown copying, and PNG/SVG rendering are
+frontend-only features. JSON export writes the exact backend `WireEnvelope`
+instead of constructing another transport model.
+
 ## Development
 
 ```bash
@@ -74,13 +81,8 @@ runtime is not used as an unbounded hidden queue. The backend does not modify
 environment variables, look for FFmpeg, use a global cancel flag, or create a
 Rayon batch pool.
 
-Current GUI results are always labelled
-`foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This identifies the evidence
-target and candidate revision. The fixed schema-v3 safe-master comparison
+The structured result records fixed numeric parameters for reproducibility,
+but does not expose an internal profile name or project status. The fixed
+schema-v3 safe-master comparison
 matches the five exported DR/report field groups plus all 39 rendered duration
-tokens. Its limited footer check covers track count, sample-rate/channel-count
-sets, and the aggregate DR token. M1 separately retains the statically recovered
-album arithmetic and renderer rounding rules, but host metadata, playlist
-grouping, complete text rendering, production/reference internal-state parity,
-and arbitrary audio are explicit non-goals. This is not a claim of full
-reference parity.
+tokens; its exact scope and exclusions remain in the reference records.

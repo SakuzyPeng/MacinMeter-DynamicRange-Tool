@@ -93,7 +93,9 @@ def build_candidate_suite() -> dict[str, object]:
     for reference_item, wire_item in zip(
         reference["items"], wire["data"]["items"], strict=True
     ):
-        analysis = wire_item["outcome"]["report"]["analysis"]
+        analysis = copy.deepcopy(wire_item["outcome"]["report"]["analysis"])
+        analysis["algorithm"].pop("profile", None)
+        analysis["algorithm"].pop("profileVersion", None)
         input_value = copy.deepcopy(reference_item["input"])
         request_semantic = {
             "schemaVersion": 1,
@@ -136,11 +138,7 @@ def build_candidate_suite() -> dict[str, object]:
                         "coreBits": core_projection(analysis),
                         "analysis": analysis,
                         "claims": {
-                            "scope": (
-                                "decoder-independent MacinMeter Candidate V1 "
-                                "analysis"
-                            ),
-                            "compatibility": "unverified",
+                            "scope": "decoder-independent MacinMeter analysis",
                             "referenceParity": "not_assessed",
                         },
                     },
@@ -171,9 +169,6 @@ def build_candidate_suite() -> dict[str, object]:
             "sourceCommit": source_commit,
             "workerSha256": worker_sha256,
             "workerByteLength": worker_byte_length,
-            "profile": "foo_dr_meter_1_0_8_candidate_v1",
-            "profileVersion": 1,
-            "compatibility": "unverified",
         },
         "execution": {
             "timeoutSeconds": timeout_seconds,
@@ -190,8 +185,7 @@ def build_candidate_suite() -> dict[str, object]:
             "failed": 0,
         },
         "claims": {
-            "scope": "decoder-independent Candidate V1 suite",
-            "compatibility": "unverified",
+            "scope": "decoder-independent analysis suite",
             "referenceParity": "not_assessed",
         },
         "limitations": ["Synthetic unit-test suite metadata."],

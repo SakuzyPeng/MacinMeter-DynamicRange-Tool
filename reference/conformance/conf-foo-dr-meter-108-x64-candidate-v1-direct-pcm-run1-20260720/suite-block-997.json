@@ -1,6 +1,5 @@
 {
   "claims": {
-    "compatibility": "unverified",
     "referenceParity": "not_assessed",
     "scope": "decoder-independent MacinMeter Candidate V1 suite"
   },
@@ -58,7 +57,6 @@
     "timeoutSeconds": 30.0
   },
   "implementation": {
-    "compatibility": "unverified",
     "profile": "foo_dr_meter_1_0_8_candidate_v1",
     "profileVersion": 1,
     "sourceCommit": "76d0f2eab5cdfce9de6a9d76ab971c333eab8e71",
@@ -87,7 +85,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -120,7 +117,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -184,7 +180,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -235,7 +230,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -268,7 +262,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -332,7 +325,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -383,7 +375,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -416,7 +407,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -480,7 +470,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -531,7 +520,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -564,7 +552,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -628,7 +615,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -679,7 +665,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -712,7 +697,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -776,7 +760,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -827,7 +810,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -860,7 +842,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -924,7 +905,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -975,7 +955,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1008,7 +987,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1072,7 +1050,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1123,7 +1100,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1156,7 +1132,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1220,7 +1195,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1271,7 +1245,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1304,7 +1277,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1368,7 +1340,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1419,7 +1390,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1452,7 +1422,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1516,7 +1485,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1567,7 +1535,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1600,7 +1567,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1664,7 +1630,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1715,7 +1680,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1748,7 +1712,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1804,7 +1767,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -1855,7 +1817,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -1889,7 +1850,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -1966,7 +1926,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2024,7 +1983,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -2059,7 +2017,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -2165,7 +2122,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2230,7 +2186,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -2268,7 +2223,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -2437,7 +2391,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2523,7 +2476,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -2556,7 +2508,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -2620,7 +2571,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2671,7 +2621,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -2704,7 +2653,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -2768,7 +2716,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2819,7 +2766,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -2852,7 +2798,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -2916,7 +2861,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -2967,7 +2911,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3001,7 +2944,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3086,7 +3028,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3144,7 +3085,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3178,7 +3118,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3263,7 +3202,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3321,7 +3259,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3355,7 +3292,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3440,7 +3376,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3498,7 +3433,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3532,7 +3466,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3617,7 +3550,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3675,7 +3607,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3708,7 +3639,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3772,7 +3702,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3823,7 +3752,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -3856,7 +3784,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -3920,7 +3847,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -3971,7 +3897,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4004,7 +3929,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -4068,7 +3992,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -4119,7 +4042,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4152,7 +4074,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -4216,7 +4137,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -4267,7 +4187,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4307,7 +4226,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -4518,7 +4436,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -4618,7 +4535,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4651,7 +4567,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -4715,7 +4630,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -4766,7 +4680,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4799,7 +4712,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -4863,7 +4775,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -4914,7 +4825,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -4947,7 +4857,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5011,7 +4920,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5062,7 +4970,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5095,7 +5002,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5159,7 +5065,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5210,7 +5115,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5245,7 +5149,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5351,7 +5254,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5416,7 +5318,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5451,7 +5352,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5557,7 +5457,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5622,7 +5521,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5655,7 +5553,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5719,7 +5616,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5770,7 +5666,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5803,7 +5698,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -5867,7 +5761,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -5918,7 +5811,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -5951,7 +5843,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -6015,7 +5906,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -6066,7 +5956,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -6099,7 +5988,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -6163,7 +6051,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -6214,7 +6101,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -6247,7 +6133,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -6311,7 +6196,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },
@@ -6362,7 +6246,6 @@
       "result": {
         "data": {
           "algorithm": {
-            "compatibility": "unverified",
             "parameters": {
               "drFloorDb": 0.0,
               "exactWindowVirtualZeroPeak": false,
@@ -6395,7 +6278,6 @@
               }
             },
             "algorithm": {
-              "compatibility": "unverified",
               "parameters": {
                 "drFloorDb": 0.0,
                 "exactWindowVirtualZeroPeak": false,
@@ -6459,7 +6341,6 @@
             }
           },
           "claims": {
-            "compatibility": "unverified",
             "referenceParity": "not_assessed",
             "scope": "decoder-independent MacinMeter Candidate V1 analysis"
           },

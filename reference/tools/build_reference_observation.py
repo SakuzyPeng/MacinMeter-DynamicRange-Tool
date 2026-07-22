@@ -385,17 +385,12 @@ def validate_capture(capture: dict[str, Any]) -> dict[str, Any]:
     claims = require_object(capture["claims"], "capture.claims")
     require_exact_keys(
         claims,
-        {"scope", "compatibility", "appliesToVersion"},
+        {"scope", "appliesToVersion"},
         set(),
         "capture.claims",
     )
     for key in claims:
         require_string(claims[key], f"capture.claims.{key}")
-    if claims["compatibility"] != "none":
-        raise HarnessError(
-            "capture.claims.compatibility must remain 'none'; "
-            "this importer cannot establish compatibility"
-        )
 
     assert_path_free(capture)
     return capture

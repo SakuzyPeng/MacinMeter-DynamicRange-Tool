@@ -30,7 +30,7 @@ M5 固定了以下唯一事实源：
 - 根 `[workspace.dependencies]`：全部直接第三方 Rust 依赖及 feature；
 - 根 `Cargo.lock` 与 `tauri-app/package-lock.json`：仅有的两个 tracked lockfile；
 - 根 workspace version：npm package、npm lock root 与 Tauri config 的版本源；
-- `Application`、Candidate profile、稳定 codec capability 与手动 CI 边界继续沿用
+- `Application`、固定分析规则、稳定 codec capability 与手动 CI 边界继续沿用
   M2–M4 已有事实源。
 
 `scripts/check-repository-contract.py` 以只读方式拒绝：

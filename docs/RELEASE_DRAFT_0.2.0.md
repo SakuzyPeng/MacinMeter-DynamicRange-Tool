@@ -11,13 +11,6 @@
 > Apple Developer ID 签名，也未经过 Apple 公证。macOS 可能阻止首次启动，或要求
 > 用户显式选择**打开** / **仍要打开**。
 
-All results remain labelled
-`foo_dr_meter 1.0.8 Candidate V1 / Unverified`. This release does not claim
-complete compatibility with the original component.
-
-所有结果仍标记为 `foo_dr_meter 1.0.8 Candidate V1 / Unverified`。本版本不声明
-已经与原组件完全兼容。
-
 ## Downloads / 下载
 
 - `macinmeter-gui-0.2.0-aarch64-apple-darwin.dmg` — desktop GUI / 桌面 GUI
@@ -35,8 +28,8 @@ Linux, and Intel assets belong to earlier releases and are not 0.2.0 packages.
 
 - Rebuilt the project as a safe Rust workspace with one streaming analyzer and
   one shared application façade for the library, CLI, and GUI.
-- Re-established the numeric candidate against the fixed `foo_dr_meter` 1.0.8
-  x64 target while retaining the explicit `Unverified` evidence boundary.
+- Re-established the numeric algorithm against the fixed `foo_dr_meter` 1.0.8
+  x64 target and recorded the exact evidence boundary.
 - Limited stable decoding to content-probed WAV PCM, FLAC, and AIFF PCM.
 - Added schema-v3 reports, bounded cancellation/execution, strict decoder
   contracts, deterministic fixtures, and three-platform correctness CI.
@@ -45,8 +38,7 @@ Linux, and Intel assets belong to earlier releases and are not 0.2.0 packages.
 
 - 项目已重建为安全 Rust workspace；库、CLI 与 GUI 共用唯一流式分析器和 application
   façade。
-- 围绕固定 `foo_dr_meter` 1.0.8 x64 目标重建数值候选，同时保留明确的
-  `Unverified` 证据边界。
+- 围绕固定 `foo_dr_meter` 1.0.8 x64 目标重建数值算法，并记录准确的证据边界。
 - 稳定解码范围限定为按内容探测的 WAV PCM、FLAC 与 AIFF PCM。
 - 新增 schema-v3 报告、有界取消/执行、严格解码契约、确定性 fixture 与三平台
   正确性 CI。

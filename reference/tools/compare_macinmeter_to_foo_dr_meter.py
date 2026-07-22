@@ -16,6 +16,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+LEGACY_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
+
 
 class ComparisonError(ValueError):
     """An input does not satisfy the fixed comparison contract."""
@@ -91,8 +93,7 @@ def compare(
 
     implementation_by_stem: dict[str, dict[str, Any]] = {}
     implementation_order: list[str] = []
-    profile_names: set[str] = set()
-    compatibility_names: set[str] = set()
+    algorithm_identities: set[str] = set()
     for index, item_value in enumerate(implementation_items):
         item = require_dict(item_value, f"implementation.items[{index}]")
         display_path = item.get("displayPath")
@@ -112,12 +113,31 @@ def compare(
         algorithm = require_dict(
             analysis.get("algorithm"), f"implementation item {stem}.algorithm"
         )
-        profile = algorithm.get("profile")
-        compatibility = algorithm.get("compatibility")
-        if not isinstance(profile, str) or not isinstance(compatibility, str):
-            raise ComparisonError(f"implementation item {stem!r} lacks algorithm identity")
-        profile_names.add(profile)
-        compatibility_names.add(compatibility)
+        legacy_profile = algorithm.get("profile")
+        legacy_profile_version = algorithm.get("profileVersion")
+        if (legacy_profile, legacy_profile_version) not in {
+            (None, None),
+            (LEGACY_PROFILE, 1),
+        }:
+            raise ComparisonError(
+                f"implementation item {stem!r} has an unknown legacy analysis identity"
+            )
+        if "compatibility" in algorithm:
+            raise ComparisonError(
+                f"implementation item {stem!r} attaches compatibility to its report"
+            )
+        require_dict(
+            algorithm.get("parameters"),
+            f"implementation item {stem}.algorithm.parameters",
+        )
+        current_algorithm = {
+            key: value
+            for key, value in algorithm.items()
+            if key not in {"profile", "profileVersion"}
+        }
+        algorithm_identities.add(
+            json.dumps(current_algorithm, sort_keys=True, separators=(",", ":"))
+        )
 
     expected_stems: list[str] = []
     differences: list[dict[str, Any]] = []
@@ -215,7 +235,7 @@ def compare(
     extra_stems = sorted(set(implementation_by_stem) - set(expected_stems))
     if extra_stems:
         raise ComparisonError(f"implementation has extra stems: {extra_stems}")
-    if len(profile_names) != 1 or len(compatibility_names) != 1:
+    if len(algorithm_identities) != 1:
         raise ComparisonError("implementation batch mixes algorithm identities")
 
     return {
@@ -233,8 +253,6 @@ def compare(
             "binarySha256": sha256_bytes(binary_raw),
             "wireSchemaVersion": implementation.get("schemaVersion"),
             "toolVersion": implementation.get("toolVersion"),
-            "profile": next(iter(profile_names)),
-            "compatibility": next(iter(compatibility_names)),
         },
         "policy": {
             "trackDr": "exact integer token",

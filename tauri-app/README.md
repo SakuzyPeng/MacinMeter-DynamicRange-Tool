@@ -2,20 +2,23 @@
 
 MacinMeter 0.2.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace 中的 `macinmeter` application façade，不维护独立的解码、分析或批处理实现。
 
-> 当前输出固定标记为 `FooDrMeter108CandidateV1 / Unverified`。它实现了基于
-> `foo_dr_meter` 1.0.8 固定目标建立的候选规格，并已完成 M4 有界 direct-PCM
-> conformance；这仍不证明任意输入或完整 host/component parity，不能称为
-> “官方”或“参考兼容”结果。
-
 ## 0.2.0 能力边界
 
 - 支持单文件与串行批量分析。
+- 支持整窗拖入单文件、多文件、目录或混合输入；目录可选择当前层或递归发现。
+- 提供中英文界面、结果搜索与 DR 精细值排序、路径隐藏，以及 Markdown、共享
+  `WireEnvelope` JSON、PNG 和 SVG 导出。
 - 稳定格式为 WAV（PCM integer / IEEE float）、FLAC 与 AIFF（PCM integer）。
 - 目录发现使用扩展名筛选；实际解码器仍按文件内容探测。
 - 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`。
 - 分析、批量和错误共用 schema version 3 的 `WireEnvelope`；channel/track
   report metrics、精确 decoded duration 与 DR diagnostics 分层保存。
 - 不包含 FFmpeg、DSD、Opus、预处理、文件级并行或环境变量修改。
+
+拖放和文件选择最终都进入同一 `discover_inputs` / `run_batch` 路径；图片、语言、
+排序和路径显示只属于前端呈现，不会形成第二套分析配置。JSON 导出保留后端返回的
+原始 schema-v3 envelope，不附加时间戳或界面私有字段。
+报告中的固定数值参数用于结果复现；界面不向用户暴露内部算法名称或状态标签。
 
 主窗口当前一次启动一个 job；后端注册表仍按 job 隔离，因此不同窗口或直接命令调用不会共享取消状态。
 前端 TypeScript 类型只描述这份共享 wire schema；后端没有第二套 Rust 结果 DTO，

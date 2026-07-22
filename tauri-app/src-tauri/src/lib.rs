@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisStage, AnalyzeRequest, Application,
-    ApplicationJob, BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode,
-    NoopProgressSink, WireEnvelope,
+    AnalysisError, AnalysisEvent, AnalysisStage, AnalyzeRequest, Application, ApplicationJob,
+    BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink, WireEnvelope,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -209,7 +208,6 @@ async fn run_batch(
         let batch_request = BatchRequest {
             inputs: request.inputs,
             recursive: request.recursive,
-            profile: AnalysisProfile::FooDrMeter108CandidateV1,
         };
         let envelope = application_job
             .run_batch(batch_request, &sink)
@@ -289,6 +287,7 @@ pub fn run() {
         .manage(JobRegistry::default())
         .manage(Application::new())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             run_analysis,
             run_batch,

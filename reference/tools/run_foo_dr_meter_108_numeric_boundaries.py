@@ -746,7 +746,6 @@ def run_suite(args: argparse.Namespace) -> dict[str, Any]:
                 "isolated fixed x64 duration numeric leaf and analyzer-core "
                 "boundary observations"
             ),
-            "compatibility": "none",
             "foobarParity": "not_assessed",
         },
         "limitations": [

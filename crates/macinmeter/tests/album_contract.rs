@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalysisProfile, AnalysisReport,
-    AnalyzeRequest, AnalyzerSession, Application, DecodeDiagnostics, DecodedDuration, ErrorCode,
-    FiniteF32, PcmStreamInfo, SampleRate,
+    AlbumAggregator, AlbumTrackMetrics, AlbumWeighting, AnalysisReport, AnalyzeRequest,
+    AnalyzerSession, Application, DecodeDiagnostics, DecodedDuration, ErrorCode, FiniteF32,
+    PcmStreamInfo, SampleRate,
 };
 use std::path::PathBuf;
 
@@ -197,13 +197,10 @@ fn report_conversion_uses_its_decoded_duration_and_rejects_missing_track_dr() {
     assert_eq!(metrics.dr_db.get().to_bits(), expected_dr.get().to_bits());
     assert_eq!(metrics.duration, expected_duration);
 
-    let empty_analysis = AnalyzerSession::new(
-        report.pcm().spec.clone(),
-        AnalysisProfile::FooDrMeter108CandidateV1,
-    )
-    .unwrap()
-    .finish()
-    .unwrap();
+    let empty_analysis = AnalyzerSession::new(report.pcm().spec.clone())
+        .unwrap()
+        .finish()
+        .unwrap();
     let missing_track_dr = AnalysisReport::try_new(
         report.source().clone(),
         PcmStreamInfo {

@@ -1,235 +1,44 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { toPng, toSvg } from "html-to-image";
 import packageMetadata from "../package.json";
+import {
+  changeLanguage,
+  getCurrentLanguage,
+  t,
+  updateLanguageButtons,
+  updateStaticTexts,
+  type SupportedLanguage,
+} from "./i18n";
+import type {
+  AnalysisReport,
+  BatchItem,
+  CapabilitySnapshot,
+  ChannelResult,
+  DiscoveryResponse,
+  JobEvent,
+  PublicError,
+  WireEnvelope,
+} from "./wire";
 
-type ErrorCode =
-  | "invalid_request"
-  | "input_not_found"
-  | "permission_denied"
-  | "no_inputs"
-  | "unsupported_format"
-  | "malformed_media"
-  | "decode_failed"
-  | "analysis_failed"
-  | "resource_exhausted"
-  | "output_failed"
-  | "cancelled"
-  | "internal";
-
-type AnalysisStage =
-  | "validation"
-  | "discovery"
-  | "probe"
-  | "decode"
-  | "analysis"
-  | "output"
-  | "cancellation"
-  | "internal";
-
-type PublicError = {
-  code: ErrorCode;
-  stage: AnalysisStage;
-  message: string;
-  displayPath: string | null;
-  backend: string | null;
-  recoverable: boolean;
-  details: string | null;
+type SelectionKind = "files" | "directory" | "mixed";
+type SortMode = "none" | "dr-asc" | "dr-desc";
+type StatusState = {
+  key: string;
+  values?: Record<string, string | number>;
+  error?: boolean;
+  progress?: number;
 };
 
-type ChannelRole =
-  | "front_left"
-  | "front_right"
-  | "front_center"
-  | "lfe"
-  | "back_left"
-  | "back_right"
-  | "side_left"
-  | "side_right"
-  | "other";
-
-type ChannelLayout =
-  | { status: "unknown" }
-  | { status: "known_no_lfe" }
-  | { status: "known"; positions: ChannelRole[] };
-
-type StreamSpec = {
-  sampleRate: number;
-  channels: number;
-  channelLayout: ChannelLayout;
-};
-
-type DecodeProgress = {
-  decodedFrames: number;
-  expectedFrames: number | null;
-  fraction: number | null;
-  eof: boolean;
-};
-
-type Measurement = {
-  drDb: number;
-  roundedDr: number;
-  loudWindowRms: number;
-  drSelectedPeak: number;
-  drPrimaryPeak: number;
-  drSecondaryPeak: number | null;
-  validWindows: number;
-  frames: number;
-};
-
-type ChannelReportMetrics = {
-  overallRmsLinear: number;
-  overallRmsDbfs: number | null;
-  primaryPeakLinear: number;
-};
-
-type ChannelOutcome =
-  | { status: "measured"; measurement: Measurement }
-  | { status: "silent"; frames: number; validWindows: number }
-  | { status: "insufficient_data"; frames: number };
-
-type ChannelResult = {
-  channelIndex: number;
-  outcome: ChannelOutcome;
-  report: ChannelReportMetrics;
-};
-
-type TrackAggregate = {
-  drDb: number | null;
-  roundedDr: number | null;
-  contributingChannels: number[];
-  excludedChannels: {
-    channelIndex: number;
-    reason: "insufficient_data";
-  }[];
-};
-
-type TrackReportMetrics = {
-  overallRmsLinear: number;
-  overallRmsDbfs: number | null;
-  primaryPeakLinear: number;
-  primaryPeakDbfs: number | null;
-  duration: {
-    decodedFrames: number;
-    sampleRate: number;
-  };
-};
-
-// Container and codec identifiers are forward-extensible strings owned by the
-// Rust capability catalog; the frontend must not maintain its own union.
-type AnalysisReport = {
-  source: {
-    displayPath: string;
-    container: string;
-    codec: string;
-    sampleRate: number;
-    channels: number;
-    bitsPerSample: number | null;
-    expectedFrames: number | null;
-  };
-  pcm: {
-    spec: StreamSpec;
-    expectedFrames: number | null;
-  };
-  analysis: {
-    algorithm: {
-      profile: "foo_dr_meter_1_0_8_candidate_v1";
-      profileVersion: number;
-      compatibility: "unverified";
-      parameters: {
-        windowDurationCoefficient: number;
-        rmsSumMultiplier: number;
-        histogramBins: number;
-        rmsHistogramMinDb: number;
-        rmsHistogramMaxDb: number;
-        histogramBinWidthDb: number;
-        peakKeyBinWidthDb: number;
-        loudFraction: number;
-        minimumTailFrames: number;
-        includeEntireBoundaryBin: boolean;
-        exactWindowVirtualZeroPeak: boolean;
-        drFloorDb: number;
-        silentChannelDrDb: number;
-        includesLfeInTrackAggregate: boolean;
-        resultPrecisionBits: number;
-      };
-    };
-    stream: StreamSpec;
-    framesSeen: number;
-    channels: ChannelResult[];
-    report: TrackReportMetrics;
-    aggregates: {
-      track: TrackAggregate;
-    };
-  };
-  diagnostics: {
-    backend: string;
-    decodedFrames: number;
-    warnings: string[];
-  };
-};
-
-type BatchItem = {
+type DisplayEntry = {
+  key: number;
   displayPath: string;
-  outcome:
-    | { status: "success"; report: AnalysisReport }
-    | { status: "failure"; error: PublicError };
+  report: AnalysisReport | null;
+  error: PublicError | null;
 };
-
-type BatchReport = {
-  status: "succeeded" | "partially_succeeded" | "failed";
-  items: BatchItem[];
-  summary: { total: number; succeeded: number; failed: number };
-};
-
-type WireEnvelope =
-  | {
-      schemaVersion: 3;
-      toolVersion: string;
-      kind: "analysis";
-      data: AnalysisReport;
-    }
-  | {
-      schemaVersion: 3;
-      toolVersion: string;
-      kind: "batch";
-      data: BatchReport;
-    }
-  | {
-      schemaVersion: 3;
-      toolVersion: string;
-      kind: "error";
-      data: PublicError;
-    };
-
-type AnalysisEvent =
-  | { type: "discovery_started" }
-  | { type: "discovery_finished"; files: number }
-  | { type: "file_started"; index: number; displayPath: string }
-  | {
-      type: "decode_progress";
-      index: number;
-      displayPath: string;
-      progress: DecodeProgress;
-    }
-  | {
-      type: "file_finished";
-      index: number;
-      displayPath: string;
-      success: boolean;
-    }
-  | { type: "batch_finished"; succeeded: number; failed: number };
-
-type JobEvent = {
-  jobId: string;
-  event: AnalysisEvent;
-};
-
-type DiscoveryResponse = {
-  files: string[];
-};
-
-type SelectionKind = "files" | "folder";
 
 const element = <T extends HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -237,55 +46,50 @@ const element = <T extends HTMLElement>(id: string): T => {
   return found as T;
 };
 
-const chooseFilesButton = element<HTMLButtonElement>("choose-files");
-const chooseFolderButton = element<HTMLButtonElement>("choose-folder");
-const clearButton = element<HTMLButtonElement>("clear-inputs");
-const analyzeButton = element<HTMLButtonElement>("analyze");
-const cancelButton = element<HTMLButtonElement>("cancel");
-const copyButton = element<HTMLButtonElement>("copy-json");
-const recursiveInput = element<HTMLInputElement>("recursive");
-const selectionElement = element<HTMLDivElement>("selection");
+const appVersion = element<HTMLSpanElement>("app-version");
+const inputPath = element<HTMLInputElement>("input-path");
+const pickFilesButton = element<HTMLButtonElement>("pick-files");
+const scanDirectoryButton = element<HTMLButtonElement>("scan-dir");
+const deepScanButton = element<HTMLButtonElement>("deep-scan-dir");
+const clearButton = element<HTMLButtonElement>("clear-path");
+const analyzeButton = element<HTMLButtonElement>("analyze-btn");
+const scanResults = element<HTMLDivElement>("scan-results");
 const statusElement = element<HTMLDivElement>("run-status");
+const statusText = element<HTMLSpanElement>("status-text");
+const progressFill = element<HTMLDivElement>("progress-fill");
+const batchSummary = element<HTMLDivElement>("batch-summary");
 const resultsElement = element<HTMLDivElement>("results");
+const hidePathButton = element<HTMLButtonElement>("hide-path");
+const copyMarkdownButton = element<HTMLButtonElement>("copy-md");
+const exportJsonButton = element<HTMLButtonElement>("export-json");
+const exportImageButton = element<HTMLButtonElement>("export-image");
+const sortModeSelect = element<HTMLSelectElement>("sort-mode");
+const searchInput = element<HTMLInputElement>("result-search");
+const searchNextButton = element<HTMLButtonElement>("result-search-next");
 const rawPanel = element<HTMLDetailsElement>("raw-panel");
 const rawJson = element<HTMLPreElement>("raw-json");
-const versionLabel = element<HTMLSpanElement>("version-label");
+const dropOverlay = element<HTMLDivElement>("drop-overlay");
+const dropCard = dropOverlay.querySelector<HTMLDivElement>(".drop-card");
+const dropTitle = element<HTMLElement>("drop-title");
+const dropSubtitle = element<HTMLElement>("drop-subtitle");
+
+if (!dropCard) throw new Error("missing drop card");
 
 let selectedInputs: string[] = [];
 let selectionKind: SelectionKind = "files";
-let activeJobId: string | null = null;
-let previewJobId: string | null = null;
-let lastEnvelope: WireEnvelope | null = null;
+let recursive = false;
+let discoveredFiles: string[] | null = null;
 let selectionRevision = 0;
-type CapabilityRoute = {
-  container: string;
-  codec: string;
-  status: string;
-  backend: string;
-  discoveryExtensions: string[];
-  limitations: string[];
-};
-
-type CapabilitySnapshot = {
-  routes: CapabilityRoute[];
-  stableDiscoveryExtensions: string[];
-};
-
-// This only narrows the native file picker. Rust discovery and content probing
-// remain authoritative: the list comes from the runtime capability snapshot,
-// and an empty list simply leaves the picker unfiltered.
+let previewJobId: string | null = null;
+let activeJobId: string | null = null;
+let activeTotal = 1;
+let lastEnvelope: WireEnvelope | null = null;
+let hidePath = false;
+let sortMode: SortMode = "none";
+let searchQuery = "";
+let searchIndex = -1;
 let discoveryFilterExtensions: string[] = [];
-
-const loadCapabilities = async (): Promise<void> => {
-  try {
-    const snapshot = await invoke<CapabilitySnapshot>("get_capabilities");
-    discoveryFilterExtensions = snapshot.stableDiscoveryExtensions;
-  } catch {
-    discoveryFilterExtensions = [];
-  }
-};
-
-void loadCapabilities();
+let statusState: StatusState = { key: "status.ready", progress: 0 };
 
 const escapeHtml = (value: string): string => {
   const replacements: Record<string, string> = {
@@ -303,19 +107,6 @@ const fileName = (path: string): string => {
   return parts.length > 0 ? parts[parts.length - 1] : path;
 };
 
-const formatDbfs = (value: number | null): string => {
-  if (value === null) return "−∞ dBFS";
-  let corrected = value;
-  if (corrected > -0.01 && corrected < 0.01) {
-    const centi =
-      corrected >= 0
-        ? Math.floor(corrected * 100 + 0.5)
-        : Math.ceil(corrected * 100 - 0.5);
-    corrected = centi / 100;
-  }
-  return `${corrected.toFixed(2)} dBFS`;
-};
-
 const describeInvokeError = (error: unknown): string => {
   if (
     typeof error === "object" &&
@@ -328,30 +119,96 @@ const describeInvokeError = (error: unknown): string => {
   return String(error);
 };
 
-const setRunning = (running: boolean): void => {
-  analyzeButton.disabled = running || selectedInputs.length === 0;
-  cancelButton.disabled = !running;
-  chooseFilesButton.disabled = running;
-  chooseFolderButton.disabled = running;
-  clearButton.disabled = running;
-  recursiveInput.disabled = running || selectionKind !== "folder";
+const formatDbfs = (value: number | null): string => {
+  if (value === null) return "−∞ dBFS";
+  let corrected = value;
+  if (corrected > -0.01 && corrected < 0.01) {
+    const roundedCenti =
+      corrected >= 0
+        ? Math.floor(corrected * 100 + 0.5)
+        : Math.ceil(corrected * 100 - 0.5);
+    corrected = roundedCenti === 0 ? 0 : roundedCenti / 100;
+  }
+  return `${corrected.toFixed(2)} dBFS`;
 };
 
-const updateSelection = (): void => {
-  analyzeButton.disabled = selectedInputs.length === 0;
-  recursiveInput.disabled = selectionKind !== "folder";
+const linearToDbfs = (value: number): number | null => {
+  if (!(value > 0)) return null;
+  return 20 * Math.log10(value);
+};
+
+const formatDuration = (frames: number, sampleRate: number): string => {
+  const roundedSeconds = Math.round(frames / sampleRate);
+  const weeks = Math.floor(roundedSeconds / 604_800);
+  let remainder = roundedSeconds % 604_800;
+  const days = Math.floor(remainder / 86_400);
+  remainder %= 86_400;
+  const hours = Math.floor(remainder / 3_600);
+  remainder %= 3_600;
+  const minutes = Math.floor(remainder / 60);
+  const seconds = remainder % 60;
+  const clock = `${hours > 0 ? `${hours}:` : ""}${String(minutes).padStart(hours > 0 ? 2 : 1, "0")}:${String(seconds).padStart(2, "0")}`;
+  if (weeks > 0) return `${weeks}wk ${days}d ${clock}`;
+  if (days > 0) return `${days}d ${clock}`;
+  return clock;
+};
+
+const status = (
+  key: string,
+  values: Record<string, string | number> = {},
+  options: { error?: boolean; progress?: number } = {},
+): void => {
+  statusState = { key, values, ...options };
+  renderStatus();
+};
+
+const renderStatus = (): void => {
+  statusText.textContent = t(statusState.key, statusState.values);
+  statusElement.classList.toggle("error", statusState.error === true);
+  const progress = Math.max(0, Math.min(100, statusState.progress ?? 0));
+  progressFill.style.width = `${progress}%`;
+};
+
+const updateControls = (): void => {
+  const running = activeJobId !== null;
+  pickFilesButton.disabled = running;
+  scanDirectoryButton.disabled = running;
+  deepScanButton.disabled = running;
+  clearButton.disabled = running;
+  analyzeButton.disabled = !running && selectedInputs.length === 0;
+  analyzeButton.classList.toggle("cancel-mode", running);
+  analyzeButton.textContent = t(running ? "btn.cancel" : "btn.analyze");
+
+  const hasResult = lastEnvelope !== null;
+  copyMarkdownButton.disabled = !hasResult;
+  exportJsonButton.disabled = !hasResult;
+  exportImageButton.disabled = !hasResult;
+  sortModeSelect.disabled = !hasResult || displayEntries().length < 2;
+  searchNextButton.disabled = !hasResult || displayEntries().length === 0;
+};
+
+const selectionLabel = (): string => {
+  if (selectedInputs.length === 0) return "";
+  if (selectedInputs.length === 1) return selectedInputs[0];
+  return `${selectedInputs.length} inputs · ${fileName(selectedInputs[0])} …`;
+};
+
+const renderSelection = (): void => {
+  inputPath.value = selectionLabel();
+  inputPath.title = selectedInputs.join("\n");
   if (selectedInputs.length === 0) {
-    selectionElement.className = "selection empty";
-    selectionElement.textContent = "尚未选择输入";
-    return;
+    scanResults.classList.add("hidden");
+    scanResults.innerHTML = "";
+  } else {
+    const count = discoveredFiles?.length;
+    const countText =
+      count === undefined
+        ? t("status.selected", { count: selectedInputs.length })
+        : t("scan.count", { count });
+    scanResults.innerHTML = `<strong>${escapeHtml(countText)}</strong><span>${escapeHtml(selectedInputs.map(fileName).slice(0, 4).join(" · "))}${selectedInputs.length > 4 ? " …" : ""}</span><span class="scan-mode">${escapeHtml(t(recursive ? "scan.recursive" : "scan.nonRecursive"))}</span>`;
+    scanResults.classList.remove("hidden");
   }
-  selectionElement.className = "selection";
-  selectionElement.innerHTML = selectedInputs
-    .map(
-      (path) =>
-        `<div class="selected-item"><strong>${escapeHtml(fileName(path))}</strong><span>${escapeHtml(path)}</span></div>`,
-    )
-    .join("");
+  updateControls();
 };
 
 const cancelPreview = async (): Promise<void> => {
@@ -361,124 +218,610 @@ const cancelPreview = async (): Promise<void> => {
   try {
     await invoke<boolean>("cancel_job", { jobId });
   } catch {
-    // A completed preview may have already removed its registry entry.
+    // A completed discovery may already have left the registry.
   }
 };
 
-const previewDirectory = async (
-  directory: string,
-  recursive: boolean,
-  revision: number,
-): Promise<void> => {
+const previewSelection = async (revision: number): Promise<void> => {
   await cancelPreview();
-  if (revision !== selectionRevision || activeJobId) return;
+  if (revision !== selectionRevision || activeJobId || selectedInputs.length === 0) return;
 
+  const inputs = [...selectedInputs];
+  const currentRecursive = recursive;
   const jobId = crypto.randomUUID();
   previewJobId = jobId;
-  statusElement.textContent = recursive
-    ? "正在递归发现输入…"
-    : "正在发现输入…";
+  status("status.discovering");
   try {
-    const discovery = await invoke<DiscoveryResponse>("discover_inputs", {
-      request: { jobId, inputs: [directory], recursive },
+    const response = await invoke<DiscoveryResponse>("discover_inputs", {
+      request: { jobId, inputs, recursive: currentRecursive },
     });
     if (
       previewJobId !== jobId ||
       revision !== selectionRevision ||
       activeJobId
-    )
+    ) {
       return;
-    statusElement.textContent = `已发现 ${discovery.files.length} 个可分析文件`;
+    }
+    discoveredFiles = response.files;
+    if (
+      selectionKind === "mixed" &&
+      inputs.length === 1 &&
+      response.files.length === 1 &&
+      response.files[0] === inputs[0]
+    ) {
+      selectionKind = "files";
+    }
+    renderSelection();
+    status("status.discovered", { count: response.files.length });
   } catch (error) {
     if (
       previewJobId !== jobId ||
       revision !== selectionRevision ||
       activeJobId
-    )
+    ) {
       return;
-    statusElement.textContent = `发现输入失败：${describeInvokeError(error)}`;
+    }
+    discoveredFiles = [];
+    renderSelection();
+    status(
+      "status.discoveryFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
   } finally {
     if (previewJobId === jobId) previewJobId = null;
   }
 };
 
-const renderChannel = (channel: ChannelResult): string => {
-  const label = `CH ${channel.channelIndex + 1}`;
+const selectInputs = (
+  inputs: string[],
+  kind: SelectionKind,
+  scanRecursively: boolean,
+): void => {
+  const unique = [...new Set(inputs.filter((path) => path.trim().length > 0))];
+  if (unique.length === 0) {
+    status("status.noDropped", {}, { error: true });
+    return;
+  }
+  void cancelPreview();
+  selectionRevision += 1;
+  selectedInputs = unique;
+  selectionKind = kind;
+  recursive = scanRecursively;
+  discoveredFiles = null;
+  renderSelection();
+  status("status.selected", { count: unique.length });
+  void previewSelection(selectionRevision);
+};
+
+const clearResults = (): void => {
+  lastEnvelope = null;
+  resultsElement.innerHTML = "";
+  batchSummary.classList.add("hidden");
+  batchSummary.textContent = "";
+  rawPanel.hidden = true;
+  rawJson.textContent = "";
+  sortMode = "none";
+  sortModeSelect.value = "none";
+  searchInput.value = "";
+  searchQuery = "";
+  searchIndex = -1;
+  updateControls();
+};
+
+const clearAll = (): void => {
+  void cancelPreview();
+  selectionRevision += 1;
+  selectedInputs = [];
+  selectionKind = "files";
+  recursive = false;
+  discoveredFiles = null;
+  clearResults();
+  renderSelection();
+  status("status.ready");
+};
+
+const channelRole = (report: AnalysisReport, index: number): string | null => {
+  const layout = report.pcm.spec.channelLayout;
+  if (layout.status !== "known") return null;
+  const roles: Record<string, string> = {
+    front_left: "FL",
+    front_right: "FR",
+    front_center: "FC",
+    lfe: "LFE",
+    back_left: "BL",
+    back_right: "BR",
+    side_left: "SL",
+    side_right: "SR",
+    other: "OTHER",
+  };
+  const role = layout.positions[index];
+  return role ? (roles[role] ?? role) : null;
+};
+
+const renderChannel = (report: AnalysisReport, channel: ChannelResult): string => {
+  const role = channelRole(report, channel.channelIndex);
+  const roleTag = role
+    ? `<span class="tag${role === "LFE" ? " warning" : ""}">${escapeHtml(role)}</span>`
+    : "";
+  const label = `<span class="channel-label">CH ${channel.channelIndex + 1}${roleTag}</span>`;
   if (channel.outcome.status === "measured") {
-    const value = channel.outcome.measurement;
+    const measurement = channel.outcome.measurement;
     return `<tr>
       <td>${label}</td>
-      <td class="dr">DR${value.roundedDr}</td>
-      <td>${value.drDb.toFixed(4)} dB</td>
+      <td class="dr-value">DR${measurement.roundedDr}</td>
+      <td>${measurement.drDb.toFixed(4)} dB</td>
       <td>${formatDbfs(channel.report.overallRmsDbfs)}</td>
-      <td>${value.drSelectedPeak.toFixed(8)}</td>
+      <td>${formatDbfs(linearToDbfs(measurement.drSelectedPeak))}</td>
     </tr>`;
   }
   if (channel.outcome.status === "silent") {
-    return `<tr class="muted-row">
-      <td>${label}</td>
-      <td class="dr">DR0</td>
-      <td colspan="3">Silent · DR0 contribution</td>
-    </tr>`;
+    return `<tr class="muted-row"><td>${label}</td><td class="dr-value">DR0</td><td colspan="3">${escapeHtml(t("table.silent"))}</td></tr>`;
   }
-  return `<tr class="muted-row"><td>${label}</td><td colspan="4">Insufficient data</td></tr>`;
+  return `<tr class="muted-row"><td>${label}</td><td colspan="4">${escapeHtml(t("table.insufficient"))}</td></tr>`;
 };
 
-const renderAnalysis = (report: AnalysisReport): string => {
-  const aggregate = report.analysis.aggregates.track;
-  const reportMetrics = report.analysis.report;
-  const peakDbfs = formatDbfs(reportMetrics.primaryPeakDbfs);
-  const rmsDbfs = formatDbfs(reportMetrics.overallRmsDbfs);
-  const aggregateHtml =
-    aggregate.roundedDr !== null && aggregate.drDb !== null
-    ? `<div class="aggregate"><span>Track aggregate · Peak ${peakDbfs} · RMS ${rmsDbfs}</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`
-    : `<div class="aggregate unavailable">Track aggregate unavailable</div>`;
-  return `<article class="report">
-    <div class="report-header">
-      <div><h3>${escapeHtml(fileName(report.source.displayPath))}</h3><p>${escapeHtml(report.source.displayPath)}</p></div>
-      <span>${report.pcm.spec.sampleRate.toLocaleString()} Hz · ${report.pcm.spec.channels} ch</span>
+const reportHeader = (entry: DisplayEntry): string => {
+  const name = fileName(entry.displayPath);
+  return `<div class="directory-entry-header">
+    <div class="entry-title">
+      <div class="entry-title-row"><h3>${escapeHtml(name)}</h3></div>
+      ${hidePath ? "" : `<span class="entry-path">${escapeHtml(entry.displayPath)}</span>`}
     </div>
-    ${aggregateHtml}
+    <div class="entry-actions">
+      <button type="button" class="entry-action copy-entry-md" data-entry="${entry.key}">${escapeHtml(t("btn.entryMd"))}</button>
+      ${entry.report ? `<button type="button" class="entry-action copy-entry-png" data-entry="${entry.key}">${escapeHtml(t("btn.entryPng"))}</button>` : ""}
+    </div>
+  </div>`;
+};
+
+const renderReportEntry = (entry: DisplayEntry): string => {
+  if (!entry.report) return renderErrorEntry(entry);
+  const report = entry.report;
+  const aggregate = report.analysis.aggregates.track;
+  const metrics = report.analysis.report;
+  const duration = formatDuration(
+    metrics.duration.decodedFrames,
+    metrics.duration.sampleRate,
+  );
+  const bits = report.source.bitsPerSample
+    ? t("label.bits", { bits: report.source.bitsPerSample })
+    : "—";
+  const aggregateHtml =
+    aggregate.roundedDr === null || aggregate.drDb === null
+      ? `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>—</strong><em>${escapeHtml(t("result.noAggregate"))}</em></div>`
+      : `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`;
+  const warnings = report.diagnostics.warnings.length
+    ? `<div class="diagnostics">${report.diagnostics.warnings.map(escapeHtml).join("<br>")}</div>`
+    : "";
+  return `<article id="entry-${entry.key}" class="directory-entry" data-search="${escapeHtml(`${fileName(entry.displayPath)} ${entry.displayPath}`.toLowerCase())}">
+    ${reportHeader(entry)}
+    <div class="track-summary">
+      ${aggregateHtml}
+      <div class="metric"><span>${escapeHtml(t("result.peak"))}</span><strong>${formatDbfs(metrics.primaryPeakDbfs)}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.rms"))}</span><strong>${formatDbfs(metrics.overallRmsDbfs)}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.duration"))}</span><strong>${duration}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.backend"))}</span><strong>${escapeHtml(report.diagnostics.backend)}</strong></div>
+    </div>
+    <div class="format-line">
+      <span>${report.source.sampleRate.toLocaleString()} Hz</span>
+      <span>${report.source.channels} ch</span>
+      <span>${escapeHtml(bits)}</span>
+      <span>${escapeHtml(report.source.container)} / ${escapeHtml(report.source.codec)}</span>
+      <span>${report.analysis.framesSeen.toLocaleString()} frames</span>
+    </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Channel</th><th>Rounded</th><th>DR</th><th>Overall RMS</th><th>Selected DR peak</th></tr></thead>
-      <tbody>${report.analysis.channels.map(renderChannel).join("")}</tbody>
+      <thead><tr><th>${escapeHtml(t("table.channel"))}</th><th>${escapeHtml(t("table.rounded"))}</th><th>${escapeHtml(t("table.precise"))}</th><th>${escapeHtml(t("table.rms"))}</th><th>${escapeHtml(t("table.peak"))}</th></tr></thead>
+      <tbody>${report.analysis.channels.map((channel) => renderChannel(report, channel)).join("")}</tbody>
     </table></div>
+    ${warnings}
   </article>`;
+};
+
+const renderErrorEntry = (entry: DisplayEntry): string => {
+  const error = entry.error;
+  const message = error?.message ?? t("status.failed");
+  return `<article id="entry-${entry.key}" class="directory-entry" data-search="${escapeHtml(`${fileName(entry.displayPath)} ${entry.displayPath}`.toLowerCase())}">
+    ${reportHeader(entry)}
+    <div class="error-entry"><strong>${escapeHtml(t("result.failed"))}${error ? ` · ${escapeHtml(error.code)}` : ""}</strong><span>${escapeHtml(message)}</span>${error?.details ? `<code>${escapeHtml(error.details)}</code>` : ""}</div>
+  </article>`;
+};
+
+const displayEntries = (): DisplayEntry[] => {
+  if (!lastEnvelope) return [];
+  if (lastEnvelope.kind === "analysis") {
+    return [
+      {
+        key: 0,
+        displayPath: lastEnvelope.data.source.displayPath,
+        report: lastEnvelope.data,
+        error: null,
+      },
+    ];
+  }
+  if (lastEnvelope.kind === "error") {
+    return [
+      {
+        key: 0,
+        displayPath: lastEnvelope.data.displayPath ?? selectedInputs[0] ?? "MacinMeter",
+        report: null,
+        error: lastEnvelope.data,
+      },
+    ];
+  }
+  return lastEnvelope.data.items.map((item: BatchItem, key) => ({
+    key,
+    displayPath: item.displayPath,
+    report: item.outcome.status === "success" ? item.outcome.report : null,
+    error: item.outcome.status === "failure" ? item.outcome.error : null,
+  }));
+};
+
+const sortedEntries = (): DisplayEntry[] => {
+  const entries = [...displayEntries()];
+  if (sortMode === "none") return entries;
+  const direction = sortMode === "dr-asc" ? 1 : -1;
+  return entries.sort((left, right) => {
+    const leftDr = left.report?.analysis.aggregates.track.drDb;
+    const rightDr = right.report?.analysis.aggregates.track.drDb;
+    if (leftDr === null || leftDr === undefined) return 1;
+    if (rightDr === null || rightDr === undefined) return -1;
+    const order = (leftDr - rightDr) * direction;
+    return order === 0 ? left.key - right.key : order;
+  });
+};
+
+const bindEntryActions = (): void => {
+  resultsElement
+    .querySelectorAll<HTMLButtonElement>(".copy-entry-md")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const entry = displayEntries().find(
+          (candidate) => candidate.key === Number(button.dataset.entry),
+        );
+        if (entry) void copyText(formatEntryMarkdown(entry), button);
+      });
+    });
+  resultsElement
+    .querySelectorAll<HTMLButtonElement>(".copy-entry-png")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = Number(button.dataset.entry);
+        const target = document.getElementById(`entry-${key}`);
+        if (target) void copyOrSavePng(target, fileName(displayEntries().find((entry) => entry.key === key)?.displayPath ?? "MacinMeter"), button);
+      });
+    });
+};
+
+const renderResults = (): void => {
+  const entries = sortedEntries();
+  resultsElement.innerHTML = entries.map(renderReportEntry).join("");
+  bindEntryActions();
+
+  if (lastEnvelope?.kind === "batch") {
+    const summary = lastEnvelope.data.summary;
+    batchSummary.textContent = t("result.summary", summary);
+    batchSummary.classList.remove("hidden");
+  } else {
+    batchSummary.classList.add("hidden");
+  }
+  if (searchQuery) highlightSearch(false);
+  updateControls();
 };
 
 const renderEnvelope = (envelope: WireEnvelope): void => {
   lastEnvelope = envelope;
-  versionLabel.textContent = `v${envelope.toolVersion} · schema ${envelope.schemaVersion}`;
   rawJson.textContent = JSON.stringify(envelope, null, 2);
   rawPanel.hidden = false;
-  copyButton.disabled = false;
-
+  renderResults();
   if (envelope.kind === "error") {
-    const path = envelope.data.displayPath
-      ? `<p>${escapeHtml(envelope.data.displayPath)}</p>`
-      : "";
-    resultsElement.innerHTML = `<div class="error-box"><strong>${escapeHtml(envelope.data.code)}</strong><span>${escapeHtml(envelope.data.message)}</span>${path}</div>`;
-    statusElement.textContent =
-      envelope.data.code === "cancelled" ? "任务已取消" : "分析失败";
-    return;
+    status(
+      envelope.data.code === "cancelled" ? "status.cancelled" : "status.failed",
+      {},
+      { error: envelope.data.code !== "cancelled", progress: 100 },
+    );
+  } else if (envelope.kind === "analysis") {
+    status("status.complete", {}, { progress: 100 });
+  } else {
+    status(
+      "status.batchComplete",
+      {
+        succeeded: envelope.data.summary.succeeded,
+        failed: envelope.data.summary.failed,
+      },
+      { error: envelope.data.summary.failed > 0, progress: 100 },
+    );
   }
-  if (envelope.kind === "analysis") {
-    resultsElement.innerHTML = renderAnalysis(envelope.data);
-    statusElement.textContent = "分析完成";
-    return;
-  }
-
-  resultsElement.innerHTML = envelope.data.items
-    .map((item) =>
-      item.outcome.status === "success"
-        ? renderAnalysis(item.outcome.report)
-        : `<div class="error-box"><strong>${escapeHtml(fileName(item.displayPath))}</strong><span>${escapeHtml(item.outcome.error.message)}</span></div>`,
-    )
-    .join("");
-  statusElement.textContent = `批量完成：${envelope.data.summary.succeeded} 成功，${envelope.data.summary.failed} 失败`;
 };
 
-chooseFilesButton.addEventListener("click", async () => {
+const channelMarkdown = (channel: ChannelResult): string => {
+  const label = `CH ${channel.channelIndex + 1}`;
+  if (channel.outcome.status === "measured") {
+    return `| ${label} | DR${channel.outcome.measurement.roundedDr} | ${channel.outcome.measurement.drDb.toFixed(4)} dB |`;
+  }
+  if (channel.outcome.status === "silent") return `| ${label} | DR0 | Silent |`;
+  return `| ${label} | — | Insufficient data |`;
+};
+
+const formatEntryMarkdown = (entry: DisplayEntry): string => {
+  let markdown = `## ${fileName(entry.displayPath)}\n\n`;
+  if (!hidePath) markdown += `**${t("md.path")}**: ${entry.displayPath}\n\n`;
+  if (entry.error) return `${markdown}**${t("md.error")}**: ${entry.error.message}\n`;
+  if (!entry.report) return markdown;
+  const aggregate = entry.report.analysis.aggregates.track;
+  markdown += `| ${t("md.channel")} | ${t("md.displayDr")} | ${t("md.preciseDr")} |\n`;
+  markdown += "|---|---:|---:|\n";
+  markdown += `${entry.report.analysis.channels.map(channelMarkdown).join("\n")}\n\n`;
+  if (aggregate.roundedDr !== null && aggregate.drDb !== null) {
+    markdown += `**Track DR${aggregate.roundedDr}** · ${aggregate.drDb.toFixed(4)} dB\n`;
+  }
+  return markdown;
+};
+
+const formatAllMarkdown = (): string => {
+  if (!lastEnvelope) return "";
+  const header = `# ${t("md.title")}\n\nMacinMeter ${lastEnvelope.toolVersion}\n\n`;
+  return header + displayEntries().map(formatEntryMarkdown).join("\n");
+};
+
+const copyText = async (
+  text: string,
+  button: HTMLButtonElement,
+): Promise<void> => {
+  if (!text) return;
+  const original = button.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.classList.add("copied");
+    button.textContent = t("status.copied");
+  } catch (error) {
+    status(
+      "status.copyFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    window.setTimeout(() => {
+      button.classList.remove("copied");
+      button.textContent = original;
+    }, 1300);
+  }
+};
+
+const fileTimestamp = (): string => {
+  const now = new Date();
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+};
+
+const dataUrlBytes = (dataUrl: string): Uint8Array => {
+  const encoded = dataUrl.split(",")[1] ?? "";
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+};
+
+const showFormatDialog = (): Promise<"png" | "svg" | null> =>
+  new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "modal-dialog";
+    dialog.innerHTML = `<h3>${escapeHtml(t("dialog.exportFormat"))}</h3><div class="modal-buttons"><button type="button" data-format="png">PNG</button><button type="button" data-format="svg">SVG</button><button type="button" data-format="cancel" class="ghost">${escapeHtml(t("dialog.cancel"))}</button></div>`;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    const finish = (format: "png" | "svg" | null): void => {
+      overlay.remove();
+      resolve(format);
+    };
+    dialog.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const format = button.dataset.format;
+        finish(format === "png" || format === "svg" ? format : null);
+      });
+    });
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+  });
+
+const imageOptions = (target: HTMLElement): Record<string, unknown> => {
+  const bounds = target.getBoundingClientRect();
+  const scale = Math.min(3, 16_384 / Math.max(bounds.width, bounds.height, 1));
+  return {
+    backgroundColor: "#ffffff",
+    canvasWidth: Math.round(bounds.width * scale),
+    canvasHeight: Math.round(bounds.height * scale),
+    pixelRatio: 1,
+    skipAutoScale: true,
+    skipFonts: true,
+    style: {
+      fontFamily:
+        "'Hiragino Sans', 'PingFang SC', 'Yu Gothic', Meiryo, 'Microsoft YaHei', system-ui, sans-serif",
+    },
+  };
+};
+
+const exportImage = async (): Promise<void> => {
+  if (!lastEnvelope || resultsElement.children.length === 0) return;
+  const format = await showFormatDialog();
+  if (!format) return;
+  const name = `MacinMeter_v${lastEnvelope.toolVersion}_${fileTimestamp()}.${format}`;
+  const path = await save({
+    defaultPath: name,
+    filters: [
+      {
+        name: format === "png" ? "PNG Image" : "SVG Image",
+        extensions: [format],
+      },
+    ],
+  });
+  if (!path) return;
+  resultsElement.classList.add("exporting");
+  try {
+    if (format === "png") {
+      await writeFile(path, dataUrlBytes(await toPng(resultsElement, imageOptions(resultsElement))));
+    } else {
+      const dataUrl = await toSvg(resultsElement, {
+        backgroundColor: "#ffffff",
+        skipFonts: true,
+      });
+      await writeTextFile(path, decodeURIComponent(dataUrl.split(",")[1] ?? ""));
+    }
+    status("status.exported", { name });
+  } catch (error) {
+    status(
+      "status.exportFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    resultsElement.classList.remove("exporting");
+  }
+};
+
+const copyOrSavePng = async (
+  target: HTMLElement,
+  baseName: string,
+  button: HTMLButtonElement,
+): Promise<void> => {
+  const original = button.textContent;
+  button.disabled = true;
+  try {
+    const dataUrl = await toPng(target, imageOptions(target));
+    const blob = await (await fetch(dataUrl)).blob();
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      button.classList.add("copied");
+      button.textContent = "OK!";
+      status("status.pngCopied");
+      return;
+    }
+    const path = await save({
+      defaultPath: `${baseName}.png`,
+      filters: [{ name: "PNG Image", extensions: ["png"] }],
+    });
+    if (path) {
+      await writeFile(path, dataUrlBytes(dataUrl));
+      status("status.pngSaved");
+    }
+  } catch (error) {
+    status(
+      "status.exportFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    window.setTimeout(() => {
+      button.disabled = false;
+      button.classList.remove("copied");
+      button.textContent = original;
+    }, 1200);
+  }
+};
+
+const highlightSearch = (advance: boolean): void => {
+  const query = searchInput.value.trim().toLowerCase();
+  const entries = [...resultsElement.querySelectorAll<HTMLElement>(".directory-entry")];
+  entries.forEach((entry) => entry.classList.remove("search-hit"));
+  if (!query) {
+    searchQuery = "";
+    searchIndex = -1;
+    return;
+  }
+  const matches = entries.filter((entry) =>
+    (entry.dataset.search ?? "").includes(query),
+  );
+  if (matches.length === 0) {
+    status("status.searchNotFound", { query }, { error: true });
+    searchQuery = query;
+    searchIndex = -1;
+    return;
+  }
+  if (query !== searchQuery) searchIndex = -1;
+  searchQuery = query;
+  if (advance) searchIndex = (searchIndex + 1) % matches.length;
+  else if (searchIndex < 0 || searchIndex >= matches.length) searchIndex = 0;
+  const target = matches[searchIndex];
+  target.classList.add("search-hit");
+  if (advance) target.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+const setDropOverlay = (visible: boolean): void => {
+  if (!visible) {
+    dropOverlay.hidden = true;
+    dropOverlay.setAttribute("aria-hidden", "true");
+    return;
+  }
+  const busy = activeJobId !== null;
+  dropCard.classList.toggle("busy", busy);
+  dropTitle.textContent = t(busy ? "drop.busy" : "drop.title");
+  dropSubtitle.textContent = t(busy ? "status.busyDrop" : "drop.subtitle");
+  dropOverlay.hidden = false;
+  dropOverlay.setAttribute("aria-hidden", "false");
+};
+
+const cancelActiveJob = async (): Promise<void> => {
+  if (!activeJobId) return;
+  const jobId = activeJobId;
+  status("status.cancelling");
+  try {
+    const accepted = await invoke<boolean>("cancel_job", { jobId });
+    if (activeJobId === jobId && !accepted) status("status.complete");
+  } catch (error) {
+    status(
+      "status.discoveryFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  }
+};
+
+const runAnalysis = async (): Promise<void> => {
+  if (activeJobId) {
+    await cancelActiveJob();
+    return;
+  }
+  if (selectedInputs.length === 0) return;
+
+  await cancelPreview();
+  const jobId = crypto.randomUUID();
+  activeJobId = jobId;
+  activeTotal = Math.max(discoveredFiles?.length ?? 1, 1);
+  clearResults();
+  updateControls();
+  status("status.running", {}, { progress: 0 });
+
+  try {
+    const envelope =
+      selectionKind === "files" && selectedInputs.length === 1
+        ? await invoke<WireEnvelope>("run_analysis", {
+            request: { jobId, path: selectedInputs[0] },
+          })
+        : await invoke<WireEnvelope>("run_batch", {
+            request: {
+              jobId,
+              inputs: selectedInputs,
+              recursive,
+            },
+          });
+    renderEnvelope(envelope);
+  } catch (error) {
+    status(
+      "status.discoveryFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    if (activeJobId === jobId) activeJobId = null;
+    updateControls();
+  }
+};
+
+pickFilesButton.addEventListener("click", async () => {
   const result = await open({
     multiple: true,
     directory: false,
@@ -493,119 +836,178 @@ chooseFilesButton.addEventListener("click", async () => {
         : [],
   });
   if (!result) return;
-  void cancelPreview();
-  selectionRevision += 1;
-  selectedInputs = Array.isArray(result) ? result : [result];
-  selectionKind = "files";
-  recursiveInput.checked = false;
-  updateSelection();
-  statusElement.textContent = `已选择 ${selectedInputs.length} 个文件`;
+  const paths = Array.isArray(result) ? result : [result];
+  selectInputs(paths, "files", false);
 });
 
-chooseFolderButton.addEventListener("click", async () => {
+scanDirectoryButton.addEventListener("click", async () => {
   const result = await open({ multiple: false, directory: true });
   if (!result || Array.isArray(result)) return;
-  selectionRevision += 1;
-  const revision = selectionRevision;
-  selectedInputs = [result];
-  selectionKind = "folder";
-  recursiveInput.checked = false;
-  updateSelection();
-  void previewDirectory(result, false, revision);
+  selectInputs([result], "directory", false);
 });
 
-clearButton.addEventListener("click", () => {
-  void cancelPreview();
-  selectionRevision += 1;
-  selectedInputs = [];
-  resultsElement.innerHTML = "";
-  rawPanel.hidden = true;
-  copyButton.disabled = true;
-  lastEnvelope = null;
-  updateSelection();
-  statusElement.textContent = "等待任务";
+deepScanButton.addEventListener("click", async () => {
+  const result = await open({ multiple: false, directory: true });
+  if (!result || Array.isArray(result)) return;
+  const proceed = await confirm(t("dialog.deepScanMessage"), {
+    title: t("dialog.deepScanTitle"),
+    kind: "warning",
+  });
+  if (!proceed) return;
+  selectInputs([result], "directory", true);
 });
 
-recursiveInput.addEventListener("change", () => {
-  if (selectionKind !== "folder" || selectedInputs.length !== 1) return;
-  selectionRevision += 1;
-  void previewDirectory(
-    selectedInputs[0],
-    recursiveInput.checked,
-    selectionRevision,
-  );
+clearButton.addEventListener("click", clearAll);
+analyzeButton.addEventListener("click", () => void runAnalysis());
+
+hidePathButton.addEventListener("click", () => {
+  hidePath = !hidePath;
+  hidePathButton.classList.toggle("active", hidePath);
+  renderResults();
 });
 
-analyzeButton.addEventListener("click", async () => {
-  if (selectedInputs.length === 0 || activeJobId) return;
-  activeJobId = crypto.randomUUID();
-  setRunning(true);
-  statusElement.textContent = "正在分析…";
-  resultsElement.innerHTML = "";
-  rawPanel.hidden = true;
-  copyButton.disabled = true;
-
-  try {
-    await cancelPreview();
-    const envelope =
-      selectionKind === "files" && selectedInputs.length === 1
-        ? await invoke<WireEnvelope>("run_analysis", {
-            request: { jobId: activeJobId, path: selectedInputs[0] },
-          })
-        : await invoke<WireEnvelope>("run_batch", {
-            request: {
-              jobId: activeJobId,
-              inputs: selectedInputs,
-              recursive: selectionKind === "folder" && recursiveInput.checked,
-            },
-          });
-    renderEnvelope(envelope);
-  } catch (error) {
-    statusElement.textContent = "调用失败";
-    resultsElement.innerHTML = `<div class="error-box"><span>${escapeHtml(describeInvokeError(error))}</span></div>`;
-  } finally {
-    activeJobId = null;
-    setRunning(false);
-  }
+copyMarkdownButton.addEventListener("click", () => {
+  void copyText(formatAllMarkdown(), copyMarkdownButton);
 });
 
-cancelButton.addEventListener("click", async () => {
-  if (!activeJobId) return;
-  const jobId = activeJobId;
-  statusElement.textContent = "正在取消…";
-  try {
-    const accepted = await invoke<boolean>("cancel_job", { jobId });
-    if (activeJobId === jobId && !accepted) {
-      statusElement.textContent = "任务已完成，取消请求未生效";
-    }
-  } catch (error) {
-    if (activeJobId === jobId) {
-      statusElement.textContent = `取消失败：${describeInvokeError(error)}`;
-    }
-  }
-});
-
-copyButton.addEventListener("click", async () => {
+exportJsonButton.addEventListener("click", async () => {
   if (!lastEnvelope) return;
-  await navigator.clipboard.writeText(JSON.stringify(lastEnvelope, null, 2));
-  copyButton.textContent = "已复制";
-  window.setTimeout(() => {
-    copyButton.textContent = "复制 JSON";
-  }, 1200);
+  const name = `MacinMeter_v${lastEnvelope.toolVersion}_${fileTimestamp()}.json`;
+  const path = await save({
+    defaultPath: name,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (!path) return;
+  try {
+    await writeTextFile(path, JSON.stringify(lastEnvelope, null, 2));
+    status("status.exported", { name });
+  } catch (error) {
+    status(
+      "status.exportFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  }
 });
+
+exportImageButton.addEventListener("click", () => void exportImage());
+
+sortModeSelect.addEventListener("change", () => {
+  sortMode = sortModeSelect.value as SortMode;
+  renderResults();
+});
+
+searchInput.addEventListener("input", () => highlightSearch(false));
+searchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") highlightSearch(true);
+});
+searchNextButton.addEventListener("click", () => highlightSearch(true));
+
+const setLanguage = (language: SupportedLanguage): void => {
+  changeLanguage(language);
+  updateStaticTexts();
+  updateLanguageButtons();
+  document.title = t("title");
+  renderSelection();
+  renderStatus();
+  if (lastEnvelope) renderResults();
+};
+
+element<HTMLButtonElement>("lang-zh").addEventListener("click", () =>
+  setLanguage("zh-CN"),
+);
+element<HTMLButtonElement>("lang-en").addEventListener("click", () =>
+  setLanguage("en-US"),
+);
 
 void listen<JobEvent>("analysis-event", ({ payload }) => {
   if (payload.jobId !== activeJobId) return;
   const event = payload.event;
-  if (event.type === "file_started") {
-    statusElement.textContent = `正在分析 ${fileName(event.displayPath)}`;
+  if (event.type === "discovery_started") {
+    status("status.discovering", {}, { progress: 0 });
+  } else if (event.type === "discovery_finished") {
+    activeTotal = Math.max(event.files, 1);
+    status("status.running", {}, { progress: 0 });
+  } else if (event.type === "file_started") {
+    status(
+      "status.file",
+      {
+        name: fileName(event.displayPath),
+        current: event.index + 1,
+        total: activeTotal,
+      },
+      { progress: (event.index / activeTotal) * 100 },
+    );
+  } else if (event.type === "decode_progress") {
+    const fraction = event.progress.fraction ?? 0;
+    status(
+      "status.file",
+      {
+        name: fileName(event.displayPath),
+        current: event.index + 1,
+        total: activeTotal,
+      },
+      { progress: ((event.index + fraction) / activeTotal) * 100 },
+    );
+  } else if (event.type === "file_finished") {
+    status(
+      "status.file",
+      {
+        name: fileName(event.displayPath),
+        current: event.index + 1,
+        total: activeTotal,
+      },
+      { progress: ((event.index + 1) / activeTotal) * 100 },
+    );
   } else if (event.type === "batch_finished") {
-    statusElement.textContent = `正在整理结果：${event.succeeded} 成功，${event.failed} 失败`;
+    status(
+      "status.batchComplete",
+      { succeeded: event.succeeded, failed: event.failed },
+      { error: event.failed > 0, progress: 100 },
+    );
   }
 }).catch((error: unknown) => {
-  statusElement.textContent = `事件监听失败：${describeInvokeError(error)}`;
+  status(
+    "status.discoveryFailed",
+    { message: describeInvokeError(error) },
+    { error: true },
+  );
 });
 
-versionLabel.textContent = `v${packageMetadata.version} · foo_dr_meter 1.0.8 Candidate V1 / Unverified`;
+void getCurrentWebview()
+  .onDragDropEvent(({ payload }) => {
+    if (payload.type === "enter" || payload.type === "over") {
+      setDropOverlay(true);
+    } else if (payload.type === "leave") {
+      setDropOverlay(false);
+    } else if (payload.type === "drop") {
+      setDropOverlay(false);
+      if (activeJobId) {
+        status("status.busyDrop", {}, { error: true });
+        return;
+      }
+      selectInputs(payload.paths, "mixed", false);
+    }
+  })
+  .catch((error: unknown) => {
+    status(
+      "status.discoveryFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  });
 
-updateSelection();
+const loadCapabilities = async (): Promise<void> => {
+  try {
+    const snapshot = await invoke<CapabilitySnapshot>("get_capabilities");
+    discoveryFilterExtensions = snapshot.stableDiscoveryExtensions;
+  } catch {
+    discoveryFilterExtensions = [];
+  }
+};
+
+appVersion.textContent = `v${packageMetadata.version}`;
+setLanguage(getCurrentLanguage());
+renderSelection();
+status("status.ready");
+void loadCapabilities();

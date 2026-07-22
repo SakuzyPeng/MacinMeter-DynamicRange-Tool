@@ -1,6 +1,5 @@
 {
   "claims": {
-    "compatibility": "none",
     "foobarParity": "not_assessed",
     "scope": "four exported field classes on the fixed safe-master corpus",
     "status": "compared_fields_match"
@@ -9,7 +8,7 @@
   "inputs": {
     "channelValueCount": 62,
     "corpusId": "foo-dr-meter-108-complete-v2",
-    "isolatedCoreSuiteSha256": "a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93",
+    "isolatedCoreSuiteSha256": "3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61",
     "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
     "normalizedReportSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
     "safeCaseCount": 39,

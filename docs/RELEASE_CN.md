@@ -61,8 +61,7 @@ cargo build --locked --release -p macinmeter-cli
 
 - `macinmeter --version` 必须报告 workspace version；
 - 仓库内 WAV fixture 必须产生唯一的 schema-v3 JSON document；
-- smoke document 必须走 WAV integer-PCM route，并继续标记为
-  `foo_dr_meter_1_0_8_candidate_v1 / unverified`。
+- smoke document 必须走 WAV integer-PCM route，包含固定算法参数，且不暴露内部 profile 或状态字段。
 
 ## 当前 host 的 macOS GUI 制品
 

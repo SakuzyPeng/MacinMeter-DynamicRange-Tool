@@ -130,7 +130,6 @@ class FixedObservationContractTests(unittest.TestCase):
         )
         self.assertEqual(result["differences"], [])
         self.assertEqual(result["claims"]["foobarParity"], "not_assessed")
-        self.assertEqual(result["claims"]["compatibility"], "none")
 
     def test_output_is_canonical_and_path_free(self) -> None:
         result = COMPARATOR.compare(SUITE_PATH, REPORT_PATH)

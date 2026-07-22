@@ -25,8 +25,7 @@ Wire schema v3 把报告指标与 DR 诊断值分离后，同一固定 observati
 reference 完全一致。这扩展了
 [`schema v2 DR-only 记录`](../conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-20260718/record.md)
 的公开可比范围，但不表示内部状态、任意输入、album-focused 行为或整份 footer
-已经兼容；profile 继续是
-`FooDrMeter108CandidateV1 / Unverified`。
+已经纳入；实现 profile 为 `FooDrMeter108CandidateV1`。
 
 ## 固定身份
 
@@ -48,8 +47,8 @@ release binary 与已保存 WireEnvelope 的哈希固定实现身份：
 | 对象 | SHA-256 |
 | --- | --- |
 | release CLI binary | `ff249a3c3cdcd0f45f9bc91065f08259f2c690432f4677cb9216dc1692da399e` |
-| schema v3 WireEnvelope | `7e1bb26d2c4d88d39e87ec438507e4817dc6e599a4c2e2a79cb0a9311626214b` |
-| comparison | `beaaec3118215b256f6cbc5259d9467620137703b4981cd23338f2851afbd58f` |
+| schema v3 WireEnvelope | `4587f73881403b099cdfb41e7516ebfa62a4f776754e8e17ad1cf92d5705ad68` |
+| comparison | `197a1f5119c2c8a02253e55984f01e3c8fd2a0d1b5fba7b1143b6f7b55c990d9` |
 | schema v3 comparator | `f943a19dd0bf1cb8e4cd320e95e22e8041cdcc162c5f5535f6a8b2d0698958b4` |
 
 Wire schema 为 3，tool version 为 0.2.0。实现输出保存在

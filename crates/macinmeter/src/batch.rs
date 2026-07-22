@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, AnalysisStage, AnalyzeRequest,
-    CancellationToken, ErrorCode, ExecutionControl, application::Analyzer,
+    AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
+    ErrorCode, ExecutionControl, application::Analyzer,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,16 +14,11 @@ use walkdir::WalkDir;
 pub struct BatchRequest {
     pub inputs: Vec<PathBuf>,
     pub recursive: bool,
-    pub profile: AnalysisProfile,
 }
 
 impl BatchRequest {
     pub fn new(inputs: Vec<PathBuf>, recursive: bool) -> Self {
-        Self {
-            inputs,
-            recursive,
-            profile: AnalysisProfile::FooDrMeter108CandidateV1,
-        }
+        Self { inputs, recursive }
     }
 }
 
@@ -93,10 +88,7 @@ impl BatchRunner {
             if control.cancellation.is_cancelled() {
                 return Err(AnalysisError::cancelled());
             }
-            let analyze_request = AnalyzeRequest {
-                path: path.clone(),
-                profile: request.profile,
-            };
+            let analyze_request = AnalyzeRequest { path: path.clone() };
             let outcome = match self
                 .analyzer
                 .analyze_file_at(analyze_request, index, control)

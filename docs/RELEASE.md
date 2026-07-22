@@ -64,8 +64,8 @@ payload hashes, then runs the extracted executable:
 
 - `macinmeter --version` must report the workspace version;
 - a committed WAV fixture must produce one schema-v3 JSON document;
-- the smoke document must use the WAV integer-PCM route and remain
-  `foo_dr_meter_1_0_8_candidate_v1 / unverified`.
+- the smoke document must use the WAV integer-PCM route and contain the fixed
+  algorithm parameters without internal profile or status fields.
 
 ## Current-host macOS GUI artifact
 

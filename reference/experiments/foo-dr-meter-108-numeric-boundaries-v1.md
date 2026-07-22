@@ -133,7 +133,7 @@ foobar2000：
 总判据 `allMatched = true`。固定 worker SHA-256 为
 `9685bf13e69cce2f0920510b70e24c57cff4483b1c3296baada3f165704ca817`；
 canonical suite SHA-256 为
-`28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b`。
+`b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3`。
 
 实际 raw 结果、PCM identity、histogram slice digest、隔离边界和限制以对应
 observation 为准。静态公式中的 expected bits 只作为预注册判别模型；结论来自

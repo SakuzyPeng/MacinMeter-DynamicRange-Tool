@@ -5,12 +5,12 @@ decoder, dual DR engines, packet/file parallelism, SIMD/unsafe conversion,
 EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes, and duplicate GUI DTOs
 have been removed. Do not reintroduce them as compatibility helpers.
 
-The current result profile is `FooDrMeter108CandidateV1` with compatibility
-status `Unverified`. It follows the versioned candidate specification backed by
-the recorded 1.0.8 target hashes, static analysis, fixed x86/x64 observations,
-and scoped conformance records under `reference/`; it is not a claim of
-arbitrary-input or complete host/component parity. No generic “small
-floating-point tolerance” or compatibility percentage is valid.
+The product has one fixed analysis algorithm backed by the versioned
+specification, recorded 1.0.8 target hashes, static analysis, fixed x86/x64
+observations, and scoped conformance records under `reference/`. A report
+contains its fixed numeric parameters, not an internal profile name or
+compatibility status. Claims must instead name their evidence scope. No generic
+“small floating-point tolerance” or compatibility percentage is valid.
 
 ## Workspace
 

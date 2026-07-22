@@ -89,7 +89,6 @@
   ],
   "claims": {
     "scope": "exported report text only",
-    "compatibility": "none",
     "appliesToVersion": "foo_dr_meter 1.0.8 x86 only"
   }
 }

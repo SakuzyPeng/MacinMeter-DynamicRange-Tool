@@ -2,12 +2,9 @@
 
 ## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 
-> Status: unsigned Apple Silicon release-candidate preparation. All analysis output is
-> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`; this release does not claim
-> reference-plugin compatibility.
+> Status: unsigned Apple Silicon release-candidate preparation.
 >
-> 状态：未签名 Apple Silicon release candidate 准备阶段。所有分析结果均标记为
-> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`，本版本不声明已经兼容参考插件。
+> 状态：未签名 Apple Silicon release candidate 准备阶段。
 
 ### Architecture / 架构
 
@@ -96,13 +93,12 @@
   two-decimal channel DR, 39/39 overall peak, 39/39 overall RMS, and 62/62
   channel RMS tokens, plus 39/39 rendered duration tokens. A narrowly scoped
   footer check confirms the track/sample-rate/channel sets and DR token; it
-  does not verify host metadata, precise album internals, or duration weighting.
-  The profile remains `Unverified`.
+  does not cover host metadata, precise album internals, or duration weighting.
   登记固定 x64 1.0.8 safe-master observation 与受限 conformance。schema-v3
   实现匹配整数 track DR 39/39、每声道两位 DR 62/62、overall peak 39/39、
   overall RMS 39/39、channel RMS 62/62 与渲染时长 39/39。严格限域的 footer
-  检查确认 track/采样率/声道集合和 DR token，但不验证 host metadata、精确
-  album 内部状态或 duration weighting；profile 继续保持 `Unverified`。
+  检查确认 track/采样率/声道集合和 DR token；host metadata、精确 album 内部状态
+  和 duration weighting 不在该记录范围内。
 - M5 centralizes direct Rust dependency policy and package identity at the
   workspace root. GUI builds now check version mirrors without rewriting
   tracked files; explicit `npm run sync-version` is the only synchronization
@@ -122,14 +118,14 @@
   但不会发布。hostile malformed media 仍只由 opt-in 的逐进程 verifier 解码，
   且默认要求可执行的内存上限。
 - Added explicit release staging. The distributed CLI archive is
-  extracted and smoke-tested against the versioned JSON/profile contract;
+  extracted and smoke-tested against the versioned JSON and decoder-route contract;
   release manifests and every artifact are covered by SHA-256. Current-host
   macOS DMGs receive image, mounted-bundle, and architecture checks, while
   remaining explicitly unsigned, unnotarized, and staging-only. The same
   contract runs ephemerally on macOS main CI. Manual CI uses the stricter
   unsigned-candidate manifest and retains it temporarily without creating a
   tag or Release.
-  新增显式发行 staging：解包后的 CLI 会通过版本化 JSON/profile smoke，
+  新增显式发行 staging：解包后的 CLI 会通过版本化 JSON 与解码路径 smoke，
   release manifest 与全部制品由 SHA-256 覆盖；当前 host 的 macOS DMG 会核对
   镜像、挂载 bundle 与 architecture，同时明确保持未签名、未公证、仅供 staging。
   同一契约会在 macOS main CI 中临时运行；手动 CI 使用更严格的 unsigned

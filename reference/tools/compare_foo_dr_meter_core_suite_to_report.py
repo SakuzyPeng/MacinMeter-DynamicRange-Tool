@@ -522,10 +522,7 @@ def validate_suite(suite: dict[str, Any]) -> list[dict[str, Any]]:
         raise ComparisonError("coreSuite is not a complete successful run")
 
     claims = require_object(suite.get("claims"), "coreSuite.claims")
-    if (
-        claims.get("compatibility") != "none"
-        or claims.get("foobarParity") != "not_assessed"
-    ):
+    if claims.get("foobarParity") != "not_assessed":
         raise ComparisonError("coreSuite claims exceed the isolated-core scope")
     limitations = require_array(suite.get("limitations"), "coreSuite.limitations")
     if not limitations or not all(isinstance(item, str) for item in limitations):
@@ -1093,7 +1090,6 @@ def compare(core_suite_path: Path, normalized_report_path: Path) -> dict[str, An
             ),
             "scope": "four exported field classes on the fixed safe-master corpus",
             "foobarParity": "not_assessed",
-            "compatibility": "none",
         },
         "notCompared": [
             {

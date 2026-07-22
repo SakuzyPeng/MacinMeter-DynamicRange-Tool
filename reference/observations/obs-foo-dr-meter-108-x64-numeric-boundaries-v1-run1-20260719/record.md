@@ -41,7 +41,7 @@ canonical JSON，`summary.allMatched` 为 `true`。
 | `vcruntime140_1.dll` | 49520 | `e4b533a94e02c574780e4b333fcf0889f65ed00d39e32c0fbbda2116f185873f` |
 | system `ucrtbase.dll` environment artifact | 1046080 | `3c60056371f82e4744185b6f2fa0c69042b1e78804685944132974dd13f3b6d9` |
 | semantic manifest | — | `881ff4d52e279510943bbb126db9a0818483bc839593784c575d12cd4a6fd684` |
-| suite | 214997 | `28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b` |
+| suite | 213638 | `b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3` |
 
 runtime profile 为 `fixed_foobar_2_25_10`。父进程和 worker 都复核 target、
 runtime、worker 与输入身份；每个 request ID 又绑定操作、几何、选项和输入
@@ -162,6 +162,5 @@ bin。这直接支持固定目标把量化 RMS key clamp 到 `[-100, 0] dB` 两�
 
 它不验证 foobar decoder、component registration、playlist、metadata、album
 grouping、完整 renderer、其他插件版本、x86 或任意输入的通用等价。它也不是
-MacinMeter 与目标的差分记录。候选规格因此继续保持
-`CandidateV1 / Unverified`；这次收口消除的是已知、可能改变 per-track 输出的
-未交叉规则，不是把有限 evidence 升格成兼容声明。
+MacinMeter 与目标的差分记录。这次收口消除的是已知、可能改变 per-track 输出的
+未交叉规则，不扩大有限 evidence 的适用范围。

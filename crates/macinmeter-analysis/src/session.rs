@@ -4,20 +4,20 @@ use crate::profile::{
     RMS_SUM_MULTIPLIER, SILENT_CHANNEL_DR_DB, WINDOW_DURATION_COEFFICIENT, descriptor,
 };
 use macinmeter_domain::{
-    AggregateResults, AlgorithmDescriptor, AnalysisError, AnalysisProfile, AnalysisResult,
-    AnalysisStage, ChannelCount, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics,
-    ChannelResult, DecodedDuration, ErrorCode, ExcludedChannel, ExclusionReason, FiniteF32,
-    FiniteF64, MAX_ANALYSIS_CHANNELS, StreamSpec, TrackAggregate, TrackReportMetrics,
+    AggregateResults, AlgorithmDescriptor, AnalysisError, AnalysisResult, AnalysisStage,
+    ChannelCount, ChannelMeasurement, ChannelOutcome, ChannelReportMetrics, ChannelResult,
+    DecodedDuration, ErrorCode, ExcludedChannel, ExclusionReason, FiniteF32, FiniteF64,
+    MAX_ANALYSIS_CHANNELS, StreamSpec, TrackAggregate, TrackReportMetrics,
 };
 
 const FRAME_MAJOR_VALIDATION_MIN_CHANNELS: usize = 5;
 
 /// A one-pass analysis session for a single PCM stream.
 ///
-/// The stream specification and algorithm profile are immutable after
-/// construction. Each call to [`Self::push_interleaved`] must contain complete
-/// frames for that specification. [`Self::finish`] consumes the session so a
-/// tail window cannot accidentally be finalized twice.
+/// The stream specification is immutable after construction. Each call to
+/// [`Self::push_interleaved`] must contain complete frames for that
+/// specification. [`Self::finish`] consumes the session so a tail window
+/// cannot accidentally be finalized twice.
 #[derive(Debug)]
 pub struct AnalyzerSession {
     stream: StreamSpec,
@@ -29,11 +29,11 @@ pub struct AnalyzerSession {
 }
 
 impl AnalyzerSession {
-    /// Creates an analyzer with the fixed rules of the requested profile.
+    /// Creates an analyzer with the product's fixed analysis rules.
     ///
     /// Streams above [`MAX_ANALYSIS_CHANNELS`] are rejected before per-channel
     /// analysis state is allocated.
-    pub fn new(stream: StreamSpec, profile: AnalysisProfile) -> Result<Self, AnalysisError> {
+    pub fn new(stream: StreamSpec) -> Result<Self, AnalysisError> {
         validate_session_resources(stream.channels)?;
         stream.channel_layout.validate(stream.channels)?;
 
@@ -57,7 +57,7 @@ impl AnalyzerSession {
 
         Ok(Self {
             stream,
-            algorithm: descriptor(profile)?,
+            algorithm: descriptor()?,
             window_frames,
             frames_in_window: 0,
             frames_seen: 0,
@@ -80,7 +80,7 @@ impl AnalyzerSession {
         self.frames_seen
     }
 
-    /// Returns the profile's window length in frames per channel.
+    /// Returns the analysis window length in frames per channel.
     pub fn window_frames(&self) -> usize {
         self.window_frames
     }
@@ -793,8 +793,8 @@ mod invariant_tests;
 mod tests {
     use super::*;
 
-    fn candidate_session(stream: StreamSpec) -> AnalyzerSession {
-        AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1).unwrap()
+    fn analyzer_session(stream: StreamSpec) -> AnalyzerSession {
+        AnalyzerSession::new(stream).unwrap()
     }
 
     fn report_only_channel(index: usize, overall_rms: f32, primary_peak: f32) -> ChannelResult {
@@ -813,7 +813,7 @@ mod tests {
     #[test]
     fn histogram_shape_is_fixed_per_channel() {
         let stream = StreamSpec::new(48_000, 6, macinmeter_domain::ChannelLayout::Unknown).unwrap();
-        let session = candidate_session(stream);
+        let session = analyzer_session(stream);
 
         assert_eq!(session.channels.len(), 6);
         assert!(

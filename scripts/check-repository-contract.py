@@ -236,6 +236,20 @@ def validate(root: Path) -> list[str]:
         bundle.get("macOS", {}).get("minimumSystemVersion") == "11.0",
         "tauri.conf.json must require macOS 11.0 for Apple Silicon releases",
     )
+    windows = tauri_config.get("app", {}).get("windows", [])
+    require(
+        isinstance(windows, list)
+        and len(windows) == 1
+        and windows[0].get("dragDropEnabled") is True,
+        "tauri.conf.json must keep native file drag-and-drop enabled",
+    )
+    frontend_source_path = root / "tauri-app/src/main.ts"
+    frontend_source = frontend_source_path.read_text(encoding="utf-8")
+    require(
+        "getCurrentWebview().onDragDropEvent" in re.sub(r"\s+", "", frontend_source)
+        and "payload.paths" in frontend_source,
+        "tauri-app/src/main.ts must handle native dropped paths",
+    )
 
     if isinstance(version, str):
         json_versions = (

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compare a direct-PCM Candidate V1 suite with the fixed x64 evidence.
+"""Compare a direct-PCM MacinMeter suite with the fixed x64 evidence.
 
-Only public final fields are compared. The tool does not require Candidate and
+Only public final fields are compared. The tool does not require MacinMeter and
 the reference DLL to expose the same intermediate state or data structures.
 Raw public binary32 fields and rendered report tokens use exact equality.
 """
@@ -43,8 +43,6 @@ SCHEMA_VERSION = 1
 CANDIDATE_SUITE_KIND = "macinmeter_candidate_v1_direct_pcm_suite"
 COMPARISON_KIND = "macinmeter_candidate_v1_x64_numeric_comparison"
 WORKER_RESULT_KIND = "macinmeter_candidate_v1_conformance_result"
-EXPECTED_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
-EXPECTED_COMPATIBILITY = "unverified"
 SOURCE_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 F32_BITS_RE = re.compile(r"^[0-9a-f]{8}$")
 
@@ -166,9 +164,6 @@ def _validate_candidate_suite(
             "sourceCommit",
             "workerSha256",
             "workerByteLength",
-            "profile",
-            "profileVersion",
-            "compatibility",
         },
         "candidateSuite.implementation",
     )
@@ -189,15 +184,6 @@ def _validate_candidate_suite(
         "candidateSuite.implementation.workerByteLength",
         minimum=1,
     )
-    if (
-        implementation.get("profile") != EXPECTED_PROFILE
-        or implementation.get("profileVersion") != 1
-        or implementation.get("compatibility") != EXPECTED_COMPATIBILITY
-    ):
-        raise CandidateComparisonError(
-            "candidateSuite implementation identity changed"
-        )
-
     execution = _require_object(
         suite.get("execution"), "candidateSuite.execution"
     )
@@ -266,12 +252,9 @@ def _validate_candidate_suite(
             "candidateSuite is not one complete successful run"
         )
     claims = _require_object(suite.get("claims"), "candidateSuite.claims")
-    if (
-        claims.get("compatibility") != EXPECTED_COMPATIBILITY
-        or claims.get("referenceParity") != "not_assessed"
-    ):
+    if claims.get("referenceParity") != "not_assessed":
         raise CandidateComparisonError(
-            "candidateSuite makes an unsupported compatibility claim"
+            "candidateSuite makes an unsupported reference-parity claim"
         )
     limitations = _require_array(
         suite.get("limitations"), "candidateSuite.limitations"
@@ -402,18 +385,18 @@ def _validate_candidate_suite(
             result.get("algorithm"), f"{context}.algorithm"
         )
         if (
-            algorithm.get("profile") != EXPECTED_PROFILE
-            or algorithm.get("profileVersion") != 1
-            or algorithm.get("compatibility") != EXPECTED_COMPATIBILITY
+            "profile" in algorithm
+            or "profileVersion" in algorithm
+            or "compatibility" in algorithm
         ):
             raise CandidateComparisonError(
-                f"{context} worker algorithm identity differs"
+                f"{context} worker exposes a report status or profile"
             )
+        _require_object(
+            algorithm.get("parameters"), f"{context}.algorithm.parameters"
+        )
         claims = _require_object(result.get("claims"), f"{context}.claims")
-        if (
-            claims.get("compatibility") != EXPECTED_COMPATIBILITY
-            or claims.get("referenceParity") != "not_assessed"
-        ):
+        if claims.get("referenceParity") != "not_assessed":
             raise CandidateComparisonError(
                 f"{context} worker claims exceed Candidate scope"
             )
@@ -834,8 +817,6 @@ def compare(
         "differences": differences,
         "claims": {
             "scope": "bounded foo_dr_meter 1.0.8 x64 numeric fields",
-            "compatibility": EXPECTED_COMPATIBILITY,
-            "profile": EXPECTED_PROFILE,
         },
         "limitations": [
             "This comparison does not establish decoder, host lifecycle, metadata, grouping, optional weighting, or text parity.",

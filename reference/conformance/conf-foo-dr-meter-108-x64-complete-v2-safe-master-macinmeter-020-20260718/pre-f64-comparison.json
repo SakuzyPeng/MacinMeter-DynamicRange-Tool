@@ -13,12 +13,11 @@
     }
   },
   "implementation": {
-    "wireOutputSha256": "c8d31e871609edf7b9807eaa28deb4e0af0d8b643eec3e65ff3b2a0f60863f97",
+    "wireOutputSha256": "ca44e6a9ebe6494429a8470c5b584f4551eaef3777f4d84e6b18e76792e9a864",
     "binarySha256": "8b1683fa6923d4f2b616e002f949403ae6eb730f99a05831f930dc425395dd6d",
     "wireSchemaVersion": 2,
     "toolVersion": "0.2.0",
-    "profile": "foo_dr_meter_1_0_8_candidate_v1",
-    "compatibility": "unverified"
+    "profile": "foo_dr_meter_1_0_8_candidate_v1"
   },
   "policy": {
     "trackDr": "exact integer token",

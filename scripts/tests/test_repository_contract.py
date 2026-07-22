@@ -83,12 +83,18 @@ serde.workspace = true
             json.dumps(
                 {
                     "version": "0.2.0",
+                    "app": {"windows": [{"dragDropEnabled": True}]},
                     "bundle": {
                         "targets": ["app", "dmg"],
                         "macOS": {"minimumSystemVersion": "11.0"},
                     },
                 }
             ),
+        )
+        self.write(
+            "tauri-app/src/main.ts",
+            "getCurrentWebview().onDragDropEvent(({ payload }) => "
+            "selectInputs(payload.paths));\n",
         )
         self.write(
             ".github/workflows/workspace-validation.yml",
@@ -295,6 +301,23 @@ jobs: {}
 
         self.assertTrue(
             any("must require macOS 11.0" in error for error in self.errors())
+        )
+
+    def test_rejects_removing_native_drop_handling(self) -> None:
+        self.write("tauri-app/src/main.ts", "void getCurrentWebview();\n")
+
+        self.assertTrue(
+            any("handle native dropped paths" in error for error in self.errors())
+        )
+
+    def test_rejects_disabled_native_file_drag_and_drop(self) -> None:
+        config_path = self.root / "tauri-app/src-tauri/tauri.conf.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["app"]["windows"][0]["dragDropEnabled"] = False
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        self.assertTrue(
+            any("drag-and-drop enabled" in error for error in self.errors())
         )
 
     def test_rejects_nested_lockfiles(self) -> None:

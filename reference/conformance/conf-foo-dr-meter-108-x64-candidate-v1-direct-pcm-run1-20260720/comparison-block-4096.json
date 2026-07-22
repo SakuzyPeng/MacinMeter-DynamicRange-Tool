@@ -1,6 +1,5 @@
 {
   "claims": {
-    "compatibility": "unverified",
     "profile": "foo_dr_meter_1_0_8_candidate_v1",
     "scope": "bounded foo_dr_meter 1.0.8 x64 numeric fields"
   },
@@ -53,11 +52,10 @@
   "differences": [],
   "evidence": {
     "normalizedReportSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
-    "referenceCoreSuiteSha256": "a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93"
+    "referenceCoreSuiteSha256": "3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61"
   },
   "implementation": {
-    "candidateSuiteSha256": "93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4",
-    "compatibility": "unverified",
+    "candidateSuiteSha256": "60810a3a12100183e3dedad61f94d45ff4e5a07b515a0a3f7b91ecfe8d5ad712",
     "profile": "foo_dr_meter_1_0_8_candidate_v1",
     "profileVersion": 1,
     "sourceCommit": "76d0f2eab5cdfce9de6a9d76ab971c333eab8e71",

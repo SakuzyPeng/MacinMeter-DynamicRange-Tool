@@ -318,18 +318,6 @@ pub struct DecodeDiagnostics {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AnalysisProfile {
-    #[serde(rename = "foo_dr_meter_1_0_8_candidate_v1")]
-    FooDrMeter108CandidateV1,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CompatibilityStatus {
-    Unverified,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlgorithmParameters {
@@ -353,9 +341,6 @@ pub struct AlgorithmParameters {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlgorithmDescriptor {
-    pub profile: AnalysisProfile,
-    pub profile_version: u32,
-    pub compatibility: CompatibilityStatus,
     pub parameters: AlgorithmParameters,
 }
 
@@ -694,9 +679,6 @@ mod tests {
 
     fn algorithm_descriptor() -> AlgorithmDescriptor {
         AlgorithmDescriptor {
-            profile: AnalysisProfile::FooDrMeter108CandidateV1,
-            profile_version: 1,
-            compatibility: CompatibilityStatus::Unverified,
             parameters: AlgorithmParameters {
                 window_duration_coefficient: finite64(3.0),
                 rms_sum_multiplier: finite64(2.0),

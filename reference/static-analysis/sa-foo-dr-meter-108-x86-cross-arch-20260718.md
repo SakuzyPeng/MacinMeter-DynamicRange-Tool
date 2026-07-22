@@ -134,7 +134,7 @@ float64 PCM 窄化为 binary32 的偏差，但这仍不构成端到端参考等�
   运算或存储，不能与当前产品共用逐位精度声明；
 - 产品的 native decoder、chunk 编排和数值运行环境没有因 analyzer 输入宽度相同
   而获得 foobar2000 host/decoder parity；
-- profile 因此继续命名为 `FooDrMeter108CandidateV1 / Unverified`。
+- profile `FooDrMeter108CandidateV1` 仅标识对应规则修订。
 
 现有 x86 15/15 与 x64 safe-master 黑盒结果支持已覆盖的候选控制规则和公开字段，
 但不能升级为任一架构的 bit-exact、host/decoder parity 或通用 reference parity

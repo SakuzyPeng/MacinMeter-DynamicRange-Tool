@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the safe complete-v2 corpus through the MacinMeter Candidate V1 worker.
+"""Run the safe complete-v2 corpus through the MacinMeter analysis worker.
 
 The runner is intentionally decoder-independent. It validates each manifest
 WAV and converts its declared sample encoding to finite interleaved f64le with
@@ -38,8 +38,6 @@ PARENT = REFERENCE_SUITE.PARENT
 SCHEMA_VERSION = 1
 RECORD_KIND = "macinmeter_candidate_v1_direct_pcm_suite"
 WORKER_RESULT_KIND = "macinmeter_candidate_v1_conformance_result"
-EXPECTED_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
-EXPECTED_COMPATIBILITY = "unverified"
 SOURCE_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 F32_BITS_RE = re.compile(r"^[0-9a-f]{8}$")
 MAX_WORKER_BYTES = 256 * 1024 * 1024
@@ -141,14 +139,15 @@ def _validate_worker_result(
         raise CandidateSuiteError("worker result input geometry differs")
 
     algorithm = _require_dict(result.get("algorithm"), "worker algorithm")
-    if algorithm.get("profile") != EXPECTED_PROFILE:
-        raise CandidateSuiteError("worker used an unexpected analysis profile")
-    if algorithm.get("profileVersion") != 1:
-        raise CandidateSuiteError("worker used an unexpected profile version")
-    if algorithm.get("compatibility") != EXPECTED_COMPATIBILITY:
-        raise CandidateSuiteError("worker changed the compatibility status")
+    if "profile" in algorithm or "profileVersion" in algorithm:
+        raise CandidateSuiteError("worker exposed an internal analysis profile")
+    if "compatibility" in algorithm:
+        raise CandidateSuiteError("worker attached compatibility to an analysis report")
+    _require_dict(algorithm.get("parameters"), "worker algorithm parameters")
 
     analysis = _require_dict(result.get("analysis"), "worker analysis")
+    if analysis.get("algorithm") != algorithm:
+        raise CandidateSuiteError("worker analysis algorithm differs")
     if analysis.get("framesSeen") != prepared.frames:
         raise CandidateSuiteError("worker analysis frame count differs")
     stream = _require_dict(analysis.get("stream"), "worker analysis stream")
@@ -196,8 +195,6 @@ def _validate_worker_result(
         )
 
     claims = _require_dict(result.get("claims"), "worker claims")
-    if claims.get("compatibility") != EXPECTED_COMPATIBILITY:
-        raise CandidateSuiteError("worker claims changed compatibility status")
     if claims.get("referenceParity") != "not_assessed":
         raise CandidateSuiteError("worker result makes an unsupported parity claim")
 
@@ -374,9 +371,6 @@ def run_suite(
             "sourceCommit": source_commit,
             "workerSha256": worker.sha256,
             "workerByteLength": worker.byte_length,
-            "profile": EXPECTED_PROFILE,
-            "profileVersion": 1,
-            "compatibility": EXPECTED_COMPATIBILITY,
         },
         "execution": {
             "timeoutSeconds": float(timeout_seconds),
@@ -393,8 +387,7 @@ def run_suite(
             "failed": failed,
         },
         "claims": {
-            "scope": "decoder-independent MacinMeter Candidate V1 suite",
-            "compatibility": EXPECTED_COMPATIBILITY,
+            "scope": "decoder-independent MacinMeter analysis suite",
             "referenceParity": "not_assessed",
         },
         "limitations": [

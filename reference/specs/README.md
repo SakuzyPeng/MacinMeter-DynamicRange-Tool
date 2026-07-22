@@ -29,8 +29,7 @@
   已覆盖的 duration 半秒舍入、minute/hour/day/week token、RMS histogram
   端点 clamp、可选 per-track 多声道 weighting，以及 channel ordinal
   `0..5, 9, 10` 标签规则为 E2；未覆盖标签、全静音 weighting 零分母和完整
-  renderer 仍保留各自限制。规格保持
-  `candidate / unverified`，不声明通用 parity。M1 已完成；host、playlist、
+  renderer 仍保留各自限制。规格按证据明确限定字段与运行边界。M1 已完成；host、playlist、
   metadata、完整 renderer 与 production 中间状态同构是非目标。
 - [`provisional-v1.md`](provisional-v1.md)：**历史 / 已取代**的 M0 工程基线；
   其中 1.0.3 只是当时未固定为当前 target 的候选，不是现行参考规格、

@@ -4,8 +4,8 @@
 
 MacinMeter 0.2.0 intentionally exposes a small, correctness-first decoder
 surface. Availability means that the route is part of the 0.2.0 stable
-contract; it does not imply compatibility with foo_dr_meter 1.0.8. The current
-analysis profile is a candidate and remains `Unverified`.
+contract. Reference-analysis evidence is documented separately from decoder
+support.
 
 | Container | Accepted codec | PCM delivered to analysis |
 |---|---|---|
@@ -74,9 +74,9 @@ format-specific limits may be lower. A source declaring more than 64 channels
 is rejected during probing with `unsupported_format`, before decoder creation.
 
 Channel layout is never inferred from channel count. If the backend cannot
-establish a trustworthy layout, the report uses `unknown`. Candidate V1
-produces one `track` aggregate and, following the evidence-backed candidate
-rule, includes LFE rather than producing a separate `without_lfe` result.
+establish a trustworthy layout, the report uses `unknown`. Analysis produces
+one `track` aggregate and, following the recorded numeric rule, includes LFE
+rather than producing a separate `without_lfe` result.
 Silent channels visibly remain `silent` and contribute DR0; only insufficient
 data is excluded. If no channel can contribute, aggregate DR values are
 explicit `null`.

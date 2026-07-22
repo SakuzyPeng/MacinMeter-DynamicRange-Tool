@@ -33,7 +33,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -125,7 +124,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -217,7 +215,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -309,7 +306,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -401,7 +397,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -493,7 +488,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -585,7 +579,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -677,7 +670,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -769,7 +761,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -861,7 +852,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -953,7 +943,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1045,7 +1034,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1129,7 +1117,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1230,7 +1217,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1356,7 +1342,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1533,7 +1518,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1568,7 +1552,7 @@
                     "measurement": {
                       "drDb": 39.341595,
                       "roundedDr": 39,
-                      "loudWindowRms": 0.00001,
+                      "loudWindowRms": 1e-05,
                       "selectedPeak": 0.0009270000155083835,
                       "primaryPeak": 0.0010000000474974513,
                       "secondaryPeak": 0.0009270000155083835,
@@ -1625,7 +1609,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1717,7 +1700,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1809,7 +1791,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -1918,7 +1899,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2027,7 +2007,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2136,7 +2115,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2245,7 +2223,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2337,7 +2314,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2429,7 +2405,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2521,7 +2496,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2613,7 +2587,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2824,7 +2797,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -2950,7 +2922,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3076,7 +3047,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3168,7 +3138,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3260,7 +3229,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3352,7 +3320,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3444,7 +3411,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3536,7 +3502,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3628,7 +3593,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3720,7 +3684,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3812,7 +3775,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,
@@ -3904,7 +3866,6 @@
               "algorithm": {
                 "profile": "foo_dr_meter_1_0_8_candidate_v1",
                 "profileVersion": 1,
-                "compatibility": "unverified",
                 "parameters": {
                   "windowDurationCoefficient": 3.0040816326530613,
                   "rmsSumMultiplier": 2.0,

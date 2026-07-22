@@ -7,13 +7,10 @@ reports per-channel and per-track DR values for supported WAV, FLAC, and AIFF
 files. The command-line tool, Tauri desktop frontend, and Rust API all use the
 same streaming analysis engine.
 
-> **About reference results.** MacinMeter labels its current profile
-> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`. It is a candidate
-> interpretation of evidence recovered from one fixed `foo_dr_meter 1.0.8
-> x64` target. Recorded projections have zero differences on the fixed
-> conformance corpus. The project presents that as bounded evidence, rather
-> than as official certification or a promise of identical results for every
-> file and every foobar2000 environment.
+The analysis algorithm was reconstructed from one fixed `foo_dr_meter 1.0.8
+x64` target. Recorded projections have zero differences on the fixed
+conformance corpus; the exact inputs, fields, and runtime boundary are listed
+in the accuracy section below.
 
 ## Supported files
 
@@ -72,7 +69,7 @@ target/release/macinmeter analyze tests/fixtures/edge_cases.wav
 ```
 
 ```text
-MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified
+MacinMeter
 Source: tests/fixtures/edge_cases.wav
 PCM: 44100 Hz, 2 channels, 308700 frames
 Duration: 0:07
@@ -88,8 +85,8 @@ Progress for that command is written separately to stderr.
 
 ### Reading the result
 
-- `DR2` is the rounded track aggregate produced by the current candidate
-  profile. Within this metric, a larger value represents a larger ratio
+- `DR2` is the rounded track aggregate. Within this metric, a larger value
+  represents a larger ratio
   between the selected peak and loud-window RMS. A high DR value does not by
   itself mean that a recording sounds good. A very low value, however, is
   often a warning sign of aggressive compression and is more likely to go
@@ -102,8 +99,8 @@ Progress for that command is written separately to stderr.
 - dBFS uses normalized amplitude `1.0` as the 0 dB reference. Supported IEEE
   float PCM may contain finite samples above that reference, so 0 dBFS is not a
   universal clipping boundary.
-- Silent channels remain visible and contribute numeric DR0 under Candidate
-  V1; channels with insufficient data are explicitly excluded.
+- Silent channels remain visible and contribute numeric DR0; channels with
+  insufficient data are explicitly excluded.
 
 The fixture above is designed for deterministic automated tests, not as an
 example of a typical music release.
@@ -147,6 +144,12 @@ npm run tauri dev
 It calls the same `Application` façade and consumes the same wire schema as the
 CLI. Each job has its own cancellation token, while the shared application
 budget keeps top-level work bounded and serial.
+
+The desktop interface supports whole-window file and directory drag-and-drop,
+multi-file and recursive directory discovery, bilingual Chinese/English UI,
+result search and precise-DR sorting, path hiding, and Markdown, JSON, PNG, or
+SVG export. Exported JSON is the exact shared `WireEnvelope`; presentation-only
+preferences never alter the analysis request or report.
 
 The 0.2.0 packaged GUI is scoped to Apple Silicon Macs running macOS 11.0 or
 newer. Local staging and the bounded macOS 26 arm64 CI gate both build and
@@ -194,7 +197,7 @@ contains the following bounded results:
 | --- | --- |
 | schema-v3 safe-master track DR, overall peak, overall RMS, and rendered duration | 39/39 each |
 | same run: channel DR and channel RMS | 62/62 each |
-| decoder-independent Candidate direct-PCM final-field projection | 0 differences on 39 fixed inputs |
+| decoder-independent direct-PCM final-field projection | 0 differences on 39 fixed inputs |
 | isolated x64 analyzer-core run | all preregistered assertions met on 39 inputs |
 | numeric-boundary vectors for duration, weighting, and histogram endpoints | 24/24, 8/8, and 6/6 |
 
@@ -202,12 +205,11 @@ The table describes one named target, corpus, set of fields, and runtime
 boundary. Arbitrary audio, x86 and other plugin versions, foobar2000 decoding,
 host and playlist behavior, metadata provenance, complete text rendering, and
 internal implementation-state identity all remain outside those observations.
-That is the scope represented by `Candidate V1 / Unverified`.
 
 The supporting records are the
 [M4 evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md),
-[M4 compatibility report](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md), and
-[Candidate V1 specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md).
+[M4 numeric-alignment report](docs/M4_X64_NUMERIC_ALIGNMENT_REPORT.md), and
+[algorithm specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md).
 
 ## Performance
 
@@ -252,18 +254,17 @@ history and deeper technical material live in:
 
 ## Reference work and attribution
 
-The sole current candidate target is Janne Hyvärinen's `foo_dr_meter 1.0.8
+The current reference target is Janne Hyvärinen's `foo_dr_meter 1.0.8
 x64` component. Reverse-engineering that fixed target was performed with the
 author's permission. Private correspondence is not stored in the repository;
 only a [minimal public authorization summary](reference/authorization/README.md)
 is retained.
 
 Permission and attribution provide the legal and historical context for the
-research. The numerical status comes from the bounded records above and remains
-`Candidate V1 / Unverified`. Historical M0/1.0.3 material is kept as a
-superseded archive, separate from the current target. Target identities,
-experiments, observations, specifications, and their limits are indexed under
-[`reference/`](reference/README.md).
+research. Numerical claims come from the bounded records above. Historical
+M0/1.0.3 material is kept as a superseded archive, separate from the current
+target. Target identities, experiments, observations, specifications, and
+their limits are indexed under [`reference/`](reference/README.md).
 
 ## License
 

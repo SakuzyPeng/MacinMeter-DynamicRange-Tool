@@ -20,8 +20,8 @@ float64 WAV 在分析前被窄化成 float32。PCM block、Symphonia 输出和
 | 差分数 | 2 | 0 |
 
 这表示当前有限 corpus 中语义相同且公开可比较的核心字段已经逐 token 对齐；它
-不表示整份报告、全部中间状态、所有输入或其他目标版本已经兼容。profile 继续是
-`FooDrMeter108CandidateV1 / Unverified`。
+不表示整份报告、全部中间状态、所有输入或其他目标版本已经纳入。实现 profile 为
+`FooDrMeter108CandidateV1`。
 
 ## 固定身份
 
@@ -42,8 +42,8 @@ commit 不能单独重建二进制。本记录以实际二进制和已保存 Wir
 
 | 运行 | CLI binary SHA-256 | WireEnvelope SHA-256 | comparison SHA-256 |
 | --- | --- | --- | --- |
-| pre-f64 | `8b1683fa6923d4f2b616e002f949403ae6eb730f99a05831f930dc425395dd6d` | `c8d31e871609edf7b9807eaa28deb4e0af0d8b643eec3e65ff3b2a0f60863f97` | `b006d89061e2726e7695ac1486039e226529369568136fa5cbc3006fbe82a60f` |
-| post-f64 | `ec702c4f82803e7ed29634fe6fd08e8a1eeed5a64510c1ea4c7bf9548f157c90` | `96d6a9fa95edf9b57b7904fa0da7ffba362c9e96740b204709366765ba64ce0a` | `1190a7f3dd65035d9fc9b13219cff00012d9f4c08fd492f37016376b0a8b5ef6` |
+| pre-f64 | `8b1683fa6923d4f2b616e002f949403ae6eb730f99a05831f930dc425395dd6d` | `ca44e6a9ebe6494429a8470c5b584f4551eaef3777f4d84e6b18e76792e9a864` | `7a0c9a8d6e426c8c0309323b611791f105742a322b075fbf56721b5c0d2b6368` |
+| post-f64 | `ec702c4f82803e7ed29634fe6fd08e8a1eeed5a64510c1ea4c7bf9548f157c90` | `d1b9840572fb3b3a57a45189e1ab2efc6ba028af69081f1f8c8f4f2b9341528b` | `93863eb5cf958d897720f02e1f532d6dc9d382a3179d4c7fc0956b359c49cafc` |
 
 `Cargo.lock` SHA-256 为
 `5f966f1c0168690c6e928964e4f51a79f8a6a6341f47759e37884ab2ec8c64b7`。

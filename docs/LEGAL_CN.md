@@ -15,9 +15,8 @@ Hyvärinen 所著 foobar2000 DR Meter 1.0.8（`foo_dr_meter`）；
 反对本独立项目选择 MIT License。这不表示原 component 本身改用 MIT，也不授权
 再分发原 component。
 
-获准研究目标不代表本实现已经与目标一致。MacinMeter 的结果状态为
-`foo_dr_meter 1.0.8 Candidate V1 / Unverified`，项目不作参考兼容、认证、背书
-或“官方结果”声明。名称和版本只用于标识证据研究对象，不表示从属关系或结果对等。
+获准研究目标不表示认证、背书、从属关系或“官方结果”。名称和版本只用于标识证据
+研究对象；数值结论仅适用于对应记录明确列出的条件。
 
 ## 独立实现边界
 

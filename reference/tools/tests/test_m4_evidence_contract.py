@@ -12,33 +12,33 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 TARGET_SHA256 = "ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489"
 MANIFEST_SHA256 = "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8"
-CORE_SUITE_SHA256 = "a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93"
+CORE_SUITE_SHA256 = "3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61"
 BOUNDARY_SUITE_SHA256 = (
-    "28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b"
+    "b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3"
 )
 NORMALIZED_REPORT_SHA256 = (
     "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce"
 )
 CLEAN_COMPARISON_SHA256 = (
-    "6e890323ca5d2338344695e5ad1129703dbcb32d20e11c483deea5af811d1f1f"
+    "e2c6478f19fb9b3094bf056215c7472bb38eea585f6c9affe2ba1269a458dab0"
 )
-CLEAN_WIRE_SHA256 = "7e1bb26d2c4d88d39e87ec438507e4817dc6e599a4c2e2a79cb0a9311626214b"
+CLEAN_WIRE_SHA256 = "4587f73881403b099cdfb41e7516ebfa62a4f776754e8e17ad1cf92d5705ad68"
 GENERATOR_SHA256 = "f83fdcd0b88f2f414c53f8aa52a5b03f4fd4c8ee25024c4dce603df9a2179054"
 DIRECT_SOURCE_COMMIT = "76d0f2eab5cdfce9de6a9d76ab971c333eab8e71"
 DIRECT_WORKER_SHA256 = (
     "ae42263881d6a76f6bfc675fb9e52e1141a03a87dd0d91363616e14e9c4b669d"
 )
 DIRECT_SUITE_4096_SHA256 = (
-    "93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4"
+    "60810a3a12100183e3dedad61f94d45ff4e5a07b515a0a3f7b91ecfe8d5ad712"
 )
 DIRECT_COMPARISON_4096_SHA256 = (
-    "cb2f6ea43f4c46d7cb6164f6124e720192c144012a1cecec0d4535dbc8b395fd"
+    "d35f392567499d0f80befe2eb03690c0f7a8a5d15773a7f3817b4b26dda3402e"
 )
 DIRECT_SUITE_997_SHA256 = (
-    "1506b76b61452111fdaced4c2075eb6919d64bf52a06e2a3ed18742ac740af6c"
+    "47911f270cd0cb1980ed320aee114420ec85aa1e407b8023824d9055ae0a79bb"
 )
 DIRECT_COMPARISON_997_SHA256 = (
-    "822ec149d28369c856ef4a01f9656ac8e9383746dc4feab8e177c23bb8356c1e"
+    "621e0ff98d70253dd674b44f23ffed164c60dae722178f82aae5dbcfb1aff775"
 )
 
 MANIFEST_PATH = (
@@ -156,7 +156,6 @@ class M4EvidenceContractTests(unittest.TestCase):
             [item["inputId"] for item in core["items"]],
             [case["id"] for case in safe],
         )
-        self.assertEqual(core["claims"]["compatibility"], "none")
         self.assertEqual(core["claims"]["foobarParity"], "not_assessed")
 
     def test_numeric_boundary_record_keeps_every_registered_match(self) -> None:
@@ -194,10 +193,9 @@ class M4EvidenceContractTests(unittest.TestCase):
         self.assertTrue(
             all(item["matched"] for item in boundary["histogramClamp"])
         )
-        self.assertEqual(boundary["claims"]["compatibility"], "none")
         self.assertEqual(boundary["claims"]["foobarParity"], "not_assessed")
 
-    def test_historical_clean_comparison_is_exact_and_stays_unverified(self) -> None:
+    def test_historical_clean_comparison_is_exact(self) -> None:
         comparison = load_object(CLEAN_COMPARISON_PATH)
 
         self.assertEqual(
@@ -215,9 +213,6 @@ class M4EvidenceContractTests(unittest.TestCase):
         self.assertEqual(
             comparison["implementation"]["profile"],
             "foo_dr_meter_1_0_8_candidate_v1",
-        )
-        self.assertEqual(
-            comparison["implementation"]["compatibility"], "unverified"
         )
         self.assertEqual(
             comparison["summary"],
@@ -338,10 +333,6 @@ class M4EvidenceContractTests(unittest.TestCase):
                     DIRECT_WORKER_SHA256,
                 )
                 self.assertEqual(
-                    suite["implementation"]["compatibility"],
-                    "unverified",
-                )
-                self.assertEqual(
                     suite["execution"]["blockFrames"], block_frames
                 )
                 self.assertFalse(suite["execution"]["decoderUsed"])
@@ -378,9 +369,6 @@ class M4EvidenceContractTests(unittest.TestCase):
                     comparison["policy"]["intermediateStateCompared"]
                 )
                 self.assertFalse(comparison["policy"]["decoderUsed"])
-                self.assertEqual(
-                    comparison["claims"]["compatibility"], "unverified"
-                )
 
                 projections.append(
                     [

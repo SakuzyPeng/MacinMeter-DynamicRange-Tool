@@ -41,12 +41,12 @@ length 自洽，并拒绝任何非有限或负的可比较 binary32 metric。
 | --- | --- |
 | complete-v2 manifest | `479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8` |
 | x64 target DLL | `ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489` |
-| isolated-core suite | `a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93` |
+| isolated-core suite | `3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61` |
 | isolated-core worker | `0e09e6795a10f0d3e368ab5626cc2b0ab792edbc8bd9515baf3b12be6011b92f` |
 | exported raw report | `e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c` |
 | normalized safe-master report | `50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce` |
 | comparator | `ecee37f882866bdb612f9bf7d20c43e75a2339ea255c5118943f283f868ff9ca` |
-| comparison | `bf0ba9b168ed5d3250636c5f7c996725b222356ee5cb02ebfd3edca9e39963cb` |
+| comparison | `93dd4b0219c74e99ab32a499e9ec401489c02071060c759e774a77fe3d0cce86` |
 
 isolated suite 固定 worker 为 278016 bytes，并按 `one_worker_process_per_input`
 执行。目标 DLL 为 424448 bytes。suite 中每项都登记相同的固定 runtime

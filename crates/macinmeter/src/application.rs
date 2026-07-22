@@ -1,6 +1,5 @@
 use crate::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, AnalysisStage, ErrorCode,
-    ExecutionControl,
+    AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, ErrorCode, ExecutionControl,
 };
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
@@ -11,15 +10,11 @@ use std::path::PathBuf;
 #[serde(rename_all = "camelCase")]
 pub struct AnalyzeRequest {
     pub path: PathBuf,
-    pub profile: AnalysisProfile,
 }
 
 impl AnalyzeRequest {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            path: path.into(),
-            profile: AnalysisProfile::FooDrMeter108CandidateV1,
-        }
+        Self { path: path.into() }
     }
 }
 
@@ -71,18 +66,17 @@ impl Analyzer {
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
         let opened = self.decoder_factory.open(&request.path)?;
-        Self::analyze_opened(opened, request.profile, item_index, control, display_path)
+        Self::analyze_opened(opened, item_index, control, display_path)
     }
 
     pub(crate) fn analyze_opened(
         mut opened: OpenedAudio,
-        profile: AnalysisProfile,
         item_index: usize,
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
         let pcm = opened.reader.stream_info().clone();
-        let mut session = AnalyzerSession::new(pcm.spec.clone(), profile)?;
+        let mut session = AnalyzerSession::new(pcm.spec.clone())?;
 
         loop {
             ensure_not_cancelled(control)?;
@@ -254,7 +248,6 @@ mod tests {
 
         let error = Analyzer::analyze_opened(
             opened,
-            AnalysisProfile::FooDrMeter108CandidateV1,
             0,
             &ExecutionControl::new(&cancellation, &progress),
             "event-path.fake",
@@ -291,7 +284,6 @@ mod tests {
 
         let error = Analyzer::analyze_opened(
             opened,
-            AnalysisProfile::FooDrMeter108CandidateV1,
             7,
             &ExecutionControl::new(&cancellation, &progress),
             "event-path.fake",
@@ -328,7 +320,6 @@ mod tests {
 
         let error = Analyzer::analyze_opened(
             opened,
-            AnalysisProfile::FooDrMeter108CandidateV1,
             0,
             &ExecutionControl::new(&cancellation, &progress),
             "diagnostics.fake",

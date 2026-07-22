@@ -1,6 +1,5 @@
 {
   "claims": {
-    "compatibility": "none",
     "foobarParity": "not_assessed",
     "scope": "serial isolated analyzer-core suite"
   },
@@ -60,7 +59,6 @@
   "items": [
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -171,7 +169,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -282,7 +279,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -393,7 +389,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -504,7 +499,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -615,7 +609,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -726,7 +719,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -837,7 +829,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -948,7 +939,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1059,7 +1049,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1170,7 +1159,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1281,7 +1269,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1392,7 +1379,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1517,7 +1503,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1656,7 +1641,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1837,7 +1821,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -1948,7 +1931,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2059,7 +2041,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2170,7 +2151,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2295,7 +2275,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2420,7 +2399,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2545,7 +2523,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2670,7 +2647,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2781,7 +2757,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -2892,7 +2867,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3003,7 +2977,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3114,7 +3087,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3323,7 +3295,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3434,7 +3405,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3545,7 +3515,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3656,7 +3625,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3767,7 +3735,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -3906,7 +3873,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4045,7 +4011,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4156,7 +4121,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4267,7 +4231,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4378,7 +4341,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4489,7 +4451,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },
@@ -4600,7 +4561,6 @@
     },
     {
       "claims": {
-        "compatibility": "none",
         "foobarParity": "not_assessed",
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core"
       },

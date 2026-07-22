@@ -21,7 +21,7 @@ ADR-0010 已证明 `macos-26` arm64 clean runner 可以通过 Rust/Tauri 门禁�
 - CPU：Apple Silicon，Rust target 为 `aarch64-apple-darwin`；
 - 最低系统版本：macOS 11.0；
 - 制品：arm64 CLI archive 与包含 arm64 `.app` 的 DMG；
-- 身份：`FooDrMeter108CandidateV1 / Unverified`；
+- 分析结果：结构化报告保留固定数值参数，不暴露内部 profile 或状态；
 - 签名：不执行 Developer ID signing；
 - 公证：不执行 notarization 或 stapling。
 
@@ -37,7 +37,7 @@ ADR-0010 已证明 `macos-26` arm64 clean runner 可以通过 Rust/Tauri 门禁�
 3. 同时包含 CLI 与 GUI；
 4. 拒绝 `--allow-dirty` 与 `--replace`；
 5. 验证 DMG、bundle identity/version、唯一 arm64 executable、macOS 11.0 minimum、
-   CLI/schema/profile、SHA-256 和签名观察；
+   CLI/schema/固定参数、SHA-256 和签名观察；
 6. 在 manifest 中标记为 `unsigned_macos_arm64_release_candidate`，而不是
    `local_staging_only` 或已公开发行。
 
@@ -48,7 +48,7 @@ workflow dispatch 会在确认 ref 为 `refs/heads/main` 后生成 unsigned cand
 
 仓库保存一份双语 `docs/RELEASE_DRAFT_0.2.0.md`，作为后续 draft GitHub Release 的
 说明来源。它必须醒目标明 Apple Silicon-only、macOS 11.0+、无 Developer ID、无
-notarization、Gatekeeper 可能阻止直接打开，以及分析结果仍为 `Unverified`。
+notarization，以及 Gatekeeper 可能阻止直接打开。
 
 ## 不在范围内
 

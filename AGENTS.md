@@ -5,7 +5,7 @@
 This repository is a virtual Cargo workspace targeting version 0.2.0:
 
 - `crates/macinmeter-domain` — valid domain types, reports, and stable errors
-- `crates/macinmeter-analysis` — the sole `FooDrMeter108CandidateV1` streaming analyzer
+- `crates/macinmeter-analysis` — the sole fixed-rule streaming analyzer
 - `crates/macinmeter-codecs` — strict in-process PCM sources; WAV/FLAC/AIFF
   are currently the only stable routes
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
@@ -22,7 +22,7 @@ dependencies into lower layers.
 
 - Every first-party Rust crate uses `#![forbid(unsafe_code)]`.
 - Production analysis has one `AnalyzerSession`; do not add a compatibility
-  engine or legacy profile.
+  engine or a selectable profile.
 - Valid PCM blocks and the analyzer boundary use finite interleaved `f64`;
   source float64 samples must not be narrowed before analysis.
 - Stable product analysis accepts at most 64 channels. Preserve broader source
@@ -40,9 +40,11 @@ dependencies into lower layers.
 - Completed M3 did not add a second backend, FFmpeg, DSD, Songbird/Opus,
   Tokio/Rayon scheduling, SIMD, trimming, silence preprocessing, or file-level
   parallelism. Any such change requires a separate evidence-backed decision.
-- Results are always `FooDrMeter108CandidateV1 / Unverified`; never claim
-  reference parity.
-- M4 validates the fixed x64 numeric profile through finite interleaved `f64`
+- Analysis reports contain the fixed numeric parameters needed for
+  reproducibility. Internal profile names and compatibility status are not
+  report fields; do not serialize or render them, and do not claim reference
+  parity beyond the recorded scope.
+- M4 validates the fixed x64 numeric rules through finite interleaved `f64`
   and `AnalyzerSession`, independently of product decoder support. Do not
   graduate WAVE_FORMAT_EXTENSIBLE or another codec route merely to replay the
   reference corpus.

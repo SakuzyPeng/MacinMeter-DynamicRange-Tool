@@ -110,9 +110,7 @@ if log:
     with open(log, "a", encoding="ascii") as output:
         output.write(f"{os.getpid()} {input_id}\n")
 algorithm = {
-    "profile": "foo_dr_meter_1_0_8_candidate_v1",
-    "profileVersion": 1,
-    "compatibility": "unverified",
+    "parameters": {"histogramBins": 10001},
 }
 channel_values = [
     {
@@ -161,8 +159,7 @@ value = {
         "channels": channel_values,
     },
     "claims": {
-        "scope": "synthetic decoder-independent Candidate result",
-        "compatibility": "unverified",
+        "scope": "synthetic decoder-independent analysis result",
         "referenceParity": "not_assessed",
     },
 }

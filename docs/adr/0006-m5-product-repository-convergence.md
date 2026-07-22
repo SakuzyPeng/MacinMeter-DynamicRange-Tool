@@ -76,9 +76,9 @@ frontend，但不执行 hostile corpus verifier、不发布制品、不创建 re
 ### 5. 0.2.0 的稳定能力不再称为“M0 能力”
 
 用户文档使用“0.2.0 stable/trusted surface”。M0–M4 只作为路线图和 ADR 历史
-术语保留。所有结果继续醒目标记
-`FooDrMeter108CandidateV1 / Unverified`；M4 的有界零差分记录不能扩张成任意输入、
-host、decoder 或完整 foobar/component parity。
+术语保留。M4 的有界零差分记录按其 target、corpus、字段与运行边界陈述，不能
+扩张成任意输入、host、decoder 或完整 foobar/component parity；这些限制不作为
+逐项结果标签重复展示。
 
 ### 6. 发行制品需要独立、可复核的身份
 

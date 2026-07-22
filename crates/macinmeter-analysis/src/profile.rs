@@ -1,9 +1,7 @@
 use macinmeter_domain::{
-    AlgorithmDescriptor, AlgorithmParameters, AnalysisError, AnalysisProfile, AnalysisStage,
-    CompatibilityStatus, ErrorCode, FiniteF64,
+    AlgorithmDescriptor, AlgorithmParameters, AnalysisError, AnalysisStage, ErrorCode, FiniteF64,
 };
 
-pub(crate) const PROFILE_VERSION: u32 = 1;
 pub(crate) const WINDOW_DURATION_COEFFICIENT: f64 = 3.004_081_632_653_061_3;
 pub(crate) const RMS_SUM_MULTIPLIER: f64 = 2.0;
 pub(crate) const HISTOGRAM_BINS: usize = 10_001;
@@ -21,7 +19,7 @@ pub(crate) const SILENT_CHANNEL_DR_DB: f64 = 0.0;
 pub(crate) const INCLUDES_LFE_IN_TRACK_AGGREGATE: bool = true;
 pub(crate) const RESULT_PRECISION_BITS: u32 = 32;
 
-pub(crate) fn descriptor(profile: AnalysisProfile) -> Result<AlgorithmDescriptor, AnalysisError> {
+pub(crate) fn descriptor() -> Result<AlgorithmDescriptor, AnalysisError> {
     let finite = |value| {
         FiniteF64::new(value).map_err(|_| {
             AnalysisError::new(
@@ -31,28 +29,23 @@ pub(crate) fn descriptor(profile: AnalysisProfile) -> Result<AlgorithmDescriptor
             )
         })
     };
-    Ok(match profile {
-        AnalysisProfile::FooDrMeter108CandidateV1 => AlgorithmDescriptor {
-            profile,
-            profile_version: PROFILE_VERSION,
-            compatibility: CompatibilityStatus::Unverified,
-            parameters: AlgorithmParameters {
-                window_duration_coefficient: finite(WINDOW_DURATION_COEFFICIENT)?,
-                rms_sum_multiplier: finite(RMS_SUM_MULTIPLIER)?,
-                histogram_bins: HISTOGRAM_BINS,
-                rms_histogram_min_db: finite(RMS_HISTOGRAM_MIN_DB)?,
-                rms_histogram_max_db: finite(RMS_HISTOGRAM_MAX_DB)?,
-                histogram_bin_width_db: finite(HISTOGRAM_BIN_WIDTH_DB)?,
-                peak_key_bin_width_db: finite(PEAK_KEY_BIN_WIDTH_DB)?,
-                loud_fraction: finite(LOUD_FRACTION)?,
-                minimum_tail_frames: MINIMUM_TAIL_FRAMES,
-                include_entire_boundary_bin: INCLUDE_ENTIRE_BOUNDARY_BIN,
-                exact_window_virtual_zero_peak: EXACT_WINDOW_VIRTUAL_ZERO_PEAK,
-                dr_floor_db: finite(DR_FLOOR_DB)?,
-                silent_channel_dr_db: finite(SILENT_CHANNEL_DR_DB)?,
-                includes_lfe_in_track_aggregate: INCLUDES_LFE_IN_TRACK_AGGREGATE,
-                result_precision_bits: RESULT_PRECISION_BITS,
-            },
+    Ok(AlgorithmDescriptor {
+        parameters: AlgorithmParameters {
+            window_duration_coefficient: finite(WINDOW_DURATION_COEFFICIENT)?,
+            rms_sum_multiplier: finite(RMS_SUM_MULTIPLIER)?,
+            histogram_bins: HISTOGRAM_BINS,
+            rms_histogram_min_db: finite(RMS_HISTOGRAM_MIN_DB)?,
+            rms_histogram_max_db: finite(RMS_HISTOGRAM_MAX_DB)?,
+            histogram_bin_width_db: finite(HISTOGRAM_BIN_WIDTH_DB)?,
+            peak_key_bin_width_db: finite(PEAK_KEY_BIN_WIDTH_DB)?,
+            loud_fraction: finite(LOUD_FRACTION)?,
+            minimum_tail_frames: MINIMUM_TAIL_FRAMES,
+            include_entire_boundary_bin: INCLUDE_ENTIRE_BOUNDARY_BIN,
+            exact_window_virtual_zero_peak: EXACT_WINDOW_VIRTUAL_ZERO_PEAK,
+            dr_floor_db: finite(DR_FLOOR_DB)?,
+            silent_channel_dr_db: finite(SILENT_CHANNEL_DR_DB)?,
+            includes_lfe_in_track_aggregate: INCLUDES_LFE_IN_TRACK_AGGREGATE,
+            result_precision_bits: RESULT_PRECISION_BITS,
         },
     })
 }

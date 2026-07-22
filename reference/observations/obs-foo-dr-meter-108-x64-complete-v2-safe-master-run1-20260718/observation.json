@@ -99,7 +99,6 @@
   ],
   "claims": {
     "scope": "safe-master exported report text for this exact runtime target only",
-    "compatibility": "none",
     "appliesToVersion": "foo_dr_meter 1.0.8 x64 under foobar2000 2.25.10 only"
   }
 }

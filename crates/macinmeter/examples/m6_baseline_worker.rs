@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisProfile, AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
+    AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
     CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
 };
 use macinmeter_codecs::{DecoderFactory, ReadOutcome};
@@ -100,7 +100,6 @@ fn run_analysis(arguments: &[OsString]) -> Result<Value, String> {
         json!({
             "blockFrames": block_frames,
             "pattern": "deterministic_dense_v1",
-            "profile": "foo_dr_meter_1_0_8_candidate_v1",
         }),
     )
 }
@@ -114,8 +113,7 @@ fn timed_analysis_workload(
 ) -> Result<(AnalysisResult, Duration), String> {
     let channel_count = stream.channels.as_usize();
     let started = Instant::now();
-    let mut session = AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1)
-        .map_err(|error| error.to_string())?;
+    let mut session = AnalyzerSession::new(stream).map_err(|error| error.to_string())?;
     let full_blocks = frames / u64::try_from(block_frames).map_err(|error| error.to_string())?;
     for _ in 0..full_blocks {
         session

@@ -6,9 +6,9 @@
 - 决策范围：M4
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - 证据矩阵：[M4 x64 数值声明证据矩阵](../M4_X64_NUMERIC_CLAIM_MATRIX.md)
-- 收口报告：[M4 固定 x64 数值声明收口报告](../M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
+- 收口报告：[M4 固定 x64 数值声明收口报告](../M4_X64_NUMERIC_ALIGNMENT_REPORT.md)
 - 当前记录：
-  [direct-PCM Candidate conformance](../../reference/conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)
+  [direct-PCM conformance](../../reference/conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)
 - 前置决策：
   - [ADR-0002：限定 M1 的参考数值契约](0002-m1-reference-numeric-scope.md)
   - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)
@@ -44,13 +44,13 @@ M4 唯一参考目标为：
   `ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489`
 - 固定 runtime profile：`fixed_foobar_2_25_10`
 
-MacinMeter 可以在其他操作系统和 CPU 架构运行，但 Candidate 所复现的是上述固定
+MacinMeter 可以在其他操作系统和 CPU 架构运行，但本阶段所复现的是上述固定
 x64 数值控制流。x86 1.0.8 只作为跨架构精度判别证据，不与 x64 合并为一个未限定
 架构的契约；1.0.3 也不在本阶段外推。
 
 ### 2. M4 纳入的声明
 
-默认 `FooDrMeter108CandidateV1` 纳入：
+默认固定分析规则纳入：
 
 - 有限、交错 `f64` PCM 上的窗口、RMS、histogram、peak 排名/回退、loud 20%、
   静音和默认全声道 track 聚合；
@@ -111,8 +111,8 @@ conformance 必须新增 reference-side adapter：
 
 M4 增加两类本地门禁：
 
-- 证据契约测试：固定关键 JSON artifact 的 SHA-256、目标身份、记录范围、匹配计数
-  和 `candidate / unverified` 声明；它只防止证据元数据静默漂移；
+- 证据契约测试：固定关键 JSON artifact 的 SHA-256、目标身份、记录范围与匹配
+  计数；它只防止证据元数据静默漂移；
 - 产品回归测试：直接固定 Candidate 的 chunk/window/multichannel/renderer/album
   结果；它保证实现忠实于已登记规则，但不提升参考证据等级。
 
@@ -132,17 +132,11 @@ M4 结束时每一项已知限制必须属于以下一种：
 
 不能保留“结果有偏但原因不明”的第四类。
 
-### 7. M4 不自动升级 profile 名称
+### 7. 证据范围不写入用户报告
 
 完成 M4 只形成固定 x64 目标、固定数值字段和有限 corpus 上的有界一致性报告。
-生产身份继续是：
-
-```text
-FooDrMeter108CandidateV1 / Unverified
-```
-
-`accepted`、`verified`、`compatible` 或新的 Reference profile 都需要独立决策；
-本 ADR 不授权修改这些名称。
+产品只有一套分析规则，不向请求方暴露可选 profile；结构化报告保留固定数值
+参数，而证据范围由 reference 记录表达。
 
 ## 出口条件
 
@@ -156,7 +150,7 @@ M4 只有在以下条件全部满足时才能变为 `DONE`：
 5. album/renderer 纳入的纯数值边界具有产品测试；
 6. 所有限制和非目标进入最终兼容性报告；
 7. 没有纳入范围内未解释的系统性残差；
-8. 输出仍明确标记 `CandidateV1 / Unverified`。
+8. 报告保留算法 profile，但不附加项目级 compatibility 状态。
 
 ## 实施顺序
 

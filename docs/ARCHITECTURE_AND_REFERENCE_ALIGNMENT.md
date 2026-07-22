@@ -1,7 +1,7 @@
 # 架构整改与参考插件重新对齐路线图
 
 > 状态：本轮路线图已完成（M0、M1、M2、M3、M4、M5、M6：`DONE`）。
-> foo_dr_meter 1.0.8 Candidate V1 已实施；schema-v3
+> foo_dr_meter 1.0.8 的固定分析规则已实施；schema-v3
 > x64 safe-master 的 track DR 39/39、channel DR 62/62、overall peak 39/39、
 > overall RMS 39/39、channel RMS 62/62、duration 39/39。本文继续作为整改、
 > 重构和逆向研究的主记录。
@@ -98,11 +98,11 @@
 
 截至 2026-07-18，当前目标已固定为 foo_dr_meter 1.0.8：x64/x86 二进制静态
 分析、x86 初始观测和 x64 complete-v2 safe-master 观测共同形成
-`FooDrMeter108CandidateV1`。x64 架构精度边界已达到 E2；产品 PCM 主链改为 f64
+一套固定分析规则。x64 架构精度边界已达到 E2；产品 PCM 主链改为 f64
 后，同一 observation 的整数 track DR 为 39/39、每声道两位 DR token 为 62/62。
 schema v3 又以独立 report metrics 对齐 overall peak 39/39、overall RMS 39/39
 与 channel RMS 62/62。这足以关闭当前 corpus 中公开同语义字段的已知系统差分，
-但不等同于完整 conformance；所有输出继续标记 `Unverified`。
+但不等同于完整 conformance；准确范围由对应证据记录定义。
 
 2026-07-19 又建立了固定 x64 target `ff3556ad` 的隔离 analyzer-core harness：
 每个输入启动一个全新 worker，在不启动 foobar2000 的前提下直接调用
@@ -111,8 +111,7 @@ complete-v2 safe-master 的 39 项输入均完成受控执行。真实、固定�
 `shared.dll` 被保留用于 DLL load/unload lifecycle；core 调用期间，目标对
 `shared.dll` 的 13 个普通 IAT 入口全部由 fail-fast tripwire 接管。该记录建立了
 更纯净的算法 core 动态证据，但没有验证 foobar 解码、组件注册、host lifecycle、
-metadata、album 或 renderer；其声明固定为 `compatibility: none`、
-`foobarParity: not_assessed`。
+metadata、album 或 renderer。
 
 ADR-0002 随后把 M1 收紧为固定 x64 数值契约：per-track analyzer core 是主体，
 同时保留 album 聚合与 renderer 中会改变数值结果的纯算术、窄化和舍入。foobar
@@ -199,10 +198,10 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | REF-004 | DONE | 建立合成 PCM 实验生成器 | 可精确控制窗口边界、幅度、峰值顺序和多声道 |
 | REF-005 | DONE | 完成目标行为矩阵 | x86 15 项历史导出、x64 39 项 safe-master/隔离 core，以及 duration/weighting/histogram 38 项隔离边界记录已登记；block-size 与 fresh-worker 稳定性检查已固定，host-edge、album playlist 和 host repeat 不属于 M1 |
 | REF-006 | DONE | 开展静态与动态逆向 | x64 analyzer/session/channel/result 已形成 accepted 隔离 core 动态记录；duration leaf、可选多声道 weighting 与 histogram endpoint 已有专门动态交叉；album 聚合、完整 renderer、foobar host/metadata/text parity 保持各自证据边界 |
-| REF-007 | DONE | 编写版本化数值规格 | Candidate 已纳入 x64 core、report 数值、duration 舍入、histogram clamp、多声道 weighting 和 album 聚合规则，并明确证据等级与非目标；DONE 不表示 profile 已升级为 accepted/verified |
-| REF-008 | DONE | 实现 Candidate profile | 唯一 f64 生产 profile；schema v3 的六组公开 DR/report/duration 字段完全匹配，仍不宣称参考兼容 |
+| REF-007 | DONE | 编写版本化数值规格 | 规格已纳入 x64 core、report 数值、duration 舍入、histogram clamp、多声道 weighting 和 album 聚合规则，并明确证据等级与非目标 |
+| REF-008 | DONE | 实现固定分析规则 | 唯一 f64 生产路径；schema v3 的六组公开 DR/report/duration 字段完全匹配，不将证据范围扩张为完整产品一致性 |
 | REF-009 | DONE | 建立有界参考 conformance suite | clean-commit successor 覆盖六组字段、四项 footer consistency 与 DR0 反事实；isolated core 对既有报告四类字段达到 39/39、62/62、62/62、39/39；production intermediate 差分不是目标 |
-| REF-010 | DONE | 固定范围与兼容性声明 | 保持 `CandidateV1 / Unverified`，只陈述固定 x64 数值证据，不声称完整 foobar/component parity |
+| REF-010 | DONE | 固定数值声明范围 | 只陈述固定 x64 数值证据，不把它扩张为完整 foobar/component parity |
 
 ### 5.4 P2：测试、发布、性能和维护
 
@@ -224,7 +223,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | RELEASE-002 | DONE | 固定未签名 Apple Silicon 首发候选 | 0.2.0 只保留 macOS 11.0+ arm64 CLI/GUI；manual CI 生成 clean immutable candidate 并保留 14 天，不自动 tag、签名、公证或发布 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | DONE | 重建 benchmark 方法 | ADR-0007 固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；clean 9239609 scalar baseline 的 105 个 measured sample 与报告已保存 |
-| DOC-001 | DONE | 修正过度兼容性声明 | 所有当前输出标记 `foo_dr_meter 1.0.8 Candidate V1 / Unverified` |
+| DOC-001 | DONE | 修正过度兼容性声明 | 用户文档只陈述有记录支持的数值范围，不在逐项结果上附加项目状态标签 |
 | DOC-002 | DONE | 清理陈旧文档和脚本 | Tauri、格式、MSRV、CLI、性能与法律文档已同步 |
 
 ## 6. 参考插件研究计划
@@ -309,7 +308,7 @@ M1 范围内的参考对齐至少需要满足：
 3. album 与 renderer 中纳入范围的纯数值算术、窄化和舍入具有产品边界测试；
 4. 残差不随采样率、时长、幅度或声道数呈系统趋势；
 5. 极短音频、尾窗、重复峰、静音和多声道没有未解释例外；
-6. Candidate profile 不依赖解码 chunk 大小或内部优化路径；
+6. 固定分析规则不依赖解码 chunk 大小或内部优化路径；
 7. 对参考插件本身已确定的奇怪数值行为保持忠实复现，不擅自修正。
 
 “最终差值小于某个 dB”不能单独作为对齐完成的标准，因为多个内部错误可能相互
@@ -323,7 +322,7 @@ M1 范围内的参考对齐至少需要满足：
 
 ```text
 domain
-├── AnalysisProfile / StreamSpec
+├── StreamSpec / AlgorithmParameters
 ├── SourceInfo / PcmStreamInfo
 ├── AnalysisReport / ChannelResult
 ├── FiniteF32 / FiniteF64 / DecodedDuration
@@ -354,22 +353,13 @@ adapters
 
 `domain` 不依赖 CLI、Tauri、Symphonia 或 FFmpeg。`analysis` 不知道文件路径和输出格式。`adapters` 不直接构造算法内部状态。
 
-### 7.2 分析 profile
+### 7.2 固定分析规则
 
-当前生产分析只保留一个 profile：
-
-```text
-FooDrMeter108CandidateV1
-```
-
-- Rust 名称固定为 `FooDrMeter108CandidateV1`，wire 名称固定为
-  `foo_dr_meter_1_0_8_candidate_v1`；
-- `CandidateV1 / Unverified` 同时标识目标版本、候选规则修订和未完成的
-  conformance，不得简写成已经兼容；
-- 只有 conformance 出口条件全部满足后，才讨论增加或改名为稳定 Reference
-  profile；
-- Edge trim、静音过滤等作为显式 preprocessing pipeline，不伪装成另一套“官方”算法；
-- 不保留原 `ProvisionalV1` 兼容别名，避免同一生产规则出现两个身份。
+生产路径只有一套分析规则，因此 `AnalyzerSession`、`AnalyzeRequest`
+与 `BatchRequest` 不接受无意义的 profile 选择。结构化报告保留固定
+`AlgorithmParameters` 以便复现数值，但不序列化内部算法名称或项目状态。
+Edge trim、静音过滤等若未来引入，必须是显式 preprocessing pipeline，
+不伪装成另一套默认算法。
 
 ### 7.3 解码契约
 
@@ -487,9 +477,9 @@ peak/RMS、DR/dB 与 duration 舍入，仅按纯数值叶子规则进入规格�
 已足以确定公式，不要求人工制作 album playlist 或完整文本报告。
 
 M1 的固定目标、输入域、证据与非目标由
-[ADR-0002](adr/0002-m1-reference-numeric-scope.md) 收口。Candidate 继续标记
-`Unverified`，表示没有声明任意 PCM 或完整 foobar/component parity；这不否定
-“事实与证据基础”里程碑已经完成。
+[ADR-0002](adr/0002-m1-reference-numeric-scope.md) 收口。任意 PCM 与完整
+foobar/component parity 不在该记录的声明范围内；这不否定“事实与证据基础”
+里程碑已经完成。
 
 出口条件：
 
@@ -611,9 +601,9 @@ EdgeTrimmer 和其他 preprocessing 没有需求时不实施，有需求时另�
 状态：`DONE`（范围与验收决策见
 [ADR-0005](adr/0005-m4-bounded-x64-numeric-claim.md)，逐项审计见
 [M4 x64 数值声明证据矩阵](M4_X64_NUMERIC_CLAIM_MATRIX.md)，结论见
-[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)）。
+[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_ALIGNMENT_REPORT.md)）。
 
-- 完成并审查 `FooDrMeter108CandidateV1`，只实现 REF 轨道有证据支持的规则；
+- 完成并审查固定分析规则，只实现 REF 轨道有证据支持的行为；
 - 对齐窗口、RMS、量化、Peak、20%、舍入和多声道聚合；
 - 已将产品 PCM 入口改为 `f64`，关闭 complete-v2 暴露的两处 source-f64
   量化边界差分；
@@ -709,7 +699,7 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 20. [x] `docs: close m4 with exact direct-pcm conformance`
     - clean implementation commit 与 release worker 身份固定；
     - 4096/997 frames-per-block 两次 39 项运行均为零差分；
-    - 最终报告公开限制，profile 保持 `CandidateV1 / Unverified`。
+    - 最终报告公开限制由证据记录明确列出，不写入逐项分析结果。
 21. [x] `build: establish m5 repository contract`
     - 根 workspace 统一所有直接第三方依赖与 package identity；
     - GUI build 改为只读版本核对，显式命令才同步版本镜像；
@@ -717,12 +707,12 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - hostile corpus 不再于普通 Cargo test 进程中解码。
 22. [x] `docs: converge active 0.2.0 product claims`
     - 用户、GUI、格式、性能、第三方许可与贡献者文档不再把 M0 写作当前阶段；
-    - M4 有界 direct-PCM conformance 与 `CandidateV1 / Unverified` 限制同时可见；
+    - M4 有界 direct-PCM conformance 的适用范围与限制同时可见；
     - 手动 validation、版本同步和 hostile corpus 风险边界与实际入口一致。
 23. [x] `build: verify local release artifacts`
     - clean tree 默认门禁记录 source commit、toolchain、host target 与两个 lock hash；
     - CLI archive 固定 payload manifest，解包后验证版本、WAV route、schema v3、
-      Candidate profile 与 `Unverified`；
+      固定分析参数；
     - 当前 host macOS DMG 通过镜像、挂载 bundle identity、executable 与 arm64
       architecture 检查；
     - release manifest 与全部制品由 `SHA256SUMS` 精确覆盖并可反向重跑 smoke；
@@ -812,7 +802,7 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
 37. [x] `release: prepare unsigned Apple Silicon candidate`
     - 0.2.0 发行面固定为 macOS 11.0+、`aarch64-apple-darwin`、CLI + GUI；
     - candidate mode 要求 clean source、Rust 1.88、Node.js 22、准确 arm64 host、
-      不可替换，并固定 unsigned / unnotarized / Unverified manifest；
+      不可替换，并固定 unsigned / unnotarized manifest；
     - manual `main` workflow 使用固定 upload action 保留 14 天 candidate，但不创建
       tag、GitHub Release 或公开资产；
     - 双语 release draft 醒目标明 Gatekeeper、平台与兼容性边界。
@@ -866,7 +856,7 @@ ADR-0011 随后把 0.2.0 首发固定为未签名 Apple Silicon macOS，并只�
 | 决策 | 建议 |
 | --- | --- |
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
-| 默认算法 | 当前使用 `FooDrMeter108CandidateV1 / Unverified`；M4 有界 conformance 已完成，任何名称/状态升级仍需独立决策 |
+| 默认算法 | 产品只有一套固定规则；M4 有界数值对齐已完成，公开报告不暴露内部名称或状态 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
 | 默认并发 | 0.2.0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |

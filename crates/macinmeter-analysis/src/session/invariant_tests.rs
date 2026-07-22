@@ -13,9 +13,6 @@ struct SessionBits {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AlgorithmBits {
-    profile: AnalysisProfile,
-    profile_version: u32,
-    compatibility: macinmeter_domain::CompatibilityStatus,
     float_parameters: [u64; 9],
     histogram_bins: usize,
     minimum_tail_frames: usize,
@@ -61,12 +58,7 @@ impl From<&AnalyzerSession> for SessionBits {
             frames_seen,
             channels,
         } = session;
-        let AlgorithmDescriptor {
-            profile,
-            profile_version,
-            compatibility,
-            parameters,
-        } = algorithm;
+        let AlgorithmDescriptor { parameters } = algorithm;
         let AlgorithmParameters {
             window_duration_coefficient,
             rms_sum_multiplier,
@@ -88,9 +80,6 @@ impl From<&AnalyzerSession> for SessionBits {
         Self {
             stream: stream.clone(),
             algorithm: AlgorithmBits {
-                profile: *profile,
-                profile_version: *profile_version,
-                compatibility: *compatibility,
                 float_parameters: [
                     window_duration_coefficient.get().to_bits(),
                     rms_sum_multiplier.get().to_bits(),
@@ -178,7 +167,6 @@ impl From<&AnalyzerSession> for StorageShape {
 fn session(sample_rate: u32, channels: usize, layout: ChannelLayout) -> AnalyzerSession {
     AnalyzerSession::new(
         StreamSpec::new(sample_rate, u16::try_from(channels).unwrap(), layout).unwrap(),
-        AnalysisProfile::FooDrMeter108CandidateV1,
     )
     .unwrap()
 }

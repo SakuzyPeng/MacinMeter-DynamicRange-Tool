@@ -294,7 +294,6 @@ def _unprepared_input_record(
 def _item_claims() -> dict[str, str]:
     return {
         "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core",
-        "compatibility": "none",
         "foobarParity": "not_assessed",
     }
 
@@ -463,7 +462,6 @@ def run_suite(
         },
         "claims": {
             "scope": "serial isolated analyzer-core suite",
-            "compatibility": "none",
             "foobarParity": "not_assessed",
         },
         "limitations": [

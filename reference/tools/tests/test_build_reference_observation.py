@@ -229,7 +229,6 @@ class SyntheticInputs:
             ],
             "claims": {
                 "scope": "safe-master exported report text for this fixed target",
-                "compatibility": "none",
                 "appliesToVersion": (
                     "foo_dr_meter 1.0.8 x64 under foobar2000 2.25.10 only"
                 ),
@@ -501,25 +500,25 @@ class ReferenceObservationHarnessTests(unittest.TestCase):
                             repository_root=inputs.root,
                         )
 
-    def test_import_cannot_claim_compatibility_or_repeat_consistency(self) -> None:
+    def test_import_rejects_undeclared_claims_and_repeat_consistency(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             inputs = SyntheticInputs(Path(directory))
             capture = copy.deepcopy(inputs.capture_value)
-            capture["claims"]["compatibility"] = "verified"
+            capture["claims"]["status"] = "verified"
             inputs.metadata.write_bytes(json_bytes(capture))
             with self.assertRaisesRegex(
-                HARNESS.HarnessError, "compatibility must remain 'none'"
+                HARNESS.HarnessError, "capture.claims"
             ):
                 HARNESS.build_package(
                     inputs.metadata,
                     inputs.manifest,
                     inputs.corpus,
                     inputs.report,
-                    inputs.root / "compatibility-package",
+                    inputs.root / "extra-claim-package",
                     repository_root=inputs.root,
                 )
 
-            capture["claims"]["compatibility"] = "none"
+            capture["claims"].pop("status")
             capture["run"]["repeatConsistency"] = "identical"
             inputs.metadata.write_bytes(json_bytes(capture))
             with self.assertRaisesRegex(

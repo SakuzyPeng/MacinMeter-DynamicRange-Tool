@@ -6,9 +6,9 @@
 当前 M1 研究边界由
 [`ADR-0002`](../docs/adr/0002-m1-reference-numeric-scope.md) 固定为
 `foo_dr_meter 1.0.8 x64` 的 per-track analyzer 数值契约，并保留 album 聚合与
-renderer 的纯数值规则。M1 证据基础已完成；`CandidateV1 / Unverified` 表示没有
-声明任意输入或完整 foobar/component parity，不表示仍需补 host、playlist、
-metadata、完整文本或 production 中间状态同构。
+renderer 的纯数值规则。M1 证据基础已完成；任意输入、完整 foobar/component、
+host、playlist、metadata、完整文本与 production 中间状态同构不在该数值契约的
+声明范围内。
 
 M4 的声明收口、decoder-independent 验收方式和当前缺口见
 [`ADR-0005`](../docs/adr/0005-m4-bounded-x64-numeric-claim.md) 与
@@ -17,7 +17,7 @@ M4 的声明收口、decoder-independent 验收方式和当前缺口见
 当前 clean implementation 的两次 39 项 direct-PCM 精确比较见
 [`M4 conformance record`](conformance/conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)；
 最终边界结论见
-[`M4 收口报告`](../docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)。
+[`M4 收口报告`](../docs/M4_X64_NUMERIC_ALIGNMENT_REPORT.md)。
 
 ## 目录
 
@@ -62,9 +62,8 @@ reference duration token 39/39；见
 它对 footer 只登记 track count、sample-rate set、channel-count set 和重建的
 unweighted DR token 四项一致性，以及 DR0 纳入的反事实；不把最终整数 token
 外推为精确 internal album mean、length weighting 或 host metadata parity。
-旧产物不因 successor 落地被改写。有限 conformance 不会把 candidate 升级为
-accepted，也不改变 `Unverified` 状态；album 完整数值公式为 E1 静态证据，但
-其汇编数据流已经确定，不以 playlist 导出作为 M1 前置条件。
+旧产物不因 successor 落地被改写。album 完整数值公式为 E1 静态证据，但其汇编
+数据流已经确定，不以 playlist 导出作为 M1 前置条件。
 
 固定 x64 target `ff3556ad` 现另有
 [`隔离 analyzer-core harness`](observations/CORE_HARNESS.md)。它不启动

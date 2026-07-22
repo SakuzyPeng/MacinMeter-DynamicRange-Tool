@@ -62,7 +62,7 @@ rate。
 2026-07-19 的固定 x64 数值边界 observation
 [`OBS-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719`](../observations/obs-foo-dr-meter-108-x64-numeric-boundaries-v1-run1-20260719/record.md)
 直接调用上述 `0x180038540` 叶子。其 `suite.json` SHA-256 为
-`28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b`，
+`b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3`，
 target SHA-256 与本记录相同，24 个预注册向量全部匹配：
 
 - `0.5s`、`1.5s` 及 44.1/48 kHz 精确半秒的下侧、半值和上侧；

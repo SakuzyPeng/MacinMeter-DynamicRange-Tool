@@ -6,11 +6,9 @@ MacinMeter 是一款离线、本地优先的音频动态范围（DR）分析工�
 WAV、FLAC 与 AIFF 文件报告逐声道和逐轨 DR。命令行工具、Tauri 桌面前端与
 Rust API 共用同一套流式分析引擎。
 
-> **关于参考结果。** MacinMeter 当前把 profile 标记为
-> `foo_dr_meter 1.0.8 Candidate V1 / Unverified`。它来自对一个固定
-> `foo_dr_meter 1.0.8 x64` 目标证据的候选解释，已记录 projection 在固定
-> conformance corpus 上差分为零。项目把它呈现为有边界的证据，而不是官方认证，
-> 也不是对所有文件和所有 foobar2000 环境结果相同的承诺。
+分析算法来自对一个固定 `foo_dr_meter 1.0.8 x64` 目标的重建。已记录 projection
+在固定 conformance corpus 上差分为零；准确性章节列出了对应的输入、字段和运行
+边界。
 
 ## 支持格式
 
@@ -67,7 +65,7 @@ target/release/macinmeter analyze tests/fixtures/edge_cases.wav
 ```
 
 ```text
-MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified
+MacinMeter
 Source: tests/fixtures/edge_cases.wav
 PCM: 44100 Hz, 2 channels, 308700 frames
 Duration: 0:07
@@ -83,7 +81,7 @@ Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
 
 ### 如何理解结果
 
-- `DR2` 是当前候选 profile 给出的整数 track aggregate。在这一度量内，数值越大
+- `DR2` 是整数 track aggregate。在这一度量内，数值越大
   表示 selected peak 与 loud-window RMS 的比值越大。DR 高本身不代表录音质量
   好；DR 很低则往往是强压缩的负面信号，更可能对应表现受损的母带，不过音乐
   类型和创作意图仍然会影响判断。
@@ -92,7 +90,7 @@ Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
   不是同一个量。
 - dBFS 以归一化幅度 `1.0` 作为 0 dB 参考。受支持的 IEEE float PCM 可以包含
   高于该参考的有限样本，所以 0 dBFS 不是普适的削波边界。
-- Candidate V1 会显式保留静音声道并让其贡献数值 DR0；数据不足的声道则明确排除。
+- 当前算法会显式保留静音声道并让其贡献数值 DR0；数据不足的声道则明确排除。
 
 上述 fixture 用于确定性自动化测试，不代表典型音乐发行物。
 
@@ -175,18 +173,17 @@ unweighted 与 decoded-duration weighting。playlist 分组、metadata、footer
 | --- | --- |
 | schema-v3 safe-master 的 track DR、overall peak、overall RMS 与渲染时长 | 各 39/39 |
 | 同一 run 的 channel DR 与 channel RMS | 各 62/62 |
-| decoder-independent Candidate direct-PCM final-field projection | 固定 39 项输入差分为 0 |
+| decoder-independent direct-PCM final-field projection | 固定 39 项输入差分为 0 |
 | 隔离 x64 analyzer-core 运行 | 39 项输入的预注册断言全部满足 |
 | duration、weighting 与 histogram 端点数值边界向量 | 24/24、8/8、6/6 |
 
 这张表描述的是一个指定 target、corpus、字段集合和运行边界。任意音频、x86
 及其他插件版本、foobar2000 解码、宿主与 playlist 行为、metadata 来源、完整
-文本渲染和内部实现状态都不在这些观测之中。这就是
-`Candidate V1 / Unverified` 所表达的范围。
+文本渲染和内部实现状态都不在这些观测之中。
 
 相应记录包括 [M4 证据矩阵](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md)、
-[M4 兼容性报告](docs/M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)与
-[Candidate V1 规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)。
+[M4 数值对齐报告](docs/M4_X64_NUMERIC_ALIGNMENT_REPORT.md)与
+[算法规格](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)。
 
 ## 性能
 
@@ -230,10 +227,9 @@ macinmeter-domain
 目标的逆向研究已获得作者许可。私人信件不保存在仓库中，只保留
 [最小公开授权摘要](reference/authorization/README.md)。
 
-授权与致谢提供了这项研究的法律和历史背景；数值状态来自上面的有界记录，仍然是
-`Candidate V1 / Unverified`。历史 M0/1.0.3 材料作为已取代的档案保留，与当前
-target 分开。目标身份、实验、观测、规格及其限制统一索引在
-[`reference/`](reference/README.md)。
+授权与致谢提供了这项研究的法律和历史背景；数值结论来自上面的有界记录。历史
+M0/1.0.3 材料作为已取代的档案保留，与当前 target 分开。目标身份、实验、观测、
+规格及其限制统一索引在 [`reference/`](reference/README.md)。
 
 ## 许可证
 

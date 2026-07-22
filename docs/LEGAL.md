@@ -20,12 +20,10 @@ expressed no objection to reverse engineering the component or to this
 independent project choosing the MIT License. This does not place the original
 component under MIT or authorize its redistribution.
 
-Permission to study a target does not prove that this implementation matches
-it. MacinMeter reports
-`foo_dr_meter 1.0.8 Candidate V1 / Unverified`, and the project makes no
-reference-compatibility, certification, endorsement, or “official result”
-claim. The target name and version identify the subject of the evidence; they
-do not imply affiliation or parity.
+Permission to study a target does not imply certification, endorsement,
+affiliation, or an “official result”. The target name and version identify the
+subject of the evidence; numerical claims are limited to the conditions stated
+by their corresponding records.
 
 ## Clean implementation boundary
 

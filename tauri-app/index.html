@@ -5,73 +5,123 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="MacinMeter foo_dr_meter 1.0.8 Candidate V1 offline dynamic-range analyzer"
+      content="MacinMeter offline audio dynamic-range analyzer"
     />
     <link rel="stylesheet" href="/src/styles.css" />
-    <title>MacinMeter 0.2</title>
+    <title>MacinMeter DR GUI</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
+
   <body>
-    <main class="shell">
-      <header class="hero">
+    <main class="app">
+      <header class="product-header">
         <div>
-          <p class="eyebrow">MACINMETER · M0</p>
-          <h1>动态范围分析</h1>
-          <p class="subtitle">Offline dynamic-range analysis</p>
+          <p class="product-kicker">MACINMETER</p>
+          <h1>MacinMeter DR GUI</h1>
         </div>
-        <div class="status-chip">
-          <span class="status-dot"></span>
-          foo_dr_meter 1.0.8 Candidate V1 · Unverified
+        <div class="header-actions">
+          <span id="app-version" class="version-chip">v0.2.0</span>
+          <div class="lang-switch" aria-label="Language">
+            <button id="lang-zh" type="button" class="lang-btn active">中</button>
+            <button id="lang-en" type="button" class="lang-btn">EN</button>
+          </div>
         </div>
       </header>
 
-      <section class="notice">
-        当前算法是针对 foo_dr_meter 1.0.8 的 Candidate V1，仍为 Unverified。结果用于工程验证，不代表已经参考兼容。
+      <section class="panel input-panel">
+        <div class="panel-header">
+          <h2 data-i18n="section.fileSelect">文件选择 / 分析</h2>
+          <span class="drop-support">Drop files anywhere</span>
+        </div>
+
+        <div class="path-row">
+          <input
+            id="input-path"
+            type="text"
+            readonly
+            data-i18n-placeholder="input.none"
+            placeholder="尚未选择音频文件"
+          />
+          <div class="path-actions">
+            <button id="pick-files" type="button" data-i18n="btn.pickFiles">选择文件</button>
+            <button id="scan-dir" type="button" data-i18n="btn.pickDir">选择目录</button>
+            <button
+              id="deep-scan-dir"
+              type="button"
+              class="ghost danger"
+              data-i18n="btn.deepScan"
+            >
+              深度扫描目录
+            </button>
+            <button id="clear-path" type="button" class="ghost" data-i18n="btn.clear">
+              清除
+            </button>
+            <button id="analyze-btn" type="button" class="analyze" disabled data-i18n="btn.analyze">
+              开始分析
+            </button>
+          </div>
+        </div>
+
+        <div id="scan-results" class="scan-results hidden"></div>
       </section>
 
-      <section class="card controls">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">01 · INPUT</p>
-            <h2>选择输入</h2>
+      <section class="panel result-panel">
+        <div class="panel-header result-header">
+          <h2 data-i18n="section.results">分析结果</h2>
+          <div class="result-tools">
+            <button id="hide-path" type="button" class="compact toggle-btn" data-i18n="btn.hidePath">
+              隐藏路径
+            </button>
+            <button id="copy-md" type="button" class="compact" disabled data-i18n="btn.copyMd">
+              Copy MD
+            </button>
+            <button id="export-json" type="button" class="compact" disabled data-i18n="btn.exportJson">
+              Export JSON
+            </button>
+            <button id="export-image" type="button" class="compact" disabled data-i18n="btn.exportImage">
+              Export Image
+            </button>
+            <select id="sort-mode" class="sort-select" disabled>
+              <option value="none" data-i18n="sort.none">原顺序</option>
+              <option value="dr-asc" data-i18n="sort.drAsc">DR 精细值 ↑</option>
+              <option value="dr-desc" data-i18n="sort.drDesc">DR 精细值 ↓</option>
+            </select>
+            <div class="search-actions">
+              <input
+                id="result-search"
+                type="search"
+                autocomplete="off"
+                data-i18n-placeholder="input.search"
+                placeholder="搜索文件名或路径"
+              />
+              <button id="result-search-next" type="button" class="compact" disabled data-i18n="btn.jump">
+                跳转
+              </button>
+            </div>
           </div>
-          <span id="version-label" class="muted">v0.2.0</span>
         </div>
 
-        <div class="button-row">
-          <button id="choose-files" type="button">选择文件</button>
-          <button id="choose-folder" type="button" class="secondary">选择目录</button>
-          <button id="clear-inputs" type="button" class="quiet">清空</button>
+        <div id="run-status" class="status" role="status" aria-live="polite">
+          <span id="status-text" class="status-text"></span>
+          <div id="progress-fill" class="progress-fill"></div>
         </div>
 
-        <div id="selection" class="selection empty">尚未选择输入</div>
+        <div id="batch-summary" class="batch-summary hidden"></div>
+        <div id="results" class="directory-results"></div>
 
-        <label class="check-row">
-          <input id="recursive" type="checkbox" />
-          <span>递归扫描子目录</span>
-        </label>
-
-        <div class="action-row">
-          <button id="analyze" type="button" class="primary" disabled>开始分析</button>
-          <button id="cancel" type="button" class="danger" disabled>取消当前任务</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">02 · RESULT</p>
-            <h2>分析结果</h2>
-          </div>
-          <button id="copy-json" type="button" class="quiet" disabled>复制 JSON</button>
-        </div>
-        <div id="run-status" class="run-status">等待任务</div>
-        <div id="results" class="results"></div>
         <details id="raw-panel" class="raw-panel" hidden>
-          <summary>结构化结果</summary>
+          <summary data-i18n="raw.title">结构化结果</summary>
           <pre id="raw-json"></pre>
         </details>
       </section>
     </main>
+
+    <div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true">
+      <div class="drop-card">
+        <div class="drop-icon" aria-hidden="true">↓</div>
+        <strong id="drop-title" data-i18n="drop.title">松开以选择输入</strong>
+        <span id="drop-subtitle" data-i18n="drop.subtitle">支持单文件、多文件、目录及混合拖入</span>
+      </div>
+    </div>
   </body>
 </html>

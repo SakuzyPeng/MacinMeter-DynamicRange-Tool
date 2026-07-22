@@ -93,8 +93,6 @@ def implementation_document(schema_version: int = 3) -> dict[str, Any]:
                                     "channels": 1,
                                 },
                                 "algorithm": {
-                                    "profile": "foo_dr_meter_1_0_8_candidate_v1",
-                                    "compatibility": "unverified",
                                     "parameters": {"silentChannelDrDb": 0.0},
                                 },
                                 "channels": [

@@ -8,7 +8,7 @@
 - 参考观测：
   [`OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718`](../../observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/observation.json)
 - 被测实现提交：`7112f8939a00b170e0ede364417958722ff61690`
-- 实现 profile：`FooDrMeter108CandidateV1 / Unverified`
+- 实现 profile：`FooDrMeter108CandidateV1`
 
 本记录是
 [`首份 schema-v3 记录`](../conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-020-report-v3-20260718/record.md)
@@ -60,8 +60,8 @@ observation 和 target 记录固定。本记录复用一次已登记的 referenc
 | 对象 | SHA-256 |
 | --- | --- |
 | release CLI binary | `3a92d3671f6af2e4579d897d701929681c5d240f3643439f924fb59f7986c88e` |
-| schema-v3 WireEnvelope | `7e1bb26d2c4d88d39e87ec438507e4817dc6e599a4c2e2a79cb0a9311626214b` |
-| comparison | `6e890323ca5d2338344695e5ad1129703dbcb32d20e11c483deea5af811d1f1f` |
+| schema-v3 WireEnvelope | `4587f73881403b099cdfb41e7516ebfa62a4f776754e8e17ad1cf92d5705ad68` |
+| comparison | `e2c6478f19fb9b3094bf056215c7472bb38eea585f6c9affe2ba1269a458dab0` |
 | comparator | `60a4350938784df63b76b8df532a75b03244a839d42015800c4fc7d48869d2e1` |
 
 实现输出保存在

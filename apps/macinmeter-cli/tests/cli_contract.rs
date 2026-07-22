@@ -68,7 +68,7 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     assert_code(&output, 0);
     let stdout = stdout(&output);
     let stderr = stderr(&output);
-    assert!(stdout.starts_with("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n"));
+    assert!(stdout.starts_with("MacinMeter\n"));
     assert!(stdout.contains("PCM: 44100 Hz, 2 channels, 441 frames"));
     assert!(stdout.contains("Duration: 0:00"));
     assert!(stdout.contains("Track aggregate: DR"));
@@ -106,14 +106,11 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert_eq!(value["schemaVersion"], 3);
     assert_eq!(value["toolVersion"], "0.2.0");
     assert_eq!(value["kind"], "analysis");
-    assert_eq!(
-        value["data"]["analysis"]["algorithm"]["profile"],
-        "foo_dr_meter_1_0_8_candidate_v1"
-    );
-    assert_eq!(
-        value["data"]["analysis"]["algorithm"]["compatibility"],
-        "unverified"
-    );
+    let algorithm = &value["data"]["analysis"]["algorithm"];
+    assert!(algorithm.get("profile").is_none());
+    assert!(algorithm.get("profileVersion").is_none());
+    assert!(algorithm.get("compatibility").is_none());
+    assert_eq!(algorithm["parameters"]["histogramBins"], 10_001);
     assert_eq!(value["data"]["analysis"]["framesSeen"], 441);
     assert!(
         value["data"]["analysis"]["aggregates"]["track"]["drDb"].is_number(),

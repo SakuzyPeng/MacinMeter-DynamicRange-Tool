@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisEvent, AnalysisProfile, AnalyzeRequest, Application, BatchItemOutcome, BatchRequest,
-    BatchStatus, CancellationToken, ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl,
+    AnalysisEvent, AnalyzeRequest, Application, BatchItemOutcome, BatchRequest, BatchStatus,
+    CancellationToken, ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl,
     NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
 };
 use serde_json::Value;
@@ -48,10 +48,7 @@ fn rust_api_analyzes_a_repository_wave_fixture() {
     assert_eq!(pcm.spec.channels, analysis.stream().channels);
     assert_eq!(analysis.frames_seen(), 441);
     assert_eq!(analysis.channels().len(), 2);
-    assert_eq!(
-        analysis.algorithm().profile,
-        AnalysisProfile::FooDrMeter108CandidateV1
-    );
+    assert_eq!(analysis.algorithm().parameters.histogram_bins, 10_001);
     assert_eq!(diagnostics.decoded_frames, 441);
     assert!(diagnostics.warnings.is_empty());
 }
@@ -365,10 +362,11 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     assert_eq!(value["toolVersion"], macinmeter::VERSION);
     assert_eq!(value["kind"], "analysis");
     assert!(value.get("data").is_some());
-    assert_eq!(
-        value["data"]["analysis"]["algorithm"]["profile"],
-        "foo_dr_meter_1_0_8_candidate_v1"
-    );
+    let algorithm = &value["data"]["analysis"]["algorithm"];
+    assert!(algorithm.get("profile").is_none());
+    assert!(algorithm.get("profileVersion").is_none());
+    assert!(algorithm.get("compatibility").is_none());
+    assert_eq!(algorithm["parameters"]["histogramBins"], 10_001);
     let measurement = &value["data"]["analysis"]["channels"][0]["outcome"]["measurement"];
     assert!(measurement.get("loudWindowRms").is_some());
     assert!(measurement.get("loudRms").is_none());
@@ -439,17 +437,6 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     assert_eq!(silent["status"], "silent");
     assert_eq!(silent["validWindows"], 3);
     assert!(silent.get("valid_windows").is_none());
-}
-
-#[test]
-fn analysis_profile_has_a_stable_wire_name() {
-    let profile = AnalysisProfile::FooDrMeter108CandidateV1;
-    let json = serde_json::to_string(&profile).expect("profile should serialize");
-    assert_eq!(json, "\"foo_dr_meter_1_0_8_candidate_v1\"");
-    assert_eq!(
-        serde_json::from_str::<AnalysisProfile>(&json).expect("profile should deserialize"),
-        profile
-    );
 }
 
 fn assert_json_contract(value: &Value) {

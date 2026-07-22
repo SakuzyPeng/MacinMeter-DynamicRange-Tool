@@ -1,15 +1,13 @@
 #![forbid(unsafe_code)]
 
-//! Decoder-independent worker for the bounded M4 Candidate V1 conformance.
+//! Decoder-independent worker for the bounded M4 numeric conformance record.
 //!
 //! This is a reference-side adapter, not a product CLI. It accepts exactly one
 //! finite interleaved `f64le` stream on stdin and emits one path-free JSON
 //! result on stdout. The suite runner launches a fresh process per input.
 
 use macinmeter_analysis::AnalyzerSession;
-use macinmeter_domain::{
-    AnalysisProfile, ChannelLayout, ChannelOutcome, MAX_ANALYSIS_CHANNELS, StreamSpec,
-};
+use macinmeter_domain::{ChannelLayout, ChannelOutcome, MAX_ANALYSIS_CHANNELS, StreamSpec};
 use serde_json::{Value, json};
 use std::io::{self, Read, Write};
 use std::process::ExitCode;
@@ -32,7 +30,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("candidate conformance worker error: {error}");
+            eprintln!("conformance worker error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -46,8 +44,7 @@ fn run() -> Result<(), String> {
         ChannelLayout::Unknown,
     )
     .map_err(|error| error.to_string())?;
-    let mut session = AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1)
-        .map_err(|error| error.to_string())?;
+    let mut session = AnalyzerSession::new(spec).map_err(|error| error.to_string())?;
 
     let channel_count = usize::from(request.channels);
     let expected_samples = request
@@ -128,8 +125,7 @@ fn run() -> Result<(), String> {
         "coreBits": core_bits,
         "analysis": result,
         "claims": {
-            "scope": "decoder-independent MacinMeter Candidate V1 analysis",
-            "compatibility": "unverified",
+            "scope": "decoder-independent MacinMeter analysis",
             "referenceParity": "not_assessed",
         },
     });

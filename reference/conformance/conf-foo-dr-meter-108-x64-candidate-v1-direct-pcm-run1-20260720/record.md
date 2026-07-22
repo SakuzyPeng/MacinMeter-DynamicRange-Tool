@@ -10,7 +10,7 @@
   [`FooDrMeter108CandidateV1`](../../specs/foo-dr-meter-1.0.8-candidate-v1.md)
 - 实现身份：commit
   `76d0f2eab5cdfce9de6a9d76ab971c333eab8e71`
-- 生产声明：`FooDrMeter108CandidateV1 / Unverified`
+- 实现 profile：`FooDrMeter108CandidateV1`
 
 ## 目的
 
@@ -31,7 +31,7 @@ session layout 或其他内部状态。这样可以把算法 conformance 与
 | runtime profile | `fixed_foobar_2_25_10` |
 | complete-v2 manifest | `479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8` |
 | corpus generator | `f83fdcd0b88f2f414c53f8aa52a5b03f4fd4c8ee25024c4dce603df9a2179054` |
-| isolated x64 core suite | `a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93` |
+| isolated x64 core suite | `3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61` |
 | normalized x64 report | `50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce` |
 | Candidate worker source | `b93bd7bcbb6242c6386aace628cd90b97979956de76160b50e9b32a29569cf3d` |
 | suite runner | `185779e210d0d6993bdc9420ec8c221cbe102a34c29b15007f4150ab3ac899c4` |
@@ -91,13 +91,13 @@ hash、block size 和 request identity。
 产物：
 
 - [4096-frame suite](suite-block-4096.json)：
-  `93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4`
+  `60810a3a12100183e3dedad61f94d45ff4e5a07b515a0a3f7b91ecfe8d5ad712`
 - [4096-frame comparison](comparison-block-4096.json)：
-  `cb2f6ea43f4c46d7cb6164f6124e720192c144012a1cecec0d4535dbc8b395fd`
+  `d35f392567499d0f80befe2eb03690c0f7a8a5d15773a7f3817b4b26dda3402e`
 - [997-frame suite](suite-block-997.json)：
-  `1506b76b61452111fdaced4c2075eb6919d64bf52a06e2a3ed18742ac740af6c`
+  `47911f270cd0cb1980ed320aee114420ec85aa1e407b8023824d9055ae0a79bb`
 - [997-frame comparison](comparison-block-997.json)：
-  `822ec149d28369c856ef4a01f9656ac8e9383746dc4feab8e177c23bb8356c1e`
+  `621e0ff98d70253dd674b44f23ffed164c60dae722178f82aae5dbcfb1aff775`
 
 ## 重建命令
 
@@ -145,4 +145,4 @@ python3 reference/tools/compare_macinmeter_candidate_v1_suite.py \
 - x86、1.0.3、任意 PCM、无效输入或任意 CRT/libm 最后一位；
 - `accepted`、`verified` 或一般意义上的插件兼容。
 
-因此产品身份保持 `FooDrMeter108CandidateV1 / Unverified`。
+因此该记录只固定 `FooDrMeter108CandidateV1` 的算法修订与上述证据范围。

@@ -2,9 +2,8 @@
 
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_domain::{
-    AnalysisProfile, AnalysisStage, ChannelCount, ChannelLayout, ChannelMeasurement,
-    ChannelOutcome, ChannelRole, CompatibilityStatus, ErrorCode, ExclusionReason,
-    MAX_ANALYSIS_CHANNELS, SampleRate, StreamSpec,
+    AnalysisStage, ChannelCount, ChannelLayout, ChannelMeasurement, ChannelOutcome, ChannelRole,
+    ErrorCode, ExclusionReason, MAX_ANALYSIS_CHANNELS, SampleRate, StreamSpec,
 };
 
 const SAMPLE_RATE: u32 = 8_000;
@@ -18,8 +17,7 @@ fn analyze(
     stream: StreamSpec,
     chunks: impl IntoIterator<Item = Vec<f64>>,
 ) -> macinmeter_domain::AnalysisResult {
-    let mut session =
-        AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(stream).unwrap();
     for chunk in chunks {
         session.push_interleaved(&chunk).unwrap();
     }
@@ -74,20 +72,11 @@ fn analyze_mono(samples: Vec<f64>) -> macinmeter_domain::AnalysisResult {
 }
 
 #[test]
-fn records_candidate_descriptor_parameters() {
+fn records_fixed_algorithm_parameters() {
     let stream = stream(44_100, 2, ChannelLayout::Unknown);
-    let session = AnalyzerSession::new(stream, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let session = AnalyzerSession::new(stream).unwrap();
 
     assert_eq!(session.window_frames(), 132_480);
-    assert_eq!(
-        session.algorithm().profile,
-        AnalysisProfile::FooDrMeter108CandidateV1
-    );
-    assert_eq!(session.algorithm().profile_version, 1);
-    assert_eq!(
-        session.algorithm().compatibility,
-        CompatibilityStatus::Unverified
-    );
     let parameters = &session.algorithm().parameters;
     assert_eq!(
         parameters.window_duration_coefficient.get(),
@@ -114,7 +103,7 @@ fn records_candidate_descriptor_parameters() {
 }
 
 #[test]
-fn candidate_window_length_table_uses_the_recorded_binary64_coefficient() {
+fn window_length_table_uses_the_recorded_binary64_coefficient() {
     for (sample_rate, expected_frames) in [
         (1, 3),
         (8_000, 24_032),
@@ -122,11 +111,8 @@ fn candidate_window_length_table_uses_the_recorded_binary64_coefficient() {
         (48_000, 144_195),
         (96_000, 288_391),
     ] {
-        let session = AnalyzerSession::new(
-            stream(sample_rate, 1, ChannelLayout::KnownNoLfe),
-            AnalysisProfile::FooDrMeter108CandidateV1,
-        )
-        .unwrap();
+        let session =
+            AnalyzerSession::new(stream(sample_rate, 1, ChannelLayout::KnownNoLfe)).unwrap();
         assert_eq!(session.window_frames(), expected_frames, "{sample_rate} Hz");
     }
 }
@@ -221,8 +207,7 @@ fn rejects_bad_chunks_atomically_and_accepts_empty_chunks() {
     let first = vec![0.25, 0.5, -0.25, -0.5];
     let second = vec![0.75, 0.125, -0.75, -0.125];
 
-    let mut session =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec.clone()).unwrap();
     session.push_interleaved(&first).unwrap();
     session.push_interleaved(&[]).unwrap();
 
@@ -247,8 +232,7 @@ fn rejects_bad_chunks_atomically_and_accepts_empty_chunks() {
 fn rejects_finite_samples_that_overflow_f64_analysis_atomically() {
     let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
     let valid = vec![0.25, -0.5, 0.0];
-    let mut session =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec.clone()).unwrap();
 
     let square_error = session.push_interleaved(&[f64::MAX]).unwrap_err();
     assert_eq!(square_error.code, ErrorCode::AnalysisFailed);
@@ -278,8 +262,7 @@ fn rejects_cross_chunk_square_accumulation_overflow_without_losing_prior_state()
     assert!((2.0 * (square + square)).is_finite());
     assert!((2.0 * (square + square + square)).is_infinite());
 
-    let mut session =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec.clone()).unwrap();
     session
         .push_interleaved(&[near_accumulation_limit])
         .unwrap();
@@ -298,8 +281,7 @@ fn rejects_cross_chunk_square_accumulation_overflow_without_losing_prior_state()
     session.push_interleaved(&[0.0]).unwrap();
     let after_error = session.finish().unwrap_err();
 
-    let mut baseline =
-        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut baseline = AnalyzerSession::new(spec).unwrap();
     baseline
         .push_interleaved(&[near_accumulation_limit, -near_accumulation_limit, 0.0])
         .unwrap();
@@ -317,8 +299,7 @@ fn rejects_completed_window_overall_rms_overflow_before_mutating_the_session() {
 
     let high_window = [sample, 0.0, 0.0];
     let mut accepted = high_window.repeat(3);
-    let mut session =
-        AnalyzerSession::new(spec.clone(), AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec.clone()).unwrap();
     session.push_interleaved(&accepted).unwrap();
 
     let error = session.push_interleaved(&high_window).unwrap_err();
@@ -331,8 +312,7 @@ fn rejects_completed_window_overall_rms_overflow_before_mutating_the_session() {
     let after_error = session.finish().unwrap_err();
 
     accepted.extend_from_slice(&[0.0; 3]);
-    let mut baseline =
-        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut baseline = AnalyzerSession::new(spec).unwrap();
     baseline.push_interleaved(&accepted).unwrap();
     assert_eq!(after_error, baseline.finish().unwrap_err());
 }
@@ -342,8 +322,7 @@ fn finish_reports_tail_overall_rms_overflow_as_a_structured_error() {
     let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
     let sample = (f64::MAX * 0.45).sqrt();
     let high_window = [sample, 0.0, 0.0];
-    let mut session =
-        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec).unwrap();
     session.push_interleaved(&high_window.repeat(3)).unwrap();
     session.push_interleaved(&[sample]).unwrap();
 
@@ -357,8 +336,7 @@ fn finish_reports_tail_overall_rms_overflow_as_a_structured_error() {
 fn finish_rejects_report_values_that_cannot_be_narrowed_to_finite_f32() {
     let sample = f64::from(f32::MAX) * 2.0;
     let spec = stream(1, 1, ChannelLayout::KnownNoLfe);
-    let mut session =
-        AnalyzerSession::new(spec, AnalysisProfile::FooDrMeter108CandidateV1).unwrap();
+    let mut session = AnalyzerSession::new(spec).unwrap();
     session.push_interleaved(&[sample; 3]).unwrap();
 
     let error = session.finish().unwrap_err();
@@ -436,18 +414,18 @@ fn constructor_revalidates_public_stream_spec_fields() {
         },
     };
 
-    let error =
-        AnalyzerSession::new(malformed, AnalysisProfile::FooDrMeter108CandidateV1).unwrap_err();
+    let error = AnalyzerSession::new(malformed).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidRequest);
     assert_eq!(error.stage, AnalysisStage::Validation);
 }
 
 #[test]
 fn constructor_enforces_the_product_channel_limit_before_allocation() {
-    let at_limit = AnalyzerSession::new(
-        stream(48_000, MAX_ANALYSIS_CHANNELS, ChannelLayout::Unknown),
-        AnalysisProfile::FooDrMeter108CandidateV1,
-    )
+    let at_limit = AnalyzerSession::new(stream(
+        48_000,
+        MAX_ANALYSIS_CHANNELS,
+        ChannelLayout::Unknown,
+    ))
     .expect("the documented maximum channel count should be accepted");
     assert_eq!(at_limit.stream().channels.get(), MAX_ANALYSIS_CHANNELS);
     let at_limit_result = at_limit
@@ -459,11 +437,8 @@ fn constructor_enforces_the_product_channel_limit_before_allocation() {
     );
 
     for channels in [MAX_ANALYSIS_CHANNELS + 1, u16::MAX] {
-        let error = AnalyzerSession::new(
-            stream(48_000, channels, ChannelLayout::Unknown),
-            AnalysisProfile::FooDrMeter108CandidateV1,
-        )
-        .expect_err("over-limit sessions must fail before allocating per-channel state");
+        let error = AnalyzerSession::new(stream(48_000, channels, ChannelLayout::Unknown))
+            .expect_err("over-limit sessions must fail before allocating per-channel state");
         assert_eq!(error.code, ErrorCode::ResourceExhausted);
         assert_eq!(error.stage, AnalysisStage::Analysis);
         assert!(error.message.contains(&channels.to_string()));

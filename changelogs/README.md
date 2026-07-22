@@ -9,7 +9,7 @@
 - [`README_CN.md`](../README_CN.md)：当前产品能力与兼容性声明；
 - [`reference/README.md`](../reference/README.md)：当前固定 target、证据和规格；
 - [`reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`](../reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)：
-  当前唯一生产候选规格，状态为 `Candidate V1 / Unverified`。
+  当前唯一生产算法规格。
 
 ## 归档文件
 

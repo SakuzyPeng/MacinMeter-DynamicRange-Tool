@@ -1906,7 +1906,6 @@ def run_core_worker(
         "result": response["data"],
         "claims": {
             "scope": "isolated foo_dr_meter 1.0.8 x64 analyzer core",
-            "compatibility": "none",
             "foobarParity": "not_assessed",
         },
         "limitations": [
@@ -2051,7 +2050,6 @@ def run_duration_worker(
             "scope": (
                 "isolated foo_dr_meter 1.0.8 x64 duration numeric leaf"
             ),
-            "compatibility": "none",
             "foobarParity": "not_assessed",
         },
         "limitations": [

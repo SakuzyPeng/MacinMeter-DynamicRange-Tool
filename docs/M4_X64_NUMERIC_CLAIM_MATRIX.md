@@ -4,7 +4,7 @@
 >
 > 决策：[ADR-0005](adr/0005-m4-bounded-x64-numeric-claim.md)
 >
-> 结论：[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md)
+> 结论：[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_ALIGNMENT_REPORT.md)
 >
 > 固定目标：`foo_dr_meter 1.0.8 x64`
 > `ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489`
@@ -27,20 +27,20 @@
 | --- | --- | --- |
 | x64 target | SHA-256 `ff3556add231859c2f3ddfa111312720c8d4969270416229a7bd26f73ba22489` | 唯一参考二进制 |
 | complete-v2 manifest | SHA-256 `479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8`；42 cases，39 safe | 固定判别输入 |
-| isolated-core suite | SHA-256 `a511b9f46d6624d957bcd8afc7ff4e36525a06fd4772c35f7708ae4379e19d93`；39/39 success | decoder-independent reference core |
-| numeric-boundary suite | SHA-256 `28416daabebfb0291305b80328a5b2003b10606830051c370f90c78070f2901b` | duration 24/24、weighting 8/8、pair 4/4、histogram 6/6 |
-| clean schema-v3 comparison | SHA-256 `6e890323ca5d2338344695e5ad1129703dbcb32d20e11c483deea5af811d1f1f` | 六组公开字段历史零差分基线 |
+| isolated-core suite | SHA-256 `3cdb5132f7239ba1a500339e5138cb8d0713af952b9dfaff4ca206c112d34a61`；39/39 success | decoder-independent reference core |
+| numeric-boundary suite | SHA-256 `b5a99ff50eb78eeb2258fb15f5d75d8d92978743abb4dabe9639f3453bd570d3` | duration 24/24、weighting 8/8、pair 4/4、histogram 6/6 |
+| clean schema-v3 comparison | SHA-256 `e2c6478f19fb9b3094bf056215c7472bb38eea585f6c9affe2ba1269a458dab0` | 六组公开字段历史零差分基线 |
 | normalized x64 report | SHA-256 `50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce` | 公开 report token reference |
-| direct Candidate suite，4096 frames/block | SHA-256 `93bfea94098035853b8630231d8e6c833a192cc2455093860f5dcb174ba7bec4`；39/39 success | 当前 clean implementation 主记录 |
-| direct Candidate comparison，4096 frames/block | SHA-256 `cb2f6ea43f4c46d7cb6164f6124e720192c144012a1cecec0d4535dbc8b395fd`；全部 final fields 精确匹配 | 当前主 conformance 结论 |
-| direct Candidate suite，997 frames/block | SHA-256 `1506b76b61452111fdaced4c2075eb6919d64bf52a06e2a3ed18742ac740af6c`；39/39 success | 非整齐 chunk 复核 |
-| direct Candidate comparison，997 frames/block | SHA-256 `822ec149d28369c856ef4a01f9656ac8e9383746dc4feab8e177c23bb8356c1e`；全部 final fields 精确匹配 | chunk-independent 复核 |
+| direct Candidate suite，4096 frames/block | SHA-256 `60810a3a12100183e3dedad61f94d45ff4e5a07b515a0a3f7b91ecfe8d5ad712`；39/39 success | 当前 clean implementation 主记录 |
+| direct comparison，4096 frames/block | SHA-256 `d35f392567499d0f80befe2eb03690c0f7a8a5d15773a7f3817b4b26dda3402e`；全部 final fields 精确匹配 | 当前主 conformance 结论 |
+| direct suite，997 frames/block | SHA-256 `47911f270cd0cb1980ed320aee114420ec85aa1e407b8023824d9055ae0a79bb`；39/39 success | 非整齐 chunk 复核 |
+| direct comparison，997 frames/block | SHA-256 `621e0ff98d70253dd674b44f23ffed164c60dae722178f82aae5dbcfb1aff775`；全部 final fields 精确匹配 | chunk-independent 复核 |
 
 ## 规则矩阵
 
-| 范围 | Candidate 规则 | 参考证据 | 当前产品回归 | 状态与处置 |
+| 范围 | 固定规则 | 参考证据 | 当前产品回归 | 状态与处置 |
 | --- | --- | --- | --- | --- |
-| profile identity | 固定 1.0.8 x64、binary64 PCM 路径、CandidateV1 / Unverified | SA-x64、SA-cross、OBS-x64 precision fixtures | `records_candidate_descriptor_parameters`、`preserves_f64_pcm_without_narrowing_before_accumulation` | `IN` |
+| algorithm parameters | 固定 1.0.8 x64、binary64 PCM 路径与版本化规则 | SA-x64、SA-cross、OBS-x64 precision fixtures | `records_fixed_algorithm_parameters`、`preserves_f64_pcm_without_narrowing_before_accumulation` | `IN` |
 | window geometry | `floor(rate × coefficient)`；block 不定义窗口 | SA-x64/SA-cross、OBS-x86/x64、OBS-core block-size | window-length table、随机 chunk、完整 raw-bit chunk matrix | `IN` |
 | EOF/tail | 任意非空尾窗含一帧；精确整窗无虚拟零 | 两份 SA、104/201、OBS-core | `every_nonempty_tail_is_submitted_and_no_virtual_window_is_added`、window boundary matrix | `IN` |
 | RMS accumulation | `sqrt(2 × sum_squares / frames)`；overall channel RMS 为 window RMS² 等权均值 | 两份 SA、103/104/110/111 | fixture 110/111、overall RMS 与 tail overflow tests | `IN` |
@@ -51,7 +51,7 @@
 | silence | 静音产生数值 DR0 并进入默认 track mean | SA、203、301、album DR0 footer 反事实 | 201–203、301、CLI finite/null rendering | `IN` |
 | square underflow | 有效窗口中 square 下溢为零时保留数值 `+0.0` | SA + 固定 MXCSR，E1 | `squared_underflow_remains_a_numeric_dr_zero_contribution` | `BOUNDARY`：按已登记控制流实现，不宣称专门动态覆盖 |
 | default track aggregate | 内部 f64 channel DR 全声道算术均值，包含静音和 LFE | SA、301/302/303、8ch OBS | fixtures 301–303、lane/permutation/replication tests | `IN` |
-| optional track weighting | `C>2` 时按 overall channel RMS 加权 | SA、OBS-boundary track 8/8 + pair 4/4 | 当前生产 profile 不暴露该开关 | `OUT`：保留参考事实，不扩张产品 profile |
+| optional track weighting | `C>2` 时按 overall channel RMS 加权 | SA、OBS-boundary track 8/8 + pair 4/4 | 当前生产配置不暴露该开关 | `OUT`：保留参考事实，不扩张产品配置 |
 | public narrowing | channel/track DR 与 channel report metrics 在固定点窄化到 f32 | SA、610/611、schema-v3 comparison | public-f32 rounding、report-square、aggregate-narrow tests | `IN` |
 | report RMS/peak | public channel RMS 的 f32 平方聚合；public primary peak 最大值 | SA-cross、39/39 + 62/62 report comparison | track report tests、finite wrapper/result invariant tests | `IN` |
 | DR/dbFS renderer | 非负 f32 DR `+0.5`；centi-dB near-zero 修正；`-inf` 显式表示 | SA-render、120/121、610/611、report observation | CLI renderer unit/black-box tests | `IN`：只声明数值 token，不声明完整文本 |
@@ -59,7 +59,7 @@
 | album arithmetic | public-f32 track DR 的 f64 mean、可选 duration weighting、最终 f32、DR0 纳入 | album writer SA（完整公式 E1）；DR0 子规则 E2 | `album_contract` 的 unweighted/weighted/rounding/DR0/zero-duration tests | `IN`：只声明显式数值 API，不声明 grouping/footer |
 | channel labels | ordinal 表与 fallback 文本 | SA-render；部分 ordinal E2、其余 E1 | 产品 human renderer 使用自身 `CH n` 文案 | `OUT`：文本 parity 非目标 |
 | zero-frame host | core 与首次无 decode chunk 的宿主行为分层 | 两份 SA，E1 | 产品 codec/session 有自身结构化契约 | `OUT`：host/UI 行为非目标 |
-| x86 precision | x86 使用不同 PCM/square/peak 精度 | SA-cross + x64 f64 discriminator，E2 | 不存在 x86 profile | `OUT`：不得与 x64 合并 |
+| x86 precision | x86 使用不同 PCM/square/peak 精度 | SA-cross + x64 f64 discriminator，E2 | 产品不实现 x86 参考数值路径 | `OUT`：不得与 x64 合并 |
 | invalid/extreme inputs | NaN/Inf、异常范围、计数溢出、全部 libm 最后一位 | U/H 或产品资源边界 | structured error、finite JSON、resource-limit tests | `OUT/BOUNDARY`：安全契约不冒充参考行为 |
 
 ## 路线图第 6.5 节核对
@@ -67,11 +67,11 @@
 | 标准 | 当前结论 | 剩余工作 |
 | --- | --- | --- |
 | 固定 corpus 同语义最终字段完全一致 | 历史 comparison 与当前两次 direct comparison 均零差分 | 无 |
-| window/RMS/histogram/peak/aggregate 可追溯 | Candidate §5 已逐规则登记 E1/E2 | 无算法证据空白 |
+| window/RMS/histogram/peak/aggregate 可追溯 | 版本化规格§5 已逐规则登记 E1/E2 | 无算法证据空白 |
 | album/renderer 数值边界有产品测试 | album contract、duration/dbFS renderer、histogram clamp 已覆盖 | 无 |
 | 残差无系统趋势 | 两次当前 comparison `differenceCount=0` | 无 |
 | 极短/tail/tie/silence/multichannel 无未解释例外 | safe-master、OBS-core 与产品边界测试覆盖 | square-underflow 保持 E1 限制，不伪装动态事实 |
-| profile 不依赖 decoder/chunk/优化路径 | direct f64 绕过 decoder；4096/997 block 的公开 projection 相同 | 无 |
+| 分析规则不依赖 decoder/chunk/优化路径 | direct f64 绕过 decoder；4096/997 block 的公开 projection 相同 | 无 |
 | 忠实保留目标的奇怪规则 | 一帧尾窗、whole-bin、arrival-order tie、DR0/LFE 纳入均已实现 | 新反例出现时才重开 |
 
 ## 当前文件级 replay 结论
@@ -92,7 +92,7 @@
 
 ## M4 缺口处置
 
-### GAP-M4-001：当前提交的 decoder-independent Candidate suite
+### GAP-M4-001：当前提交的 decoder-independent analysis suite
 
 状态：`DONE`
 
@@ -124,6 +124,6 @@ reference-side
 
 状态：`DONE`
 
-[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_COMPATIBILITY_REPORT.md) 已发布
-固定 target、字段、精确匹配、证据等级、限制和非目标。profile 仍保持
-`FooDrMeter108CandidateV1 / Unverified`，状态升级需要另立决策。
+[M4 固定 x64 数值声明收口报告](M4_X64_NUMERIC_ALIGNMENT_REPORT.md) 已发布
+固定 target、字段、精确匹配、证据等级、限制和非目标。profile 只标识算法规则
+修订，不作为结果兼容性结论。

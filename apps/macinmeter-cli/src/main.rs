@@ -4,9 +4,9 @@ mod render;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use macinmeter::{
-    AnalysisError, AnalysisEvent, AnalysisProfile, AnalysisReport, Application, BatchItemOutcome,
-    BatchReport, BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode,
-    ExecutionControl, ProgressSink, WireEnvelope,
+    AnalysisError, AnalysisEvent, AnalysisReport, Application, BatchItemOutcome, BatchReport,
+    BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
+    ProgressSink, WireEnvelope,
 };
 use render::{format_dbfs, format_duration_token};
 use std::{
@@ -18,11 +18,7 @@ use std::{
 };
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "macinmeter",
-    version,
-    about = "Offline dynamic-range analysis (foo_dr_meter 1.0.8 Candidate V1, unverified)"
-)]
+#[command(name = "macinmeter", version, about = "Offline dynamic-range analysis")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -122,10 +118,7 @@ fn run_analyze(
     output: Option<&Path>,
     control: &ExecutionControl<'_>,
 ) -> i32 {
-    let request = macinmeter::AnalyzeRequest {
-        path: file,
-        profile: AnalysisProfile::FooDrMeter108CandidateV1,
-    };
+    let request = macinmeter::AnalyzeRequest { path: file };
 
     match application.analyze_file_with_control(request, control) {
         Ok(report) => {
@@ -147,11 +140,7 @@ fn run_batch(
     output: Option<&Path>,
     control: &ExecutionControl<'_>,
 ) -> i32 {
-    let request = BatchRequest {
-        inputs,
-        recursive,
-        profile: AnalysisProfile::FooDrMeter108CandidateV1,
-    };
+    let request = BatchRequest { inputs, recursive };
     match application.run_batch(request, control) {
         Ok(report) => {
             let status = report.status;
@@ -213,7 +202,7 @@ fn render_json(envelope: &WireEnvelope) -> Result<String, AnalysisError> {
 fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     let analysis = report.analysis();
     let mut output = String::new();
-    output.push_str("MacinMeter — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n");
+    output.push_str("MacinMeter\n");
     output.push_str(&format!("Source: {}\n", report.source().display_path));
     output.push_str(&format!(
         "PCM: {} Hz, {} channels, {} frames\nDuration: {}\n\n",
@@ -265,8 +254,7 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
 }
 
 fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
-    let mut output =
-        String::from("MacinMeter batch — foo_dr_meter 1.0.8 Candidate V1 / Unverified\n\n");
+    let mut output = String::from("MacinMeter batch\n\n");
     for item in &report.items {
         match &item.outcome {
             BatchItemOutcome::Success { report } => {

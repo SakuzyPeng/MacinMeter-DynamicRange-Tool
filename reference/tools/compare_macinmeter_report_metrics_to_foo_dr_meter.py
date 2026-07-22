@@ -19,8 +19,7 @@ from typing import Any
 
 
 WIRE_SCHEMA_VERSION = 3
-EXPECTED_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
-EXPECTED_COMPATIBILITY = "unverified"
+LEGACY_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DB_TOKEN_RE = re.compile(r"^(?:-inf|[-+]?\d+\.\d{2})$")
 NONNEGATIVE_INTEGER_TOKEN_RE = re.compile(r"^(?:0|[1-9]\d*)$")
@@ -462,8 +461,7 @@ def compare(
     matched_duration = 0
     total_channel_values = 0
     seen_stems: set[str] = set()
-    profile_names: set[str] = set()
-    compatibility_names: set[str] = set()
+    algorithm_identities: set[str] = set()
     implementation_sample_rates: set[int] = set()
     implementation_channel_counts: set[int] = set()
     public_track_dr_values: list[float] = []
@@ -525,23 +523,27 @@ def compare(
         algorithm = require_dict(
             analysis.get("algorithm"), f"implementation item {stem}.algorithm"
         )
-        profile = require_string(
-            algorithm.get("profile"), f"implementation item {stem}.algorithm.profile"
-        )
-        compatibility = require_string(
-            algorithm.get("compatibility"),
-            f"implementation item {stem}.algorithm.compatibility",
-        )
-        profile_names.add(profile)
-        compatibility_names.add(compatibility)
-        if profile != EXPECTED_PROFILE:
+        legacy_profile = algorithm.get("profile")
+        legacy_profile_version = algorithm.get("profileVersion")
+        if (legacy_profile, legacy_profile_version) not in {
+            (None, None),
+            (LEGACY_PROFILE, 1),
+        }:
             raise ComparisonError(
-                f"implementation item {stem!r} uses unexpected profile {profile!r}"
+                f"implementation item {stem!r} has an unknown legacy analysis identity"
             )
-        if compatibility != EXPECTED_COMPATIBILITY:
+        if "compatibility" in algorithm:
             raise ComparisonError(
-                f"implementation item {stem!r} uses unexpected compatibility {compatibility!r}"
+                f"implementation item {stem!r} attaches compatibility to its report"
             )
+        current_algorithm = {
+            key: value
+            for key, value in algorithm.items()
+            if key not in {"profile", "profileVersion"}
+        }
+        algorithm_identities.add(
+            json.dumps(current_algorithm, sort_keys=True, separators=(",", ":"))
+        )
 
         aggregates = require_dict(
             analysis.get("aggregates"), f"implementation item {stem}.aggregates"
@@ -701,7 +703,7 @@ def compare(
                 implementation_duration,
             )
 
-    if len(profile_names) != 1 or len(compatibility_names) != 1:
+    if len(algorithm_identities) != 1:
         raise ComparisonError("implementation batch mixes algorithm identities")
 
     implementation_footer = {
@@ -761,8 +763,6 @@ def compare(
             "binarySha256": sha256_bytes(binary_raw),
             "wireSchemaVersion": schema_version,
             "toolVersion": tool_version,
-            "profile": next(iter(profile_names)),
-            "compatibility": next(iter(compatibility_names)),
         },
         "policy": {
             "trackDr": "exact integer token",

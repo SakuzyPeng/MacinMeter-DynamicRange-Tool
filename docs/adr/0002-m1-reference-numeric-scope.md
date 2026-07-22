@@ -6,7 +6,7 @@
 - 决策范围：M1
 - 固定目标：`foo_dr_meter 1.0.8 x64`
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
-- 候选规格：[foo_dr_meter 1.0.8 candidate v1](../../reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
+- 版本化规格：[foo_dr_meter 1.0.8 数值规格](../../reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)
 
 ## 背景
 
@@ -71,9 +71,9 @@ M1 已满足：
 4. 兼容性声明只覆盖已固定的目标、数值字段和有效输入契约；
 5. 所有排除项均作为非目标记录，不再冒充缺失证据。
 
-这不证明任意音频上的数学等价，也不把未观察的 host、playlist 或文本行为描述成
-兼容。产品 profile 继续保持 `CandidateV1 / Unverified`；M1 完成不等于建立更广
-的 foobar/component 兼容承诺。
+这不证明任意音频上的数学等价，也不把未观察的 host、playlist 或文本行为纳入
+声明。产品 profile 只标识规则修订；M1 完成不等于建立更广的
+foobar/component 结论。
 
 ## 后果
 
