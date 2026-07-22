@@ -83,8 +83,9 @@ npm run tauri dev
 npm run tauri build
 ```
 
-0.2.0 当前不声明 Windows/Linux GUI 打包目标。workspace 模式下，Rust/Tauri 产物位于仓库
-根目录的 `target/`。本地构建不会自动触发 GitHub Actions。
+0.2.0 当前不声明 Windows/Linux GUI 打包目标。workspace 模式下，Rust/Tauri 产物位于
+仓库根目录的 `target/`。本地构建不会自动触发 GitHub Actions；`main` push 与手动
+workflow 会在独立的 macOS 26 arm64 clean runner 上执行同一 GUI staging 契约。
 
 仓库根目录的发行 staging 可以进一步验证当前 host 的实际 DMG：
 
@@ -93,8 +94,8 @@ python3 scripts/stage-release.py stage --include-gui
 ```
 
 它会校验并只读挂载 DMG，核对 bundle version、identifier、executable 和准确
-architecture，再生成 SHA-256。当前制品仍明确是未签名、未 notarize 的本地
-staging，不构成 Gatekeeper 或公开分发声明。详见
+architecture，再生成 SHA-256。当前制品仍明确是未签名、未 notarize 的 staging；
+CI 运行也不会上传或保留这些字节，不构成 Gatekeeper 或公开分发声明。详见
 [`docs/RELEASE_CN.md`](../docs/RELEASE_CN.md)。
 
 ## 版本同步

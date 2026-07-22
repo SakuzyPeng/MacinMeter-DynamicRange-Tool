@@ -1,10 +1,15 @@
 [English](RELEASE.md) | [中文](RELEASE_CN.md)
 
-# Local release staging
+# Release artifact staging
 
-MacinMeter 0.2.0 has a local, explicit artifact contract. Staging builds and
-verifies bytes under `target/release-staging`; it never uploads, signs,
-notarizes, or creates a GitHub release.
+MacinMeter 0.2.0 has an explicit artifact contract. Staging builds and verifies
+bytes under `target/release-staging`; it never uploads, signs, notarizes, or
+creates a GitHub release.
+
+The bounded GitHub Actions workflow runs the same clean staging command on its
+macOS 26 arm64 job after a `main` push or manual dispatch. The generated CLI
+archive and DMG are verified and then discarded with the runner. This supplies
+clean-host packaging evidence, not downloadable release artifacts.
 
 ## Requirements
 
@@ -66,7 +71,8 @@ verifier:
 - records whether strict `codesign` verification succeeds;
 - detaches the image without launching the GUI.
 
-The current unsigned/unnotarized build is marked
+The current unsigned/unnotarized build, whether produced locally or by the
+ephemeral CI gate, is marked
 `local_staging_only`/`local_unnotarized`. A successful structural smoke test is
 not a Gatekeeper, Developer ID, notarization, or public-distribution claim.
 Windows/Linux GUI packages and macOS x86_64/universal packages remain

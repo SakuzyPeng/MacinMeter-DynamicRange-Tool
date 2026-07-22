@@ -1,6 +1,6 @@
 # ADR-0009：自动 CI 扩展至 Windows x64
 
-- 状态：Accepted
+- 状态：Accepted；macOS 边界由 ADR-0010 扩展
 - 日期：2026-07-22
 - 范围：GitHub Actions 的第二平台验证层
 

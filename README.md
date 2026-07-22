@@ -148,10 +148,12 @@ It calls the same `Application` façade and consumes the same wire schema as the
 CLI. Each job has its own cancellation token, while the shared application
 budget keeps top-level work bounded and serial.
 
-The GUI is currently available as source. Local macOS staging produces an
-unsigned, unnotarized build, while Windows and Linux packages have not yet
-been verified on their target hosts. The current packaging picture is
-summarized in [release and artifact status](docs/RELEASE.md).
+The GUI is available as source. Local staging and the bounded `main`/manual
+macOS 26 arm64 CI gate both build and structurally verify the current-host DMG.
+Those builds remain unsigned and unnotarized, CI does not retain them, and
+Windows/Linux GUI packages have not been verified on their target hosts. The
+current packaging picture is summarized in
+[release and artifact status](docs/RELEASE.md).
 
 ## Rust API
 

@@ -136,3 +136,50 @@ jobs:
               -or $document.kind -ne "analysis") {
             throw "release CLI analysis smoke test failed"
           }
+
+  macos:
+    name: macOS arm64 Rust, CLI, Tauri, and GUI staging
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 2026-07-16
+        with:
+          toolchain: 1.88.0
+          components: clippy
+
+      - name: Check repository identity
+        run: python3 scripts/check-repository-contract.py
+
+      - name: Run macOS Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run macOS workspace tests
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Install Node.js for GUI staging
+        if: github.event_name != 'pull_request'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - name: Install GUI dependencies
+        if: github.event_name != 'pull_request'
+        working-directory: tauri-app
+        run: npm ci
+
+      - name: Stage and verify macOS arm64 CLI and GUI
+        if: github.event_name != 'pull_request'
+        run: python3 scripts/stage-release.py stage --include-gui

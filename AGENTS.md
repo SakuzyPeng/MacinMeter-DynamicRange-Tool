@@ -59,9 +59,11 @@ dependencies into lower layers.
   `scripts/check-repository-contract.py`.
 - Ordinary GUI build/dev commands only check version mirrors. Version changes
   are written only by the explicit `npm run sync-version` command.
-- Local release staging must start clean unless it is explicitly marked dirty.
-  It verifies the extracted CLI and current-host DMG bytes plus SHA-256, but
-  never signs, notarizes, uploads, or implies public-distribution readiness.
+- Release staging must start clean unless it is explicitly marked dirty. It
+  verifies the extracted CLI and current-host DMG bytes plus SHA-256. The
+  macOS arm64 main/manual CI gate may run the same contract as ephemeral
+  validation, but it never signs, notarizes, uploads, or implies
+  public-distribution readiness.
 - M6 performance evidence uses the release `m6_baseline_worker` and
   `scripts/run-performance-baseline.py`. Formal runs start clean, bind source,
   binary, suite, corpus, toolchain, environment, and raw samples, and require
@@ -89,9 +91,10 @@ npm run build
 npm run tauri dev
 ```
 
-Remote CI runs bounded Ubuntu 24.04 and Windows Server 2025 x64 jobs for pull
-requests and pushes to `main`. The Windows release CLI is built and smoke-tested
-only on `main`/manual runs; manual dispatch also adds the Linux release build.
+Remote CI runs bounded Ubuntu 24.04, Windows Server 2025 x64, and macOS 26
+arm64 jobs for pull requests and pushes to `main`. Main/manual runs add the
+Windows release CLI smoke and clean macOS CLI/GUI staging; manual dispatch also
+adds the Linux release build. CI staging artifacts are not uploaded.
 Do not trigger, rerun, or wait for remote CI as part of ordinary development
 unless the user requests it or its result is required for the current GitHub
 operation.

@@ -102,10 +102,12 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 ```
 
 The matching GitHub Actions workflow runs the full standard gate on Ubuntu and
-the Rust/CLI/Tauri gate on Windows Server 2025 for pull requests and pushes to
-`main`. Main/manual Windows runs also smoke-test a release CLI; manual dispatch
-adds the Linux release build. Performance, hostile-corpus, release-staging, and
-publishing tasks remain explicitly outside that workflow.
+the Rust/CLI/Tauri gate on Windows Server 2025 x64 and macOS 26 arm64 for pull
+requests and pushes to `main`. Main/manual Windows runs also smoke-test a
+release CLI; main/manual macOS runs stage and verify the final CLI archive plus
+current-host Tauri DMG without uploading either artifact. Manual dispatch adds
+the Linux release build. Performance, hostile-corpus, signing, notarization,
+artifact upload, and publishing remain explicitly outside that workflow.
 
 ## M6 performance baseline
 

@@ -311,6 +311,7 @@ def validate(root: Path) -> list[str]:
 
         linux_job = workflow_job_body(path, "workspace")
         windows_job = workflow_job_body(path, "windows")
+        macos_job = workflow_job_body(path, "macos")
         require(
             linux_job is not None and "    runs-on: ubuntu-24.04" in linux_job,
             f"{path.relative_to(root)} must retain the Ubuntu 24.04 full gate",
@@ -318,6 +319,10 @@ def validate(root: Path) -> list[str]:
         require(
             windows_job is not None and "    runs-on: windows-2025" in windows_job,
             f"{path.relative_to(root)} must retain the Windows Server 2025 gate",
+        )
+        require(
+            macos_job is not None and "    runs-on: macos-26" in macos_job,
+            f"{path.relative_to(root)} must retain the macOS 26 arm64 gate",
         )
         if windows_job is not None:
             windows_text = "\n".join(windows_job)
@@ -338,11 +343,48 @@ def validate(root: Path) -> list[str]:
                 "main/manual-only",
             )
 
+        macos_stage_command = (
+            "python3 scripts/stage-release.py stage --include-gui"
+        )
+        if macos_job is not None:
+            macos_text = "\n".join(macos_job)
+            required_macos_commands = (
+                "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings",
+                "cargo test --locked --workspace --all-targets",
+                "npm ci",
+                macos_stage_command,
+            )
+            for command in required_macos_commands:
+                require(
+                    command in macos_text,
+                    f"{path.relative_to(root)} macOS gate is missing: {command}",
+                )
+            require(
+                macos_text.count("if: github.event_name != 'pull_request'") == 3,
+                f"{path.relative_to(root)} macOS Node install, npm install, and GUI "
+                "staging must remain main/manual-only",
+            )
+            require(
+                "--allow-dirty" not in macos_text and "--replace" not in macos_text,
+                f"{path.relative_to(root)} macOS CI staging must require a clean, "
+                "new release directory",
+            )
+        require(
+            workflow_text.count(macos_stage_command) == 1
+            and macos_job is not None
+            and macos_stage_command in "\n".join(macos_job),
+            f"{path.relative_to(root)} release staging must appear exactly once "
+            "inside the macOS arm64 job",
+        )
+
         forbidden_ci_tasks = {
             "verify-malformed-corpus.py": "the hostile corpus verifier",
             "run-performance-baseline.py": "performance baselines",
             "run-performance-profile.py": "performance profiling",
-            "stage-release.py": "release staging",
+            "actions/upload-artifact@": "artifact upload",
+            "gh release": "GitHub Release publication",
+            "notarytool": "notarization",
+            "codesign --sign": "release signing",
         }
         for command, label in forbidden_ci_tasks.items():
             require(

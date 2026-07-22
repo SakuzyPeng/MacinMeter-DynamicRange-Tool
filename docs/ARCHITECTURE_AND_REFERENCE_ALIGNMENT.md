@@ -33,6 +33,8 @@
 > M6 后维护决策：[ADR-0008：恢复有界自动 CI](adr/0008-post-m6-bounded-automatic-ci.md)
 >
 > CI 平台扩展：[ADR-0009：自动 CI 扩展至 Windows x64](adr/0009-windows-x64-ci-expansion.md)
+>
+> macOS 与 GUI staging：[ADR-0010：自动 CI 扩展至 macOS arm64 与 GUI staging](adr/0010-macos-arm64-gui-staging-ci.md)
 
 ## 1. 文档目的
 
@@ -215,6 +217,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
 | CI-005 | DONE | 恢复有界自动验证 | PR 与 `main` push 自动执行单 Ubuntu 正确性门禁；同 ref 取消过时运行，release build 仅手动，性能/hostile/release/publish 仍排除 |
 | CI-006 | DONE | 增加 Windows x64 门禁 | Windows Server 2025 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 额外 smoke release CLI，但不上传、不声明 GUI 包 |
+| CI-007 | DONE | 增加 macOS arm64 与 GUI staging 门禁 | macOS 26 arm64 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 复用 clean staging 验证 CLI archive 与 Tauri DMG，但不上传、签名、公证或发布 |
 | RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | DONE | 重建 benchmark 方法 | ADR-0007 固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；clean 9239609 scalar baseline 的 105 个 measured sample 与报告已保存 |
@@ -798,14 +801,20 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - Windows Server 2025 与 Ubuntu 并行执行，固定 MSRV 与 lockfile；
     - PR 运行 strict Clippy 和 all-target workspace tests，覆盖 Windows CLI/Tauri；
     - main/manual 额外构建并执行 release CLI/WAV/schema-v3 smoke，不上传制品。
+36. [x] `ci: validate macOS arm64 and stage the GUI`
+    - 显式 `macos-26` arm64 clean runner 与 Linux/Windows 并行执行；
+    - PR 运行 strict Clippy 与 all-target workspace tests，覆盖 macOS CLI/Tauri；
+    - main/manual 复用既有 release contract 构建并反向验证 CLI archive 与 arm64
+      Tauri DMG，runner-local 制品不上传、不签名、不公证、不发布。
 
 M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
 正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
 文件级并发、SIMD 或新的性能承诺必须由后续真实需求重新立项。
 
-M6 后按 ADR-0008 恢复有界自动 CI，并按 ADR-0009 加入 Windows x64 编译、测试与
-临时 release CLI smoke。它仍不扩大 packaging、发布、性能、hostile-input 或
-兼容性声明边界。
+M6 后按 ADR-0008 恢复有界自动 CI，按 ADR-0009 加入 Windows x64 编译、测试与
+临时 release CLI smoke，再按 ADR-0010 加入 macOS arm64 Rust/Tauri 验证与
+main/manual clean GUI staging。macOS staging 只建立 current-host DMG 结构证据，
+不扩大签名、公证、上传、公开发布、性能、hostile-input 或兼容性声明边界。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -816,7 +825,8 @@ M6 后按 ADR-0008 恢复有界自动 CI，并按 ADR-0009 加入 Windows x64 �
 - [x] 设置准确且实际验证的 `rust-version = 1.88`；
 - [x] 统一 workspace、Tauri Cargo、package.json、tauri.conf 和 lockfile 版本；
 - [x] CI 使用根 lockfile 与 `--locked`；M0–M6 的纯手动阶段完成后，按 ADR-0008
-  恢复有界的 PR/`main` 自动门禁，并按 ADR-0009 加入 Windows x64；
+  恢复有界的 PR/`main` 自动门禁，按 ADR-0009 加入 Windows x64，再按 ADR-0010
+  加入 macOS 26 arm64 与 main/manual GUI staging；
 - [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
 - [x] 删除非测试代码中的无保护 `expect`；
 - [x] 删除线程优先级控制；

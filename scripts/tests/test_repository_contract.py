@@ -112,6 +112,17 @@ jobs:
         run: cargo build --locked --release -p macinmeter-cli
       - if: github.event_name != 'pull_request'
         run: .\\target\\release\\macinmeter.exe analyze fixture.wav
+  macos:
+    runs-on: macos-26
+    steps:
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace --all-targets
+      - if: github.event_name != 'pull_request'
+        uses: actions/setup-node@node-sha
+      - if: github.event_name != 'pull_request'
+        run: npm ci
+      - if: github.event_name != 'pull_request'
+        run: python3 scripts/stage-release.py stage --include-gui
 """,
         )
         self.write("Cargo.lock", "")
@@ -191,13 +202,16 @@ jobs: {}
         contents = contents.replace("contents: read", "contents: write")
         contents = contents.replace(
             "cargo test --locked --workspace --all-targets",
-            "python3 scripts/stage-release.py stage",
+            "python3 scripts/stage-release.py stage --include-gui",
+            1,
         )
         workflow.write_text(contents, encoding="utf-8")
 
         errors = self.errors()
         self.assertTrue(any("read-only repository permissions" in error for error in errors))
-        self.assertTrue(any("must not run release staging" in error for error in errors))
+        self.assertTrue(
+            any("release staging must appear exactly once" in error for error in errors)
+        )
 
     def test_rejects_removing_the_fixed_windows_gate(self) -> None:
         workflow = self.root / ".github/workflows/workspace-validation.yml"
@@ -208,6 +222,46 @@ jobs: {}
 
         self.assertTrue(
             any("Windows Server 2025 gate" in error for error in self.errors())
+        )
+
+    def test_rejects_removing_the_fixed_macos_gate(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            "runs-on: macos-26", "runs-on: macos-latest"
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any("macOS 26 arm64 gate" in error for error in self.errors())
+        )
+
+    def test_rejects_dirty_or_pull_request_gui_staging(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8")
+        contents = contents.replace(
+            "python3 scripts/stage-release.py stage --include-gui",
+            "python3 scripts/stage-release.py stage --include-gui --allow-dirty",
+        )
+        contents = contents.replace(
+            "if: github.event_name != 'pull_request'\n        run: python3 scripts/stage-release.py",
+            "run: python3 scripts/stage-release.py",
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        errors = self.errors()
+        self.assertTrue(any("must remain main/manual-only" in error for error in errors))
+        self.assertTrue(any("must require a clean" in error for error in errors))
+
+    def test_rejects_artifact_upload_from_validation_workflow(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            "uses: actions/setup-node@node-sha",
+            "uses: actions/upload-artifact@artifact-sha",
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any("must not run artifact upload" in error for error in self.errors())
         )
 
     def test_rejects_nested_lockfiles(self) -> None:

@@ -61,9 +61,11 @@ is outside the current 0.2.0 release contract.
 `python3 scripts/stage-release.py stage --include-gui` builds the current-host
 DMG and verifies its image integrity, mounted bundle version/identifier,
 executable, and exact architecture before adding it to the SHA-256 release
-manifest. It does not launch, sign, notarize, or upload the app. The current
-result is local-only; a structural smoke pass is not a public-distribution or
-Gatekeeper claim. See [`RELEASE.md`](RELEASE.md).
+manifest. The bounded `main`/manual macOS 26 arm64 CI job runs this same clean
+contract and discards its artifacts after validation. Neither path launches,
+signs, notarizes, or uploads the app. The current result remains staging-only;
+a structural smoke pass is not a public-distribution or Gatekeeper claim.
+See [`RELEASE.md`](RELEASE.md).
 
 The backend performs admitted blocking analysis through Tauri's blocking task
 facility, leaving the UI event loop responsive. Admission happens first so the

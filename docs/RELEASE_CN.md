@@ -1,10 +1,14 @@
 [English](RELEASE.md) | [中文](RELEASE_CN.md)
 
-# 本地发行 staging
+# 发行制品 staging
 
-MacinMeter 0.2.0 具有一套本地、显式的制品契约。staging 只在
+MacinMeter 0.2.0 具有一套显式的制品契约。staging 只在
 `target/release-staging` 下构建和验证字节，不上传、不签名、不公证，也不创建
 GitHub Release。
+
+有界 GitHub Actions 会在 `main` push 或手动触发后，于 macOS 26 arm64 job 中运行
+同一条 clean staging 命令。生成的 CLI archive 与 DMG 通过验证后会随 runner 丢弃；
+这提供 clean-host packaging 证据，不产生可下载的发行制品。
 
 ## 环境要求
 
@@ -64,7 +68,7 @@ x86_64。验证器会：
 - 记录严格 `codesign` 验证是否成功；
 - 在不启动 GUI 的情况下卸载镜像。
 
-当前未签名、未 notarize 的构建会明确标记为
+当前未签名、未 notarize 的构建，无论来自本地还是临时 CI 门禁，都会明确标记为
 `local_staging_only` / `local_unnotarized`。结构 smoke 成功不等于已经通过
 Gatekeeper、Developer ID、公证或公开分发要求。Windows/Linux GUI，以及 macOS
 x86_64/universal 制品仍需在真实目标上构建和检查后才能形成声明。

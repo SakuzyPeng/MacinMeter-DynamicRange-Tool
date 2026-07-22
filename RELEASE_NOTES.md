@@ -104,21 +104,25 @@
   M5 将 Rust 直接依赖策略与 package identity 集中到根 workspace。GUI build
   只读核对版本镜像，不再改写 tracked files；只有显式
   `npm run sync-version` 才执行同步。
-- GitHub Actions remains manual-only. The local pre-commit checks repository
-  identity, formatting, and locked workspace compilation. Hostile malformed
-  media is decoded only by the opt-in, per-process verifier with an enforceable
-  memory limit by default.
-  GitHub Actions 继续仅手动触发。本地 pre-commit 核对仓库身份、格式与 locked
-  workspace 编译。hostile malformed media 只由 opt-in 的逐进程 verifier
-  解码，且默认要求可执行的内存上限。
-- Added explicit local release staging. The distributed CLI archive is
+- GitHub Actions now provides bounded automatic Ubuntu 24.04, Windows Server
+  2025 x64, and macOS 26 arm64 validation for pull requests and `main`. The
+  macOS main/manual gate also runs clean CLI/GUI staging without uploading its
+  unsigned, unnotarized artifacts. Hostile malformed media remains confined to
+  the opt-in, per-process verifier with an enforceable memory limit by default.
+  GitHub Actions 现为 pull request 与 `main` 提供有界的 Ubuntu 24.04、Windows
+  Server 2025 x64 与 macOS 26 arm64 自动验证。macOS main/manual 门禁还会执行
+  clean CLI/GUI staging，但不上传未签名、未公证的制品。hostile malformed media
+  仍只由 opt-in 的逐进程 verifier 解码，且默认要求可执行的内存上限。
+- Added explicit release staging. The distributed CLI archive is
   extracted and smoke-tested against the versioned JSON/profile contract;
   release manifests and every artifact are covered by SHA-256. Current-host
   macOS DMGs receive image, mounted-bundle, and architecture checks, while
-  remaining explicitly unsigned, unnotarized, and local-only.
-  新增显式本地发行 staging：解包后的 CLI 会通过版本化 JSON/profile smoke，
+  remaining explicitly unsigned, unnotarized, and staging-only. The same
+  contract runs ephemerally on macOS main/manual CI without artifact upload.
+  新增显式发行 staging：解包后的 CLI 会通过版本化 JSON/profile smoke，
   release manifest 与全部制品由 SHA-256 覆盖；当前 host 的 macOS DMG 会核对
-  镜像、挂载 bundle 与 architecture，同时明确保持未签名、未公证、仅供本地。
+  镜像、挂载 bundle 与 architecture，同时明确保持未签名、未公证、仅供 staging。
+  同一契约会在 macOS main/manual CI 中临时运行，但不会上传制品。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.
