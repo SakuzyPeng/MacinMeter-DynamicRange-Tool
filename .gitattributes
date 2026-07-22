@@ -1,1 +1,4 @@
+# Reference evidence and reverse-engineering harnesses are not product code.
+reference/** linguist-detectable=false
+
 reference/observations/**/raw/* -text
