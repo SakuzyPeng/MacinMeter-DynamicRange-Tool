@@ -83,8 +83,25 @@ serde.workspace = true
             json.dumps({"version": "0.2.0"}),
         )
         self.write(
-            ".github/workflows/validation.yml",
-            "name: Validation\n\non:\n  workflow_dispatch:\n\njobs: {}\n",
+            ".github/workflows/workspace-validation.yml",
+            """name: Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: workspace-validation-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs: {}
+""",
         )
         self.write("Cargo.lock", "")
 
@@ -118,19 +135,57 @@ serde.workspace = true
             any("dependencies.serde must use" in error for error in self.errors())
         )
 
-    def test_rejects_mutating_builds_and_non_manual_workflows(self) -> None:
+    def test_rejects_mutating_builds_and_unsupported_workflow_triggers(self) -> None:
         package_path = self.root / "tauri-app/package.json"
         package = json.loads(package_path.read_text(encoding="utf-8"))
         package["scripts"]["build"] = "npm run sync-version && tsc"
         package_path.write_text(json.dumps(package), encoding="utf-8")
         self.write(
-            ".github/workflows/validation.yml",
-            "name: Validation\n\non:\n  push:\n\njobs: {}\n",
+            ".github/workflows/workspace-validation.yml",
+            "name: Validation\n\non:\n  schedule:\n\njobs: {}\n",
         )
 
         errors = self.errors()
         self.assertTrue(any("build must check version" in error for error in errors))
-        self.assertTrue(any("workflow_dispatch-only" in error for error in errors))
+        self.assertTrue(any("must use exactly" in error for error in errors))
+
+    def test_rejects_pushes_outside_main_and_missing_cancellation(self) -> None:
+        self.write(
+            ".github/workflows/workspace-validation.yml",
+            """name: Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs: {}
+""",
+        )
+
+        errors = self.errors()
+        self.assertTrue(any("push must target main only" in error for error in errors))
+        self.assertTrue(any("group superseded runs" in error for error in errors))
+        self.assertTrue(any("cancel superseded runs" in error for error in errors))
+
+    def test_rejects_ci_permission_and_release_scope_expansion(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8")
+        contents = contents.replace("contents: read", "contents: write")
+        contents = contents.replace(
+            "jobs: {}", "jobs:\n  release:\n    run: python3 scripts/stage-release.py stage"
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        errors = self.errors()
+        self.assertTrue(any("read-only repository permissions" in error for error in errors))
+        self.assertTrue(any("must not run release staging" in error for error in errors))
 
     def test_rejects_nested_lockfiles(self) -> None:
         self.write("tauri-app/src-tauri/Cargo.lock", "")

@@ -77,6 +77,25 @@ def workflow_events(path: Path) -> list[str] | None:
     ]
 
 
+def workflow_event_body(path: Path, event: str) -> list[str] | None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    marker = f"  {event}:"
+    try:
+        start = lines.index(marker) + 1
+    except ValueError:
+        return None
+
+    body: list[str] = []
+    for line in lines[start:]:
+        if re.match(r"^  [A-Za-z0-9_-]+:", line):
+            break
+        if line and not line.startswith("    "):
+            break
+        if line.strip():
+            body.append(line)
+    return body
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -230,19 +249,60 @@ def validate(root: Path) -> list[str]:
     )
     require(
         len(workflow_paths) == 1,
-        "exactly one manual GitHub Actions workflow is required",
+        "exactly one GitHub Actions validation workflow is required",
     )
     for path in workflow_paths:
+        require(
+            path == root / ".github/workflows/workspace-validation.yml",
+            "the sole workflow must be .github/workflows/workspace-validation.yml",
+        )
         events = workflow_events(path)
         require(
-            events == ["workflow_dispatch"],
-            f"{path.relative_to(root)} must remain workflow_dispatch-only; "
-            f"found {events}",
+            events is not None
+            and sorted(events) == ["pull_request", "push", "workflow_dispatch"],
+            f"{path.relative_to(root)} must use exactly pull_request, push, and "
+            f"workflow_dispatch triggers; found {events}",
         )
         require(
-            "verify-malformed-corpus.py" not in path.read_text(encoding="utf-8"),
-            f"{path.relative_to(root)} must not run the hostile corpus verifier",
+            workflow_event_body(path, "pull_request") == [],
+            f"{path.relative_to(root)} pull_request must not use path or branch filters",
         )
+        require(
+            workflow_event_body(path, "push")
+            == ["    branches:", "      - main"],
+            f"{path.relative_to(root)} push must target main only",
+        )
+        require(
+            workflow_event_body(path, "workflow_dispatch") == [],
+            f"{path.relative_to(root)} workflow_dispatch must remain input-free",
+        )
+
+        workflow_text = path.read_text(encoding="utf-8")
+        require(
+            "group: workspace-validation-${{ github.event_name }}-"
+            "${{ github.event.pull_request.number || github.ref }}"
+            in workflow_text,
+            f"{path.relative_to(root)} must group superseded runs by trigger and ref",
+        )
+        require(
+            "cancel-in-progress: true" in workflow_text,
+            f"{path.relative_to(root)} must cancel superseded runs",
+        )
+        require(
+            "permissions:\n  contents: read" in workflow_text,
+            f"{path.relative_to(root)} must retain read-only repository permissions",
+        )
+        forbidden_ci_tasks = {
+            "verify-malformed-corpus.py": "the hostile corpus verifier",
+            "run-performance-baseline.py": "performance baselines",
+            "run-performance-profile.py": "performance profiling",
+            "stage-release.py": "release staging",
+        }
+        for command, label in forbidden_ci_tasks.items():
+            require(
+                command not in workflow_text,
+                f"{path.relative_to(root)} must not run {label}",
+            )
 
     return errors
 

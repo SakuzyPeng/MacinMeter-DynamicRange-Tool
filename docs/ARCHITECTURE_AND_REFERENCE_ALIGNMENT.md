@@ -29,6 +29,8 @@
 > M5 范围决策：[ADR-0006：M5 产品与仓库收敛](adr/0006-m5-product-repository-convergence.md)
 >
 > M6 范围决策：[ADR-0007：M6 可复现性能基线](adr/0007-m6-reproducible-performance-baseline.md)
+>
+> M6 后维护决策：[ADR-0008：恢复有界自动 CI](adr/0008-post-m6-bounded-automatic-ci.md)
 
 ## 1. 文档目的
 
@@ -209,6 +211,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | CI-002 | DONE | 固定 M0 构建基线 | Rust 1.88、根 lockfile、CI `--locked` |
 | CI-003 | DONE | 隔离 GUI release 链 | M5 改为显式本地 current-host DMG staging 与实际制品验证；按 opt-in CI 决策不上传、不自动发布 |
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
+| CI-005 | DONE | 恢复有界自动验证 | PR 与 `main` push 自动执行单 Ubuntu 正确性门禁；同 ref 取消过时运行，release build 仅手动，性能/hostile/release/publish 仍排除 |
 | RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | DONE | 重建 benchmark 方法 | ADR-0007 固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；clean 9239609 scalar baseline 的 105 个 measured sample 与报告已保存 |
@@ -784,10 +787,17 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 两次各 42 个 measured sample，全部跨 variant fingerprint 一致；
     - 不继续 SIMD/unsafe、validation/commit 合并、FLAC backend 或无需求的
       文件级并发。
+34. [x] `ci: restore bounded automatic workspace validation`
+    - PR 与 `main` push 运行标准正确性门禁，manual dispatch 额外构建 release CLI；
+    - 固定 read-only 权限、action identity、main-only push、timeout 与过时运行取消；
+    - 不恢复旧 release、path filter、matrix、benchmark 或 hostile-input workflow。
 
 M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
 正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
 文件级并发、SIMD 或新的性能承诺必须由后续真实需求重新立项。
+
+M6 后按 ADR-0008 恢复有界自动 CI。它只改变远端正确性门禁的触发时机，不扩大
+release、性能、hostile-input、平台或兼容性声明边界。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -797,7 +807,8 @@ M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界�
 
 - [x] 设置准确且实际验证的 `rust-version = 1.88`；
 - [x] 统一 workspace、Tauri Cargo、package.json、tauri.conf 和 lockfile 版本；
-- [x] 手动 CI 使用根 lockfile 与 `--locked`；
+- [x] CI 使用根 lockfile 与 `--locked`；M0–M6 的纯手动阶段完成后，按 ADR-0008
+  恢复有界的 PR/`main` 自动门禁；
 - [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
 - [x] 删除非测试代码中的无保护 `expect`；
 - [x] 删除线程优先级控制；

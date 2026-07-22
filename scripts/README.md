@@ -13,7 +13,8 @@ python3 scripts/check-repository-contract.py
 
 enforces the virtual-workspace identity, inherited package metadata, centralized
 direct dependencies, the single Cargo/npm lockfiles, GUI version mirrors, and
-manual-only workflow triggers. It does not resolve or download dependencies.
+the bounded pull-request/main/manual workflow trigger policy. It does not
+resolve or download dependencies.
 
 ## Native PCM product fixtures
 
@@ -100,7 +101,10 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 (cd tauri-app && npm run build)
 ```
 
-The matching GitHub Actions workflow remains `workflow_dispatch` only.
+The matching GitHub Actions workflow runs this standard gate for pull requests
+and pushes to `main`; a manual dispatch additionally builds the release CLI.
+Performance, hostile-corpus, release-staging, and publishing tasks remain
+explicitly outside that workflow.
 
 ## M6 performance baseline
 

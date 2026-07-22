@@ -54,8 +54,9 @@ dependencies into lower layers.
   adapters over the shared façade and `WireEnvelope`.
 - M5 centralizes every direct third-party Rust dependency in the root
   `[workspace.dependencies]`; member manifests use `.workspace = true`.
-  Package identity, the two lockfiles, GUI version mirrors, and manual-only
-  workflow triggers are enforced by `scripts/check-repository-contract.py`.
+  Package identity, the two lockfiles, GUI version mirrors, and the bounded
+  pull-request/main/manual workflow triggers are enforced by
+  `scripts/check-repository-contract.py`.
 - Ordinary GUI build/dev commands only check version mirrors. Version changes
   are written only by the explicit `npm run sync-version` command.
 - Local release staging must start clean unless it is explicitly marked dirty.
@@ -88,8 +89,10 @@ npm run build
 npm run tauri dev
 ```
 
-Remote CI remains manual-only until an explicit release-stage decision. Do not
-trigger or wait for it as part of ordinary development.
+Remote CI runs automatically for pull requests and pushes to `main`; manual
+dispatch additionally builds the release CLI. Do not trigger, rerun, or wait
+for remote CI as part of ordinary development unless the user requests it or
+its result is required for the current GitHub operation.
 
 Local artifact staging is separate from ordinary verification:
 
