@@ -89,10 +89,12 @@ npm run build
 npm run tauri dev
 ```
 
-Remote CI runs automatically for pull requests and pushes to `main`; manual
-dispatch additionally builds the release CLI. Do not trigger, rerun, or wait
-for remote CI as part of ordinary development unless the user requests it or
-its result is required for the current GitHub operation.
+Remote CI runs bounded Ubuntu 24.04 and Windows Server 2025 x64 jobs for pull
+requests and pushes to `main`. The Windows release CLI is built and smoke-tested
+only on `main`/manual runs; manual dispatch also adds the Linux release build.
+Do not trigger, rerun, or wait for remote CI as part of ordinary development
+unless the user requests it or its result is required for the current GitHub
+operation.
 
 Local artifact staging is separate from ordinary verification:
 

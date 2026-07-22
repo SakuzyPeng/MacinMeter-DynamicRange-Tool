@@ -96,6 +96,22 @@ def workflow_event_body(path: Path, event: str) -> list[str] | None:
     return body
 
 
+def workflow_job_body(path: Path, job: str) -> list[str] | None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    marker = f"  {job}:"
+    try:
+        start = lines.index(marker) + 1
+    except ValueError:
+        return None
+
+    body: list[str] = []
+    for line in lines[start:]:
+        if re.match(r"^  [A-Za-z0-9_-]+:", line):
+            break
+        body.append(line)
+    return body
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -292,6 +308,36 @@ def validate(root: Path) -> list[str]:
             "permissions:\n  contents: read" in workflow_text,
             f"{path.relative_to(root)} must retain read-only repository permissions",
         )
+
+        linux_job = workflow_job_body(path, "workspace")
+        windows_job = workflow_job_body(path, "windows")
+        require(
+            linux_job is not None and "    runs-on: ubuntu-24.04" in linux_job,
+            f"{path.relative_to(root)} must retain the Ubuntu 24.04 full gate",
+        )
+        require(
+            windows_job is not None and "    runs-on: windows-2025" in windows_job,
+            f"{path.relative_to(root)} must retain the Windows Server 2025 gate",
+        )
+        if windows_job is not None:
+            windows_text = "\n".join(windows_job)
+            required_windows_commands = (
+                "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings",
+                "cargo test --locked --workspace --all-targets",
+                "cargo build --locked --release -p macinmeter-cli",
+                ".\\target\\release\\macinmeter.exe analyze",
+            )
+            for command in required_windows_commands:
+                require(
+                    command in windows_text,
+                    f"{path.relative_to(root)} Windows gate is missing: {command}",
+                )
+            require(
+                windows_text.count("if: github.event_name != 'pull_request'") == 2,
+                f"{path.relative_to(root)} Windows release build and smoke must remain "
+                "main/manual-only",
+            )
+
         forbidden_ci_tasks = {
             "verify-malformed-corpus.py": "the hostile corpus verifier",
             "run-performance-baseline.py": "performance baselines",

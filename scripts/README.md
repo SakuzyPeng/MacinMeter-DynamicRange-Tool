@@ -101,10 +101,11 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 (cd tauri-app && npm run build)
 ```
 
-The matching GitHub Actions workflow runs this standard gate for pull requests
-and pushes to `main`; a manual dispatch additionally builds the release CLI.
-Performance, hostile-corpus, release-staging, and publishing tasks remain
-explicitly outside that workflow.
+The matching GitHub Actions workflow runs the full standard gate on Ubuntu and
+the Rust/CLI/Tauri gate on Windows Server 2025 for pull requests and pushes to
+`main`. Main/manual Windows runs also smoke-test a release CLI; manual dispatch
+adds the Linux release build. Performance, hostile-corpus, release-staging, and
+publishing tasks remain explicitly outside that workflow.
 
 ## M6 performance baseline
 

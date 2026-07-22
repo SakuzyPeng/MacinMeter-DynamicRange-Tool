@@ -100,7 +100,18 @@ concurrency:
 permissions:
   contents: read
 
-jobs: {}
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+  windows:
+    runs-on: windows-2025
+    steps:
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace --all-targets
+      - if: github.event_name != 'pull_request'
+        run: cargo build --locked --release -p macinmeter-cli
+      - if: github.event_name != 'pull_request'
+        run: .\\target\\release\\macinmeter.exe analyze fixture.wav
 """,
         )
         self.write("Cargo.lock", "")
@@ -179,13 +190,25 @@ jobs: {}
         contents = workflow.read_text(encoding="utf-8")
         contents = contents.replace("contents: read", "contents: write")
         contents = contents.replace(
-            "jobs: {}", "jobs:\n  release:\n    run: python3 scripts/stage-release.py stage"
+            "cargo test --locked --workspace --all-targets",
+            "python3 scripts/stage-release.py stage",
         )
         workflow.write_text(contents, encoding="utf-8")
 
         errors = self.errors()
         self.assertTrue(any("read-only repository permissions" in error for error in errors))
         self.assertTrue(any("must not run release staging" in error for error in errors))
+
+    def test_rejects_removing_the_fixed_windows_gate(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            "runs-on: windows-2025", "runs-on: windows-latest"
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any("Windows Server 2025 gate" in error for error in self.errors())
+        )
 
     def test_rejects_nested_lockfiles(self) -> None:
         self.write("tauri-app/src-tauri/Cargo.lock", "")

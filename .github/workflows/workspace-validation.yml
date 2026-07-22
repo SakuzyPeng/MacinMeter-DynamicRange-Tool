@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   workspace:
-    name: Repository, Rust, CLI, and GUI
+    name: Linux repository, Rust, CLI, and GUI
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -85,3 +85,54 @@ jobs:
       - name: Build GUI frontend
         working-directory: tauri-app
         run: npm run build
+
+  windows:
+    name: Windows Rust, CLI, and Tauri
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 2026-07-16
+        with:
+          toolchain: 1.88.0
+          components: clippy
+
+      - name: Check repository identity
+        run: python scripts/check-repository-contract.py
+
+      - name: Run Windows Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run Windows workspace tests
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Build Windows release CLI
+        if: github.event_name != 'pull_request'
+        run: cargo build --locked --release -p macinmeter-cli
+
+      - name: Smoke-test Windows release CLI
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $version = & .\target\release\macinmeter.exe --version
+          if ($LASTEXITCODE -ne 0 -or -not $version.StartsWith("macinmeter ")) {
+            throw "release CLI version smoke test failed"
+          }
+
+          $document = & .\target\release\macinmeter.exe analyze `
+            .\tests\fixtures\native-pcm-v1\wav-pcm-s16-stereo.wav `
+            --format json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $document.schemaVersion -ne 3 `
+              -or $document.kind -ne "analysis") {
+            throw "release CLI analysis smoke test failed"
+          }

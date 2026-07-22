@@ -1,6 +1,6 @@
 # ADR-0008：M6 后恢复有界自动 CI
 
-- 状态：Accepted
+- 状态：Accepted；单平台边界由 ADR-0009 扩展
 - 日期：2026-07-22
 - 范围：GitHub Actions 验证触发、权限与资源边界
 

@@ -12,28 +12,34 @@ The repository has one bounded validation workflow:
 - One concurrency group is retained per trigger and pull request or ref. A
   newer update cancels an obsolete in-progress run for that group without a
   manual dispatch cancelling an automatic `main` validation.
-- The workflow uses one pinned Ubuntu 24.04 job with read-only repository
-  permissions and a 45-minute timeout. Rust is pinned to the verified MSRV,
-  1.88, and Node.js is pinned to 22.
+- The workflow uses explicit Ubuntu 24.04 and Windows Server 2025 x64 jobs with
+  read-only repository permissions and 45-minute timeouts. Rust is pinned to
+  the verified MSRV, 1.88, and the Linux frontend build uses Node.js 22.
 
 ## Standard automatic gate
 
-Pull requests and `main` pushes validate the repository identity, formatting,
-strict workspace Clippy, standard workspace tests, repository/reference-tool
-unit tests, and the TypeScript/Vite frontend. Cargo always uses the root
-lockfile with `--locked`; npm uses `tauri-app/package-lock.json` through
-`npm ci`.
+The Linux job validates repository identity, formatting, strict workspace
+Clippy, standard workspace tests, repository/reference-tool unit tests, and
+the TypeScript/Vite frontend. The parallel Windows job validates repository
+identity, strict Clippy, and all workspace targets on the actual Windows x64
+toolchain, including the CLI black-box and Tauri Rust tests. Cargo always uses
+the root lockfile with `--locked`; npm uses `tauri-app/package-lock.json`
+through `npm ci`.
 
-The additional release-mode CLI build runs only for an explicit manual
-dispatch. Local release staging remains the authoritative artifact boundary.
+The Linux release CLI build runs only for an explicit manual dispatch. The
+Windows job builds and smoke-tests the release CLI after a `main` push or
+manual dispatch, but does not retain or upload that binary. Local release
+staging remains the authoritative artifact boundary.
 
 The hostile malformed-media verifier, performance corpus, profiler, release
 staging, artifact upload, signing, notarization, advisory-network access, and
-platform matrices remain outside this workflow. In particular, the hostile
-corpus is never decoded in the ordinary Cargo test process.
+macOS runners and broad platform matrices remain outside this workflow. In
+particular, the hostile corpus is never decoded in the ordinary Cargo test
+process, and a successful Windows compile/smoke does not claim a verified GUI
+installer.
 
 ## Manual use
 
 Open the repository's **Actions** page, choose **Workspace validation**, and
-select **Run workflow**. The manual run executes the same standard gate and the
-additional release CLI build; it still does not publish anything.
+select **Run workflow**. The manual run executes both platform gates and their
+release CLI builds; it still does not publish anything.
