@@ -29,22 +29,26 @@ Cargo always uses the root lockfile with `--locked`; npm uses
 
 The Linux release CLI build runs only for an explicit manual dispatch. The
 Windows job builds and smoke-tests the release CLI after a `main` push or
-manual dispatch, but does not retain or upload that binary. On the same
-main/manual boundary, the macOS job runs the existing clean release staging
-contract for both the final CLI archive and current-host arm64 Tauri DMG. It
-checks the extracted CLI, mounts the DMG read-only, validates bundle identity
-and architecture, and verifies the SHA-256 manifest. Those runner-local bytes
-are intentionally discarded rather than uploaded.
+manual dispatch, but does not retain or upload that binary. A `main` push makes
+the macOS job run clean local-only staging for the final CLI archive and
+current-host arm64 Tauri DMG, then discard those runner-local bytes.
 
-The hostile malformed-media verifier, performance corpus, profiler, artifact
-upload, signing, notarization, release publication, advisory-network access,
-and broad platform matrices remain outside this workflow. In particular, the
-hostile corpus is never decoded in the ordinary Cargo test process. A
-successful macOS staging run establishes an unsigned arm64 DMG structural
-smoke; it does not establish Gatekeeper or public-distribution readiness.
+An explicit manual dispatch must target `main`. It instead creates the stricter
+unsigned Apple Silicon candidate: clean source, CLI plus GUI, macOS 11.0
+minimum, exact arm64 bundle, SHA-256 coverage, no Developer ID, and no
+notarization claim. One pinned `actions/upload-artifact` step retains that
+candidate for 14 days. The workflow retains read-only repository permissions,
+so this is not a tag or GitHub Release.
+
+The hostile malformed-media verifier, performance corpus, profiler, signing,
+notarization, release publication, advisory-network access, and broad platform
+matrices remain outside this workflow. Candidate retention is the sole artifact
+upload and occurs only on manual dispatch. A successful macOS staging run does
+not establish Gatekeeper or public-distribution readiness.
 
 ## Manual use
 
 Open the repository's **Actions** page, choose **Workspace validation**, and
 select **Run workflow**. The manual run executes all three platform gates,
-including macOS CLI/GUI staging; it still does not retain or publish artifacts.
+then retains the unsigned Apple Silicon CLI/GUI candidate for 14 days. It does
+not create a tag, publish a Release, or make the candidate publicly downloadable.

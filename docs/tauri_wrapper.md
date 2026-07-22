@@ -54,17 +54,18 @@ npm run tauri dev
 
 Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
-Workspace Rust builds place artifacts under the root `target/` directory.
-The current bundle targets are macOS `.app` and `.dmg`; Windows/Linux packaging
-is outside the current 0.2.0 release contract.
+Workspace Rust builds place artifacts under the root `target/` directory. The
+0.2.0 bundle target is Apple Silicon macOS 11.0+ `.app`/`.dmg`; Intel,
+universal, Windows, and Linux GUI packaging is outside the release contract.
 
 `python3 scripts/stage-release.py stage --include-gui` builds the current-host
 DMG and verifies its image integrity, mounted bundle version/identifier,
 executable, and exact architecture before adding it to the SHA-256 release
-manifest. The bounded `main`/manual macOS 26 arm64 CI job runs this same clean
-contract and discards its artifacts after validation. Neither path launches,
-signs, notarizes, or uploads the app. The current result remains staging-only;
-a structural smoke pass is not a public-distribution or Gatekeeper claim.
+manifest. The bounded `main` macOS 26 arm64 CI job runs the same clean contract
+and discards its artifacts. Manual dispatch creates the stricter unsigned
+Apple Silicon candidate and retains it for 14 days. Neither path launches,
+Developer-ID-signs, notarizes, tags, or publishes the app. A structural smoke
+pass is not a public-distribution or Gatekeeper claim.
 See [`RELEASE.md`](RELEASE.md).
 
 The backend performs admitted blocking analysis through Tauri's blocking task

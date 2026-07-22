@@ -1,6 +1,6 @@
 # ADR-0010：自动 CI 扩展至 macOS arm64 与 GUI staging
 
-- 状态：Accepted
+- 状态：Accepted；候选保留边界由 ADR-0011 扩展
 - 日期：2026-07-22
 - 范围：GitHub Actions 的第三平台验证层与发布前 GUI 制品边界
 

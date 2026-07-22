@@ -2,11 +2,11 @@
 
 ## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 
-> Status: development branch. All analysis output is
+> Status: unsigned Apple Silicon release-candidate preparation. All analysis output is
 > `foo_dr_meter 1.0.8 Candidate V1 / Unverified`; this release does not claim
 > reference-plugin compatibility.
 >
-> 状态：开发分支。所有分析结果均标记为
+> 状态：未签名 Apple Silicon release candidate 准备阶段。所有分析结果均标记为
 > `foo_dr_meter 1.0.8 Candidate V1 / Unverified`，本版本不声明已经兼容参考插件。
 
 ### Architecture / 架构
@@ -38,6 +38,12 @@
   parallel execution are unavailable by design.
   AIFC、有损编码、Opus/Songbird、FFmpeg 路径、DSD、预处理和并行执行均有意
   暂不提供。
+- The packaged 0.2.0 desktop release targets Apple Silicon Macs on macOS 11.0
+  or newer. It has no Developer ID signature or notarization; Intel/universal
+  macOS and Windows/Linux GUI packages are outside this release.
+  0.2.0 桌面发行包只面向 macOS 11.0 或更新系统上的 Apple Silicon Mac。它没有
+  Developer ID 签名或 Apple 公证；Intel/universal macOS 与 Windows/Linux GUI
+  包不属于本次发行。
 
 ### Interfaces / 接口
 
@@ -106,23 +112,28 @@
   `npm run sync-version` 才执行同步。
 - GitHub Actions now provides bounded automatic Ubuntu 24.04, Windows Server
   2025 x64, and macOS 26 arm64 validation for pull requests and `main`. The
-  macOS main/manual gate also runs clean CLI/GUI staging without uploading its
-  unsigned, unnotarized artifacts. Hostile malformed media remains confined to
+  macOS main gate runs ephemeral clean CLI/GUI staging; manual dispatch retains
+  a verified unsigned Apple Silicon candidate for 14 days without publishing
+  it. Hostile malformed media remains confined to
   the opt-in, per-process verifier with an enforceable memory limit by default.
   GitHub Actions 现为 pull request 与 `main` 提供有界的 Ubuntu 24.04、Windows
-  Server 2025 x64 与 macOS 26 arm64 自动验证。macOS main/manual 门禁还会执行
-  clean CLI/GUI staging，但不上传未签名、未公证的制品。hostile malformed media
-  仍只由 opt-in 的逐进程 verifier 解码，且默认要求可执行的内存上限。
+  Server 2025 x64 与 macOS 26 arm64 自动验证。macOS main 门禁执行临时 clean
+  CLI/GUI staging；手动触发会保留 14 天已验证的未签名 Apple Silicon candidate，
+  但不会发布。hostile malformed media 仍只由 opt-in 的逐进程 verifier 解码，
+  且默认要求可执行的内存上限。
 - Added explicit release staging. The distributed CLI archive is
   extracted and smoke-tested against the versioned JSON/profile contract;
   release manifests and every artifact are covered by SHA-256. Current-host
   macOS DMGs receive image, mounted-bundle, and architecture checks, while
   remaining explicitly unsigned, unnotarized, and staging-only. The same
-  contract runs ephemerally on macOS main/manual CI without artifact upload.
+  contract runs ephemerally on macOS main CI. Manual CI uses the stricter
+  unsigned-candidate manifest and retains it temporarily without creating a
+  tag or Release.
   新增显式发行 staging：解包后的 CLI 会通过版本化 JSON/profile smoke，
   release manifest 与全部制品由 SHA-256 覆盖；当前 host 的 macOS DMG 会核对
   镜像、挂载 bundle 与 architecture，同时明确保持未签名、未公证、仅供 staging。
-  同一契约会在 macOS main/manual CI 中临时运行，但不会上传制品。
+  同一契约会在 macOS main CI 中临时运行；手动 CI 使用更严格的 unsigned
+  candidate manifest 并临时保留制品，但不会创建 tag 或 Release。
 
 Earlier entries below describe historical 0.1.x releases and removed behavior;
 they are not documentation for the 0.2.0 interface.

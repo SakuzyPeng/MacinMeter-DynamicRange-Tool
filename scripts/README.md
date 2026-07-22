@@ -105,9 +105,10 @@ The matching GitHub Actions workflow runs the full standard gate on Ubuntu and
 the Rust/CLI/Tauri gate on Windows Server 2025 x64 and macOS 26 arm64 for pull
 requests and pushes to `main`. Main/manual Windows runs also smoke-test a
 release CLI; main/manual macOS runs stage and verify the final CLI archive plus
-current-host Tauri DMG without uploading either artifact. Manual dispatch adds
-the Linux release build. Performance, hostile-corpus, signing, notarization,
-artifact upload, and publishing remain explicitly outside that workflow.
+current-host Tauri DMG. A main push discards those bytes; manual dispatch from
+`main` retains the stricter unsigned Apple Silicon candidate for 14 days.
+Manual dispatch also adds the Linux release build. Performance, hostile-corpus,
+signing, notarization, and publishing remain explicitly outside that workflow.
 
 ## M6 performance baseline
 
@@ -168,11 +169,21 @@ On macOS, explicitly include the current-host Tauri DMG:
 python3 scripts/stage-release.py stage --include-gui
 ```
 
+The clean, immutable Apple Silicon candidate has its own explicit mode:
+
+```bash
+python3 scripts/stage-release.py stage \
+  --include-gui \
+  --unsigned-macos-arm64-candidate
+```
+
 Both commands create `RELEASE_MANIFEST.json` and `SHA256SUMS`, then verify the
 final files. CLI verification extracts and runs the distributed binary. GUI
 verification checks and mounts the DMG, validates its bundle identity and
 architecture, records strict code-signature status, and does not launch it.
 No staging command uploads, signs, notarizes, or creates a GitHub release.
+The manual workflow may retain a verified candidate after this script exits;
+that external retention does not change the manifest into a published release.
 
 See [`docs/RELEASE.md`](../docs/RELEASE.md) for the exact artifact and dirty-tree
 contracts.

@@ -61,9 +61,13 @@ dependencies into lower layers.
   are written only by the explicit `npm run sync-version` command.
 - Release staging must start clean unless it is explicitly marked dirty. It
   verifies the extracted CLI and current-host DMG bytes plus SHA-256. The
-  macOS arm64 main/manual CI gate may run the same contract as ephemeral
-  validation, but it never signs, notarizes, uploads, or implies
-  public-distribution readiness.
+  macOS arm64 main CI gate may run the same contract as ephemeral validation.
+  Manual dispatch may retain one clean unsigned Apple Silicon candidate for
+  14 days, but it never signs, notarizes, creates a tag/Release, or implies
+  Gatekeeper readiness.
+- The 0.2.0 packaged GUI targets only `aarch64-apple-darwin` with macOS 11.0 as
+  its minimum system version. Do not add Intel, universal, Windows, or Linux
+  GUI artifacts without a separate target-bound decision.
 - M6 performance evidence uses the release `m6_baseline_worker` and
   `scripts/run-performance-baseline.py`. Formal runs start clean, bind source,
   binary, suite, corpus, toolchain, environment, and raw samples, and require
@@ -93,8 +97,9 @@ npm run tauri dev
 
 Remote CI runs bounded Ubuntu 24.04, Windows Server 2025 x64, and macOS 26
 arm64 jobs for pull requests and pushes to `main`. Main/manual runs add the
-Windows release CLI smoke and clean macOS CLI/GUI staging; manual dispatch also
-adds the Linux release build. CI staging artifacts are not uploaded.
+Windows release CLI smoke; main runs ephemeral macOS staging, while manual
+dispatch from `main` retains the unsigned Apple Silicon candidate for 14 days
+and adds the Linux release build. No CI path creates a tag or GitHub Release.
 Do not trigger, rerun, or wait for remote CI as part of ordinary development
 unless the user requests it or its result is required for the current GitHub
 operation.

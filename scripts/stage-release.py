@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Stage and verify local MacinMeter release artifacts.
+"""Stage and verify MacinMeter release artifacts and candidates.
 
 The default `stage` command builds the host CLI from locked sources, packages
 the actual distributed bytes, runs smoke checks after extraction, and writes a
 SHA-256 manifest. macOS GUI staging is explicit through `--include-gui`.
+Unsigned Apple Silicon release candidates require the additional explicit
+`--unsigned-macos-arm64-candidate` flag and a clean source tree.
 
 This script never uploads, signs, or creates a GitHub release.
 """
@@ -35,6 +37,10 @@ RELEASE_SCHEMA_VERSION = 1
 WIRE_SCHEMA_VERSION = 3
 ANALYSIS_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
 COMPATIBILITY_STATUS = "unverified"
+APPLE_SILICON_TARGET = "aarch64-apple-darwin"
+MACOS_MINIMUM_SYSTEM_VERSION = "11.0"
+LOCAL_STAGING_SCOPE = "local_staging_only"
+UNSIGNED_MACOS_ARM64_SCOPE = "unsigned_macos_arm64_release_candidate"
 CHECKSUM_FILE = "SHA256SUMS"
 RELEASE_MANIFEST = "RELEASE_MANIFEST.json"
 ARTIFACT_MANIFEST = "ARTIFACT_MANIFEST.json"
@@ -121,7 +127,15 @@ def toolchain_identity(root: Path) -> dict:
     if not host or not release:
         raise ReleaseError("rustc -vV did not report host and release")
     cargo = run(["cargo", "-V"], cwd=root, capture=True).stdout.strip()
-    return {"host": host, "rustc": release, "cargo": cargo}
+    node = run(["node", "--version"], cwd=root, capture=True).stdout.strip()
+    npm = run(["npm", "--version"], cwd=root, capture=True).stdout.strip()
+    return {
+        "host": host,
+        "rustc": release,
+        "cargo": cargo,
+        "node": node,
+        "npm": npm,
+    }
 
 
 def version_tuple(value: str) -> tuple[int, int, int]:
@@ -474,19 +488,19 @@ def build_cli_payload(
 
 
 def macos_bundle_arch(target: str) -> str:
-    if target == "aarch64-apple-darwin":
+    if target == APPLE_SILICON_TARGET:
         return "aarch64"
-    if target == "x86_64-apple-darwin":
-        return "x64"
-    raise ReleaseError(f"GUI release staging is not defined for {target}")
+    raise ReleaseError(
+        f"GUI release staging supports Apple Silicon only; found {target}"
+    )
 
 
 def macos_binary_arch(target: str) -> str:
-    if target == "aarch64-apple-darwin":
+    if target == APPLE_SILICON_TARGET:
         return "arm64"
-    if target == "x86_64-apple-darwin":
-        return "x86_64"
-    raise ReleaseError(f"macOS binary inspection is not defined for {target}")
+    raise ReleaseError(
+        f"macOS binary inspection supports Apple Silicon only; found {target}"
+    )
 
 
 def hdiutil(command: list[str], root: Path, *, capture: bool = False):
@@ -551,6 +565,11 @@ def smoke_macos_dmg(
             raise ReleaseError("GUI bundle version does not match the release")
         if info.get("CFBundleIdentifier") != identifier:
             raise ReleaseError("GUI bundle identifier does not match tauri.conf.json")
+        if info.get("LSMinimumSystemVersion") != MACOS_MINIMUM_SYSTEM_VERSION:
+            raise ReleaseError(
+                "GUI bundle minimum system version does not match the "
+                "Apple Silicon release contract"
+            )
         executable_name = info.get("CFBundleExecutable")
         executable = app / "Contents/MacOS" / str(executable_name)
         if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -572,13 +591,38 @@ def smoke_macos_dmg(
             capture_output=True,
             text=True,
         )
+        signature_details = subprocess.run(
+            ["codesign", "--display", "--verbose=4", str(app)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        signature_description = (
+            signature_details.stdout + "\n" + signature_details.stderr
+        )
+        developer_id_signed = "Authority=Developer ID Application:" in (
+            signature_description
+        )
+        team_identifier = re.search(
+            r"^TeamIdentifier=(.+)$", signature_description, re.MULTILINE
+        )
+        identified_apple_signature = (
+            "Authority=" in signature_description
+            or (
+                team_identifier is not None
+                and team_identifier.group(1).strip() not in ("", "not set")
+            )
+        )
         smoke = {
             "container": "dmg",
             "bundle": app.name,
             "bundleIdentifier": identifier,
             "bundleVersion": version,
             "architecture": expected_architecture,
+            "minimumSystemVersion": MACOS_MINIMUM_SYSTEM_VERSION,
             "strictCodeSignatureValid": signature.returncode == 0,
+            "developerIdSigned": developer_id_signed,
+            "identifiedAppleSignature": identified_apple_signature,
             "launch": "not_performed",
         }
     finally:
@@ -659,6 +703,98 @@ def parse_checksums(path: Path) -> dict[str, str]:
     return checksums
 
 
+def distribution_contract(unsigned_macos_arm64_candidate: bool) -> dict:
+    if unsigned_macos_arm64_candidate:
+        return {
+            "scope": UNSIGNED_MACOS_ARM64_SCOPE,
+            "platform": "macos",
+            "architecture": "arm64",
+            "minimumSystemVersion": MACOS_MINIMUM_SYSTEM_VERSION,
+            "signing": "developer_id_not_performed",
+            "notarization": "not_performed",
+            "gatekeeper": "not_claimed",
+            "upload": "permitted_after_verification",
+            "publication": "requires_explicit_confirmation",
+        }
+    return {
+        "scope": LOCAL_STAGING_SCOPE,
+        "signing": "not_performed",
+        "notarization": "not_performed",
+        "upload": "not_performed",
+    }
+
+
+def validate_stage_scope(
+    *,
+    unsigned_macos_arm64_candidate: bool,
+    include_gui: bool,
+    allow_dirty: bool,
+    replace: bool,
+    target: str,
+) -> None:
+    if not unsigned_macos_arm64_candidate:
+        return
+    if target != APPLE_SILICON_TARGET:
+        raise ReleaseError(
+            "unsigned release candidates support aarch64-apple-darwin only"
+        )
+    if not include_gui:
+        raise ReleaseError(
+            "unsigned Apple Silicon release candidates must include the GUI"
+        )
+    if allow_dirty:
+        raise ReleaseError("unsigned release candidates require a clean source tree")
+    if replace:
+        raise ReleaseError("unsigned release candidates cannot replace prior bytes")
+
+
+def validate_candidate_toolchain(
+    *,
+    unsigned_macos_arm64_candidate: bool,
+    package: dict,
+    toolchain: dict,
+) -> None:
+    if not unsigned_macos_arm64_candidate:
+        return
+    if version_tuple(toolchain["rustc"]) != version_tuple(package["msrv"]):
+        raise ReleaseError(
+            "unsigned release candidates require the exact Rust 1.88 toolchain"
+        )
+    if version_tuple(toolchain["node"].removeprefix("v"))[0] != 22:
+        raise ReleaseError(
+            "unsigned release candidates require the pinned Node.js 22 toolchain"
+        )
+
+
+def validate_distribution_manifest(manifest: dict, artifacts: list[dict]) -> str:
+    distribution = manifest.get("distribution")
+    if not isinstance(distribution, dict):
+        raise ReleaseError("release manifest distribution contract is missing")
+    scope = distribution.get("scope")
+    if scope == LOCAL_STAGING_SCOPE:
+        if distribution != distribution_contract(False):
+            raise ReleaseError("local staging distribution contract drifted")
+        return scope
+    if scope != UNSIGNED_MACOS_ARM64_SCOPE:
+        raise ReleaseError("release manifest has an unknown distribution scope")
+    if distribution != distribution_contract(True):
+        raise ReleaseError("unsigned Apple Silicon distribution contract drifted")
+    if manifest.get("target") != APPLE_SILICON_TARGET:
+        raise ReleaseError("unsigned release candidate target must be Apple Silicon")
+    if manifest.get("source", {}).get("state") != "clean":
+        raise ReleaseError("unsigned release candidate source must be clean")
+    if len(artifacts) != 2 or {
+        artifact.get("kind") for artifact in artifacts
+    } != {"cli", "gui_macos_dmg"}:
+        raise ReleaseError("unsigned release candidate must contain CLI and GUI")
+    gui = next(
+        artifact for artifact in artifacts if artifact.get("kind") == "gui_macos_dmg"
+    )
+    if gui.get("publicationStatus") != "unsigned_release_candidate":
+        raise ReleaseError("unsigned GUI publication status drifted")
+    return scope
+
+
 def verify_release_dir(
     release_dir: Path,
     *,
@@ -687,12 +823,10 @@ def verify_release_dir(
     toolchain = manifest.get("toolchain")
     if not isinstance(source, dict) or not isinstance(toolchain, dict):
         raise ReleaseError("release manifest source or toolchain identity is incomplete")
-    if manifest.get("distribution", {}).get("scope") != "local_staging_only":
-        raise ReleaseError("release manifest must not imply publication readiness")
-
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise ReleaseError("release manifest contains no artifacts")
+    distribution_scope = validate_distribution_manifest(manifest, artifacts)
     expected_names = {RELEASE_MANIFEST}
     for artifact in artifacts:
         name = artifact.get("file")
@@ -739,13 +873,21 @@ def verify_release_dir(
                 root=root,
             )
         elif kind == "gui_macos_dmg":
-            smoke_results[path.name] = smoke_macos_dmg(
+            gui_smoke = smoke_macos_dmg(
                 path,
                 version=version,
                 identifier=artifact["bundleIdentifier"],
                 target=target,
                 root=root,
             )
+            if (
+                distribution_scope == UNSIGNED_MACOS_ARM64_SCOPE
+                and gui_smoke["identifiedAppleSignature"]
+            ):
+                raise ReleaseError(
+                    "unsigned release candidate unexpectedly has an Apple identity signature"
+                )
+            smoke_results[path.name] = gui_smoke
         else:
             raise ReleaseError(f"unknown release artifact kind: {kind}")
     return smoke_results
@@ -765,16 +907,39 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
         f"{version}-dirty" if source["state"] == "dirty" else version
     )
     target = toolchain["host"]
+    unsigned_candidate = arguments.unsigned_macos_arm64_candidate
+    validate_stage_scope(
+        unsigned_macos_arm64_candidate=unsigned_candidate,
+        include_gui=arguments.include_gui,
+        allow_dirty=arguments.allow_dirty,
+        replace=arguments.replace,
+        target=target,
+    )
+    validate_candidate_toolchain(
+        unsigned_macos_arm64_candidate=unsigned_candidate,
+        package=package,
+        toolchain=toolchain,
+    )
+    default_output_root = root / (
+        "target/release-candidates"
+        if unsigned_candidate
+        else "target/release-staging"
+    )
     destination = (
         arguments.output_dir.resolve()
         if arguments.output_dir
-        else root / "target/release-staging" / version_label / target
+        else default_output_root / version_label / target
     )
     if destination.exists() and not arguments.replace:
+        if unsigned_candidate:
+            raise ReleaseError(
+                f"unsigned candidate directory already exists and is immutable: "
+                f"{destination}"
+            )
         raise ReleaseError(
             f"release directory already exists: {destination}; pass --replace"
         )
-    default_staging_root = (root / "target/release-staging").resolve()
+    default_staging_root = default_output_root.resolve()
     if destination.exists() and arguments.replace:
         try:
             relative_to_staging = destination.relative_to(default_staging_root)
@@ -846,7 +1011,11 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
                     "sha256": sha256_file(staged_gui),
                     "sizeBytes": staged_gui.stat().st_size,
                     "bundleIdentifier": identifier,
-                    "publicationStatus": "local_unnotarized",
+                    "publicationStatus": (
+                        "unsigned_release_candidate"
+                        if unsigned_candidate
+                        else "local_unnotarized"
+                    ),
                     "smokeContract": [
                         "dmg_integrity",
                         "mounted_bundle_identity",
@@ -874,12 +1043,7 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
                 "profile": ANALYSIS_PROFILE,
                 "compatibility": COMPATIBILITY_STATUS,
             },
-            "distribution": {
-                "scope": "local_staging_only",
-                "signing": "not_performed",
-                "notarization": "not_performed",
-                "upload": "not_performed",
-            },
+            "distribution": distribution_contract(unsigned_candidate),
             "artifacts": artifacts,
         }
         write_json(release_dir / RELEASE_MANIFEST, release_manifest)
@@ -897,7 +1061,8 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
             shutil.rmtree(destination)
         os.replace(release_dir, destination)
 
-    print(f"release staged at {destination}")
+    label = "unsigned release candidate" if unsigned_candidate else "release"
+    print(f"{label} staged at {destination}")
     return destination
 
 
@@ -912,6 +1077,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="also build and verify the current-host macOS Tauri DMG",
     )
     stage.add_argument(
+        "--unsigned-macos-arm64-candidate",
+        action="store_true",
+        help=(
+            "stage a clean, unsigned Apple Silicon CLI and GUI release candidate"
+        ),
+    )
+    stage.add_argument(
         "--allow-dirty",
         action="store_true",
         help="allow a visibly marked dirty development artifact",
@@ -924,7 +1096,10 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument(
         "--output-dir",
         type=Path,
-        help="explicit release directory (defaults under target/release-staging)",
+        help=(
+            "explicit output directory (defaults under target/release-staging "
+            "or target/release-candidates)"
+        ),
     )
     stage.add_argument(
         "--fixture",

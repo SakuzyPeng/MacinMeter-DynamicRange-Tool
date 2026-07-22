@@ -134,10 +134,11 @@ npm run tauri dev
 GUI 调用与 CLI 相同的 `Application` façade，并消费相同的 wire schema。每个
 job 拥有独立取消 token，共享 application 预算则保证顶层工作有界且串行。
 
-GUI 以源码形式提供。本地 staging 与有界的 `main`/手动 macOS 26 arm64 CI 门禁
-都会构建并结构化验证 current-host DMG；这些构建仍未签名、未公证，CI 也不会保留
-制品。Windows 与 Linux GUI 包尚未在各自目标 host 上完成验证。目前的打包情况汇总
-在[发行与制品状态](docs/RELEASE_CN.md)。
+0.2.0 的 GUI 安装包只面向运行 macOS 11.0 或更新系统的 Apple Silicon Mac。本地
+staging 与有界的 macOS 26 arm64 CI 门禁都会构建并结构化验证最终 DMG。安装包没有
+Developer ID 签名，也未经过 Apple 公证，因此 macOS 可能要求用户显式选择“打开”或
+“仍要打开”。Intel/universal macOS 与 Windows/Linux GUI 包不属于 0.2.0 发行范围。
+目前的打包情况汇总在[发行与制品状态](docs/RELEASE_CN.md)。
 
 ## Rust API
 

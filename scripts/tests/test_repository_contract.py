@@ -80,7 +80,15 @@ serde.workspace = true
         )
         self.write(
             "tauri-app/src-tauri/tauri.conf.json",
-            json.dumps({"version": "0.2.0"}),
+            json.dumps(
+                {
+                    "version": "0.2.0",
+                    "bundle": {
+                        "targets": ["app", "dmg"],
+                        "macOS": {"minimumSystemVersion": "11.0"},
+                    },
+                }
+            ),
         )
         self.write(
             ".github/workflows/workspace-validation.yml",
@@ -121,8 +129,22 @@ jobs:
         uses: actions/setup-node@node-sha
       - if: github.event_name != 'pull_request'
         run: npm ci
-      - if: github.event_name != 'pull_request'
+      - if: github.event_name == 'push'
         run: python3 scripts/stage-release.py stage --include-gui
+      - if: github.event_name == 'workflow_dispatch'
+        run: test "$GITHUB_REF" = "refs/heads/main"
+      - if: github.event_name == 'workflow_dispatch'
+        run: >-
+          python3 scripts/stage-release.py stage --include-gui
+          --unsigned-macos-arm64-candidate
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macinmeter-unsigned-macos-arm64-${{ github.sha }}
+          path: target/release-candidates/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 """,
         )
         self.write("Cargo.lock", "")
@@ -210,7 +232,7 @@ jobs: {}
         errors = self.errors()
         self.assertTrue(any("read-only repository permissions" in error for error in errors))
         self.assertTrue(
-            any("release staging must appear exactly once" in error for error in errors)
+            any("must appear only inside" in error for error in errors)
         )
 
     def test_rejects_removing_the_fixed_windows_gate(self) -> None:
@@ -241,27 +263,38 @@ jobs: {}
         contents = contents.replace(
             "python3 scripts/stage-release.py stage --include-gui",
             "python3 scripts/stage-release.py stage --include-gui --allow-dirty",
+            1,
         )
         contents = contents.replace(
-            "if: github.event_name != 'pull_request'\n        run: python3 scripts/stage-release.py",
-            "run: python3 scripts/stage-release.py",
+            "if: github.event_name == 'workflow_dispatch'\n        run: test",
+            "run: test",
         )
         workflow.write_text(contents, encoding="utf-8")
 
         errors = self.errors()
-        self.assertTrue(any("must remain main/manual-only" in error for error in errors))
+        self.assertTrue(any("must remain manual-only" in error for error in errors))
         self.assertTrue(any("must require a clean" in error for error in errors))
 
     def test_rejects_artifact_upload_from_validation_workflow(self) -> None:
         workflow = self.root / ".github/workflows/workspace-validation.yml"
         contents = workflow.read_text(encoding="utf-8").replace(
-            "uses: actions/setup-node@node-sha",
-            "uses: actions/upload-artifact@artifact-sha",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+            "actions/upload-artifact@artifact-sha",
         )
         workflow.write_text(contents, encoding="utf-8")
 
         self.assertTrue(
-            any("must not run artifact upload" in error for error in self.errors())
+            any("pinned, manual macOS candidate upload" in error for error in self.errors())
+        )
+
+    def test_rejects_macos_release_target_drift(self) -> None:
+        config_path = self.root / "tauri-app/src-tauri/tauri.conf.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["bundle"]["macOS"]["minimumSystemVersion"] = "10.13"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        self.assertTrue(
+            any("must require macOS 11.0" in error for error in self.errors())
         )
 
     def test_rejects_nested_lockfiles(self) -> None:

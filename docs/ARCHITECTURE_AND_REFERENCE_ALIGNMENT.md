@@ -35,6 +35,8 @@
 > CI 平台扩展：[ADR-0009：自动 CI 扩展至 Windows x64](adr/0009-windows-x64-ci-expansion.md)
 >
 > macOS 与 GUI staging：[ADR-0010：自动 CI 扩展至 macOS arm64 与 GUI staging](adr/0010-macos-arm64-gui-staging-ci.md)
+>
+> 0.2.0 发行范围：[ADR-0011：未签名 Apple Silicon macOS](adr/0011-unsigned-apple-silicon-release-scope.md)
 
 ## 1. 文档目的
 
@@ -219,6 +221,7 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | CI-006 | DONE | 增加 Windows x64 门禁 | Windows Server 2025 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 额外 smoke release CLI，但不上传、不声明 GUI 包 |
 | CI-007 | DONE | 增加 macOS arm64 与 GUI staging 门禁 | macOS 26 arm64 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 复用 clean staging 验证 CLI archive 与 Tauri DMG，但不上传、签名、公证或发布 |
 | RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
+| RELEASE-002 | DONE | 固定未签名 Apple Silicon 首发候选 | 0.2.0 只保留 macOS 11.0+ arm64 CLI/GUI；manual CI 生成 clean immutable candidate 并保留 14 天，不自动 tag、签名、公证或发布 |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | DONE | 重建 benchmark 方法 | ADR-0007 固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；clean 9239609 scalar baseline 的 105 个 measured sample 与报告已保存 |
 | DOC-001 | DONE | 修正过度兼容性声明 | 所有当前输出标记 `foo_dr_meter 1.0.8 Candidate V1 / Unverified` |
@@ -806,6 +809,13 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - PR 运行 strict Clippy 与 all-target workspace tests，覆盖 macOS CLI/Tauri；
     - main/manual 复用既有 release contract 构建并反向验证 CLI archive 与 arm64
       Tauri DMG，runner-local 制品不上传、不签名、不公证、不发布。
+37. [x] `release: prepare unsigned Apple Silicon candidate`
+    - 0.2.0 发行面固定为 macOS 11.0+、`aarch64-apple-darwin`、CLI + GUI；
+    - candidate mode 要求 clean source、Rust 1.88、Node.js 22、准确 arm64 host、
+      不可替换，并固定 unsigned / unnotarized / Unverified manifest；
+    - manual `main` workflow 使用固定 upload action 保留 14 天 candidate，但不创建
+      tag、GitHub Release 或公开资产；
+    - 双语 release draft 醒目标明 Gatekeeper、平台与兼容性边界。
 
 M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
 正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
@@ -815,6 +825,9 @@ M6 后按 ADR-0008 恢复有界自动 CI，按 ADR-0009 加入 Windows x64 编�
 临时 release CLI smoke，再按 ADR-0010 加入 macOS arm64 Rust/Tauri 验证与
 main/manual clean GUI staging。macOS staging 只建立 current-host DMG 结构证据，
 不扩大签名、公证、上传、公开发布、性能、hostile-input 或兼容性声明边界。
+
+ADR-0011 随后把 0.2.0 首发固定为未签名 Apple Silicon macOS，并只允许手动 workflow
+短期保留严格 candidate。这个候选保留不改变普通验证权限，也不等于已经发布。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -827,6 +840,8 @@ main/manual clean GUI staging。macOS staging 只建立 current-host DMG 结构�
 - [x] CI 使用根 lockfile 与 `--locked`；M0–M6 的纯手动阶段完成后，按 ADR-0008
   恢复有界的 PR/`main` 自动门禁，按 ADR-0009 加入 Windows x64，再按 ADR-0010
   加入 macOS 26 arm64 与 main/manual GUI staging；
+- [x] 0.2.0 GUI 发行面固定为 macOS 11.0+ Apple Silicon；manual CI 只保留短期
+  unsigned candidate，不自动创建 tag 或 Release；
 - [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
 - [x] 删除非测试代码中的无保护 `expect`；
 - [x] 删除线程优先级控制；

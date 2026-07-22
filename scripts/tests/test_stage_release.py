@@ -115,16 +115,96 @@ class StageReleaseTests(unittest.TestCase):
             stage_release.macos_binary_arch("aarch64-apple-darwin"),
             "arm64",
         )
-        self.assertEqual(
-            stage_release.macos_bundle_arch("x86_64-apple-darwin"),
-            "x64",
+        for target in ("x86_64-apple-darwin", "universal-apple-darwin"):
+            with self.assertRaisesRegex(
+                stage_release.ReleaseError, "Apple Silicon only"
+            ):
+                stage_release.macos_bundle_arch(target)
+            with self.assertRaisesRegex(
+                stage_release.ReleaseError, "Apple Silicon only"
+            ):
+                stage_release.macos_binary_arch(target)
+
+    def test_unsigned_candidate_scope_requires_clean_immutable_arm64_gui(self) -> None:
+        valid = {
+            "unsigned_macos_arm64_candidate": True,
+            "include_gui": True,
+            "allow_dirty": False,
+            "replace": False,
+            "target": "aarch64-apple-darwin",
+        }
+        stage_release.validate_stage_scope(**valid)
+
+        invalid = (
+            ("include_gui", False, "must include the GUI"),
+            ("allow_dirty", True, "clean source tree"),
+            ("replace", True, "cannot replace"),
+            ("target", "x86_64-apple-darwin", "aarch64-apple-darwin only"),
         )
+        for field, value, message in invalid:
+            changed = dict(valid)
+            changed[field] = value
+            with self.assertRaisesRegex(stage_release.ReleaseError, message):
+                stage_release.validate_stage_scope(**changed)
+
+    def test_distribution_manifest_distinguishes_local_and_unsigned_candidate(self) -> None:
+        local = {
+            "target": "aarch64-apple-darwin",
+            "source": {"state": "dirty"},
+            "distribution": stage_release.distribution_contract(False),
+        }
+        local_artifacts = [{"kind": "cli"}]
         self.assertEqual(
-            stage_release.macos_binary_arch("x86_64-apple-darwin"),
-            "x86_64",
+            stage_release.validate_distribution_manifest(local, local_artifacts),
+            "local_staging_only",
         )
-        with self.assertRaises(stage_release.ReleaseError):
-            stage_release.macos_binary_arch("universal-apple-darwin")
+
+        candidate = {
+            "target": "aarch64-apple-darwin",
+            "source": {"state": "clean"},
+            "distribution": stage_release.distribution_contract(True),
+        }
+        candidate_artifacts = [
+            {"kind": "cli"},
+            {
+                "kind": "gui_macos_dmg",
+                "publicationStatus": "unsigned_release_candidate",
+            },
+        ]
+        self.assertEqual(
+            stage_release.validate_distribution_manifest(
+                candidate, candidate_artifacts
+            ),
+            "unsigned_macos_arm64_release_candidate",
+        )
+
+        candidate["source"]["state"] = "dirty"
+        with self.assertRaisesRegex(stage_release.ReleaseError, "source must be clean"):
+            stage_release.validate_distribution_manifest(
+                candidate, candidate_artifacts
+            )
+
+    def test_unsigned_candidate_requires_pinned_rust_and_node_toolchains(self) -> None:
+        package = {"msrv": "1.88"}
+        toolchain = {"rustc": "1.88.0", "node": "v22.18.0"}
+        stage_release.validate_candidate_toolchain(
+            unsigned_macos_arm64_candidate=True,
+            package=package,
+            toolchain=toolchain,
+        )
+
+        for key, value, message in (
+            ("rustc", "1.89.0", "exact Rust 1.88"),
+            ("node", "v24.0.0", "Node.js 22"),
+        ):
+            changed = dict(toolchain)
+            changed[key] = value
+            with self.assertRaisesRegex(stage_release.ReleaseError, message):
+                stage_release.validate_candidate_toolchain(
+                    unsigned_macos_arm64_candidate=True,
+                    package=package,
+                    toolchain=changed,
+                )
 
 
 if __name__ == "__main__":

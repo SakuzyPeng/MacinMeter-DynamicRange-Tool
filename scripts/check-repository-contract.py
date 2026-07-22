@@ -225,6 +225,18 @@ def validate(root: Path) -> list[str]:
             f"tauri-app/package.json: {script_name} must check version without syncing",
         )
 
+    tauri_config_path = root / "tauri-app/src-tauri/tauri.conf.json"
+    tauri_config = json.loads(tauri_config_path.read_text(encoding="utf-8"))
+    bundle = tauri_config.get("bundle", {})
+    require(
+        bundle.get("targets") == ["app", "dmg"],
+        "tauri.conf.json must retain the macOS app and DMG bundle targets",
+    )
+    require(
+        bundle.get("macOS", {}).get("minimumSystemVersion") == "11.0",
+        "tauri.conf.json must require macOS 11.0 for Apple Silicon releases",
+    )
+
     if isinstance(version, str):
         json_versions = (
             (gui_package_path, ("version",)),
@@ -233,7 +245,7 @@ def validate(root: Path) -> list[str]:
                 root / "tauri-app/package-lock.json",
                 ("packages", "", "version"),
             ),
-            (root / "tauri-app/src-tauri/tauri.conf.json", ("version",)),
+            (tauri_config_path, ("version",)),
         )
         for path, keys in json_versions:
             document = json.loads(path.read_text(encoding="utf-8"))
@@ -346,6 +358,11 @@ def validate(root: Path) -> list[str]:
         macos_stage_command = (
             "python3 scripts/stage-release.py stage --include-gui"
         )
+        unsigned_candidate_flag = "--unsigned-macos-arm64-candidate"
+        upload_action = (
+            "actions/upload-artifact@"
+            "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+        )
         if macos_job is not None:
             macos_text = "\n".join(macos_job)
             required_macos_commands = (
@@ -353,6 +370,14 @@ def validate(root: Path) -> list[str]:
                 "cargo test --locked --workspace --all-targets",
                 "npm ci",
                 macos_stage_command,
+                unsigned_candidate_flag,
+                'test "$GITHUB_REF" = "refs/heads/main"',
+                upload_action,
+                "name: macinmeter-unsigned-macos-arm64-${{ github.sha }}",
+                "path: target/release-candidates/",
+                "if-no-files-found: error",
+                "retention-days: 14",
+                "compression-level: 0",
             )
             for command in required_macos_commands:
                 require(
@@ -360,9 +385,19 @@ def validate(root: Path) -> list[str]:
                     f"{path.relative_to(root)} macOS gate is missing: {command}",
                 )
             require(
-                macos_text.count("if: github.event_name != 'pull_request'") == 3,
-                f"{path.relative_to(root)} macOS Node install, npm install, and GUI "
-                "staging must remain main/manual-only",
+                macos_text.count("if: github.event_name != 'pull_request'") == 2,
+                f"{path.relative_to(root)} macOS Node and npm installs must remain "
+                "main/manual-only",
+            )
+            require(
+                macos_text.count("if: github.event_name == 'push'") == 1,
+                f"{path.relative_to(root)} local-only macOS staging must remain "
+                "main-push-only",
+            )
+            require(
+                macos_text.count("if: github.event_name == 'workflow_dispatch'") == 3,
+                f"{path.relative_to(root)} unsigned candidate guard, staging, and "
+                "retention must remain manual-only",
             )
             require(
                 "--allow-dirty" not in macos_text and "--replace" not in macos_text,
@@ -370,18 +405,24 @@ def validate(root: Path) -> list[str]:
                 "new release directory",
             )
         require(
-            workflow_text.count(macos_stage_command) == 1
+            workflow_text.count(macos_stage_command) == 2
             and macos_job is not None
-            and macos_stage_command in "\n".join(macos_job),
-            f"{path.relative_to(root)} release staging must appear exactly once "
-            "inside the macOS arm64 job",
+            and "\n".join(macos_job).count(macos_stage_command) == 2,
+            f"{path.relative_to(root)} local staging and unsigned candidate staging "
+            "must appear only inside the macOS arm64 job",
+        )
+        require(
+            workflow_text.count("actions/upload-artifact@") == 1
+            and macos_job is not None
+            and upload_action in "\n".join(macos_job),
+            f"{path.relative_to(root)} must retain exactly one pinned, manual macOS "
+            "candidate upload",
         )
 
         forbidden_ci_tasks = {
             "verify-malformed-corpus.py": "the hostile corpus verifier",
             "run-performance-baseline.py": "performance baselines",
             "run-performance-profile.py": "performance profiling",
-            "actions/upload-artifact@": "artifact upload",
             "gh release": "GitHub Release publication",
             "notarytool": "notarization",
             "codesign --sign": "release signing",
