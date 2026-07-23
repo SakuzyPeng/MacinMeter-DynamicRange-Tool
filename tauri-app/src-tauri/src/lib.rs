@@ -286,6 +286,7 @@ pub fn run() {
     let result = tauri::Builder::<tauri::Wry>::default()
         .manage(JobRegistry::default())
         .manage(Application::new())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![

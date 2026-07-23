@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toPng, toSvg } from "html-to-image";
@@ -56,6 +57,7 @@ const analyzeButton = element<HTMLButtonElement>("analyze-btn");
 const scanResults = element<HTMLDivElement>("scan-results");
 const statusElement = element<HTMLDivElement>("run-status");
 const statusText = element<HTMLSpanElement>("status-text");
+const statusDismissButton = element<HTMLButtonElement>("status-dismiss");
 const progressFill = element<HTMLDivElement>("progress-fill");
 const batchSummary = element<HTMLDivElement>("batch-summary");
 const resultsElement = element<HTMLDivElement>("results");
@@ -159,12 +161,15 @@ const status = (
   options: { error?: boolean; progress?: number } = {},
 ): void => {
   statusState = { key, values, ...options };
+  statusElement.hidden = false;
   renderStatus();
 };
 
 const renderStatus = (): void => {
   statusText.textContent = t(statusState.key, statusState.values);
-  statusElement.classList.toggle("error", statusState.error === true);
+  const isError = statusState.error === true;
+  statusElement.classList.toggle("error", isError);
+  statusDismissButton.hidden = !isError;
   const progress = Math.max(0, Math.min(100, statusState.progress ?? 0));
   progressFill.style.width = `${progress}%`;
 };
@@ -488,7 +493,7 @@ const bindEntryActions = (): void => {
       button.addEventListener("click", () => {
         const key = Number(button.dataset.entry);
         const target = document.getElementById(`entry-${key}`);
-        if (target) void copyOrSavePng(target, fileName(displayEntries().find((entry) => entry.key === key)?.displayPath ?? "MacinMeter"), button);
+        if (target) void copyPngToClipboard(target, button);
       });
     });
 };
@@ -632,7 +637,7 @@ const imageOptions = (target: HTMLElement): Record<string, unknown> => {
   const bounds = target.getBoundingClientRect();
   const scale = Math.min(3, 16_384 / Math.max(bounds.width, bounds.height, 1));
   return {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fbf7f0",
     canvasWidth: Math.round(bounds.width * scale),
     canvasHeight: Math.round(bounds.height * scale),
     pixelRatio: 1,
@@ -641,9 +646,56 @@ const imageOptions = (target: HTMLElement): Record<string, unknown> => {
     style: {
       fontFamily:
         "'Hiragino Sans', 'PingFang SC', 'Yu Gothic', Meiryo, 'Microsoft YaHei', system-ui, sans-serif",
+      position: "static",
+      top: "auto",
+      left: "auto",
+      zIndex: "auto",
     },
   };
 };
+
+const withImageCaptureFrame = async <T>(
+  target: HTMLElement,
+  capture: (frame: HTMLElement) => Promise<T>,
+): Promise<T> => {
+  const padding = 24;
+  const frame = document.createElement("div");
+  frame.className = "image-capture-frame";
+  frame.style.width = `${Math.ceil(target.getBoundingClientRect().width) + padding * 2}px`;
+  frame.setAttribute("aria-hidden", "true");
+
+  const clone = target.cloneNode(true) as HTMLElement;
+  clone.classList.add("exporting");
+  clone.classList.remove("search-hit");
+  clone.querySelectorAll(".search-hit").forEach((element) => {
+    element.classList.remove("search-hit");
+  });
+  frame.appendChild(clone);
+  document.body.appendChild(frame);
+
+  try {
+    return await capture(frame);
+  } finally {
+    frame.remove();
+  }
+};
+
+const renderPng = (target: HTMLElement): Promise<string> =>
+  withImageCaptureFrame(target, (frame) => toPng(frame, imageOptions(frame)));
+
+const renderSvg = (target: HTMLElement): Promise<string> =>
+  withImageCaptureFrame(target, (frame) =>
+    toSvg(frame, {
+      backgroundColor: "#fbf7f0",
+      skipFonts: true,
+      style: {
+        position: "static",
+        top: "auto",
+        left: "auto",
+        zIndex: "auto",
+      },
+    }),
+  );
 
 const exportImage = async (): Promise<void> => {
   if (!lastEnvelope || resultsElement.children.length === 0) return;
@@ -660,15 +712,11 @@ const exportImage = async (): Promise<void> => {
     ],
   });
   if (!path) return;
-  resultsElement.classList.add("exporting");
   try {
     if (format === "png") {
-      await writeFile(path, dataUrlBytes(await toPng(resultsElement, imageOptions(resultsElement))));
+      await writeFile(path, dataUrlBytes(await renderPng(resultsElement)));
     } else {
-      const dataUrl = await toSvg(resultsElement, {
-        backgroundColor: "#ffffff",
-        skipFonts: true,
-      });
+      const dataUrl = await renderSvg(resultsElement);
       await writeTextFile(path, decodeURIComponent(dataUrl.split(",")[1] ?? ""));
     }
     status("status.exported", { name });
@@ -678,39 +726,24 @@ const exportImage = async (): Promise<void> => {
       { message: describeInvokeError(error) },
       { error: true },
     );
-  } finally {
-    resultsElement.classList.remove("exporting");
   }
 };
 
-const copyOrSavePng = async (
+const copyPngToClipboard = async (
   target: HTMLElement,
-  baseName: string,
   button: HTMLButtonElement,
 ): Promise<void> => {
   const original = button.textContent;
   button.disabled = true;
   try {
-    const dataUrl = await toPng(target, imageOptions(target));
-    const blob = await (await fetch(dataUrl)).blob();
-    if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      button.classList.add("copied");
-      button.textContent = "OK!";
-      status("status.pngCopied");
-      return;
-    }
-    const path = await save({
-      defaultPath: `${baseName}.png`,
-      filters: [{ name: "PNG Image", extensions: ["png"] }],
-    });
-    if (path) {
-      await writeFile(path, dataUrlBytes(dataUrl));
-      status("status.pngSaved");
-    }
+    const dataUrl = await renderPng(target);
+    await writeImage(dataUrlBytes(dataUrl));
+    button.classList.add("copied");
+    button.textContent = "OK!";
+    status("status.pngCopied");
   } catch (error) {
     status(
-      "status.exportFailed",
+      "status.pngCopyFailed",
       { message: describeInvokeError(error) },
       { error: true },
     );
@@ -859,6 +892,9 @@ deepScanButton.addEventListener("click", async () => {
 
 clearButton.addEventListener("click", clearAll);
 analyzeButton.addEventListener("click", () => void runAnalysis());
+statusDismissButton.addEventListener("click", () => {
+  statusElement.hidden = true;
+});
 
 hidePathButton.addEventListener("click", () => {
   hidePath = !hidePath;

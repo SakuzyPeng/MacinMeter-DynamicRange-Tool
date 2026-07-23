@@ -44,11 +44,13 @@
           />
           <div class="path-actions">
             <button id="pick-files" type="button" data-i18n="btn.pickFiles">选择文件</button>
-            <button id="scan-dir" type="button" data-i18n="btn.pickDir">选择目录</button>
+            <button id="scan-dir" type="button" class="ghost" data-i18n="btn.pickDir">
+              选择目录
+            </button>
             <button
               id="deep-scan-dir"
               type="button"
-              class="ghost danger"
+              class="ghost scan-accent"
               data-i18n="btn.deepScan"
             >
               深度扫描目录
@@ -103,6 +105,16 @@
 
         <div id="run-status" class="status" role="status" aria-live="polite">
           <span id="status-text" class="status-text"></span>
+          <button
+            id="status-dismiss"
+            type="button"
+            class="status-dismiss"
+            aria-label="关闭错误提示"
+            data-i18n-aria-label="btn.dismissError"
+            hidden
+          >
+            ×
+          </button>
           <div id="progress-fill" class="progress-fill"></div>
         </div>
 

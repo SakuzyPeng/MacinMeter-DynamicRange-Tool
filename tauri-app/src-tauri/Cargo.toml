@@ -19,5 +19,6 @@ tauri-build.workspace = true
 macinmeter = { path = "../../crates/macinmeter" }
 serde.workspace = true
 tauri.workspace = true
+tauri-plugin-clipboard-manager.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-fs.workspace = true

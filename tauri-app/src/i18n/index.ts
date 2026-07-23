@@ -50,6 +50,12 @@ export const updateStaticTexts = (): void => {
     const key = element.dataset.i18nTitle;
     if (key) element.title = t(key);
   });
+  document
+    .querySelectorAll<HTMLElement>("[data-i18n-aria-label]")
+    .forEach((element) => {
+      const key = element.dataset.i18nAriaLabel;
+      if (key) element.setAttribute("aria-label", t(key));
+    });
 };
 
 export const updateLanguageButtons = (): void => {
