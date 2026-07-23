@@ -33,8 +33,10 @@ Linux, and Intel assets belong to earlier releases and are not 0.2.0 packages.
 - Limited stable decoding to content-probed WAV PCM, FLAC, and AIFF PCM.
 - Added schema-v3 reports, bounded cancellation/execution, strict decoder
   contracts, deterministic fixtures, and three-platform correctness CI.
-- Added a native Tauri 2 GUI and verified the final arm64 DMG structure on a
-  clean hosted macOS runner.
+- Added a native Tauri 2 GUI with whole-window file and directory drag-and-drop,
+  bilingual presentation, result search and sorting, path hiding, and
+  Markdown, JSON, PNG, and SVG export. The final arm64 DMG structure is
+  verified on a clean hosted macOS runner.
 
 - 项目已重建为安全 Rust workspace；库、CLI 与 GUI 共用唯一流式分析器和 application
   façade。
@@ -42,7 +44,9 @@ Linux, and Intel assets belong to earlier releases and are not 0.2.0 packages.
 - 稳定解码范围限定为按内容探测的 WAV PCM、FLAC 与 AIFF PCM。
 - 新增 schema-v3 报告、有界取消/执行、严格解码契约、确定性 fixture 与三平台
   正确性 CI。
-- 新增原生 Tauri 2 GUI，并在 clean hosted macOS arm64 runner 上验证最终 DMG 结构。
+- 新增原生 Tauri 2 GUI，支持整窗文件与目录拖放、中英文界面、结果搜索与排序、
+  路径隐藏，以及 Markdown、JSON、PNG 和 SVG 导出；最终 arm64 DMG 结构会在
+  clean hosted macOS runner 上验证。
 
 ## Opening the unsigned GUI / 打开未签名 GUI
 

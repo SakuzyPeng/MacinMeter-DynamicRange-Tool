@@ -2,9 +2,9 @@
 
 ## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 
-> Status: unsigned Apple Silicon release-candidate preparation.
+> Status: unsigned Apple Silicon release.
 >
-> 状态：未签名 Apple Silicon release candidate 准备阶段。
+> 状态：未签名 Apple Silicon 版本。
 
 ### Architecture / 架构
 
@@ -72,6 +72,11 @@
   DR0 track 仍会纳入。
 - GUI jobs use caller-provided IDs and independent cancellation tokens.
   GUI job 使用调用者提供的 ID 与相互独立的取消 token。
+- The desktop GUI supports whole-window file and directory drag-and-drop,
+  bilingual Chinese/English presentation, result search and sorting, path
+  hiding, and Markdown, JSON, PNG, and SVG export.
+  桌面 GUI 支持整窗文件与目录拖放、中英文界面、结果搜索与排序、路径隐藏，以及
+  Markdown、JSON、PNG 和 SVG 导出。
 - File analysis, batch, and controlled discovery now share one public
   `Application` façade. The budget established in M3 runs one active top-level
   job and admits at most 64 additional FIFO reservations; queued cancellation
