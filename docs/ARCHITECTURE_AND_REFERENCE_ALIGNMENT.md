@@ -37,6 +37,9 @@
 > macOS 与 GUI staging：[ADR-0010：自动 CI 扩展至 macOS arm64 与 GUI staging](adr/0010-macos-arm64-gui-staging-ci.md)
 >
 > 0.2.0 发行范围：[ADR-0011：未签名 Apple Silicon macOS](adr/0011-unsigned-apple-silicon-release-scope.md)
+>
+> 后续 WAV 封装扩展草案：
+> [ADR-0012：稳定 WAV 路由扩展至 WAVE_FORMAT_EXTENSIBLE 线性 PCM](adr/0012-wave-format-extensible-linear-pcm.md)（Proposed）
 
 ## 1. 文档目的
 
