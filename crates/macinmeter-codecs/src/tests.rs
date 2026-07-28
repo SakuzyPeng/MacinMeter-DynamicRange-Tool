@@ -71,6 +71,74 @@ fn product_fixture_pcm_sha256(name: &str) -> String {
         .to_owned()
 }
 
+fn extensible_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/native-pcm-extensible-v1")
+        .join(name)
+}
+
+fn extensible_fixture_manifest() -> Value {
+    serde_json::from_slice(
+        &fs::read(extensible_fixture_path("manifest.json"))
+            .expect("Extensible PCM fixture manifest must exist"),
+    )
+    .expect("Extensible PCM fixture manifest must be valid JSON")
+}
+
+fn extensible_fixture_entry(name: &str) -> Value {
+    extensible_fixture_manifest()["fixtures"]
+        .as_array()
+        .expect("Extensible fixture manifest must contain an array")
+        .iter()
+        .find(|fixture| fixture["path"] == name)
+        .unwrap_or_else(|| panic!("Extensible fixture manifest must record {name}"))
+        .clone()
+}
+
+fn manifest_pcm_samples(fixture: &Value) -> Vec<f64> {
+    let oracle = &fixture["pcmOracle"];
+    match oracle["kind"].as_str().expect("PCM oracle kind") {
+        "integer_normalization" => {
+            let divisor = oracle["divisor"].as_f64().expect("integer divisor");
+            oracle["interleavedValues"]
+                .as_array()
+                .expect("integer oracle values")
+                .iter()
+                .map(|value| value.as_i64().expect("signed PCM value") as f64 / divisor)
+                .collect()
+        }
+        "explicit_f64_bits" => oracle["interleavedValues"]
+            .as_array()
+            .expect("float oracle values")
+            .iter()
+            .map(|value| {
+                let bits = u64::from_str_radix(
+                    value
+                        .as_str()
+                        .expect("f64 oracle value must be hexadecimal"),
+                    16,
+                )
+                .expect("f64 oracle bits must parse");
+                f64::from_bits(bits)
+            })
+            .collect(),
+        kind => panic!("unsupported fixture PCM oracle kind {kind}"),
+    }
+}
+
+fn decode_all_samples(path: &Path) -> (macinmeter_domain::SourceInfo, Vec<f64>) {
+    let mut opened = DecoderFactory::new()
+        .open(path)
+        .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+    let source = opened.source.clone();
+    let mut samples = Vec::new();
+    while let ReadOutcome::Data(block) = opened.reader.read_block().expect("fixture should decode")
+    {
+        samples.extend_from_slice(block.samples());
+    }
+    (source, samples)
+}
+
 struct PcmSourceContractCase {
     name: &'static str,
     wrong_extension: &'static str,
@@ -434,6 +502,22 @@ fn capability_catalog_keeps_planned_routes_out_of_discovery() {
 }
 
 #[test]
+fn wave_capabilities_publish_the_extensible_stable_subset() {
+    for codec in ["pcm_integer", "pcm_float"] {
+        let route = NATIVE_CAPABILITY_CATALOG
+            .iter()
+            .find(|route| route.container == "wave" && route.codec == codec)
+            .expect("stable WAV route must exist");
+        let limitations = route.limitations.join("; ");
+        assert!(limitations.contains("exact WAVE_FORMAT_EXTENSIBLE"));
+        assert!(limitations.contains("valid bits must equal container bits"));
+        assert!(limitations.contains("1-26 channels"));
+        assert!(limitations.contains("low 18 speaker bits"));
+        assert!(!limitations.contains("rejected at probe"));
+    }
+}
+
+#[test]
 fn stable_catalog_identifiers_match_the_domain_enum_serialization() {
     let container_ids: BTreeSet<String> = [
         ContainerFormat::Wave,
@@ -571,6 +655,59 @@ fn product_fixture_manifest_matches_the_committed_native_corpus() {
 }
 
 #[test]
+fn extensible_fixture_manifest_matches_the_committed_twin_corpus() {
+    let corpus = extensible_fixture_path("");
+    let manifest = extensible_fixture_manifest();
+    assert_eq!(manifest["schemaVersion"], 1);
+    assert_eq!(manifest["corpusId"], "native-pcm-extensible-v1");
+    assert_eq!(
+        manifest["generator"]["path"],
+        "scripts/generate-native-pcm-extensible-v1.py"
+    );
+    assert_eq!(manifest["generator"]["externalToolsRequired"], false);
+    assert_eq!(manifest["generator"]["networkRequired"], false);
+
+    let fixtures = manifest["fixtures"]
+        .as_array()
+        .expect("Extensible fixture manifest must contain an array");
+    assert_eq!(fixtures.len(), 20);
+    let mut referenced_files = BTreeSet::new();
+    let mut twin_counts = std::collections::BTreeMap::new();
+    for fixture in fixtures {
+        let relative = fixture["path"].as_str().expect("fixture path");
+        assert!(referenced_files.insert(relative.to_owned()));
+        let bytes = fs::read(corpus.join(relative)).expect("fixture must be committed");
+        assert_eq!(fixture["sizeBytes"].as_u64(), Some(bytes.len() as u64));
+        assert_eq!(
+            fixture["sha256"].as_str(),
+            Some(format!("{:x}", Sha256::digest(&bytes)).as_str())
+        );
+        assert_eq!(fixture["container"], "wave");
+        assert_eq!(fixture["validBits"], fixture["containerBits"]);
+        assert_eq!(fixture["provenance"]["kind"], "deterministically_generated");
+        assert_eq!(fixture["provenance"]["copyrightedAudio"], false);
+        assert_eq!(fixture["provenance"]["license"], "MIT");
+        let hash = fixture["normalizedInterleavedF64LeSha256"]
+            .as_str()
+            .expect("normalized PCM hash");
+        assert_eq!(hash.len(), 64);
+        *twin_counts
+            .entry(fixture["twinId"].as_str().expect("twin id"))
+            .or_insert(0_u8) += 1;
+    }
+    assert!(twin_counts.values().all(|count| *count == 2));
+    let committed_audio_files: BTreeSet<String> = fs::read_dir(corpus)
+        .expect("Extensible corpus directory")
+        .map(|entry| entry.expect("fixture directory entry"))
+        .filter_map(|entry| {
+            (entry.path().extension()?.to_str()? == "wav")
+                .then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect();
+    assert_eq!(referenced_files, committed_audio_files);
+}
+
+#[test]
 fn shared_analysis_channel_limit_accepts_64_and_rejects_larger_geometries() {
     let path = Path::new("channel-limit.test");
     crate::error::validate_analysis_channel_count(path, MAX_ANALYSIS_CHANNELS).unwrap();
@@ -691,6 +828,147 @@ fn declared_native_matrix_passes_the_shared_pcm_source_contract() {
 
     for case in cases {
         assert_pcm_source_contract(case);
+    }
+}
+
+#[test]
+fn extensible_matrix_passes_the_shared_pcm_source_contract() {
+    for (name, codec, bits_per_sample, channels) in [
+        (
+            "pcm-u8-stereo-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            8,
+            2,
+        ),
+        (
+            "pcm-s16-stereo-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            16,
+            2,
+        ),
+        (
+            "pcm-s24-stereo-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            24,
+            2,
+        ),
+        (
+            "pcm-s32-stereo-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            32,
+            2,
+        ),
+        (
+            "float32-stereo-mask-extensible.wav",
+            SourceCodec::PcmFloat,
+            32,
+            2,
+        ),
+        (
+            "float64-stereo-mask-extensible.wav",
+            SourceCodec::PcmFloat,
+            64,
+            2,
+        ),
+        (
+            "pcm-s16-mono-center-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            16,
+            1,
+        ),
+        (
+            "pcm-s24-6ch-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            24,
+            6,
+        ),
+        (
+            "pcm-s16-stereo-zero-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            16,
+            2,
+        ),
+        (
+            "pcm-s16-26ch-zero-mask-extensible.wav",
+            SourceCodec::PcmInteger,
+            16,
+            26,
+        ),
+    ] {
+        let fixture = extensible_fixture_entry(name);
+        assert_pcm_source_contract(PcmSourceContractCase {
+            name,
+            wrong_extension: "flac",
+            bytes: fs::read(extensible_fixture_path(name))
+                .expect("Extensible fixture must be committed"),
+            container: ContainerFormat::Wave,
+            codec,
+            sample_rate: 48_000,
+            channels,
+            bits_per_sample,
+            expected_frames: 8,
+            expected_samples: manifest_pcm_samples(&fixture),
+            normalized_pcm_sha256: fixture["normalizedInterleavedF64LeSha256"]
+                .as_str()
+                .expect("normalized PCM hash")
+                .to_owned(),
+            minimum_data_blocks: 1,
+        });
+    }
+}
+
+#[test]
+fn extensible_and_classic_twins_decode_to_bit_identical_pcm() {
+    let manifest = extensible_fixture_manifest();
+    let fixtures = manifest["fixtures"].as_array().unwrap();
+    for extensible in fixtures
+        .iter()
+        .filter(|fixture| fixture["encapsulation"] == "wave_format_extensible")
+    {
+        let twin_id = extensible["twinId"].as_str().unwrap();
+        let classic = fixtures
+            .iter()
+            .find(|fixture| {
+                fixture["twinId"] == twin_id && fixture["encapsulation"] == "classic_wave_format"
+            })
+            .unwrap_or_else(|| panic!("classic twin missing for {twin_id}"));
+        let extensible_path = extensible_fixture_path(extensible["path"].as_str().unwrap());
+        let classic_path = extensible_fixture_path(classic["path"].as_str().unwrap());
+        let (extensible_source, extensible_samples) = decode_all_samples(&extensible_path);
+        let (classic_source, classic_samples) = decode_all_samples(&classic_path);
+
+        assert_eq!(
+            extensible_source.container, classic_source.container,
+            "{twin_id}"
+        );
+        assert_eq!(extensible_source.codec, classic_source.codec, "{twin_id}");
+        assert_eq!(
+            extensible_source.sample_rate, classic_source.sample_rate,
+            "{twin_id}"
+        );
+        assert_eq!(
+            extensible_source.channels, classic_source.channels,
+            "{twin_id}"
+        );
+        assert_eq!(
+            extensible_source.bits_per_sample, classic_source.bits_per_sample,
+            "{twin_id}"
+        );
+        assert_eq!(
+            extensible_source.expected_frames, classic_source.expected_frames,
+            "{twin_id}"
+        );
+        assert_eq!(
+            extensible_samples
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            classic_samples
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            "{twin_id}"
+        );
     }
 }
 
@@ -939,12 +1217,141 @@ fn rejects_incoherent_classic_wave_geometry_during_probe() {
 }
 
 #[test]
-fn rejects_wave_format_extensible_until_it_has_its_own_capability_evidence() {
+fn accepts_wave_format_extensible_with_exact_supported_fields() {
     let file = TestFile::new("wav", &extensible_pcm16_wave());
-    let error = expect_open_error(file.path());
-    assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+    let opened = DecoderFactory::new()
+        .open(file.path())
+        .expect("supported WAVE_FORMAT_EXTENSIBLE should open");
+    assert_eq!(opened.source.codec, SourceCodec::PcmInteger);
+    assert_eq!(opened.source.channels.get(), 2);
+    assert_eq!(opened.source.bits_per_sample, Some(16));
+}
+
+#[test]
+fn extensible_probe_uses_the_adr_0012_error_classification() {
+    let pcm_guid = [
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b,
+        0x71,
+    ];
+    let mut unknown_guid = pcm_guid;
+    unknown_guid[0] = 0x02;
+    let mut wrong_guid_tail = pcm_guid;
+    wrong_guid_tail[15] ^= 0x01;
+
+    for (name, bytes, expected_code, message) in [
+        (
+            "unsupported sub-format GUID",
+            extensible_wave_with_fields(2, 16, 40, 22, 16, 3, unknown_guid),
+            ErrorCode::UnsupportedFormat,
+            "sub-format GUID",
+        ),
+        (
+            "GUID template tail mismatch",
+            extensible_wave_with_fields(2, 16, 40, 22, 16, 3, wrong_guid_tail),
+            ErrorCode::UnsupportedFormat,
+            "sub-format GUID",
+        ),
+        (
+            "truncated fmt",
+            extensible_wave_with_fields(2, 16, 39, 22, 16, 3, pcm_guid),
+            ErrorCode::MalformedMedia,
+            "truncated or internally inconsistent",
+        ),
+        (
+            "coherent extra extension",
+            extensible_wave_with_fields(2, 16, 42, 24, 16, 3, pcm_guid),
+            ErrorCode::UnsupportedFormat,
+            "unsupported extra extensions",
+        ),
+        (
+            "incoherent extension size",
+            extensible_wave_with_fields(2, 16, 40, 23, 16, 3, pcm_guid),
+            ErrorCode::MalformedMedia,
+            "truncated or internally inconsistent",
+        ),
+        (
+            "zero valid bits",
+            extensible_wave_with_fields(2, 16, 40, 22, 0, 3, pcm_guid),
+            ErrorCode::UnsupportedFormat,
+            "valid bits",
+        ),
+        (
+            "padded valid bits",
+            extensible_wave_with_fields(2, 16, 40, 22, 15, 3, pcm_guid),
+            ErrorCode::UnsupportedFormat,
+            "valid bits",
+        ),
+        (
+            "valid bits exceed container",
+            extensible_wave_with_fields(2, 16, 40, 22, 17, 3, pcm_guid),
+            ErrorCode::MalformedMedia,
+            "valid bits exceed",
+        ),
+        (
+            "reserved channel-mask bit",
+            extensible_wave_with_fields(2, 16, 40, 22, 16, 0x0004_0001, pcm_guid),
+            ErrorCode::UnsupportedFormat,
+            "reserved speaker bits",
+        ),
+        (
+            "channel-mask popcount mismatch",
+            extensible_wave_with_fields(2, 16, 40, 22, 16, 1, pcm_guid),
+            ErrorCode::MalformedMedia,
+            "disagrees with the channel count",
+        ),
+    ] {
+        let file = TestFile::new("wav", &bytes);
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, expected_code, "{name}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name}");
+        assert!(error.message.contains(message), "{name}: {error}");
+    }
+
+    for channels in [27, 32, 64] {
+        for channel_mask in [0, 1, 0x8000_0000] {
+            let file = TestFile::new(
+                "wav",
+                &extensible_wave_with_fields(channels, 16, 40, 22, 16, channel_mask, pcm_guid),
+            );
+            let error = expect_open_error(file.path());
+            assert_eq!(
+                error.code,
+                ErrorCode::UnsupportedFormat,
+                "{channels}ch mask 0x{channel_mask:08x}"
+            );
+            assert_eq!(error.stage, AnalysisStage::Probe, "{channels}ch");
+            assert!(error.message.contains("backend channel limit"), "{error}");
+        }
+    }
+}
+
+#[test]
+fn rejects_backend_codec_identity_that_disagrees_with_first_party_probe() {
+    let path = Path::new("codec-identity.wav");
+    let validated = crate::container::ContainerPcmInfo {
+        sample_rate: 48_000,
+        channels: 2,
+        bits_per_sample: 16,
+        source_codec: SourceCodec::PcmInteger,
+    };
+    let stream_spec = macinmeter_domain::StreamSpec::new(48_000, 2, ChannelLayout::Unknown)
+        .expect("test stream geometry is valid");
+    let error = crate::symphonia_source::validate_backend_pcm_metadata(
+        path,
+        validated,
+        SourceCodec::PcmFloat,
+        &stream_spec,
+        Some(16),
+    )
+    .expect_err("backend codec identity mismatch must be rejected");
+    assert_eq!(error.code, ErrorCode::MalformedMedia);
     assert_eq!(error.stage, AnalysisStage::Probe);
-    assert!(error.message.contains("WAVE_FORMAT_EXTENSIBLE"));
+    assert!(error.message.contains("decoder metadata disagrees"));
+    assert!(
+        error.details.as_deref().is_some_and(|details| {
+            details.contains("PcmInteger") && details.contains("PcmFloat")
+        })
+    );
 }
 
 #[test]
@@ -1128,21 +1535,60 @@ fn float32_wave(sample_rate: u32, samples: &[f32]) -> Vec<u8> {
 }
 
 fn extensible_pcm16_wave() -> Vec<u8> {
-    let mut bytes = pcm16_wave(48_000, &[[1, -1], [2, -2]]);
-    let riff_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
-    bytes[4..8].copy_from_slice(&(riff_size + 24).to_le_bytes());
-    bytes[16..20].copy_from_slice(&40_u32.to_le_bytes());
-    bytes[20..22].copy_from_slice(&0xfffe_u16.to_le_bytes());
-
-    let mut extension = Vec::with_capacity(24);
-    extension.extend_from_slice(&22_u16.to_le_bytes());
-    extension.extend_from_slice(&16_u16.to_le_bytes());
-    extension.extend_from_slice(&3_u32.to_le_bytes());
-    extension.extend_from_slice(&[
+    let guid = [
         0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b,
         0x71,
-    ]);
-    bytes.splice(36..36, extension);
+    ];
+    let mut bytes = extensible_wave_with_fields(2, 16, 40, 22, 16, 3, guid);
+    let riff_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) + 8;
+    bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    bytes[64..68].copy_from_slice(&8_u32.to_le_bytes());
+    for sample in [1_i16, -1, 2, -2] {
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    bytes
+}
+
+fn extensible_wave_with_fields(
+    channels: u16,
+    bits_per_sample: u16,
+    fmt_size: usize,
+    extension_size: u16,
+    valid_bits_per_sample: u16,
+    channel_mask: u32,
+    sub_format_guid: [u8; 16],
+) -> Vec<u8> {
+    assert!(fmt_size >= 16);
+    let bytes_per_sample = bits_per_sample / 8;
+    let block_align = channels.checked_mul(bytes_per_sample).unwrap();
+    let byte_rate = 48_000_u32.checked_mul(u32::from(block_align)).unwrap();
+    let mut format = Vec::with_capacity(fmt_size);
+    format.extend_from_slice(&0xfffe_u16.to_le_bytes());
+    format.extend_from_slice(&channels.to_le_bytes());
+    format.extend_from_slice(&48_000_u32.to_le_bytes());
+    format.extend_from_slice(&byte_rate.to_le_bytes());
+    format.extend_from_slice(&block_align.to_le_bytes());
+    format.extend_from_slice(&bits_per_sample.to_le_bytes());
+    format.extend_from_slice(&extension_size.to_le_bytes());
+    format.extend_from_slice(&valid_bits_per_sample.to_le_bytes());
+    format.extend_from_slice(&channel_mask.to_le_bytes());
+    format.extend_from_slice(&sub_format_guid);
+    format.resize(fmt_size, 0);
+    format.truncate(fmt_size);
+
+    let padded_fmt_size = fmt_size + (fmt_size & 1);
+    let riff_size = u32::try_from(4 + 8 + padded_fmt_size + 8).unwrap();
+    let mut bytes = Vec::with_capacity(riff_size as usize + 8);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&riff_size.to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&u32::try_from(fmt_size).unwrap().to_le_bytes());
+    bytes.extend_from_slice(&format);
+    if fmt_size & 1 == 1 {
+        bytes.push(0);
+    }
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&0_u32.to_le_bytes());
     bytes
 }
 

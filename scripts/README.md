@@ -32,6 +32,18 @@ bytes and do not require libFLAC, FFmpeg, network access, or personal audio.
 Corpus geometry, hashes, PCM oracles, and provenance are recorded in its
 [`manifest.json`](../tests/fixtures/native-pcm-v1/manifest.json).
 
+The accepted WAVE_FORMAT_EXTENSIBLE subset has a separate, standard-library-only
+twin corpus:
+
+```bash
+python3 scripts/generate-native-pcm-extensible-v1.py
+python3 scripts/generate-native-pcm-extensible-v1.py --check
+```
+
+Each Extensible fixture is paired with classic WAV bytes carrying identical
+PCM. The manifest records format fields, hashes, twin identity, normalization
+oracles, and provenance without requiring external tools or network access.
+
 ## Hostile malformed-media corpus
 
 The files under `tests/fixtures/malformed-media-v1` include forged

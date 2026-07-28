@@ -38,8 +38,8 @@
 >
 > 0.2.0 发行范围：[ADR-0011：未签名 Apple Silicon macOS](adr/0011-unsigned-apple-silicon-release-scope.md)
 >
-> 后续 WAV 封装扩展草案：
-> [ADR-0012：稳定 WAV 路由扩展至 WAVE_FORMAT_EXTENSIBLE 线性 PCM](adr/0012-wave-format-extensible-linear-pcm.md)（Proposed）
+> 后续 WAV 封装扩展：
+> [ADR-0012：稳定 WAV 路由扩展至 WAVE_FORMAT_EXTENSIBLE 线性 PCM](adr/0012-wave-format-extensible-linear-pcm.md)（Accepted）
 
 ## 1. 文档目的
 
@@ -809,6 +809,14 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - manual `main` workflow 使用固定 upload action 保留 14 天 candidate，但不创建
       tag、GitHub Release 或公开资产；
     - 双语 release draft 醒目标明 Gatekeeper、平台与兼容性边界。
+38. [x] `feat: graduate constrained WAVE_FORMAT_EXTENSIBLE PCM`
+    - 既有 WAV integer/float route 接受精确 40-byte Extensible PCM/IEEE-float
+      封装，wire schema 维持 v3；
+    - 第一方 probe 固定 GUID、valid/container bits、channel mask 与 26-channel
+      backend 边界，并在 decoder 创建前交叉核对 codec 身份；
+    - 独立 twin corpus、54-case malformed corpus、codec/Application/CLI 等价测试
+      形成 ADR-0012 的准入证据；
+    - 不增加 backend、依赖、并发轴、布局推导或版本变更。
 
 M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
 正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
@@ -821,6 +829,10 @@ main/manual clean GUI staging。macOS staging 只建立 current-host DMG 结构�
 
 ADR-0011 随后把 0.2.0 首发固定为未签名 Apple Silicon macOS，并只允许手动 workflow
 短期保留严格 candidate。这个候选保留不改变普通验证权限，也不等于已经发布。
+
+ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
+`WAVE_FORMAT_EXTENSIBLE` 进入当前稳定开发面，但不追写 0.2.0 已发布格式范围；
+版本号与正式发布仍由后续发布决策确定。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 

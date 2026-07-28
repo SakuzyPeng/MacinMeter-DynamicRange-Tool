@@ -1,14 +1,14 @@
 [English](SUPPORTED_FORMATS.md) | [中文](SUPPORTED_FORMATS_CN.md)
 
-# 0.2.0 稳定音频格式
+# 稳定音频格式
 
-MacinMeter 0.2.0 有意只公开一小块以正确性为先的解码面。列为可用表示该路径进入
-0.2.0 稳定契约。参考算法证据与解码支持分别记录。
+MacinMeter 有意只公开一小块以正确性为先的解码面。这里的“可用”描述当前开发线
+的稳定能力；已发布版本的记录仍保持历史含义。参考算法证据与解码支持分别记录。
 
 | 容器 | 接受的编码 | 送入分析器的 PCM |
 |---|---|---|
-| 经典 RIFF/WAVE | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
-| 经典 RIFF/WAVE | IEEE 32/64-bit 浮点 PCM | 有限、交错的 `f64` |
+| RIFF/WAVE（经典或受限 WAVE_FORMAT_EXTENSIBLE） | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
+| RIFF/WAVE（经典或受限 WAVE_FORMAT_EXTENSIBLE） | IEEE 32/64-bit 浮点 PCM | 有限、交错的 `f64` |
 | FLAC | FLAC | 有限、交错的 `f64` |
 | AIFF | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
 
@@ -27,11 +27,20 @@ raw-bit 归一化 oracle 固定了每一个已声明 PCM 位深；其中 FLAC �
 multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这些是产品
 契约 fixture，不是参考插件 golden。
 
-## 0.2.0 明确不可用
+独立的
+[`native-pcm-extensible-v1`](../tests/fixtures/native-pcm-extensible-v1/README.md)
+corpus 为每一种接受的 Extensible 形状提供携带相同 PCM 的经典 WAV 孪生。Extensible
+输入要求 `fmt` chunk 恰好 40 bytes、`cbSize=22`、完整匹配 PCM 或 IEEE-float
+sub-format GUID，且 valid bits 等于容器位宽。零 channel mask 作为未指定/direct-out
+接受；非零 mask 只能使用标准低 18 个 speaker bits，且置位数必须等于声道数。
+稳定 Extensible 路径接受 1–26 声道，报告中的 channel layout 仍为 `unknown`。
 
-0.2.0 不包含：
+## 明确不可用
 
-- WAVE_FORMAT_EXTENSIBLE、AIFC、压缩 WAV 变体以及受支持容器内的其他编码；
+当前稳定面不包含：
+
+- padded 或 valid bits 未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、
+  使用保留 channel-mask bits 的 Extensible、AIFC、压缩 WAV 变体及受支持容器内的其他编码；
 - MP1/MP2/MP3、AAC、ALAC、Vorbis、Opus、AC-3、E-AC-3、DTS、DSD；
 - MP4/M4A、Ogg、Matroska/WebM、DSF、DFF 容器；
 - FFmpeg 回退或任何外部解码进程；
@@ -44,7 +53,7 @@ multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这
 签名同样缺失，整帧尾部丢失将原理上不可检测。产品会拒绝这些尚未毕业的容器
 变体，而不会让 backend 静默舍入或自行扩张支持面。
 
-能够识别但不属于 0.2.0 稳定面的内容返回稳定错误码 `unsupported_format`。受支持格式内可
+能够识别但不属于当前稳定面的内容返回稳定错误码 `unsupported_format`。受支持格式内可
 检测的损坏内容返回探测或解码错误，不会变成空的或部分成功的报告。物理 EOF 只能
 依据声明的 frame 数或 codec 完整性证据核对；输入同时缺失两者时，解码器不声称能
 识别每一种恰好落在完整 frame 边界上的尾部截断。

@@ -1,16 +1,16 @@
 [English](SUPPORTED_FORMATS.md) | [中文](SUPPORTED_FORMATS_CN.md)
 
-# 0.2.0 stable audio formats
+# Stable audio formats
 
-MacinMeter 0.2.0 intentionally exposes a small, correctness-first decoder
-surface. Availability means that the route is part of the 0.2.0 stable
-contract. Reference-analysis evidence is documented separately from decoder
-support.
+MacinMeter intentionally exposes a small, correctness-first decoder surface.
+Availability here describes the current stable development surface; released
+version records remain historical. Reference-analysis evidence is documented
+separately from decoder support.
 
 | Container | Accepted codec | PCM delivered to analysis |
 |---|---|---|
-| classic RIFF/WAVE | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
-| classic RIFF/WAVE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
+| RIFF/WAVE, classic or accepted WAVE_FORMAT_EXTENSIBLE | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
+| RIFF/WAVE, classic or accepted WAVE_FORMAT_EXTENSIBLE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
 | FLAC | FLAC | finite interleaved `f64` |
 | AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
 
@@ -32,12 +32,23 @@ oracle. Its FLAC case is stereo and multi-block, and AIFF/FLAC also pass the
 shared Rust API and CLI report boundary. These are product contract fixtures,
 not reference-plugin goldens.
 
-## Deliberately unavailable in 0.2.0
+The separate
+[`native-pcm-extensible-v1`](../tests/fixtures/native-pcm-extensible-v1/README.md)
+corpus pairs every accepted Extensible shape with a classic WAV carrying the
+same PCM. Extensible input requires an exact 40-byte `fmt` chunk, `cbSize=22`,
+the complete PCM or IEEE-float sub-format GUID, and valid bits equal to the
+container width. A zero channel mask is accepted as unspecified/direct-out; a
+nonzero mask must use only the standard low 18 speaker bits and its population
+must match the channel count. The stable Extensible route accepts 1–26
+channels and keeps reported channel layout `unknown`.
 
-The following routes are not built into 0.2.0:
+## Deliberately unavailable
 
-- WAVE_FORMAT_EXTENSIBLE, AIFC, compressed WAV variants, and non-FLAC codecs
-  in supported containers;
+The following routes are not built into the current stable surface:
+
+- padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible streams
+  above 26 channels, reserved channel-mask bits, AIFC, compressed WAV variants,
+  and non-FLAC codecs in supported containers;
 - MP1/MP2/MP3, AAC, ALAC, Vorbis, Opus, AC-3, E-AC-3, DTS, and DSD;
 - MP4/M4A, Ogg, Matroska/WebM, DSF, and DFF containers;
 - FFmpeg fallback or external decoder processes;

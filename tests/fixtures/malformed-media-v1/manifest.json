@@ -86,7 +86,7 @@
     },
     {
       "expected": {
-        "code": "unsupported_format",
+        "code": "malformed_media",
         "stage": "probe"
       },
       "id": "wav-extensible-format-tag",
@@ -95,6 +95,126 @@
       "sha256": "6a0d747bb39dd0b03b202d96d018486a2ac512a8f0788995f3ff4bf939437385",
       "sizeBytes": 60,
       "source": "wav-pcm-s16-stereo.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-unsupported-guid",
+      "operation": "replace the sub-format GUID tag with 0x00000002 (u32le at offset 44)",
+      "path": "wav-extensible-unsupported-guid.wav",
+      "sha256": "323d71d95a2005f33dbc1efa50d974cb540feecd0b39802ea6ef62bf01e307be",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-guid-tail-mismatch",
+      "operation": "xor the final sub-format GUID byte at offset 59 with 0x01",
+      "path": "wav-extensible-guid-tail-mismatch.wav",
+      "sha256": "000c450304dd9cfeab4a82b089f2290caa1d6a4848a26211915bd22ffd1c3367",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-fmt-size-39",
+      "operation": "set fmt_size to 39 (u32le at offset 16)",
+      "path": "wav-extensible-fmt-size-39.wav",
+      "sha256": "46f45c36cb12239eabc8e9f36df91696073506e1be998eb87c2150adf3bf175c",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-coherent-extra-extension",
+      "operation": "grow fmt_size/cbSize to coherent 42/24 and insert two extension bytes",
+      "path": "wav-extensible-coherent-extra-extension.wav",
+      "sha256": "dab5240999e2afe7f3a0a0570bce0279ecdd1a9eb0fc1c1c776aba7f4b52c0bc",
+      "sizeBytes": 102,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-incoherent-cbsize",
+      "operation": "set cbSize to 23 while fmt_size remains 40 (u16le at offset 36)",
+      "path": "wav-extensible-incoherent-cbsize.wav",
+      "sha256": "56f060a80923d83b8a4bd9c197ca50527b086411bc17548d3c8d3f83de484c91",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-zero-valid-bits",
+      "operation": "set valid bits to 0 (u16le at offset 38)",
+      "path": "wav-extensible-zero-valid-bits.wav",
+      "sha256": "a53c546b4b9e940743541b7e940b7267e7ae7b15741ee1ece5cb80a65099660c",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-valid-bits-over-container",
+      "operation": "set valid bits to 17 for a 16-bit container (u16le at offset 38)",
+      "path": "wav-extensible-valid-bits-over-container.wav",
+      "sha256": "80722178ab04a28f159ee4e6289db031ebd970593d6387f03743cb2c62b8b04c",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-padded-valid-bits",
+      "operation": "set valid bits to 15 for a 16-bit container (u16le at offset 38)",
+      "path": "wav-extensible-padded-valid-bits.wav",
+      "sha256": "3d7dfad28003d9a1893af917caa7fba1219a358fa6e4056675b88181c3f501f3",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-reserved-channel-mask",
+      "operation": "set channel mask to 0x00040001 with a reserved speaker bit",
+      "path": "wav-extensible-reserved-channel-mask.wav",
+      "sha256": "dc12577a8c75e9ae0525b084b1f1da43898e9de72291743ef53e620197c79751",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-channel-mask-popcount-mismatch",
+      "operation": "set the stereo channel mask to one speaker bit (u32le at offset 40)",
+      "path": "wav-extensible-channel-mask-popcount-mismatch.wav",
+      "sha256": "0ab91ee532a9fc4fe295298ea835743539465e78698c74915bde26340df1be05",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
     },
     {
       "expected": {
@@ -422,6 +542,42 @@
     },
     {
       "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-27-channels",
+      "operation": "set channel count to 27 and channel mask to zero",
+      "path": "wav-extensible-27-channels.wav",
+      "sha256": "ab2d44ebbc5ce1f60f61353b2e0dfaa1566a1e8abd1fc08496a16ea1b78c10eb",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-32-channels",
+      "operation": "set channel count to 32 and channel mask to zero",
+      "path": "wav-extensible-32-channels.wav",
+      "sha256": "e528da9474a36403a8d637b2dffc6b093689042646f4fa8fce6f6e2af51d6f4b",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "wav-extensible-64-channels",
+      "operation": "set channel count to 64 and channel mask to zero",
+      "path": "wav-extensible-64-channels.wav",
+      "sha256": "02cd4979cc17c7a07af08c960837929772b11e7317fa5cc1fd04fefb2489e435",
+      "sizeBytes": 100,
+      "source": "native-pcm-extensible-v1/pcm-s16-stereo-mask-extensible.wav"
+    },
+    {
+      "expected": {
         "code": "malformed_media",
         "stage": "probe"
       },
@@ -500,6 +656,9 @@
     }
   ],
   "corpusId": "malformed-media-v1",
-  "notes": "Deterministic byte-level derivations of committed native-pcm-v1 fixtures. Expected codes/stages are product regression targets for exactly these files; they do not claim behavior for all byte inputs.",
-  "sourceCorpus": "native-pcm-v1"
+  "notes": "Deterministic byte-level derivations of committed native PCM fixtures. Expected codes/stages are product regression targets for exactly these files; they do not claim behavior for all byte inputs.",
+  "sourceCorpora": [
+    "native-pcm-v1",
+    "native-pcm-extensible-v1"
+  ]
 }

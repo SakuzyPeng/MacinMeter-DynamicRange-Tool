@@ -10,7 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 
-const MINIMUM_CASES: usize = 41;
+const MINIMUM_CASES: usize = 54;
 
 fn corpus_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,6 +24,10 @@ fn committed_corpus_bytes_match_the_manifest() {
         &fs::read(corpus_path("manifest.json")).expect("corpus manifest must exist"),
     )
     .expect("corpus manifest must be valid JSON");
+    assert_eq!(
+        manifest["sourceCorpora"],
+        serde_json::json!(["native-pcm-v1", "native-pcm-extensible-v1"])
+    );
     let cases = manifest["cases"]
         .as_array()
         .expect("corpus manifest must contain cases");

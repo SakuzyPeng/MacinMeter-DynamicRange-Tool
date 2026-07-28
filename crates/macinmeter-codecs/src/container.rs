@@ -1,5 +1,5 @@
 use crate::error::{analysis_error, io_analysis_error, validate_analysis_channel_count};
-use macinmeter_domain::{AnalysisError, AnalysisStage, ContainerFormat, ErrorCode};
+use macinmeter_domain::{AnalysisError, AnalysisStage, ContainerFormat, ErrorCode, SourceCodec};
 use std::{
     fs::File,
     io::{self, Read, Seek, SeekFrom},
@@ -32,7 +32,20 @@ pub(crate) struct ContainerPcmInfo {
     pub(crate) sample_rate: u32,
     pub(crate) channels: u16,
     pub(crate) bits_per_sample: u32,
+    pub(crate) source_codec: SourceCodec,
 }
+
+const WAVE_FORMAT_PCM: u16 = 0x0001;
+const WAVE_FORMAT_IEEE_FLOAT: u16 = 0x0003;
+const WAVE_FORMAT_EXTENSIBLE: u16 = 0xfffe;
+const WAVE_EXTENSIBLE_MAX_CHANNELS: u16 = 26;
+const WAVE_EXTENSIBLE_STANDARD_CHANNEL_MASK: u32 = 0x0003_ffff;
+const KSDATAFORMAT_SUBTYPE_PCM: [u8; 16] = [
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
+];
+const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: [u8; 16] = [
+    0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
+];
 
 #[derive(Debug, Clone, Copy)]
 struct AiffLengthPatch {
@@ -264,66 +277,14 @@ pub(crate) fn inspect_wave<R: Read + Seek>(
                     None,
                 ));
             }
-            let allowed_bits = match format_tag {
-                0x0001 => [8, 16, 24, 32].contains(&bits_per_sample),
-                0x0003 => [32, 64].contains(&bits_per_sample),
-                0xfffe => {
-                    return Err(analysis_error(
-                        path,
-                        ErrorCode::UnsupportedFormat,
-                        AnalysisStage::Probe,
-                        "WAVE_FORMAT_EXTENSIBLE is not in the stable native WAV matrix",
-                        None,
-                    ));
-                }
-                _ => {
-                    return Err(analysis_error(
-                        path,
-                        ErrorCode::UnsupportedFormat,
-                        AnalysisStage::Probe,
-                        "WAV codec is outside the stable linear PCM/IEEE float matrix",
-                        Some(format!("format_tag=0x{format_tag:04x}")),
-                    ));
-                }
-            };
-            if !allowed_bits {
-                return Err(analysis_error(
-                    path,
-                    ErrorCode::UnsupportedFormat,
-                    AnalysisStage::Probe,
-                    "WAV bit depth is outside the stable native matrix",
-                    Some(format!(
-                        "format_tag=0x{format_tag:04x}; bits_per_sample={bits_per_sample}"
-                    )),
-                ));
-            }
-            if !matches!(chunk_len, 16 | 18) {
-                return Err(analysis_error(
-                    path,
-                    ErrorCode::UnsupportedFormat,
-                    AnalysisStage::Probe,
-                    "extended WAV fmt data is outside the stable native matrix",
-                    Some(format!(
-                        "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}"
-                    )),
-                ));
-            }
-            if chunk_len == 18 {
-                let mut extension_size = [0_u8; 2];
-                reader
-                    .read_exact(&mut extension_size)
-                    .map_err(|error| malformed_wave_io(path, error))?;
-                let extension_size = u16::from_le_bytes(extension_size);
-                if extension_size != 0 {
-                    return Err(analysis_error(
-                        path,
-                        ErrorCode::UnsupportedFormat,
-                        AnalysisStage::Probe,
-                        "WAV fmt extension data is outside the stable native matrix",
-                        Some(format!("extension_size={extension_size}")),
-                    ));
-                }
-            }
+            let source_codec = validate_wave_format(
+                reader,
+                path,
+                chunk_len,
+                format_tag,
+                channels,
+                bits_per_sample,
+            )?;
 
             let bytes_per_sample = bits_per_sample / 8;
             let expected_block_align = channels.checked_mul(bytes_per_sample).ok_or_else(|| {
@@ -363,6 +324,7 @@ pub(crate) fn inspect_wave<R: Read + Seek>(
                     sample_rate,
                     channels,
                     bits_per_sample: u32::from(bits_per_sample),
+                    source_codec,
                 },
                 u64::from(block_align),
             ));
@@ -411,6 +373,245 @@ pub(crate) fn inspect_wave<R: Read + Seek>(
         declared_frames: data_len / block_align,
         pcm,
     })
+}
+
+fn validate_wave_format<R: Read>(
+    reader: &mut R,
+    path: &Path,
+    chunk_len: u32,
+    format_tag: u16,
+    channels: u16,
+    bits_per_sample: u16,
+) -> Result<SourceCodec, AnalysisError> {
+    match format_tag {
+        WAVE_FORMAT_PCM => {
+            validate_classic_wave_format(
+                reader,
+                path,
+                chunk_len,
+                format_tag,
+                bits_per_sample,
+                &[8, 16, 24, 32],
+            )?;
+            Ok(SourceCodec::PcmInteger)
+        }
+        WAVE_FORMAT_IEEE_FLOAT => {
+            validate_classic_wave_format(
+                reader,
+                path,
+                chunk_len,
+                format_tag,
+                bits_per_sample,
+                &[32, 64],
+            )?;
+            Ok(SourceCodec::PcmFloat)
+        }
+        WAVE_FORMAT_EXTENSIBLE => {
+            validate_wave_extensible_format(reader, path, chunk_len, channels, bits_per_sample)
+        }
+        _ => Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAV codec is outside the stable linear PCM/IEEE float matrix",
+            Some(format!("format_tag=0x{format_tag:04x}")),
+        )),
+    }
+}
+
+fn validate_classic_wave_format<R: Read>(
+    reader: &mut R,
+    path: &Path,
+    chunk_len: u32,
+    format_tag: u16,
+    bits_per_sample: u16,
+    allowed_bits: &[u16],
+) -> Result<(), AnalysisError> {
+    if !allowed_bits.contains(&bits_per_sample) {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAV bit depth is outside the stable native matrix",
+            Some(format!(
+                "format_tag=0x{format_tag:04x}; bits_per_sample={bits_per_sample}"
+            )),
+        ));
+    }
+    if !matches!(chunk_len, 16 | 18) {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "extended WAV fmt data is outside the stable native matrix",
+            Some(format!(
+                "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}"
+            )),
+        ));
+    }
+    if chunk_len == 18 {
+        let mut extension_size = [0_u8; 2];
+        reader
+            .read_exact(&mut extension_size)
+            .map_err(|error| malformed_wave_io(path, error))?;
+        let extension_size = u16::from_le_bytes(extension_size);
+        if extension_size != 0 {
+            return Err(analysis_error(
+                path,
+                ErrorCode::UnsupportedFormat,
+                AnalysisStage::Probe,
+                "WAV fmt extension data is outside the stable native matrix",
+                Some(format!("extension_size={extension_size}")),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_wave_extensible_format<R: Read>(
+    reader: &mut R,
+    path: &Path,
+    chunk_len: u32,
+    channels: u16,
+    bits_per_sample: u16,
+) -> Result<SourceCodec, AnalysisError> {
+    if chunk_len < 18 {
+        return Err(malformed_wave_extensible_size(path, chunk_len, None));
+    }
+
+    let mut extension_size = [0_u8; 2];
+    reader
+        .read_exact(&mut extension_size)
+        .map_err(|error| malformed_wave_io(path, error))?;
+    let extension_size = u16::from_le_bytes(extension_size);
+    let declared_fmt_size = 18_u32 + u32::from(extension_size);
+    if chunk_len < 40 || extension_size < 22 || declared_fmt_size > chunk_len {
+        return Err(malformed_wave_extensible_size(
+            path,
+            chunk_len,
+            Some(extension_size),
+        ));
+    }
+    if chunk_len > 40 || extension_size > 22 {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE fmt data contains unsupported extra extensions",
+            Some(format!(
+                "fmt_size={chunk_len}; extension_size={extension_size}"
+            )),
+        ));
+    }
+
+    let mut extension = [0_u8; 22];
+    reader
+        .read_exact(&mut extension)
+        .map_err(|error| malformed_wave_io(path, error))?;
+    let valid_bits_per_sample = u16::from_le_bytes([extension[0], extension[1]]);
+    let channel_mask = u32::from_le_bytes([extension[2], extension[3], extension[4], extension[5]]);
+    let mut sub_format_guid = [0_u8; 16];
+    sub_format_guid.copy_from_slice(&extension[6..]);
+    let source_codec = if sub_format_guid == KSDATAFORMAT_SUBTYPE_PCM {
+        SourceCodec::PcmInteger
+    } else if sub_format_guid == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT {
+        SourceCodec::PcmFloat
+    } else {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE sub-format GUID is unsupported",
+            Some(format!("sub_format_guid={sub_format_guid:02x?}")),
+        ));
+    };
+
+    let allowed_bits = match source_codec {
+        SourceCodec::PcmInteger => [8, 16, 24, 32].contains(&bits_per_sample),
+        SourceCodec::PcmFloat => [32, 64].contains(&bits_per_sample),
+        SourceCodec::Flac => false,
+    };
+    if !allowed_bits {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE bit depth is outside the stable native matrix",
+            Some(format!(
+                "source_codec={source_codec:?}; bits_per_sample={bits_per_sample}"
+            )),
+        ));
+    }
+    if valid_bits_per_sample > bits_per_sample {
+        return Err(analysis_error(
+            path,
+            ErrorCode::MalformedMedia,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE valid bits exceed the container width",
+            Some(format!(
+                "valid_bits_per_sample={valid_bits_per_sample}; bits_per_sample={bits_per_sample}"
+            )),
+        ));
+    }
+    if valid_bits_per_sample < bits_per_sample {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE padded or unspecified valid bits are unsupported",
+            Some(format!(
+                "valid_bits_per_sample={valid_bits_per_sample}; bits_per_sample={bits_per_sample}"
+            )),
+        ));
+    }
+    if channels > WAVE_EXTENSIBLE_MAX_CHANNELS {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE exceeds the stable backend channel limit",
+            Some(format!(
+                "declared_channels={channels}; max_extensible_channels={WAVE_EXTENSIBLE_MAX_CHANNELS}"
+            )),
+        ));
+    }
+    if channel_mask & !WAVE_EXTENSIBLE_STANDARD_CHANNEL_MASK != 0 {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE channel mask uses reserved speaker bits",
+            Some(format!("channel_mask=0x{channel_mask:08x}")),
+        ));
+    }
+    if channel_mask != 0 && channel_mask.count_ones() != u32::from(channels) {
+        return Err(analysis_error(
+            path,
+            ErrorCode::MalformedMedia,
+            AnalysisStage::Probe,
+            "WAVE_FORMAT_EXTENSIBLE channel mask disagrees with the channel count",
+            Some(format!(
+                "channel_mask=0x{channel_mask:08x}; channels={channels}"
+            )),
+        ));
+    }
+    Ok(source_codec)
+}
+
+fn malformed_wave_extensible_size(
+    path: &Path,
+    chunk_len: u32,
+    extension_size: Option<u16>,
+) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::MalformedMedia,
+        AnalysisStage::Probe,
+        "WAVE_FORMAT_EXTENSIBLE fmt data is truncated or internally inconsistent",
+        Some(format!(
+            "fmt_size={chunk_len}; extension_size={extension_size:?}"
+        )),
+    )
 }
 
 pub(crate) fn inspect_aiff<R: Read + Seek>(
@@ -585,6 +786,7 @@ pub(crate) fn inspect_aiff<R: Read + Seek>(
                     sample_rate,
                     channels: declared_channels,
                     bits_per_sample: u32::from(sample_size),
+                    source_codec: SourceCodec::PcmInteger,
                 },
                 declared_frames,
             ));

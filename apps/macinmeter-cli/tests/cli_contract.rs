@@ -200,6 +200,41 @@ fn aiff_and_flac_json_are_the_shared_application_report() {
 }
 
 #[test]
+fn extensible_integer_and_float_json_match_their_classic_twins() {
+    for twin in ["pcm-s24-stereo-mask", "float64-stereo-mask"] {
+        let classic = fixture(&format!("native-pcm-extensible-v1/{twin}-classic.wav"));
+        let extensible = fixture(&format!("native-pcm-extensible-v1/{twin}-extensible.wav"));
+        let classic_output = run([
+            "analyze".as_ref(),
+            classic.as_os_str(),
+            "--format".as_ref(),
+            "json".as_ref(),
+        ]);
+        let extensible_output = run([
+            "analyze".as_ref(),
+            extensible.as_os_str(),
+            "--format".as_ref(),
+            "json".as_ref(),
+        ]);
+        assert_code(&classic_output, 0);
+        assert_code(&extensible_output, 0);
+
+        let mut classic_json = parse_stdout_json(&classic_output);
+        let mut extensible_json = parse_stdout_json(&extensible_output);
+        assert_eq!(classic_json["schemaVersion"], 3, "{twin}");
+        assert_eq!(extensible_json["schemaVersion"], 3, "{twin}");
+        classic_json["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
+        extensible_json["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
+        assert_eq!(
+            extensible_json, classic_json,
+            "Extensible CLI report differs for {twin}"
+        );
+        assert!(stderr(&classic_output).contains("[0] analyzing"));
+        assert!(stderr(&extensible_output).contains("[0] analyzing"));
+    }
+}
+
+#[test]
 fn analyze_failure_is_exit_one_and_does_not_pollute_stdout() {
     let input = fixture("fake_audio.wav");
     let output = run(["analyze".as_ref(), input.as_os_str()]);

@@ -7,6 +7,7 @@ use macinmeter::{
 };
 use serde_json::Value;
 use std::{
+    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -100,6 +101,62 @@ fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
         assert_eq!(diagnostics.backend, "symphonia");
         assert_eq!(diagnostics.decoded_frames, frames);
         assert!(diagnostics.warnings.is_empty());
+    }
+}
+
+#[test]
+fn extensible_and_classic_twins_have_identical_analysis_and_report_projection() {
+    let corpus = fixture("native-pcm-extensible-v1");
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(corpus.join("manifest.json")).expect("Extensible manifest must exist"),
+    )
+    .expect("Extensible manifest must be valid JSON");
+    let fixtures = manifest["fixtures"]
+        .as_array()
+        .expect("Extensible manifest must contain fixtures");
+
+    for extensible in fixtures
+        .iter()
+        .filter(|fixture| fixture["encapsulation"] == "wave_format_extensible")
+    {
+        let twin_id = extensible["twinId"].as_str().expect("twin id");
+        let classic = fixtures
+            .iter()
+            .find(|fixture| {
+                fixture["twinId"] == twin_id && fixture["encapsulation"] == "classic_wave_format"
+            })
+            .unwrap_or_else(|| panic!("classic twin missing for {twin_id}"));
+        let extensible_path = corpus.join(extensible["path"].as_str().unwrap());
+        let classic_path = corpus.join(classic["path"].as_str().unwrap());
+        let extensible_report = Application::new()
+            .analyze_file(AnalyzeRequest::new(&extensible_path))
+            .unwrap_or_else(|error| panic!("Extensible twin {twin_id} failed: {error}"));
+        let classic_report = Application::new()
+            .analyze_file(AnalyzeRequest::new(&classic_path))
+            .unwrap_or_else(|error| panic!("classic twin {twin_id} failed: {error}"));
+
+        assert_eq!(
+            extensible_report.analysis(),
+            classic_report.analysis(),
+            "complete AnalysisResult differs for {twin_id}"
+        );
+        assert_eq!(
+            extensible_report.pcm().spec.channel_layout,
+            macinmeter::ChannelLayout::Unknown,
+            "Extensible channel masks must not create a known layout for {twin_id}"
+        );
+
+        let mut extensible_wire = serde_json::to_value(WireEnvelope::analysis(extensible_report))
+            .expect("Extensible report must serialize");
+        let mut classic_wire = serde_json::to_value(WireEnvelope::analysis(classic_report))
+            .expect("classic report must serialize");
+        extensible_wire["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
+        classic_wire["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
+        assert_eq!(extensible_wire["schemaVersion"], WIRE_SCHEMA_VERSION);
+        assert_eq!(
+            extensible_wire, classic_wire,
+            "shared report projection differs for {twin_id}"
+        );
     }
 }
 

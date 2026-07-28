@@ -60,8 +60,9 @@ pub const NATIVE_CAPABILITY_CATALOG: &[NativeRouteCapability] = &[
         backend: BACKEND,
         discovery_extensions: &["wav", "wave"],
         limitations: &[
-            "classic RIFF format tag 1 only; WAVE_FORMAT_EXTENSIBLE is rejected at probe",
-            "8/16/24/32-bit linear PCM",
+            "classic RIFF format tag 1 or exact WAVE_FORMAT_EXTENSIBLE PCM GUID",
+            "8/16/24/32-bit linear PCM; Extensible valid bits must equal container bits",
+            "Extensible accepts 1-26 channels; nonzero masks use the low 18 speaker bits and match the channel count",
             MAX_CHANNELS_LIMIT,
         ],
     },
@@ -72,8 +73,9 @@ pub const NATIVE_CAPABILITY_CATALOG: &[NativeRouteCapability] = &[
         backend: BACKEND,
         discovery_extensions: &["wav", "wave"],
         limitations: &[
-            "classic RIFF format tag 3 only; WAVE_FORMAT_EXTENSIBLE is rejected at probe",
-            "IEEE float32/float64 PCM",
+            "classic RIFF format tag 3 or exact WAVE_FORMAT_EXTENSIBLE IEEE-float GUID",
+            "IEEE float32/float64 PCM; Extensible valid bits must equal container bits",
+            "Extensible accepts 1-26 channels; nonzero masks use the low 18 speaker bits and match the channel count",
             MAX_CHANNELS_LIMIT,
         ],
     },

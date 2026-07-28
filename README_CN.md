@@ -12,20 +12,22 @@ Rust API 共用同一套流式分析引擎。
 
 ## 支持格式
 
-| 容器 | 0.2.0 当前支持 |
+| 容器 | 当前稳定支持 |
 | --- | --- |
-| 经典 RIFF/WAVE | 8/16/24/32-bit 整数 PCM；IEEE 32/64-bit float |
+| RIFF/WAVE（经典或受限 WAVE_FORMAT_EXTENSIBLE） | 8/16/24/32-bit 整数 PCM；IEEE 32/64-bit float |
 | 原生 FLAC | 声明非零总样本数的 FLAC |
 | AIFF | 8/16/24/32-bit 整数 PCM |
 
 显式文件路径按内容探测，可以使用任意扩展名。文件夹扫描会寻找 `.wav`、`.wave`、
 `.flac`、`.aif` 与 `.aiff`；其他后缀的受支持文件仍然可以通过直接传入路径分析。
-当前文件分析覆盖最多 64 声道。
+当前文件分析覆盖最多 64 声道。受限 WAVE_FORMAT_EXTENSIBLE 路径最多覆盖 26 声道，
+且 channel layout 保持 unknown；完整 valid-bit 与 mask 规则见支持格式文档。
 
-一些具有常见扩展名的文件采用了当前尚未支持的变体，例如
-WAVE_FORMAT_EXTENSIBLE、AIFC 与 Ogg FLAC。MP3、AAC、ALAC、Vorbis、Opus 和 DSD
-目前也不可用。MacinMeter 会把它们报告为不支持，不会调用 FFmpeg，也不会静默
-重采样或预处理。更完整的 route 细节记录在
+一些具有常见扩展名的文件采用了当前尚未支持的变体，例如 padded 或 valid bits
+未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、AIFC 与 Ogg FLAC。
+MP3、AAC、ALAC、Vorbis、Opus 和 DSD 目前也不可用。
+MacinMeter 会把它们报告为不支持，不会调用 FFmpeg，也不会静默重采样或预处理。
+更完整的 route 细节记录在
 [支持格式](docs/SUPPORTED_FORMATS_CN.md)。
 
 ## 安装

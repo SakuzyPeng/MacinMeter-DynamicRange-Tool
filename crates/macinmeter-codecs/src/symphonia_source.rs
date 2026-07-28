@@ -98,7 +98,13 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     let (stream_spec, channels) = stream_spec(path, &codec_params)?;
     let bits_per_sample = source_bits_per_sample(&codec_params);
     if let Some((validated_pcm, _)) = container_pcm {
-        validate_backend_pcm_metadata(path, validated_pcm, &stream_spec, bits_per_sample)?;
+        validate_backend_pcm_metadata(
+            path,
+            validated_pcm,
+            source_codec,
+            &stream_spec,
+            bits_per_sample,
+        )?;
     }
     let expected_frames = container_pcm
         .map(|(_, expected_frames)| expected_frames)
@@ -155,13 +161,15 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     Ok((source, reader))
 }
 
-fn validate_backend_pcm_metadata(
+pub(crate) fn validate_backend_pcm_metadata(
     path: &Path,
     validated: ContainerPcmInfo,
+    source_codec: macinmeter_domain::SourceCodec,
     stream_spec: &macinmeter_domain::StreamSpec,
     bits_per_sample: Option<u32>,
 ) -> Result<(), AnalysisError> {
-    if stream_spec.sample_rate.get() != validated.sample_rate
+    if source_codec != validated.source_codec
+        || stream_spec.sample_rate.get() != validated.sample_rate
         || stream_spec.channels.get() != validated.channels
         || bits_per_sample != Some(validated.bits_per_sample)
     {
@@ -171,10 +179,12 @@ fn validate_backend_pcm_metadata(
             AnalysisStage::Probe,
             "decoder metadata disagrees with the validated container PCM format",
             Some(format!(
-                "container={}Hz/{}ch/{}bit; decoder={}Hz/{}ch/{bits_per_sample:?}bit",
+                "container={:?}/{}Hz/{}ch/{}bit; decoder={:?}/{}Hz/{}ch/{bits_per_sample:?}bit",
+                validated.source_codec,
                 validated.sample_rate,
                 validated.channels,
                 validated.bits_per_sample,
+                source_codec,
                 stream_spec.sample_rate.get(),
                 stream_spec.channels.get(),
             )),

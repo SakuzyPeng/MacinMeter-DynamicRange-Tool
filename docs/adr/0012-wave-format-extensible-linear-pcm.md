@@ -1,9 +1,10 @@
 # ADR-0012：稳定 WAV 路由扩展至 WAVE_FORMAT_EXTENSIBLE 线性 PCM
 
-- 状态：Proposed（草案，待评审）
-- 实施状态：TODO
+- 状态：Accepted
+- 实施状态：Done
 - 日期：2026-07-21
-- 修订日期：2026-07-26
+- 修订日期：2026-07-27
+- 完成日期：2026-07-27
 - 决策范围：稳定 WAV 路由的封装面扩展（不新增 route、不改 wire schema）
 - 相关路线图：[架构整改与参考插件重新对齐路线图](../ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - 前置决策：
@@ -235,3 +236,24 @@ probe 显式校验并记录为 capability 证据。
 
 拒绝。默认 profile 的数值结果不依赖布局；在没有独立证据、也没有默认使用场景
 （多声道加权非默认）时引入布局推导，只会扩大 report/schema 与证据表面。
+
+## 实施收口
+
+2026-07-27 按本 ADR 完成实现与本地准入：
+
+- 第一方 WAV probe 接受精确 PCM/IEEE-float GUID、紧凑 valid bits、标准或零 mask，
+  并在 decoder 创建前限制 27–64 声道及交叉核对 backend codec 身份；
+- 新增 `native-pcm-extensible-v1` 的 10 组 classic/Extensible 孪生，覆盖全部六种
+  位深、mono/stereo/6ch、零/非零 mask 与 26-channel 边界；生成器只使用 Python
+  标准库；
+- `malformed-media-v1` 从 41 项增至 54 项，登记本 ADR 的 GUID、结构长度、valid
+  bits、mask 与 27/32/64-channel 分类；旧 tag-only case 改为 `malformed_media`；
+- 共享 `PcmSource` contract、逐位 PCM、完整 `AnalysisResult`、共享 report projection
+  与 CLI JSON twin 测试通过；channel layout 保持 `Unknown`，wire schema 保持 v3；
+- capability catalog 与双语格式文档已同步；没有新增 route、枚举、依赖、backend、
+  feature、并发轴或版本变更，也未触发远端 CI。
+
+本地毕业门禁包含语料再生成检查、Rust fmt/严格 Clippy/workspace tests、release CLI
+build、Python/repository contract 和 Tauri frontend build。hostile corpus 的完整行为
+验证仍遵循 ADR-0003：只在能施加安全 `RLIMIT_AS` 的环境运行，普通 macOS 本地门禁
+不以 `--allow-timeout-only` 冒充该证据。

@@ -14,22 +14,25 @@ in the accuracy section below.
 
 ## Supported files
 
-| Container | Available in 0.2.0 |
+| Container | Current stable support |
 | --- | --- |
-| classic RIFF/WAVE | 8/16/24/32-bit integer PCM; IEEE 32/64-bit float |
+| RIFF/WAVE, classic or constrained WAVE_FORMAT_EXTENSIBLE | 8/16/24/32-bit integer PCM; IEEE 32/64-bit float |
 | native FLAC | FLAC with a declared nonzero total sample count |
 | AIFF | 8/16/24/32-bit integer PCM |
 
 An explicit file path is probed by content and may use any extension. Folder
 scans look for `.wav`, `.wave`, `.flac`, `.aif`, and `.aiff`; a supported file
 with another extension can still be analyzed by passing its path directly.
-Current file analysis covers up to 64 channels.
+Current file analysis covers up to 64 channels. The constrained
+WAVE_FORMAT_EXTENSIBLE route covers up to 26 channels and retains an unknown
+channel layout; the format guide records its exact valid-bit and mask rules.
 
 Some files with familiar extensions use variants that are not available yet,
-including WAVE_FORMAT_EXTENSIBLE, AIFC, and Ogg FLAC. MP3, AAC, ALAC, Vorbis,
-Opus, and DSD are also unavailable. MacinMeter reports these as unsupported;
-it does not invoke FFmpeg or silently resample or preprocess them. The
-[format guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
+including padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible
+streams above 26 channels, AIFC, and Ogg FLAC. MP3, AAC, ALAC, Vorbis, Opus,
+and DSD are also unavailable. MacinMeter reports these as unsupported; it does
+not invoke FFmpeg or silently resample or preprocess them. The [format
+guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
 
 ## Installation
 

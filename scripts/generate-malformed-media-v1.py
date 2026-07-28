@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Generate the committed M2 malformed-media regression corpus.
 
-Every case is a deterministic byte-level derivation of a committed
-`native-pcm-v1` fixture (or a deterministic synthetic byte string), so the
-corpus can be regenerated and audited without any external media. Expected
-outcomes are recorded as structured product error codes and stages; they are
-regression targets captured from the product, not a claim about all possible
-byte inputs.
+Every case is a deterministic byte-level derivation of a committed native PCM
+fixture (or a deterministic synthetic byte string), so the corpus can be
+regenerated and audited without any external media. Expected outcomes are
+recorded as structured product error codes and stages; they are regression
+targets captured from the product, not a claim about all possible byte inputs.
 """
 
 from __future__ import annotations
@@ -21,11 +20,13 @@ from pathlib import Path
 
 CORPUS_ID = "malformed-media-v1"
 SOURCE_CORPUS = "native-pcm-v1"
+EXTENSIBLE_SOURCE_CORPUS = "native-pcm-extensible-v1"
 
 WAV_S16 = "wav-pcm-s16-stereo.wav"
 WAV_F32 = "wav-float32-stereo.wav"
 AIFF_S16 = "aiff-pcm-s16-stereo.aiff"
 FLAC_S16 = "flac-pcm-s16-stereo-multiblock.flac"
+WAV_EXTENSIBLE_S16 = "pcm-s16-stereo-mask-extensible.wav"
 
 
 def xorshift64(seed: int) -> int:
@@ -56,6 +57,12 @@ def patch(data: bytes, offset: int, replacement: bytes) -> bytes:
     if offset + len(replacement) > len(data):
         raise ValueError("patch exceeds the source bytes")
     return data[:offset] + replacement + data[offset + len(replacement) :]
+
+
+def insert(data: bytes, offset: int, addition: bytes) -> bytes:
+    if not 0 <= offset <= len(data):
+        raise ValueError("insert offset is outside the source bytes")
+    return data[:offset] + addition + data[offset:]
 
 
 def xor_at(data: bytes, offset: int, mask: bytes) -> bytes:
@@ -100,6 +107,16 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
     wav_f32 = sources[WAV_F32]
     aiff = sources[AIFF_S16]
     flac = sources[FLAC_S16]
+    wav_extensible = sources[WAV_EXTENSIBLE_S16]
+
+    extensible_with_extra = insert(wav_extensible, 60, b"\0\0")
+    extensible_with_extra = patch(
+        extensible_with_extra,
+        4,
+        struct.pack("<I", struct.unpack("<I", wav_extensible[4:8])[0] + 2),
+    )
+    extensible_with_extra = patch(extensible_with_extra, 16, struct.pack("<I", 42))
+    extensible_with_extra = patch(extensible_with_extra, 36, struct.pack("<H", 24))
 
     # wav-pcm-s16-stereo.wav layout: RIFF size at 4, fmt chunk at 12
     # (format tag 20, channels 22, bits 34), data chunk header at 36.
@@ -161,7 +178,77 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "source": WAV_S16,
             "operation": "set the fmt format tag to 0xFFFE (u16le at offset 20)",
             "bytes": patch(wav, 20, struct.pack("<H", 0xFFFE)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-unsupported-guid",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "replace the sub-format GUID tag with 0x00000002 (u32le at offset 44)",
+            "bytes": patch(wav_extensible, 44, struct.pack("<I", 2)),
             "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-guid-tail-mismatch",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "xor the final sub-format GUID byte at offset 59 with 0x01",
+            "bytes": xor_at(wav_extensible, 59, b"\x01"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-fmt-size-39",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set fmt_size to 39 (u32le at offset 16)",
+            "bytes": patch(wav_extensible, 16, struct.pack("<I", 39)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-coherent-extra-extension",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "grow fmt_size/cbSize to coherent 42/24 and insert two extension bytes",
+            "bytes": extensible_with_extra,
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-incoherent-cbsize",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set cbSize to 23 while fmt_size remains 40 (u16le at offset 36)",
+            "bytes": patch(wav_extensible, 36, struct.pack("<H", 23)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-zero-valid-bits",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set valid bits to 0 (u16le at offset 38)",
+            "bytes": patch(wav_extensible, 38, struct.pack("<H", 0)),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-valid-bits-over-container",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set valid bits to 17 for a 16-bit container (u16le at offset 38)",
+            "bytes": patch(wav_extensible, 38, struct.pack("<H", 17)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-padded-valid-bits",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set valid bits to 15 for a 16-bit container (u16le at offset 38)",
+            "bytes": patch(wav_extensible, 38, struct.pack("<H", 15)),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-reserved-channel-mask",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set channel mask to 0x00040001 with a reserved speaker bit",
+            "bytes": patch(wav_extensible, 40, struct.pack("<I", 0x0004_0001)),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "wav-extensible-channel-mask-popcount-mismatch",
+            "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+            "operation": "set the stereo channel mask to one speaker bit (u32le at offset 40)",
+            "bytes": patch(wav_extensible, 40, struct.pack("<I", 1)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
         },
         {
             "id": "wav-unaligned-data-length",
@@ -365,6 +452,21 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
         },
     ]
 
+    for channels in (27, 32, 64):
+        cases.append(
+            {
+                "id": f"wav-extensible-{channels}-channels",
+                "source": f"{EXTENSIBLE_SOURCE_CORPUS}/{WAV_EXTENSIBLE_S16}",
+                "operation": f"set channel count to {channels} and channel mask to zero",
+                "bytes": patch(
+                    patch(wav_extensible, 22, struct.pack("<H", channels)),
+                    40,
+                    struct.pack("<I", 0),
+                ),
+                "expected": {"code": "unsupported_format", "stage": "probe"},
+            }
+        )
+
     for seed in (1, 2, 3):
         mask = seeded_u32_mask(seed)
         cases.append(
@@ -400,11 +502,12 @@ def case_file_name(case: dict[str, object]) -> str:
     return f"{case['id']}{suffix}"
 
 
-def generate(fixtures: Path, output: Path) -> None:
+def generate(fixtures: Path, extensible_fixtures: Path, output: Path) -> None:
     sources = {
         name: (fixtures / name).read_bytes()
         for name in (WAV_S16, WAV_F32, AIFF_S16, FLAC_S16)
     }
+    sources[WAV_EXTENSIBLE_S16] = (extensible_fixtures / WAV_EXTENSIBLE_S16).read_bytes()
     output.mkdir(parents=True, exist_ok=True)
 
     cases = build_cases(sources)
@@ -428,9 +531,9 @@ def generate(fixtures: Path, output: Path) -> None:
 
     manifest = {
         "corpusId": CORPUS_ID,
-        "sourceCorpus": SOURCE_CORPUS,
+        "sourceCorpora": [SOURCE_CORPUS, EXTENSIBLE_SOURCE_CORPUS],
         "notes": (
-            "Deterministic byte-level derivations of committed native-pcm-v1 "
+            "Deterministic byte-level derivations of committed native PCM "
             "fixtures. Expected codes/stages are product regression targets "
             "for exactly these files; they do not claim behavior for all "
             "byte inputs."
@@ -443,10 +546,12 @@ def generate(fixtures: Path, output: Path) -> None:
     )
 
 
-def check_committed(fixtures: Path, destination: Path) -> None:
+def check_committed(
+    fixtures: Path, extensible_fixtures: Path, destination: Path
+) -> None:
     with tempfile.TemporaryDirectory() as scratch:
         fresh = Path(scratch) / CORPUS_ID
-        generate(fixtures, fresh)
+        generate(fixtures, extensible_fixtures, fresh)
         for candidate in sorted(fresh.iterdir()):
             committed = destination / candidate.name
             if not committed.exists():
@@ -471,6 +576,12 @@ def main() -> None:
         help="directory containing the committed native-pcm-v1 fixtures",
     )
     parser.add_argument(
+        "--extensible-fixtures",
+        type=Path,
+        default=repo_root / "tests" / "fixtures" / EXTENSIBLE_SOURCE_CORPUS,
+        help="directory containing the committed native-pcm-extensible-v1 fixtures",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=repo_root / "tests" / "fixtures" / CORPUS_ID,
@@ -483,7 +594,9 @@ def main() -> None:
     )
     arguments = parser.parse_args()
     if arguments.check:
-        check_committed(arguments.fixtures, arguments.output)
+        check_committed(
+            arguments.fixtures, arguments.extensible_fixtures, arguments.output
+        )
     else:
         if arguments.output.exists():
             for stale in arguments.output.iterdir():
@@ -492,7 +605,7 @@ def main() -> None:
                         shutil.rmtree(stale)
                     else:
                         stale.unlink()
-        generate(arguments.fixtures, arguments.output)
+        generate(arguments.fixtures, arguments.extensible_fixtures, arguments.output)
         print(f"{CORPUS_ID}: wrote corpus to {arguments.output}")
 
 
