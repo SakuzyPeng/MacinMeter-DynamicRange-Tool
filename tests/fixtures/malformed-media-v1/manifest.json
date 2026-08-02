@@ -518,6 +518,294 @@
     },
     {
       "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-truncated-ftyp",
+      "operation": "truncate inside the first ftyp payload",
+      "path": "alac-truncated-ftyp.m4a",
+      "sha256": "7ddf3b05bfa0b1d57cc2aff0a9e5dd860442a07d1da1e6d2976f8eb7b3d4bde1",
+      "sizeBytes": 10,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-ftyp-size-overrun",
+      "operation": "set the first box size beyond the file length",
+      "path": "alac-ftyp-size-overrun.m4a",
+      "sha256": "064cfcb956d2e9656742984ac3b2ac74449015ccd1eb09872d2f8231de3d7d78",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-zero-box-size",
+      "operation": "set the ftyp box size to zero",
+      "path": "alac-zero-box-size.m4a",
+      "sha256": "3a397852f504435f2b1ae57054eedb404cad9fe54fc61cdbc2388cdd9d7b399b",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-missing-moov",
+      "operation": "rename the top-level moov box to free",
+      "path": "alac-missing-moov.m4a",
+      "sha256": "8c19e3cbc49fa38b2aa06854252c272b4172c973857405c87fa1caabbbd24c1b",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-missing-mdat",
+      "operation": "rename the top-level mdat box to free",
+      "path": "alac-missing-mdat.m4a",
+      "sha256": "d4f718e5ac77fcea5af823b15dfca0345f3de33d3396e10f9d585d631d2433f7",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-nonidentity-edit",
+      "operation": "set the sole edit-list media_time to one",
+      "path": "alac-nonidentity-edit.m4a",
+      "sha256": "1b5f0163a05ebef4b3d76895ea35d9b7b29a35802e3ff5586caf88a48b35739a",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-cropped-edit-duration",
+      "operation": "shorten the identity edit-list segment duration by one movie tick",
+      "path": "alac-cropped-edit-duration.m4a",
+      "sha256": "4d3a04f94adbdaaad138ac0a0334a574d52b81ace666e28ef529e957d3a1fb51",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-compatible-version-1",
+      "operation": "set ALAC compatibleVersion to one",
+      "path": "alac-compatible-version-1.m4a",
+      "sha256": "c9d7cf2ccce2d5e67c190060f43a3b3ec2e16e988f3f95f668e22029896f27d1",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-20bit",
+      "operation": "set the ALAC cookie bit depth to 20",
+      "path": "alac-20bit.m4a",
+      "sha256": "b5a1518e6148bbaffaf02485e682eb8bf8a48ab7d76537216aab2b870dbe2d6f",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-32bit",
+      "operation": "set the ALAC cookie bit depth to 32",
+      "path": "alac-32bit.m4a",
+      "sha256": "9591f5f4c220d3e706d546256c134ae7f55580cb5d68ca60ad6e79e01239a8c1",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-9channels",
+      "operation": "set the ALAC cookie channel count to nine",
+      "path": "alac-9channels.m4a",
+      "sha256": "a155f302b6edd8d107441626133693d2f83545214e89233bca2b9425eb657eb6",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-nonzero-config-flags",
+      "operation": "set one ALAC configuration full-box flag",
+      "path": "alac-nonzero-config-flags.m4a",
+      "sha256": "de4e8f63ca199eb339145903e6458cc9ac9a5ff7c75ff07e1a5ad00d68243e8f",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-nonstandard-explicit-layout",
+      "operation": "expand the cookie to 48 bytes with a nonstandard channel-layout tag",
+      "path": "alac-nonstandard-explicit-layout.m4a",
+      "sha256": "0c4815a021467750ccde4ec249295ac28de504d7592c973a02cdfa68e47f5de1",
+      "sizeBytes": 36851,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-explicit-layout-channel-mismatch",
+      "operation": "expand the stereo cookie with the standard mono channel-layout tag",
+      "path": "alac-explicit-layout-channel-mismatch.m4a",
+      "sha256": "42b72ace50618fdb99431c1c445e0ada076f2773baa904215393baa96f57b102",
+      "sizeBytes": 36851,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-channel-declaration-mismatch",
+      "operation": "set the sample-entry channel count to one while the cookie remains stereo",
+      "path": "alac-channel-declaration-mismatch.m4a",
+      "sha256": "f34bea06b4d9a467698fa6bedded2f15f0e59ab85f3717bad7186b920d42afa7",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-sample-rate-mismatch",
+      "operation": "set the sample-entry 16.16 sample rate to 44100",
+      "path": "alac-sample-rate-mismatch.m4a",
+      "sha256": "6cc27da873ba88e9e3f6a63670b2613e90c47f3d4e0cb1144ffbb9de8d98abbf",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-stts-duration-mismatch",
+      "operation": "increment the first stts sample duration",
+      "path": "alac-stts-duration-mismatch.m4a",
+      "sha256": "832c630bc5afab12558b9642b545b012fb862708b4f979fe8fbbec93a4c58b42",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-stsz-count-mismatch",
+      "operation": "increment the stsz packet count without adding a size entry",
+      "path": "alac-stsz-count-mismatch.m4a",
+      "sha256": "ff75e8903a1eef97e6333cc24bd948840ad8afe5a4b610b4982fc02dfeea5a46",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-zero-frames",
+      "operation": "set mdhd duration and every stts packet duration to zero",
+      "path": "alac-zero-frames.m4a",
+      "sha256": "d5912a2efe0345598ce22df7c9b08060466ca8750de5b67e77af63e1f877b017",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "decode_failed",
+        "stage": "decode"
+      },
+      "id": "alac-corrupt-first-packet",
+      "operation": "xor the first byte of the first mdat packet with 0xff",
+      "path": "alac-corrupt-first-packet.m4a",
+      "sha256": "3583a83c1fadb2df438c22fb019975eaf38b0773844a1afc920f8ba30d917305",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-aac-track",
+      "operation": "use a valid ISO BMFF file containing one AAC audio track",
+      "path": "alac-aac-track.m4a",
+      "sha256": "b5a837757710df0e4af8746d44af4a616d811335b95fa58efdd0c29d04230d2a",
+      "sizeBytes": 3783,
+      "source": "native-alac-v1/unsupported-aac.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-fragmented",
+      "operation": "use a valid fragmented ISO BMFF file containing ALAC",
+      "path": "alac-fragmented.mp4",
+      "sha256": "38ad79509f568e78ba2abb9a99b85a27010732c22d68c9e65e7d94916f68c2aa",
+      "sizeBytes": 36929,
+      "source": "native-alac-v1/unsupported-fragmented-alac.mp4"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-multiple-audio-tracks",
+      "operation": "use a valid ISO BMFF file containing two ALAC audio tracks",
+      "path": "alac-multiple-audio-tracks.mp4",
+      "sha256": "d2703293d2b63f9ea6c77f04f453ca904ae56de7ea6c3b030dd2eb6881b7887d",
+      "sizeBytes": 37813,
+      "source": "native-alac-v1/unsupported-multitrack-alac.mp4"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "id": "alac-video-track",
+      "operation": "use a valid ISO BMFF file containing video plus ALAC audio",
+      "path": "alac-video-track.mp4",
+      "sha256": "3064563e0f086e0639af70eaca4665cf511146aadb9813592c2972b31f24be86",
+      "sizeBytes": 37505,
+      "source": "native-alac-v1/unsupported-video-alac.mp4"
+    },
+    {
+      "expected": {
         "code": "unsupported_format",
         "stage": "probe"
       },
@@ -659,6 +947,7 @@
   "notes": "Deterministic byte-level derivations of committed native PCM fixtures. Expected codes/stages are product regression targets for exactly these files; they do not claim behavior for all byte inputs.",
   "sourceCorpora": [
     "native-pcm-v1",
-    "native-pcm-extensible-v1"
+    "native-pcm-extensible-v1",
+    "native-alac-v1"
   ]
 }

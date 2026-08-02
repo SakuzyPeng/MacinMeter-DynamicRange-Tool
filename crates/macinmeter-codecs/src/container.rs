@@ -12,6 +12,7 @@ pub(crate) enum ContainerSignature {
     Wave,
     Flac,
     Aiff,
+    Mp4,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,7 +58,7 @@ pub(crate) fn identify_container<R: Read + Seek>(
     reader: &mut R,
     path: &Path,
 ) -> Result<ContainerSignature, AnalysisError> {
-    let mut header = [0_u8; 12];
+    let mut header = [0_u8; 16];
     let mut read = 0;
     while read < header.len() {
         match reader.read(&mut header[read..]) {
@@ -83,14 +84,18 @@ pub(crate) fn identify_container<R: Read + Seek>(
             path,
             ErrorCode::UnsupportedFormat,
             AnalysisStage::Probe,
-            "AIFC is not supported by the M0 decoder",
+            "AIFC is outside the stable native decoder matrix",
             None,
         ));
+    }
+    if read >= 8 && &header[4..8] == b"ftyp" {
+        return Ok(ContainerSignature::Mp4);
     }
     let observed = &header[..read];
     if is_truncated_signature(observed, b"RIFF", 12)
         || is_truncated_signature(observed, b"FORM", 12)
         || is_truncated_signature(observed, b"fLaC", 4)
+        || is_truncated_isobmff_signature(observed)
     {
         return Err(analysis_error(
             path,
@@ -105,9 +110,16 @@ pub(crate) fn identify_container<R: Read + Seek>(
         path,
         ErrorCode::UnsupportedFormat,
         AnalysisStage::Probe,
-        "content is not WAV, FLAC, or uncompressed AIFF",
+        "content is not WAV, FLAC, uncompressed AIFF, or ISO BMFF",
         None,
     ))
+}
+
+fn is_truncated_isobmff_signature(observed: &[u8]) -> bool {
+    if observed.len() <= 4 || observed.len() >= 8 {
+        return false;
+    }
+    b"ftyp".starts_with(&observed[4..])
 }
 
 fn is_truncated_signature(observed: &[u8], signature: &[u8], minimum_header: usize) -> bool {
@@ -334,7 +346,7 @@ pub(crate) fn inspect_wave<R: Read + Seek>(
                 path,
                 ErrorCode::UnsupportedFormat,
                 AnalysisStage::Probe,
-                "multiple WAV data chunks are outside the M0 decoder contract",
+                "multiple WAV data chunks are outside the stable decoder contract",
                 None,
             ));
         }
@@ -529,7 +541,7 @@ fn validate_wave_extensible_format<R: Read>(
     let allowed_bits = match source_codec {
         SourceCodec::PcmInteger => [8, 16, 24, 32].contains(&bits_per_sample),
         SourceCodec::PcmFloat => [32, 64].contains(&bits_per_sample),
-        SourceCodec::Flac => false,
+        SourceCodec::Flac | SourceCodec::Alac => false,
     };
     if !allowed_bits {
         return Err(analysis_error(
@@ -996,6 +1008,7 @@ pub(crate) fn container_format(signature: ContainerSignature) -> ContainerFormat
         ContainerSignature::Wave => ContainerFormat::Wave,
         ContainerSignature::Flac => ContainerFormat::Flac,
         ContainerSignature::Aiff => ContainerFormat::Aiff,
+        ContainerSignature::Mp4 => ContainerFormat::Mp4,
     }
 }
 

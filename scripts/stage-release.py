@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Python reports the actionable error.
 
 
 RELEASE_SCHEMA_VERSION = 1
-WIRE_SCHEMA_VERSION = 3
+WIRE_SCHEMA_VERSION = 4
 APPLE_SILICON_TARGET = "aarch64-apple-darwin"
 MACOS_MINIMUM_SYSTEM_VERSION = "11.0"
 LOCAL_STAGING_SCOPE = "local_staging_only"

@@ -22,12 +22,13 @@ fn stable_catalog_snapshot_is_fixed() {
             ("wave", "pcm_float"),
             ("flac", "flac"),
             ("aiff", "pcm_integer"),
+            ("mp4", "alac"),
         ]
     );
 
     assert_eq!(
         snapshot.stable_discovery_extensions,
-        ["aif", "aiff", "flac", "wav", "wave"]
+        ["aif", "aiff", "flac", "m4a", "mp4", "wav", "wave"]
     );
 
     for route in &snapshot.routes {
@@ -62,7 +63,7 @@ fn capability_snapshot_serializes_as_a_forward_extensible_document() {
     let extensions = &document["stableDiscoveryExtensions"];
     assert_eq!(
         *extensions,
-        json!(["aif", "aiff", "flac", "wav", "wave"]),
+        json!(["aif", "aiff", "flac", "m4a", "mp4", "wav", "wave"]),
         "picker extension list drifted"
     );
 
@@ -101,7 +102,9 @@ fn discovery_only_follows_stable_catalog_extensions() {
         "skip.mp3",
         "skip.aifc",
         "skip.ogg",
-        "skip.m4a",
+        "g.m4a",
+        "h.mp4",
+        "i.M4A",
     ] {
         std::fs::write(root.path().join(name), b"x").unwrap();
     }
@@ -114,6 +117,8 @@ fn discovery_only_follows_stable_catalog_extensions() {
         .collect();
     assert_eq!(
         names,
-        ["a.wav", "b.wave", "c.flac", "d.aif", "e.aiff", "f.WAV"]
+        [
+            "a.wav", "b.wave", "c.flac", "d.aif", "e.aiff", "f.WAV", "g.m4a", "h.mp4", "i.M4A"
+        ]
     );
 }

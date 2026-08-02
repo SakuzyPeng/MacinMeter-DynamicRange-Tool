@@ -2,7 +2,7 @@
 
 # 发行制品 staging
 
-MacinMeter 0.2.0 具有一套显式的制品契约。staging 只在
+MacinMeter 0.3.0 具有一套显式的制品契约。staging 只在
 `target/release-staging` 下构建和验证字节，不上传、不签名、不公证，也不创建
 GitHub Release。
 
@@ -11,16 +11,16 @@ clean staging。`main` push 产生的 CLI archive 与 DMG 通过验证后会随 
 显式手动触发则使用下文的 unsigned candidate 契约，并将结果保留 14 天。两条路径都
 不会创建 tag 或 GitHub Release。
 
-## 0.2.0 发行范围
+## 0.3.0 发行范围
 
-0.2.0 只面向 Apple Silicon macOS：
+0.3.0 只面向 Apple Silicon macOS：
 
 - target：`aarch64-apple-darwin`；
 - 最低系统：macOS 11.0；
 - 制品：arm64 CLI archive 与 arm64 Tauri DMG；
 - 不执行 Developer ID 签名、notarization 或 stapling。
 
-0.2.0 不提供 Intel/universal macOS 构建，也不提供 Windows/Linux GUI 包。“未签名”
+0.3.0 不提供 Intel/universal macOS 构建，也不提供 Windows/Linux GUI 包。“未签名”
 表示没有 Developer ID 身份；编译器或链接器产生的 ad-hoc metadata 不构成开发者
 签名或 Gatekeeper 声明。
 
@@ -60,7 +60,7 @@ cargo build --locked --release -p macinmeter-cli
 验证器会安全解包、核对准确 member 集合与 payload hash，再运行解包后的 executable：
 
 - `macinmeter --version` 必须报告 workspace version；
-- 仓库内 WAV fixture 必须产生唯一的 schema-v3 JSON document；
+- 仓库内 WAV fixture 必须产生唯一的 schema-v4 JSON document；
 - smoke document 必须走 WAV integer-PCM route，包含固定算法参数，且不暴露内部 profile 或状态字段。
 
 ## 当前 host 的 macOS GUI 制品
@@ -85,7 +85,7 @@ GUI staging 只支持 `aarch64-apple-darwin` Rust host。验证器会：
 当前未签名、未 notarize 的构建，无论来自本地还是临时 CI 门禁，都会明确标记为
 `local_staging_only` / `local_unnotarized`。结构 smoke 成功不等于已经通过
 Gatekeeper、Developer ID、公证或公开分发要求。Windows/Linux GUI，以及 macOS
-x86_64/universal 制品不属于 0.2.0 发行范围。
+x86_64/universal 制品不属于 0.3.0 发行范围。
 
 ## 未签名 Apple Silicon release candidate
 
@@ -97,7 +97,7 @@ python3 scripts/stage-release.py stage \
   --unsigned-macos-arm64-candidate
 ```
 
-它写入 `target/release-candidates/0.2.0/aarch64-apple-darwin`，并拒绝脏 source、
+它写入 `target/release-candidates/0.3.0/aarch64-apple-darwin`，并拒绝脏 source、
 非 arm64 host、Rust 1.88/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
 `--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并标记为
 `unsigned_macos_arm64_release_candidate`，不会声称已经签名、公证、通过 Gatekeeper
@@ -110,7 +110,7 @@ candidate，并保留一个 14 天有效的 workflow artifact。workflow 继续�
 的字节不构成发行证据。
 
 拟用于 GitHub Release 的双语文案保存在
-[`RELEASE_DRAFT_0.2.0.md`](RELEASE_DRAFT_0.2.0.md)。
+[`RELEASE_DRAFT_0.3.0.md`](RELEASE_DRAFT_0.3.0.md)。
 
 ## Checksum 与反向验证
 
@@ -124,7 +124,7 @@ candidate，并保留一个 14 天有效的 workflow artifact。workflow 继续�
 
 ```bash
 python3 scripts/stage-release.py verify \
-  target/release-staging/0.2.0/aarch64-apple-darwin
+  target/release-staging/0.3.0/aarch64-apple-darwin
 ```
 
 同一 verifier 也接受 unsigned candidate 目录，并额外核对 clean source、target、

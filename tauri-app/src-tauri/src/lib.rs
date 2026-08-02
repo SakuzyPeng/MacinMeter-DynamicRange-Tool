@@ -342,22 +342,29 @@ mod tests {
         assert_eq!(snapshot, macinmeter::capabilities());
         assert_eq!(
             snapshot.stable_discovery_extensions,
-            ["aif", "aiff", "flac", "wav", "wave"]
+            ["aif", "aiff", "flac", "m4a", "mp4", "wav", "wave"]
         );
-        assert!(
+        assert_eq!(
             snapshot
                 .routes
                 .iter()
                 .filter(|route| route.status == "stable")
-                .count()
-                >= 4
+                .count(),
+            5
         );
+        let alac = snapshot
+            .routes
+            .iter()
+            .find(|route| route.container == "mp4" && route.codec == "alac")
+            .expect("Tauri capability snapshot must expose ALAC");
+        assert_eq!(alac.status, "stable");
+        assert_eq!(alac.discovery_extensions, ["m4a", "mp4"]);
     }
 
     #[test]
     fn tauri_analysis_path_returns_the_shared_application_report() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/tiny_duration.wav");
+            .join("../../tests/fixtures/native-alac-v1/alac16-mono-44100.m4a");
         let cancellation = CancellationToken::new();
         let progress = macinmeter::NoopProgressSink;
         let application = Application::new();
@@ -369,6 +376,12 @@ mod tests {
             .map(WireEnvelope::analysis)
             .unwrap_or_else(WireEnvelope::error);
 
+        assert_eq!(from_tauri_adapter.schema_version, 4);
+        let WirePayload::Analysis(report) = &from_tauri_adapter.payload else {
+            panic!("real ALAC fixture must return an analysis envelope");
+        };
+        assert_eq!(report.source().container, macinmeter::ContainerFormat::Mp4);
+        assert_eq!(report.source().codec, macinmeter::SourceCodec::Alac);
         assert_eq!(from_tauri_adapter, from_application);
     }
 

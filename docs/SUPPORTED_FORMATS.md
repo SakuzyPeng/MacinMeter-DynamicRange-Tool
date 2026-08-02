@@ -13,6 +13,7 @@ separately from decoder support.
 | RIFF/WAVE, classic or accepted WAVE_FORMAT_EXTENSIBLE | IEEE 32/64-bit float PCM | finite interleaved `f64` |
 | FLAC | FLAC | finite interleaved `f64` |
 | AIFF | 8/16/24/32-bit linear integer PCM | finite interleaved `f64` |
+| non-fragmented ISO BMFF (`.m4a` / `.mp4`) | ALAC compatible version 0, 16/24-bit, 1–8 channels | finite interleaved `f64` |
 
 The fixed x64 1.0.8 reference core also consumes `f64`. Moving the product PCM
 path to `f64` closed the two source-f64 differences exposed by the current
@@ -21,9 +22,9 @@ and 62/62 channel DR tokens. This does not establish bit-identical decoder
 normalization for every host, container, runtime boundary, or input.
 
 The decoder probes file contents with no extension hint. Extensions
-`.wav`, `.wave`, `.flac`, `.aif`, and `.aiff` are used only to discover files
-inside directories. An explicitly supplied file may have any extension if its
-content is supported.
+`.wav`, `.wave`, `.flac`, `.aif`, `.aiff`, `.m4a`, and `.mp4` are used only to
+discover files inside directories. An explicitly supplied file may have any
+extension if its content is supported.
 
 The committed
 [`native-pcm-v1`](../tests/fixtures/native-pcm-v1/README.md) product corpus
@@ -42,15 +43,27 @@ nonzero mask must use only the standard low 18 speaker bits and its population
 must match the channel count. The stable Extensible route accepts 1–26
 channels and keeps reported channel layout `unknown`.
 
+The committed [`native-alac-v1`](../tests/fixtures/native-alac-v1/README.md)
+corpus pairs every stable ALAC sample with a WAV carrying bit-identical PCM.
+The ISO BMFF route requires one unfragmented audio-only track, one `alac`
+sample entry, ALAC compatible version 0, a 4096-frame cookie, 16- or 24-bit
+samples, 1–8 channels, standard channel geometry, and consistent `mdhd`,
+`stts`, and `stsz` declarations. `moov` may precede or follow `mdat`; ordinary
+metadata and `free` boxes are accepted. An edit list may be absent or contain
+one identity mapping. Reported channel layout remains `unknown`.
+
 ## Deliberately unavailable
 
 The following routes are not built into the current stable surface:
 
 - padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible streams
   above 26 channels, reserved channel-mask bits, AIFC, compressed WAV variants,
-  and non-FLAC codecs in supported containers;
-- MP1/MP2/MP3, AAC, ALAC, Vorbis, Opus, AC-3, E-AC-3, DTS, and DSD;
-- MP4/M4A, Ogg, Matroska/WebM, DSF, and DFF containers;
+  and unsupported codecs in otherwise recognized containers;
+- AAC (including AAC in M4A/MP4), MP1/MP2/MP3, Vorbis, Opus, AC-3, E-AC-3,
+  DTS, and DSD;
+- fragmented MP4, MP4 with video or extra tracks, multiple audio tracks,
+  cropped edit lists, ALAC 20/32-bit or non-version-0 streams, nonstandard
+  ALAC layouts, raw/CAF ALAC, Ogg, Matroska/WebM, DSF, and DFF containers;
 - FFmpeg fallback or external decoder processes;
 - resampling, gain, filters, edge trimming, and silence preprocessing;
 - packet-level or file-level parallel decoding.

@@ -37,6 +37,10 @@ Rust 与前端依赖分别遵守其自身许可证。当前发行依赖集合见
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)与锁文件。正式分发时应根据
 准确的 locked dependency graph 生成并附带许可证报告。
 
+仓库提交的 ALAC fixture 只包含本项目确定性生成的合成 PCM。FFmpeg 8.0.1 是固定的
+语料再生成工具，不会链接或打包进产品。ALAC decoder 与 ISO BMFF demuxer 来自
+第三方声明中列出的、锁定版本的 Symphonia MPL-2.0 包。
+
 ## 免责声明
 
 本文只记录项目工程政策和已知授权背景，不构成法律意见，也不对所有司法辖区内的逆向

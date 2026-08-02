@@ -3,7 +3,7 @@
 //! Discovery, the application capability query, the Tauri picker, and the
 //! product capability snapshot tests all consume this catalog. Container and
 //! codec identifiers are stable strings so `planned` routes can be described
-//! without growing the schema-v3 report enums; for `stable` routes they must
+//! without growing the schema-v4 report enums; for `stable` routes they must
 //! equal the serde identifiers of the corresponding domain enums, which a
 //! product test enforces.
 
@@ -105,20 +105,25 @@ pub const NATIVE_CAPABILITY_CATALOG: &[NativeRouteCapability] = &[
         ],
     },
     NativeRouteCapability {
+        container: "mp4",
+        codec: "alac",
+        status: CapabilityStatus::Stable,
+        backend: BACKEND,
+        discovery_extensions: &["m4a", "mp4"],
+        limitations: &[
+            "unfragmented ISO BMFF with one audio-only ALAC track",
+            "ALAC compatible version 0; 16-bit or 24-bit source PCM",
+            "1-8 channels using the standard ALAC layouts; reported layout remains unknown",
+            "no trimming edit list; declared sample tables must provide an exact nonzero frame count",
+        ],
+    },
+    NativeRouteCapability {
         container: "aifc",
         codec: "pcm_integer",
         status: CapabilityStatus::Planned,
         backend: BACKEND,
         discovery_extensions: &[],
-        limitations: &["first ADR-0003 §9 evaluation candidate; probe currently rejects AIFC"],
-    },
-    NativeRouteCapability {
-        container: "mp4",
-        codec: "alac",
-        status: CapabilityStatus::Planned,
-        backend: BACKEND,
-        discovery_extensions: &[],
-        limitations: &["ADR-0003 §9 evaluation candidate; not decodable today"],
+        limitations: &["deferred after the ADR-0013 ALAC graduation; probe currently rejects AIFC"],
     },
     NativeRouteCapability {
         container: "mpeg",

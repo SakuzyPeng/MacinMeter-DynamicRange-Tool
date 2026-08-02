@@ -1,6 +1,6 @@
 # MacinMeter contributor context
 
-MacinMeter 0.2.0 is a breaking, correctness-first rebuild. The former 0.1.x
+MacinMeter 0.3.0 continues the correctness-first trunk rebuilt in 0.2.0. The former 0.1.x
 decoder, dual DR engines, packet/file parallelism, SIMD/unsafe conversion,
 EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes, and duplicate GUI DTOs
 have been removed. Do not reintroduce them as compatibility helpers.
@@ -39,9 +39,10 @@ domain
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.
 
-All first-party Rust code forbids unsafe code. The 0.2.0 stable surface
-supports only WAV linear integer/IEEE float PCM, FLAC, and AIFF integer PCM.
-Unknown layout stays unknown; it is never guessed from channel count.
+All first-party Rust code forbids unsafe code. The 0.3.0 stable surface supports
+WAV linear integer/IEEE float PCM, FLAC, AIFF integer PCM, and the ADR-0013
+constrained MP4/M4A + ALAC route. Unknown layout stays unknown; it is never
+guessed from channel count.
 
 ## Verification
 
@@ -58,9 +59,10 @@ cd tauri-app
 npm run build
 ```
 
-GitHub Actions remains intentionally `workflow_dispatch` only. Local
-pre-commit performs the repository contract, format, and workspace compile
-checks without network audit.
+GitHub Actions runs bounded validation for pull requests and `main`, with an
+explicit manual path for the retained unsigned candidate. Local pre-commit
+performs the repository contract, format, and workspace compile checks without
+network audit.
 
 Release staging is a separate local operation:
 
@@ -86,6 +88,7 @@ See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0004-m3-application-execution-budget.md`,
 `docs/adr/0006-m5-product-repository-convergence.md`,
 `docs/adr/0007-m6-reproducible-performance-baseline.md`,
+`docs/adr/0013-mp4-m4a-alac-stable-route.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
 `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
 or algorithm behavior.

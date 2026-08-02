@@ -1,0 +1,1186 @@
+{
+  "corpus": "native-alac-v1",
+  "encoder": {
+    "configurationSha256": "9252fd37a6936cc60db44279ef38bce1b29fb190c654356835b1e24c4ae1c971",
+    "tool": "ffmpeg",
+    "version": "8.0.1",
+    "versionLine": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers"
+  },
+  "fixtures": [
+    {
+      "bitsPerSample": 16,
+      "channelLayout": "mono",
+      "channelMask": "0x00000004",
+      "channels": 1,
+      "frames": 257,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "6c4163fe60a1809a066cd1df9e024b1de63cc8787d5c16c3ccde4a5f460eaf61",
+      "path": "alac16-mono-44100-twin.wav",
+      "sampleRate": 44100,
+      "sha256": "db2131342345fe3f983b99f92f78c2c78f3c44ce1c740496a7b9ce9f6f5e073e",
+      "twin": "alac16-mono-44100.m4a"
+    },
+    {
+      "bitsPerSample": 16,
+      "channelLayout": "mono",
+      "channelMask": "0x00000004",
+      "channels": 1,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac16-mono-44100-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "mono",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 257,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 16,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 1,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 44100
+        },
+        "mediaHeader": {
+          "durationFrames": 257,
+          "timescale": 44100,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 1,
+          "sampleRateFixed16_16": "0xac440000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 522,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 257,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 530,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 566,
+            "sizeBytes": 682,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "6c4163fe60a1809a066cd1df9e024b1de63cc8787d5c16c3ccde4a5f460eaf61",
+      "path": "alac16-mono-44100.m4a",
+      "sampleRate": 44100,
+      "sha256": "f75384f423e0e2e8557771d1c7838c57c6c69f5b519e0a40a7d4731da895251d",
+      "twin": "alac16-mono-44100-twin.wav"
+    },
+    {
+      "bitsPerSample": 16,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "frames": 9001,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "c4c7becf379649c7e8eb2b87b6e5c3c92cec32f3a4ab8014bb34a16c2a729bc4",
+      "path": "alac16-stereo-48000-multipacket-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "b22eb70cfe893d7f616936dd6571617723ae8037079ad2696d9e4ab37b27c59c",
+      "twin": "alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "bitsPerSample": 16,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac16-stereo-48000-multipacket-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "stereo",
+        "-metadata",
+        "title=MacinMeter deterministic ALAC fixture",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 9001,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 16,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 2,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 9001,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 2,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 0,
+          "stszSampleCount": 3,
+          "sttsEntryCount": 2,
+          "sttsFrameCount": 9001,
+          "sttsPacketCount": 3
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 36028,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 36064,
+            "sizeBytes": 763,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "c4c7becf379649c7e8eb2b87b6e5c3c92cec32f3a4ab8014bb34a16c2a729bc4",
+      "path": "alac16-stereo-48000-multipacket.m4a",
+      "sampleRate": 48000,
+      "sha256": "ea29da335820889c75ebd124baa5438e85f5d07e6c11b053d644ee03c9118b51",
+      "twin": "alac16-stereo-48000-multipacket-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "frames": 5003,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "afab5bd5141ce019be9d28d27d885de797ad0de56d913c89de461afb7f0339e7",
+      "path": "alac24-stereo-96000-faststart-twin.wav",
+      "sampleRate": 96000,
+      "sha256": "b11fb510c62ea583c79806e58d78dbc5aca59f018774172b0703a91009867555",
+      "twin": "alac24-stereo-96000-faststart.mp4"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-stereo-96000-faststart-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "stereo",
+        "-movflags",
+        "+faststart",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "faststart": true,
+      "frameLength": 4096,
+      "frames": 5003,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 2,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 96000
+        },
+        "mediaHeader": {
+          "durationFrames": 5003,
+          "timescale": 96000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 2,
+          "sampleRateFixed16_16": "0x00000000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 0,
+          "stszSampleCount": 2,
+          "sttsEntryCount": 2,
+          "sttsFrameCount": 5003,
+          "sttsPacketCount": 2
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 718,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          },
+          {
+            "offset": 746,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 754,
+            "sizeBytes": 18537,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "afab5bd5141ce019be9d28d27d885de797ad0de56d913c89de461afb7f0339e7",
+      "path": "alac24-stereo-96000-faststart.mp4",
+      "sampleRate": 96000,
+      "sha256": "48649510baef7e41aa8d291787d9fc70595e6e298e363f0182d46e7d35944c84",
+      "twin": "alac24-stereo-96000-faststart-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "3.0",
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "frames": 521,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "065806c76466e0126dd5b08f6292070a19d385a18859b60d3df096f02fbd0695",
+      "path": "alac24-3ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "77456e1b8482483a1fe7fbd48c6cb50b4c2d98e5ce6c23b106627ada126540b4",
+      "twin": "alac24-3ch-48000.m4a"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "3.0",
+      "channelMask": "0x00000007",
+      "channels": 3,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-3ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "3.0",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 521,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 3,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 521,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 3,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 3107,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 521,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 3115,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 3151,
+            "sizeBytes": 682,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "065806c76466e0126dd5b08f6292070a19d385a18859b60d3df096f02fbd0695",
+      "path": "alac24-3ch-48000.m4a",
+      "sampleRate": 48000,
+      "sha256": "82bf216edcf04c601b47210acf156259fc6f4f0721acc44cd2719d37d1d447dd",
+      "twin": "alac24-3ch-48000-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "4.0",
+      "channelMask": "0x00000107",
+      "channels": 4,
+      "frames": 523,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "389d60e404d65562d66f0336828bb75eaf924d5ecf8d365ba485acabd485f2d4",
+      "path": "alac24-4ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "a717279f51f443df4456636e341383d578b9a7663b5b7d4e6a289f0fd5cb173b",
+      "twin": "alac24-4ch-48000.mp4"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "4.0",
+      "channelMask": "0x00000107",
+      "channels": 4,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-4ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "4.0",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 523,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 4,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 523,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 4,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 4323,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 523,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 4331,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 4367,
+            "sizeBytes": 702,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "389d60e404d65562d66f0336828bb75eaf924d5ecf8d365ba485acabd485f2d4",
+      "path": "alac24-4ch-48000.mp4",
+      "sampleRate": 48000,
+      "sha256": "abb601548a0d860f5ff8103ea47c0203a2f9e236460cd9389c2ba6f54a89f52e",
+      "twin": "alac24-4ch-48000-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "5.0",
+      "channelMask": "0x00000607",
+      "channels": 5,
+      "frames": 527,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "98f8240782a07453453c38192b8be11e9a5dd9264ca6cb0c02981684c7e24254",
+      "path": "alac24-5ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "9cf37cfda66738627239dd4fda4f887ac12d69aea11fa756aa43077a83927557",
+      "twin": "alac24-5ch-48000.m4a"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "5.0",
+      "channelMask": "0x00000607",
+      "channels": 5,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-5ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "5.0",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 527,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 5,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 527,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 5,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 5199,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 527,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 5207,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 5243,
+            "sizeBytes": 682,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "98f8240782a07453453c38192b8be11e9a5dd9264ca6cb0c02981684c7e24254",
+      "path": "alac24-5ch-48000.m4a",
+      "sampleRate": 48000,
+      "sha256": "afe6279797be31addb739e4a3faae2c4ce8091e2a25cf09b1babc46c7d5c39d9",
+      "twin": "alac24-5ch-48000-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "5.1",
+      "channelMask": "0x0000060f",
+      "channels": 6,
+      "frames": 529,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "426c67b3fcd9d89bc397218d06ad85caa38e6e110678d566cfb97f45742a3331",
+      "path": "alac24-6ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "d6506bd76bd41ef6f943c5eea57c5085cb7c6e33ee231502a1deb25385600a3a",
+      "twin": "alac24-6ch-48000.mp4"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "5.1",
+      "channelMask": "0x0000060f",
+      "channels": 6,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-6ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "5.1",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 529,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 6,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 529,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 6,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 6379,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 529,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 6387,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 6423,
+            "sizeBytes": 702,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "426c67b3fcd9d89bc397218d06ad85caa38e6e110678d566cfb97f45742a3331",
+      "path": "alac24-6ch-48000.mp4",
+      "sampleRate": 48000,
+      "sha256": "8bb478304b99d4b60bee152caee477653a1544cd3b28eff645299667083fee63",
+      "twin": "alac24-6ch-48000-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "6.1(back)",
+      "channelMask": "0x0000070f",
+      "channels": 7,
+      "frames": 541,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "6208e19385c2b04e6d8b4ebb8844624c4609a3f212c7c43625cd1b56b6576d31",
+      "path": "alac24-7ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "fe269227cdf02774ab3f9271b68c2237aa4386a653a8e9ce10b55a5757b735e1",
+      "twin": "alac24-7ch-48000.m4a"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "6.1(back)",
+      "channelMask": "0x0000070f",
+      "channels": 7,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-7ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "6.1(back)",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 541,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 7,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 541,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 7,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 7729,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 541,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 7737,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 7773,
+            "sizeBytes": 682,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "6208e19385c2b04e6d8b4ebb8844624c4609a3f212c7c43625cd1b56b6576d31",
+      "path": "alac24-7ch-48000.m4a",
+      "sampleRate": 48000,
+      "sha256": "81328c2035fcf972182abd1eb5d5065d0dc1dbcc1244ccbce8bfe0463a55b372",
+      "twin": "alac24-7ch-48000-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "7.1(wide)",
+      "channelMask": "0x000006cf",
+      "channels": 8,
+      "frames": 547,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "cce350bbb8d68269097a04176d0eb04a9d1db5339bd6b622cdc5d729563629f4",
+      "path": "alac24-8ch-48000-twin.wav",
+      "sampleRate": 48000,
+      "sha256": "5376d900fb036035d94db9999b0992e2145d806638df0f146c39117a46a72e2a",
+      "twin": "alac24-8ch-48000.mp4"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "7.1(wide)",
+      "channelMask": "0x000006cf",
+      "channels": 8,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-8ch-48000-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "7.1(wide)",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 547,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 8,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 48000
+        },
+        "mediaHeader": {
+          "durationFrames": 547,
+          "timescale": 48000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 8,
+          "sampleRateFixed16_16": "0xbb800000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 9032,
+          "stszSampleCount": 1,
+          "sttsEntryCount": 1,
+          "sttsFrameCount": 547,
+          "sttsPacketCount": 1
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 9040,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 9076,
+            "sizeBytes": 702,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "cce350bbb8d68269097a04176d0eb04a9d1db5339bd6b622cdc5d729563629f4",
+      "path": "alac24-8ch-48000.mp4",
+      "sampleRate": 48000,
+      "sha256": "0798a78fda6424d6939191945db13ebcc16680bfbecaefa65626e34bedbec7ce",
+      "twin": "alac24-8ch-48000-twin.wav"
+    }
+  ],
+  "generator": {
+    "commands": [
+      "python3 scripts/generate-native-alac-v1.py",
+      "python3 scripts/generate-native-alac-v1.py --check"
+    ],
+    "externalToolsRequiredForRegeneration": true,
+    "normalTestsRequireExternalTools": false,
+    "path": "scripts/generate-native-alac-v1.py",
+    "sha256": "500504b1ee455b01493685b4ac8baca81cd73007d72ab0e0912661cfd7369ac3"
+  },
+  "provenance": {
+    "copyrightedAudio": false,
+    "kind": "deterministically_generated",
+    "license": "MIT"
+  },
+  "routeNegativeSources": [
+    {
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac16-stereo-48000-multipacket-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-flags:a",
+        "+bitexact",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "path": "unsupported-aac.m4a",
+      "sha256": "b5a837757710df0e4af8746d44af4a616d811335b95fa58efdd0c29d04230d2a",
+      "shape": "single AAC audio track"
+    },
+    {
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac16-stereo-48000-multipacket-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-flags:a",
+        "+bitexact",
+        "-movflags",
+        "frag_keyframe+empty_moov+default_base_moof",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "path": "unsupported-fragmented-alac.mp4",
+      "sha256": "38ad79509f568e78ba2abb9a99b85a27010732c22d68c9e65e7d94916f68c2aa",
+      "shape": "fragmented ALAC ISO BMFF"
+    },
+    {
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac16-stereo-48000-multipacket-twin.wav",
+        "-i",
+        "<corpus>/alac16-mono-44100-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-map",
+        "0:a:0",
+        "-map",
+        "1:a:0",
+        "-c:a",
+        "alac",
+        "-flags:a",
+        "+bitexact",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "path": "unsupported-multitrack-alac.mp4",
+      "sha256": "d2703293d2b63f9ea6c77f04f453ca904ae56de7ea6c3b030dd2eb6881b7887d",
+      "shape": "two ALAC audio tracks"
+    },
+    {
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=16x16:r=25:d=0.2",
+        "-i",
+        "<corpus>/alac16-stereo-48000-multipacket-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "mpeg4",
+        "-q:v",
+        "31",
+        "-flags:v",
+        "+bitexact",
+        "-c:a",
+        "alac",
+        "-flags:a",
+        "+bitexact",
+        "-shortest",
+        "-threads",
+        "1",
+        "-f",
+        "mp4",
+        "<output>.mp4"
+      ],
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
+      "path": "unsupported-video-alac.mp4",
+      "sha256": "3064563e0f086e0639af70eaca4665cf511146aadb9813592c2972b31f24be86",
+      "shape": "video track plus one ALAC audio track"
+    }
+  ],
+  "schemaVersion": 1
+}

@@ -48,6 +48,11 @@ Rust and frontend dependencies remain under their respective licenses. See
 release dependency set. A distributable release should include a license report
 generated from the exact locked dependency graph.
 
+The committed ALAC fixtures contain only deterministic synthetic PCM generated
+by this repository. FFmpeg 8.0.1 is a pinned regeneration tool, not a linked or
+bundled product dependency. The ALAC decoder and ISO BMFF demuxer are supplied
+by the locked Symphonia MPL-2.0 packages identified in the third-party notice.
+
 ## Disclaimer
 
 This file documents the project's engineering policy and known authorization

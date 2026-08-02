@@ -339,7 +339,7 @@ analysis
 
 codecs
 ├── DecoderFactory
-└── Symphonia adapter（M0：WAV/FLAC/AIFF）
+└── Symphonia adapter（WAV/FLAC/AIFF + 受限 MP4/M4A ALAC）
 
 application
 ├── Application::analyze_file / run_batch / discover_inputs
@@ -817,6 +817,15 @@ M1 已按证据独立完成。M2 继续使用小步纵向提交，但不以增�
     - 独立 twin corpus、54-case malformed corpus、codec/Application/CLI 等价测试
       形成 ADR-0012 的准入证据；
     - 不增加 backend、依赖、并发轴、布局推导或版本变更。
+39. [x] `feat: graduate constrained MP4/M4A + ALAC and move to 0.3.0`
+    - 新增 `(mp4, alac)` stable route：compatible version 0、16/24-bit、1–8
+      标准布局声道、单一 audio-only track、非 fragmented ISO BMFF；
+    - 第一方 bounded parser 固定 box、cookie、edit list、`mdhd`、`stts`、`stsz`
+      与错误分类，并在 decoder 创建前核验 Symphonia ALAC 身份和 metadata；
+    - `native-alac-v1` WAV twins 与扩展 malformed case 固定逐位 PCM、完整 report、
+      进度/EOF/sticky error 及 adapter 证据；
+    - 公开 `mp4`/`alac` 身份推动 wire schema v4，workspace 与 GUI mirrors 升到
+      0.3.0；仍无第二 backend、FFmpeg runtime、并发轴或分析规则变化。
 
 M6 已收口：可信 scalar baseline、两轮 sampling profile、两个有界实现切片与三轮
 正式 interleaved A/B 形成完整证据链。当前不再主动进行 analyzer 微优化；FLAC、
@@ -832,7 +841,8 @@ ADR-0011 随后把 0.2.0 首发固定为未签名 Apple Silicon macOS，并只�
 
 ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
 `WAVE_FORMAT_EXTENSIBLE` 进入当前稳定开发面，但不追写 0.2.0 已发布格式范围；
-版本号与正式发布仍由后续发布决策确定。
+ADR-0013 再以独立毕业证据加入受限 MP4/M4A + ALAC，并将当前开发线转换到
+schema v4 / 0.3.0。历史 0.2.0 记录保持原样。
 
 每项后续提交应包含对应测试、证据链接和验收说明。
 
@@ -845,14 +855,15 @@ ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
 - [x] CI 使用根 lockfile 与 `--locked`；M0–M6 的纯手动阶段完成后，按 ADR-0008
   恢复有界的 PR/`main` 自动门禁，按 ADR-0009 加入 Windows x64，再按 ADR-0010
   加入 macOS 26 arm64 与 main/manual GUI staging；
-- [x] 0.2.0 GUI 发行面固定为 macOS 11.0+ Apple Silicon；manual CI 只保留短期
+- [x] 0.3.0 继续沿用 macOS 11.0+ Apple Silicon GUI 发行面；manual CI 只保留短期
   unsigned candidate，不自动创建 tag 或 Release；
 - [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
 - [x] 删除非测试代码中的无保护 `expect`；
 - [x] 删除线程优先级控制；
 - [x] 删除旧 benchmark 依赖和脚本；
 - [x] 删除 `hound`；
-- [x] 明确 Symphonia `default-features = false` 与四个 M0 feature；
+- [x] 明确 Symphonia `default-features = false`；M0 四个 feature 后由 ADR-0013
+  显式增加 `alac` 与 `isomp4`；
 - [x] 删除 reset/Pending 契约，进度统一为实际解码 frame；
 - [x] M0 不含 FFmpeg；本地非 UTF-8 `Path` 仍直接传给原生 decoder；
 - [x] 清理根目录孤立 lockfile、`compile_commands.json` 等生成物；
@@ -873,9 +884,9 @@ ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
 | 默认算法 | 产品只有一套固定规则；M4 有界数值对齐已完成，公开报告不暴露内部名称或状态 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
-| 默认并发 | 0.2.0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
+| 默认并发 | 0.3.0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
-| 公共 API | 0.2.0 重置 Rust API、CLI、JSON 和 GUI IPC；不保留 0.1.x 兼容层 |
+| 公共 API | 沿用 0.2.0 重置后的 Rust API/CLI；0.3.0 wire schema v4 显式新增 `mp4`/`alac` |
 | 发行 CPU | portable baseline；任何函数级加速由 M6 profiling 与差分证据决定 |
 | 性能判断 | 只接受可复现实测，不接受硬件能力推导的理论倍数 |
 | 重构方式 | 小步纵向迁移；生产切换后立即删除旧路径 |
@@ -888,6 +899,7 @@ ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
 - [x] 可公开生成 fixture、v1/v2 manifest 与 x86/x64 observation 已按证据目录分层；
 - [x] `ProvisionalV1` 不作为生产兼容 profile 保留；
 - [x] M0 第一批稳定矩阵固定为 WAV PCM integer/IEEE float、FLAC、AIFF PCM integer；
+- [x] ADR-0013 已将受限 MP4/M4A + ALAC 作为首条新增 codec route 毕业；
 - [x] Reference profile 的未导出中间状态已有固定 x64 布局与 ASLR-safe 探针计划；
 - [x] 首次受控 analyzer-core 动态记录已按固定 target/runtime/worker/input 身份验收；原始 core bits 使用精确比较，外围 host/album subsystem/完整 renderer 为非目标，只有纯数值投影规则继续留档；
 - [x] Candidate 结果结构使用 wire schema v3；schema 版本只表示结构契约，不表示算法兼容。

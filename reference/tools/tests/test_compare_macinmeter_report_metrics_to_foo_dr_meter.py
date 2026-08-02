@@ -67,7 +67,7 @@ def reference_document() -> dict[str, Any]:
     }
 
 
-def implementation_document(schema_version: int = 3) -> dict[str, Any]:
+def implementation_document(schema_version: int = 4) -> dict[str, Any]:
     display_path = "/tmp/001_case_one.wav"
     return {
         "schemaVersion": schema_version,
@@ -294,7 +294,7 @@ class ComparatorContractTests(unittest.TestCase):
                 reference_path, implementation_path, binary_path
             )
 
-    def test_schema_v3_happy_path_compares_all_six_metric_classes(self) -> None:
+    def test_schema_v4_happy_path_compares_all_six_metric_classes(self) -> None:
         result = self.compare_documents(
             reference_document(), implementation_document()
         )
@@ -323,12 +323,12 @@ class ComparatorContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["differences"], [])
-        self.assertEqual(result["implementation"]["wireSchemaVersion"], 3)
+        self.assertEqual(result["implementation"]["wireSchemaVersion"], 4)
         self.assertEqual(
             result["footerConsistency"],
             {
                 "scope": (
-                    "normalized reference footer versus successful schema-v3 "
+                    "normalized reference footer versus successful schema-v4 "
                     "track reports; unweighted reconstruction only"
                 ),
                 "reference": {
@@ -497,7 +497,7 @@ class ComparatorContractTests(unittest.TestCase):
     def test_schema_v2_is_rejected_explicitly(self) -> None:
         with self.assertRaisesRegex(
             COMPARATOR.ComparisonError,
-            r"schemaVersion must be 3; got 2",
+            r"schemaVersion must be one of \(3, 4\); got 2",
         ):
             self.compare_documents(
                 reference_document(), implementation_document(schema_version=2)

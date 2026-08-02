@@ -79,8 +79,8 @@ class StageReleaseTests(unittest.TestCase):
 
     def test_analysis_smoke_pins_parameters_and_route_without_status_fields(self) -> None:
         document = {
-            "schemaVersion": 3,
-            "toolVersion": "0.2.0",
+            "schemaVersion": 4,
+            "toolVersion": "0.3.0",
             "kind": "analysis",
             "data": {
                 "source": {"container": "wave", "codec": "pcm_integer"},
@@ -91,17 +91,17 @@ class StageReleaseTests(unittest.TestCase):
                 },
             },
         }
-        stage_release.validate_analysis_smoke(document, "0.2.0")
+        stage_release.validate_analysis_smoke(document, "0.3.0")
 
         changed = json.loads(json.dumps(document))
         changed["data"]["analysis"]["algorithm"]["compatibility"] = "legacy_status"
         with self.assertRaisesRegex(stage_release.ReleaseError, "must not attach"):
-            stage_release.validate_analysis_smoke(changed, "0.2.0")
+            stage_release.validate_analysis_smoke(changed, "0.3.0")
 
         changed = json.loads(json.dumps(document))
         changed["data"]["analysis"]["algorithm"]["profile"] = "internal_name"
         with self.assertRaisesRegex(stage_release.ReleaseError, "must not expose"):
-            stage_release.validate_analysis_smoke(changed, "0.2.0")
+            stage_release.validate_analysis_smoke(changed, "0.3.0")
 
     def test_version_tuple_accepts_toolchain_suffixes(self) -> None:
         self.assertEqual(stage_release.version_tuple("1.88"), (1, 88, 0))

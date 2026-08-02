@@ -11,6 +11,7 @@ MacinMeter 有意只公开一小块以正确性为先的解码面。这里的“
 | RIFF/WAVE（经典或受限 WAVE_FORMAT_EXTENSIBLE） | IEEE 32/64-bit 浮点 PCM | 有限、交错的 `f64` |
 | FLAC | FLAC | 有限、交错的 `f64` |
 | AIFF | 8/16/24/32-bit 线性整数 PCM | 有限、交错的 `f64` |
+| 非 fragmented ISO BMFF（`.m4a` / `.mp4`） | ALAC compatible version 0、16/24-bit、1–8 声道 | 有限、交错的 `f64` |
 
 固定的 x64 1.0.8 参考核心也接收 `f64`。产品 PCM 主链改为 `f64` 后，当前
 safe-master corpus 暴露的两处 source-f64 偏差已关闭，公开可比核心字段达到
@@ -18,8 +19,8 @@ track DR 39/39、channel DR 62/62。这不证明所有宿主、容器、运行�
 decoder 归一化已经逐位一致。
 
 解码器不使用扩展名 hint，而是直接探测文件内容。`.wav`、`.wave`、`.flac`、
-`.aif`、`.aiff` 只用于目录发现。显式传入的文件即使扩展名不同，只要内容受支持
-也可以打开。
+`.aif`、`.aiff`、`.m4a`、`.mp4` 只用于目录发现。显式传入的文件即使扩展名
+不同，只要内容受支持也可以打开。
 
 仓库提交的
 [`native-pcm-v1`](../tests/fixtures/native-pcm-v1/README.md) 产品 corpus 以独立
@@ -35,14 +36,25 @@ sub-format GUID，且 valid bits 等于容器位宽。零 channel mask 作为未
 接受；非零 mask 只能使用标准低 18 个 speaker bits，且置位数必须等于声道数。
 稳定 Extensible 路径接受 1–26 声道，报告中的 channel layout 仍为 `unknown`。
 
+仓库提交的 [`native-alac-v1`](../tests/fixtures/native-alac-v1/README.md) 为每个稳定
+ALAC 样本提供 PCM 逐位一致的 WAV 孪生。ISO BMFF 路径要求一个非 fragmented、
+仅音频的 track、一个 `alac` sample entry、ALAC compatible version 0、4096-frame
+cookie、16/24-bit、1–8 声道和标准声道几何，并要求 `mdhd`、`stts`、`stsz` 声明
+一致。`moov` 可以位于 `mdat` 前后，普通 metadata 与 `free` box 可以存在；edit
+list 只能缺失或是一条 identity mapping。报告中的 channel layout 仍为 `unknown`。
+
 ## 明确不可用
 
 当前稳定面不包含：
 
 - padded 或 valid bits 未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、
-  使用保留 channel-mask bits 的 Extensible、AIFC、压缩 WAV 变体及受支持容器内的其他编码；
-- MP1/MP2/MP3、AAC、ALAC、Vorbis、Opus、AC-3、E-AC-3、DTS、DSD；
-- MP4/M4A、Ogg、Matroska/WebM、DSF、DFF 容器；
+  使用保留 channel-mask bits 的 Extensible、AIFC、压缩 WAV 变体及可识别容器内
+  未支持的其他编码；
+- AAC（包括 M4A/MP4 内的 AAC）、MP1/MP2/MP3、Vorbis、Opus、AC-3、E-AC-3、
+  DTS、DSD；
+- fragmented MP4、带视频或额外 track 的 MP4、多音轨、裁剪 edit list、ALAC
+  20/32-bit 或非 version-0、非标准 ALAC layout、raw/CAF ALAC，以及 Ogg、
+  Matroska/WebM、DSF、DFF 容器；
 - FFmpeg 回退或任何外部解码进程；
 - 重采样、增益、滤波、边缘裁切和静音预处理；
 - 包级并行或文件级并行解码。

@@ -95,6 +95,26 @@ fn extensible_fixture_entry(name: &str) -> Value {
         .clone()
 }
 
+fn alac_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/native-alac-v1")
+        .join(name)
+}
+
+fn alac_fixture_manifest() -> Value {
+    serde_json::from_slice(
+        &fs::read(alac_fixture_path("manifest.json"))
+            .expect("native ALAC fixture manifest must exist"),
+    )
+    .expect("native ALAC fixture manifest must be valid JSON")
+}
+
+fn malformed_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/malformed-media-v1")
+        .join(name)
+}
+
 fn manifest_pcm_samples(fixture: &Value) -> Vec<f64> {
     let oracle = &fixture["pcmOracle"];
     match oracle["kind"].as_str().expect("PCM oracle kind") {
@@ -457,7 +477,9 @@ fn extensions_are_discovery_only_and_exclude_aifc() {
     let stable: Vec<&str> = stable_discovery_extensions().collect();
     assert_eq!(
         stable,
-        ["wav", "wave", "wav", "wave", "flac", "aif", "aiff"]
+        [
+            "wav", "wave", "wav", "wave", "flac", "aif", "aiff", "m4a", "mp4"
+        ]
     );
     assert!(!stable.contains(&"aifc"));
 }
@@ -497,6 +519,7 @@ fn capability_catalog_keeps_planned_routes_out_of_discovery() {
             ("wave", "pcm_float"),
             ("flac", "flac"),
             ("aiff", "pcm_integer"),
+            ("mp4", "alac"),
         ])
     );
 }
@@ -523,6 +546,7 @@ fn stable_catalog_identifiers_match_the_domain_enum_serialization() {
         ContainerFormat::Wave,
         ContainerFormat::Flac,
         ContainerFormat::Aiff,
+        ContainerFormat::Mp4,
     ]
     .iter()
     .map(|value| {
@@ -537,6 +561,7 @@ fn stable_catalog_identifiers_match_the_domain_enum_serialization() {
         SourceCodec::PcmInteger,
         SourceCodec::PcmFloat,
         SourceCodec::Flac,
+        SourceCodec::Alac,
     ]
     .iter()
     .map(|value| {
@@ -562,6 +587,21 @@ fn stable_catalog_identifiers_match_the_domain_enum_serialization() {
             route.codec
         );
     }
+}
+
+#[test]
+fn alac_capability_publishes_the_bounded_stable_route() {
+    let route = NATIVE_CAPABILITY_CATALOG
+        .iter()
+        .find(|route| route.container == "mp4" && route.codec == "alac")
+        .expect("stable ALAC route must exist");
+    assert_eq!(route.status, CapabilityStatus::Stable);
+    assert_eq!(route.discovery_extensions, ["m4a", "mp4"]);
+    let limitations = route.limitations.join("; ");
+    assert!(limitations.contains("unfragmented"));
+    assert!(limitations.contains("16-bit or 24-bit"));
+    assert!(limitations.contains("1-8 channels"));
+    assert!(limitations.contains("one audio-only ALAC track"));
 }
 
 #[test]
@@ -705,6 +745,208 @@ fn extensible_fixture_manifest_matches_the_committed_twin_corpus() {
         })
         .collect();
     assert_eq!(referenced_files, committed_audio_files);
+}
+
+#[test]
+fn alac_fixture_manifest_matches_the_committed_twin_corpus() {
+    let corpus = alac_fixture_path("");
+    let manifest = alac_fixture_manifest();
+    assert_eq!(manifest["schemaVersion"], 1);
+    assert_eq!(manifest["corpus"], "native-alac-v1");
+    assert_eq!(
+        manifest["generator"]["path"],
+        "scripts/generate-native-alac-v1.py"
+    );
+    assert_eq!(
+        manifest["generator"]["commands"],
+        serde_json::json!([
+            "python3 scripts/generate-native-alac-v1.py",
+            "python3 scripts/generate-native-alac-v1.py --check"
+        ])
+    );
+    assert_eq!(
+        manifest["generator"]["externalToolsRequiredForRegeneration"],
+        true
+    );
+    assert_eq!(
+        manifest["generator"]["normalTestsRequireExternalTools"],
+        false
+    );
+    assert_eq!(manifest["encoder"]["tool"], "ffmpeg");
+    assert_eq!(manifest["encoder"]["version"], "8.0.1");
+    assert_eq!(
+        manifest["provenance"]["kind"],
+        "deterministically_generated"
+    );
+    assert_eq!(manifest["provenance"]["copyrightedAudio"], false);
+    assert_eq!(manifest["provenance"]["license"], "MIT");
+
+    let fixtures = manifest["fixtures"]
+        .as_array()
+        .expect("native ALAC fixture manifest must contain an array");
+    assert_eq!(fixtures.len(), 18);
+    let mut referenced_files = BTreeSet::new();
+    for fixture in fixtures {
+        let relative = fixture["path"].as_str().expect("fixture path");
+        assert!(referenced_files.insert(relative.to_owned()));
+        let bytes = fs::read(corpus.join(relative)).expect("fixture must be committed");
+        assert_eq!(
+            fixture["sha256"].as_str(),
+            Some(format!("{:x}", Sha256::digest(&bytes)).as_str())
+        );
+        assert!(matches!(fixture["bitsPerSample"].as_u64(), Some(16 | 24)));
+        assert!(matches!(fixture["channels"].as_u64(), Some(1..=8)));
+        assert_eq!(
+            fixture["normalizedInterleavedF64LeSha256"]
+                .as_str()
+                .expect("normalized PCM hash")
+                .len(),
+            64
+        );
+        let twin = fixture["twin"].as_str().expect("twin path");
+        assert!(fixtures.iter().any(|candidate| candidate["path"] == twin));
+        if fixture["kind"] == "alac" {
+            let structure = &fixture["isoBmff"];
+            assert_eq!(structure["topLevelBoxes"][0]["type"], "ftyp");
+            let top_level_types: Vec<&str> = structure["topLevelBoxes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|entry| entry["type"].as_str().unwrap())
+                .collect();
+            assert!(top_level_types.contains(&"moov"));
+            assert!(top_level_types.contains(&"mdat"));
+            assert_eq!(structure["cookie"]["lengthBytes"], 24);
+            assert_eq!(structure["cookie"]["frameLength"], 4096);
+            assert_eq!(structure["cookie"]["compatibleVersion"], 0);
+            assert_eq!(structure["cookie"]["bitDepth"], fixture["bitsPerSample"]);
+            assert_eq!(structure["cookie"]["channels"], fixture["channels"]);
+            assert_eq!(structure["cookie"]["sampleRate"], fixture["sampleRate"]);
+            assert_eq!(
+                structure["mediaHeader"]["durationFrames"],
+                fixture["frames"]
+            );
+            assert_eq!(
+                structure["sampleTables"]["sttsFrameCount"],
+                fixture["frames"]
+            );
+            assert_eq!(
+                structure["sampleTables"]["sttsPacketCount"],
+                structure["sampleTables"]["stszSampleCount"]
+            );
+            let command = serde_json::to_string(&fixture["encoderCommand"]).unwrap();
+            assert!(command.contains("<corpus>/"));
+            assert!(!command.contains("/var/folders/"));
+        }
+    }
+    for source in manifest["routeNegativeSources"]
+        .as_array()
+        .expect("route-negative source manifest must contain an array")
+    {
+        let relative = source["path"].as_str().expect("source path");
+        assert!(referenced_files.insert(relative.to_owned()));
+        let bytes = fs::read(corpus.join(relative)).expect("source must be committed");
+        assert_eq!(
+            source["sha256"].as_str(),
+            Some(format!("{:x}", Sha256::digest(&bytes)).as_str())
+        );
+        assert_eq!(source["expected"]["code"], "unsupported_format");
+        assert_eq!(source["expected"]["stage"], "probe");
+    }
+    let committed_audio_files: BTreeSet<String> = fs::read_dir(corpus)
+        .expect("native ALAC corpus directory")
+        .map(|entry| entry.expect("fixture directory entry"))
+        .filter_map(|entry| {
+            let extension = entry.path().extension()?.to_str()?.to_owned();
+            matches!(extension.as_str(), "wav" | "m4a" | "mp4")
+                .then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect();
+    assert_eq!(referenced_files, committed_audio_files);
+}
+
+#[test]
+fn alac_route_negative_sources_are_rejected_during_probe() {
+    let manifest = alac_fixture_manifest();
+    for source in manifest["routeNegativeSources"].as_array().unwrap() {
+        let path = alac_fixture_path(source["path"].as_str().unwrap());
+        let error = expect_open_error(&path);
+        assert_eq!(
+            error.code,
+            ErrorCode::UnsupportedFormat,
+            "{}",
+            path.display()
+        );
+        assert_eq!(error.stage, AnalysisStage::Probe, "{}", path.display());
+    }
+}
+
+#[test]
+fn alac_malformed_corpus_uses_the_fixed_probe_error_classification() {
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(malformed_fixture_path("manifest.json")).expect("manifest must exist"),
+    )
+    .unwrap();
+    for case in manifest["cases"].as_array().unwrap().iter().filter(|case| {
+        case["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("alac-"))
+            && case["expected"]["stage"] == "probe"
+    }) {
+        let id = case["id"].as_str().unwrap();
+        let path = malformed_fixture_path(case["path"].as_str().unwrap());
+        let error = expect_open_error(&path);
+        let expected_code = match case["expected"]["code"].as_str().unwrap() {
+            "malformed_media" => ErrorCode::MalformedMedia,
+            "unsupported_format" => ErrorCode::UnsupportedFormat,
+            other => panic!("{id}: unexpected error code {other}"),
+        };
+        assert_eq!(error.code, expected_code, "{id}: {error}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{id}: {error}");
+    }
+}
+
+#[test]
+fn alac_backend_metadata_must_match_the_validated_container() {
+    use symphonia::core::codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CodecParameters};
+
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let mut file = fs::File::open(&path).unwrap();
+    let validated = crate::isobmff::inspect_isobmff_alac(&mut file, &path).unwrap();
+    let valid_parameters = || {
+        let mut parameters = CodecParameters::new();
+        parameters
+            .for_codec(CODEC_TYPE_ALAC)
+            .with_sample_rate(validated.pcm.sample_rate)
+            .with_n_frames(validated.declared_frames)
+            .with_extra_data(validated.magic_cookie.clone());
+        parameters
+    };
+
+    crate::symphonia_source::validate_backend_alac_metadata(&path, &validated, &valid_parameters())
+        .unwrap();
+
+    let mut mismatches = Vec::new();
+    let mut parameters = valid_parameters();
+    parameters.codec = CODEC_TYPE_FLAC;
+    mismatches.push(("codec", parameters));
+    let mut parameters = valid_parameters();
+    parameters.sample_rate = Some(44_100);
+    mismatches.push(("sample rate", parameters));
+    let mut parameters = valid_parameters();
+    parameters.n_frames = Some(validated.declared_frames + 1);
+    mismatches.push(("frame count", parameters));
+    let mut parameters = valid_parameters();
+    parameters.extra_data.as_mut().unwrap()[0] ^= 0xff;
+    mismatches.push(("cookie", parameters));
+
+    for (name, parameters) in mismatches {
+        let error =
+            crate::symphonia_source::validate_backend_alac_metadata(&path, &validated, &parameters)
+                .unwrap_err();
+        assert_eq!(error.code, ErrorCode::MalformedMedia, "{name}");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{name}");
+    }
 }
 
 #[test]
@@ -915,6 +1157,229 @@ fn extensible_matrix_passes_the_shared_pcm_source_contract() {
             minimum_data_blocks: 1,
         });
     }
+}
+
+#[test]
+fn alac_matrix_passes_the_shared_pcm_source_contract() {
+    let manifest = alac_fixture_manifest();
+    let fixtures = manifest["fixtures"].as_array().unwrap();
+    for fixture in fixtures.iter().filter(|fixture| fixture["kind"] == "alac") {
+        let name = fixture["path"].as_str().unwrap();
+        let twin = fixture["twin"].as_str().unwrap();
+        let (_, expected_samples) = decode_all_samples(&alac_fixture_path(twin));
+        let leaked_name: &'static str = Box::leak(name.to_owned().into_boxed_str());
+        let expected_frames = fixture["frames"].as_u64().unwrap();
+        assert_pcm_source_contract(PcmSourceContractCase {
+            name: leaked_name,
+            wrong_extension: "wav",
+            bytes: fs::read(alac_fixture_path(name)).expect("ALAC fixture must be committed"),
+            container: ContainerFormat::Mp4,
+            codec: SourceCodec::Alac,
+            sample_rate: u32::try_from(fixture["sampleRate"].as_u64().unwrap()).unwrap(),
+            channels: u16::try_from(fixture["channels"].as_u64().unwrap()).unwrap(),
+            bits_per_sample: u32::try_from(fixture["bitsPerSample"].as_u64().unwrap()).unwrap(),
+            expected_frames,
+            expected_samples,
+            normalized_pcm_sha256: fixture["normalizedInterleavedF64LeSha256"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+            minimum_data_blocks: if expected_frames > 4096 { 2 } else { 1 },
+        });
+    }
+}
+
+#[test]
+fn alac_and_wave_twins_decode_to_bit_identical_pcm() {
+    let manifest = alac_fixture_manifest();
+    let fixtures = manifest["fixtures"].as_array().unwrap();
+    for alac in fixtures.iter().filter(|fixture| fixture["kind"] == "alac") {
+        let alac_name = alac["path"].as_str().unwrap();
+        let wave_name = alac["twin"].as_str().unwrap();
+        let (alac_source, alac_samples) = decode_all_samples(&alac_fixture_path(alac_name));
+        let (wave_source, wave_samples) = decode_all_samples(&alac_fixture_path(wave_name));
+
+        assert_eq!(alac_source.container, ContainerFormat::Mp4, "{alac_name}");
+        assert_eq!(alac_source.codec, SourceCodec::Alac, "{alac_name}");
+        assert_eq!(wave_source.container, ContainerFormat::Wave, "{alac_name}");
+        assert_eq!(wave_source.codec, SourceCodec::PcmInteger, "{alac_name}");
+        assert_eq!(
+            alac_source.sample_rate, wave_source.sample_rate,
+            "{alac_name}"
+        );
+        assert_eq!(alac_source.channels, wave_source.channels, "{alac_name}");
+        assert_eq!(
+            alac_source.bits_per_sample, wave_source.bits_per_sample,
+            "{alac_name}"
+        );
+        assert_eq!(
+            alac_source.expected_frames, wave_source.expected_frames,
+            "{alac_name}"
+        );
+        assert_eq!(
+            alac_samples
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            wave_samples
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            "{alac_name}"
+        );
+    }
+}
+
+#[test]
+fn alac_route_accepts_an_explicit_64_bit_ftyp_box_length() {
+    let original_path = alac_fixture_path("alac16-mono-44100.m4a");
+    let original = fs::read(&original_path).unwrap();
+    assert_eq!(u32::from_be_bytes(original[0..4].try_into().unwrap()), 28);
+    assert_eq!(&original[4..8], b"ftyp");
+    assert_eq!(&original[28..36], b"\0\0\0\x08free");
+
+    let mut extended = Vec::with_capacity(original.len());
+    extended.extend_from_slice(&1_u32.to_be_bytes());
+    extended.extend_from_slice(b"ftyp");
+    extended.extend_from_slice(&36_u64.to_be_bytes());
+    extended.extend_from_slice(&original[8..28]);
+    extended.extend_from_slice(&original[36..]);
+    assert_eq!(extended.len(), original.len());
+
+    let file = TestFile::new("mp4", &extended);
+    let (extended_source, extended_samples) = decode_all_samples(file.path());
+    let (original_source, original_samples) = decode_all_samples(&original_path);
+    assert_eq!(extended_source.container, ContainerFormat::Mp4);
+    assert_eq!(extended_source.codec, SourceCodec::Alac);
+    assert_eq!(extended_source.sample_rate, original_source.sample_rate);
+    assert_eq!(extended_source.channels, original_source.channels);
+    assert_eq!(
+        extended_source.expected_frames,
+        original_source.expected_frames
+    );
+    assert_eq!(
+        extended_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>(),
+        original_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn alac_route_accepts_a_48_byte_cookie_with_the_standard_stereo_layout() {
+    fn find(bytes: &[u8], needle: &[u8]) -> usize {
+        bytes
+            .windows(needle.len())
+            .position(|window| window == needle)
+            .unwrap_or_else(|| panic!("missing {needle:?}"))
+    }
+
+    let original_path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let mut bytes = fs::read(&original_path).unwrap();
+    let config_type = find(&bytes, b"alac\0\0\0\0\0\0\x10\0");
+    let outer_type = bytes[..config_type]
+        .windows(4)
+        .rposition(|window| window == b"alac")
+        .unwrap();
+    let config_start = config_type - 4;
+    let config_size = u32::from_be_bytes(bytes[config_start..config_type].try_into().unwrap());
+    assert_eq!(config_size, 36);
+    let insertion = config_start + usize::try_from(config_size).unwrap();
+    let mut layout = Vec::new();
+    layout.extend_from_slice(&24_u32.to_be_bytes());
+    layout.extend_from_slice(b"chan");
+    layout.extend_from_slice(&0_u32.to_be_bytes());
+    layout.extend_from_slice(&0x0065_0002_u32.to_be_bytes());
+    layout.extend_from_slice(&0_u32.to_be_bytes());
+    layout.extend_from_slice(&0_u32.to_be_bytes());
+    assert_eq!(layout.len(), 24);
+
+    for kind in [
+        b"moov".as_slice(),
+        b"trak",
+        b"mdia",
+        b"minf",
+        b"stbl",
+        b"stsd",
+    ] {
+        let box_type = find(&bytes, kind);
+        let size_offset = box_type - 4;
+        let size = u32::from_be_bytes(bytes[size_offset..box_type].try_into().unwrap());
+        bytes[size_offset..box_type].copy_from_slice(&(size + 24).to_be_bytes());
+    }
+    let outer_size = u32::from_be_bytes(bytes[outer_type - 4..outer_type].try_into().unwrap());
+    bytes[outer_type - 4..outer_type].copy_from_slice(&(outer_size + 24).to_be_bytes());
+    bytes[config_start..config_type].copy_from_slice(&(config_size + 24).to_be_bytes());
+    bytes.splice(insertion..insertion, layout);
+
+    let file = TestFile::new("m4a", &bytes);
+    let (explicit_source, explicit_samples) = decode_all_samples(file.path());
+    let (original_source, original_samples) = decode_all_samples(&original_path);
+    assert_eq!(explicit_source.container, ContainerFormat::Mp4);
+    assert_eq!(explicit_source.codec, SourceCodec::Alac);
+    assert_eq!(explicit_source.sample_rate, original_source.sample_rate);
+    assert_eq!(explicit_source.channels, original_source.channels);
+    assert_eq!(
+        explicit_source.expected_frames,
+        original_source.expected_frames
+    );
+    assert_eq!(
+        explicit_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>(),
+        original_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn alac_route_accepts_an_absent_edit_list() {
+    fn find(bytes: &[u8], needle: &[u8]) -> usize {
+        bytes
+            .windows(needle.len())
+            .position(|window| window == needle)
+            .unwrap_or_else(|| panic!("missing {needle:?}"))
+    }
+
+    let original_path = alac_fixture_path("alac16-mono-44100.m4a");
+    let mut bytes = fs::read(&original_path).unwrap();
+    let edit_type = find(&bytes, b"edts");
+    let edit_start = edit_type - 4;
+    let edit_size = u32::from_be_bytes(bytes[edit_start..edit_type].try_into().unwrap());
+    for kind in [b"moov".as_slice(), b"trak"] {
+        let box_type = find(&bytes, kind);
+        let size_offset = box_type - 4;
+        let size = u32::from_be_bytes(bytes[size_offset..box_type].try_into().unwrap());
+        bytes[size_offset..box_type].copy_from_slice(&(size - edit_size).to_be_bytes());
+    }
+    bytes.drain(edit_start..edit_start + usize::try_from(edit_size).unwrap());
+
+    let file = TestFile::new("m4a", &bytes);
+    let (without_edit_source, without_edit_samples) = decode_all_samples(file.path());
+    let (original_source, original_samples) = decode_all_samples(&original_path);
+    assert_eq!(without_edit_source.container, ContainerFormat::Mp4);
+    assert_eq!(without_edit_source.codec, SourceCodec::Alac);
+    assert_eq!(
+        without_edit_source.expected_frames,
+        original_source.expected_frames
+    );
+    assert_eq!(
+        without_edit_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>(),
+        original_samples
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1190,6 +1655,30 @@ fn corrupt_flac_is_a_sticky_error_not_eof() {
 }
 
 #[test]
+fn corrupt_alac_packet_is_a_sticky_error_not_eof() {
+    let path = malformed_fixture_path("alac-corrupt-first-packet.m4a");
+    let mut opened = DecoderFactory::new().open(&path).unwrap();
+
+    let first_error = opened.reader.read_block().unwrap_err();
+    assert_eq!(first_error.code, ErrorCode::DecodeFailed);
+    assert_eq!(first_error.stage, AnalysisStage::Decode);
+    let terminal_progress = opened.reader.progress();
+    let terminal_diagnostics = opened.reader.diagnostics().clone();
+    assert_eq!(terminal_progress.decoded_frames(), 0);
+    assert!(!terminal_progress.is_eof());
+
+    for repeated_read in 1..=2 {
+        assert_eq!(
+            opened.reader.read_block().unwrap_err(),
+            first_error,
+            "terminal decoder error changed on read {repeated_read}"
+        );
+        assert_eq!(opened.reader.progress(), terminal_progress);
+        assert_eq!(opened.reader.diagnostics(), &terminal_diagnostics);
+    }
+}
+
+#[test]
 fn truncated_wave_is_rejected_before_partial_decode() {
     let mut truncated = pcm16_wave(48_000, &[[1, -1], [2, -2], [3, -3]]);
     truncated.truncate(truncated.len() - 4);
@@ -1391,6 +1880,9 @@ fn classifies_partial_supported_signatures_as_malformed() {
         b"RIFF",
         b"RIFF\0\0\0",
         b"FORM\0\0",
+        b"\0\0\0\x18f",
+        b"\0\0\0\x18ft",
+        b"\0\0\0\x18fty",
     ] {
         let file = TestFile::new("bin", prefix);
         let error = expect_open_error(file.path());

@@ -174,19 +174,19 @@ export type BatchReport = {
 
 export type WireEnvelope =
   | {
-      schemaVersion: 3;
+      schemaVersion: 4;
       toolVersion: string;
       kind: "analysis";
       data: AnalysisReport;
     }
   | {
-      schemaVersion: 3;
+      schemaVersion: 4;
       toolVersion: string;
       kind: "batch";
       data: BatchReport;
     }
   | {
-      schemaVersion: 3;
+      schemaVersion: 4;
       toolVersion: string;
       kind: "error";
       data: PublicError;

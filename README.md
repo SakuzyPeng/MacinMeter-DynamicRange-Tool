@@ -3,9 +3,9 @@
 [English](README.md) | [中文](README_CN.md)
 
 MacinMeter is an offline, local-first audio dynamic-range (DR) analyzer. It
-reports per-channel and per-track DR values for supported WAV, FLAC, and AIFF
-files. The command-line tool, Tauri desktop frontend, and Rust API all use the
-same streaming analysis engine.
+reports per-channel and per-track DR values for supported WAV, FLAC, AIFF, and
+MP4/M4A ALAC files. The command-line tool, Tauri desktop frontend, and Rust API
+all use the same streaming analysis engine.
 
 The analysis algorithm was reconstructed from one fixed `foo_dr_meter 1.0.8
 x64` target. Recorded projections have zero differences on the fixed
@@ -19,19 +19,22 @@ in the accuracy section below.
 | RIFF/WAVE, classic or constrained WAVE_FORMAT_EXTENSIBLE | 8/16/24/32-bit integer PCM; IEEE 32/64-bit float |
 | native FLAC | FLAC with a declared nonzero total sample count |
 | AIFF | 8/16/24/32-bit integer PCM |
+| non-fragmented MP4/M4A | ALAC version 0, 16/24-bit, 1–8 standard-layout channels |
 
 An explicit file path is probed by content and may use any extension. Folder
-scans look for `.wav`, `.wave`, `.flac`, `.aif`, and `.aiff`; a supported file
-with another extension can still be analyzed by passing its path directly.
+scans look for `.wav`, `.wave`, `.flac`, `.aif`, `.aiff`, `.m4a`, and `.mp4`;
+a supported file with another extension can still be analyzed by passing its
+path directly.
 Current file analysis covers up to 64 channels. The constrained
 WAVE_FORMAT_EXTENSIBLE route covers up to 26 channels and retains an unknown
 channel layout; the format guide records its exact valid-bit and mask rules.
 
 Some files with familiar extensions use variants that are not available yet,
 including padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible
-streams above 26 channels, AIFC, and Ogg FLAC. MP3, AAC, ALAC, Vorbis, Opus,
-and DSD are also unavailable. MacinMeter reports these as unsupported; it does
-not invoke FFmpeg or silently resample or preprocess them. The [format
+streams above 26 channels, AIFC, Ogg FLAC, fragmented MP4, and MP4 with video
+or extra tracks. AAC, MP3, ALAC 20/32-bit or nonstandard-layout variants,
+Vorbis, Opus, and DSD are unavailable. MacinMeter reports these as unsupported;
+it does not invoke FFmpeg or silently resample or preprocess them. The [format
 guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
 
 ## Installation
@@ -128,7 +131,7 @@ macinmeter analyze track.flac --format json
 macinmeter analyze track.flac --format json --output track.json
 ```
 
-JSON and Tauri use the same versioned schema-v3 `WireEnvelope`. The envelope
+JSON and Tauri use the same versioned schema-v4 `WireEnvelope`. The envelope
 contains `schemaVersion`, `toolVersion`, `kind`, and `data`, with no timestamp.
 Successful numeric fields are finite; values such as zero-amplitude dBFS are
 represented explicitly as `null` where appropriate. Stdout contains only the
@@ -154,12 +157,12 @@ result search and precise-DR sorting, path hiding, and Markdown, JSON, PNG, or
 SVG export. Exported JSON is the exact shared `WireEnvelope`; presentation-only
 preferences never alter the analysis request or report.
 
-The 0.2.0 packaged GUI is scoped to Apple Silicon Macs running macOS 11.0 or
+The 0.3.0 packaged GUI is scoped to Apple Silicon Macs running macOS 11.0 or
 newer. Local staging and the bounded macOS 26 arm64 CI gate both build and
 structurally verify the final DMG. The package has no Developer ID signature
 and is not notarized, so macOS may require an explicit Open/Open Anyway
 confirmation. Intel/universal macOS and Windows/Linux GUI packages are not part
-of the 0.2.0 release. The current packaging picture is summarized in
+of the 0.3.0 release. The current packaging picture is summarized in
 [release and artifact status](docs/RELEASE.md).
 
 ## Rust API
@@ -234,7 +237,7 @@ in the [performance notes](docs/BENCHMARKS.md) and
 
 ## Under the hood
 
-MacinMeter 0.2.0 is a virtual Cargo workspace with one-way dependencies:
+MacinMeter 0.3.0 is a virtual Cargo workspace with one-way dependencies:
 
 ```text
 macinmeter-domain

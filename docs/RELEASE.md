@@ -2,7 +2,7 @@
 
 # Release artifact staging
 
-MacinMeter 0.2.0 has an explicit artifact contract. Staging builds and verifies
+MacinMeter 0.3.0 has an explicit artifact contract. Staging builds and verifies
 bytes under `target/release-staging`; it never uploads, signs, notarizes, or
 creates a GitHub release.
 
@@ -12,16 +12,16 @@ verified and then discarded with the runner. An explicit manual dispatch uses
 the unsigned-candidate contract below and retains its result for 14 days; it
 still does not create a tag or GitHub Release.
 
-## 0.2.0 release scope
+## 0.3.0 release scope
 
-The 0.2.0 release is limited to Apple Silicon macOS:
+The 0.3.0 release is limited to Apple Silicon macOS:
 
 - target: `aarch64-apple-darwin`;
 - minimum system: macOS 11.0;
 - artifacts: an arm64 CLI archive and an arm64 Tauri DMG;
 - no Developer ID signature, notarization, or stapling.
 
-There is no 0.2.0 Intel or universal macOS build, and no Windows/Linux GUI
+There is no 0.3.0 Intel or universal macOS build, and no Windows/Linux GUI
 package. “Unsigned” means no Developer ID identity; compiler or linker ad-hoc
 metadata is not a developer signature or Gatekeeper claim.
 
@@ -63,7 +63,7 @@ Verification safely extracts the archive, checks its exact member set and
 payload hashes, then runs the extracted executable:
 
 - `macinmeter --version` must report the workspace version;
-- a committed WAV fixture must produce one schema-v3 JSON document;
+- a committed WAV fixture must produce one schema-v4 JSON document;
 - the smoke document must use the WAV integer-PCM route and contain the fixed
   algorithm parameters without internal profile or status fields.
 
@@ -91,7 +91,7 @@ ephemeral CI gate, is marked
 `local_staging_only`/`local_unnotarized`. A successful structural smoke test is
 not a Gatekeeper, Developer ID, notarization, or public-distribution claim.
 Windows/Linux GUI packages and macOS x86_64/universal packages are outside the
-0.2.0 release scope.
+0.3.0 release scope.
 
 ## Unsigned Apple Silicon release candidate
 
@@ -103,7 +103,7 @@ python3 scripts/stage-release.py stage \
   --unsigned-macos-arm64-candidate
 ```
 
-It writes to `target/release-candidates/0.2.0/aarch64-apple-darwin` and refuses
+It writes to `target/release-candidates/0.3.0/aarch64-apple-darwin` and refuses
 a dirty source tree, a non-arm64 host, toolchains other than Rust 1.88 and
 Node.js 22, a missing GUI, `--allow-dirty`, or `--replace`. Its manifest records
 the full Rust/Cargo/Node/npm identity and is marked
@@ -118,7 +118,7 @@ three-platform workflow succeeds; retention from a failed run is not release
 evidence. It remains an input to human approval, not a public asset.
 
 The proposed bilingual GitHub Release body is
-[`RELEASE_DRAFT_0.2.0.md`](RELEASE_DRAFT_0.2.0.md).
+[`RELEASE_DRAFT_0.3.0.md`](RELEASE_DRAFT_0.3.0.md).
 
 ## Checksums and verification
 
@@ -132,7 +132,7 @@ Rerun verification against the final bytes:
 
 ```bash
 python3 scripts/stage-release.py verify \
-  target/release-staging/0.2.0/aarch64-apple-darwin
+  target/release-staging/0.3.0/aarch64-apple-darwin
 ```
 
 The same verifier accepts an unsigned candidate directory after checking its

@@ -105,6 +105,107 @@ fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
 }
 
 #[test]
+fn rust_api_analyzes_representative_m4a_and_mp4_alac_routes() {
+    for (relative_path, bits_per_sample, sample_rate, channels, frames) in [
+        (
+            "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+            16,
+            48_000,
+            2,
+            9_001,
+        ),
+        (
+            "native-alac-v1/alac24-stereo-96000-faststart.mp4",
+            24,
+            96_000,
+            2,
+            5_003,
+        ),
+    ] {
+        let path = fixture(relative_path);
+        let report = Application::new()
+            .analyze_file(AnalyzeRequest::new(&path))
+            .unwrap_or_else(|error| panic!("{relative_path} should analyze: {error}"));
+
+        assert_eq!(report.source().container, ContainerFormat::Mp4);
+        assert_eq!(report.source().codec, SourceCodec::Alac);
+        assert_eq!(report.source().bits_per_sample, Some(bits_per_sample));
+        assert_eq!(report.source().sample_rate.get(), sample_rate);
+        assert_eq!(report.source().channels.get(), channels);
+        assert_eq!(report.source().expected_frames, Some(frames));
+        assert_eq!(
+            report.pcm().spec.channel_layout,
+            macinmeter::ChannelLayout::Unknown
+        );
+        assert_eq!(report.analysis().frames_seen(), frames);
+        assert_eq!(report.diagnostics().decoded_frames, frames);
+        assert!(report.diagnostics().warnings.is_empty());
+    }
+}
+
+#[test]
+fn alac_and_wave_twins_have_identical_analysis_and_normalized_reports() {
+    let corpus = fixture("native-alac-v1");
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(corpus.join("manifest.json")).expect("ALAC manifest must exist"),
+    )
+    .expect("ALAC manifest must be valid JSON");
+    let fixtures = manifest["fixtures"]
+        .as_array()
+        .expect("ALAC manifest must contain fixtures");
+
+    for alac in fixtures.iter().filter(|fixture| fixture["kind"] == "alac") {
+        let alac_name = alac["path"].as_str().expect("ALAC path");
+        let wave_name = alac["twin"].as_str().expect("WAV twin path");
+        let alac_report = Application::new()
+            .analyze_file(AnalyzeRequest::new(corpus.join(alac_name)))
+            .unwrap_or_else(|error| panic!("{alac_name} failed: {error}"));
+        let wave_report = Application::new()
+            .analyze_file(AnalyzeRequest::new(corpus.join(wave_name)))
+            .unwrap_or_else(|error| panic!("{wave_name} failed: {error}"));
+
+        assert_eq!(
+            alac_report.analysis(),
+            wave_report.analysis(),
+            "{alac_name}"
+        );
+        assert_eq!(alac_report.pcm(), wave_report.pcm(), "{alac_name}");
+        let mut alac_wire = serde_json::to_value(WireEnvelope::analysis(alac_report)).unwrap();
+        let mut wave_wire = serde_json::to_value(WireEnvelope::analysis(wave_report)).unwrap();
+        for wire in [&mut alac_wire, &mut wave_wire] {
+            wire["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
+            wire["data"]["source"]["container"] = Value::String("<container>".to_owned());
+            wire["data"]["source"]["codec"] = Value::String("<codec>".to_owned());
+        }
+        assert_eq!(alac_wire, wave_wire, "{alac_name}");
+    }
+}
+
+#[test]
+fn alac_content_probe_ignores_extensions_and_rejects_fake_mp4_content() {
+    let directory = tempfile::tempdir().unwrap();
+    let disguised_alac = directory.path().join("alac-with-wav-extension.wav");
+    fs::copy(
+        fixture("native-alac-v1/alac16-mono-44100.m4a"),
+        &disguised_alac,
+    )
+    .unwrap();
+    let report = Application::new()
+        .analyze_file(AnalyzeRequest::new(&disguised_alac))
+        .expect("ALAC content must route independently of its extension");
+    assert_eq!(report.source().container, ContainerFormat::Mp4);
+    assert_eq!(report.source().codec, SourceCodec::Alac);
+
+    let fake_mp4 = directory.path().join("fake.m4a");
+    fs::write(&fake_mp4, b"not ISO BMFF").unwrap();
+    let error = Application::new()
+        .analyze_file(AnalyzeRequest::new(&fake_mp4))
+        .expect_err("an M4A extension must not bypass content probing");
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+    assert_eq!(error.stage, macinmeter::AnalysisStage::Probe);
+}
+
+#[test]
 fn extensible_and_classic_twins_have_identical_analysis_and_report_projection() {
     let corpus = fixture("native-pcm-extensible-v1");
     let manifest: Value = serde_json::from_slice(
@@ -409,7 +510,7 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
         .expect("valid fixture should analyze");
     let envelope = WireEnvelope::analysis(report);
 
-    assert_eq!(WIRE_SCHEMA_VERSION, 3);
+    assert_eq!(WIRE_SCHEMA_VERSION, 4);
     assert_eq!(envelope.schema_version, WIRE_SCHEMA_VERSION);
     assert_eq!(envelope.tool_version, macinmeter::VERSION);
     assert!(matches!(envelope.payload, WirePayload::Analysis(_)));

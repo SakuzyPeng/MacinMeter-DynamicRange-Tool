@@ -1,4 +1,4 @@
-# MacinMeter 0.2.0 Tauri adapter
+# MacinMeter 0.3.0 Tauri adapter
 
 `tauri-app/` is a thin Tauri 2 adapter over the `macinmeter` application crate.
 Its Rust backend does not contain a second decoder, analyzer, batch scheduler,
@@ -32,7 +32,7 @@ Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch
 directory walk.
 
-Analysis and batch responses use schema 3 of the same versioned `WireEnvelope`
+Analysis and batch responses use schema 4 of the same versioned `WireEnvelope`
 as CLI JSON. The analysis payload exposes `analysis.aggregates.track`, separate
 channel/track `report` metrics, exact decoded duration, and DR diagnostics named
 `drSelectedPeak`, `drPrimaryPeak`, and `drSecondaryPeak`. Zero-level dBFS is
@@ -62,7 +62,7 @@ npm run tauri dev
 Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
 Workspace Rust builds place artifacts under the root `target/` directory. The
-0.2.0 bundle target is Apple Silicon macOS 11.0+ `.app`/`.dmg`; Intel,
+0.3.0 bundle target is Apple Silicon macOS 11.0+ `.app`/`.dmg`; Intel,
 universal, Windows, and Linux GUI packaging is outside the release contract.
 
 `python3 scripts/stage-release.py stage --include-gui` builds the current-host

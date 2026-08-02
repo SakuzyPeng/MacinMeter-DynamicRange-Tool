@@ -4,6 +4,7 @@ mod capability;
 mod codec;
 mod container;
 mod error;
+mod isobmff;
 mod symphonia_source;
 
 pub use capability::{
@@ -22,7 +23,10 @@ mod tests;
 #[cfg(feature = "malformed-dev")]
 #[doc(hidden)]
 pub mod dev {
-    use crate::container::{ContainerSignature, identify_container, inspect_aiff, inspect_wave};
+    use crate::{
+        container::{ContainerSignature, identify_container, inspect_aiff, inspect_wave},
+        isobmff::inspect_isobmff_alac,
+    };
     use macinmeter_domain::AnalysisError;
     use std::{io::Cursor, path::Path};
 
@@ -39,6 +43,7 @@ pub mod dev {
             ContainerSignature::Wave => inspect_wave(&mut cursor, path).map(|_| ()),
             ContainerSignature::Aiff => inspect_aiff(&mut cursor, path).map(|_| ()),
             ContainerSignature::Flac => Ok(()),
+            ContainerSignature::Mp4 => inspect_isobmff_alac(&mut cursor, path).map(|_| ()),
         }
     }
 }
@@ -86,7 +91,7 @@ pub trait PcmSource {
     fn diagnostics(&self) -> &DecodeDiagnostics;
 }
 
-/// Opens the small, correctness-first M0 codec set.
+/// Opens the small, correctness-first stable native codec set.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DecoderFactory;
 

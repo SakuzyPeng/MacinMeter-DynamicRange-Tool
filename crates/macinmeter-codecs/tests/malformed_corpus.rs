@@ -26,7 +26,11 @@ fn committed_corpus_bytes_match_the_manifest() {
     .expect("corpus manifest must be valid JSON");
     assert_eq!(
         manifest["sourceCorpora"],
-        serde_json::json!(["native-pcm-v1", "native-pcm-extensible-v1"])
+        serde_json::json!([
+            "native-pcm-v1",
+            "native-pcm-extensible-v1",
+            "native-alac-v1"
+        ])
     );
     let cases = manifest["cases"]
         .as_array()

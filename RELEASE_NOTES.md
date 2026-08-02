@@ -1,5 +1,41 @@
 # Release Notes / 发布说明
 
+## v0.3.0 – Stable MP4/M4A + ALAC / 稳定 MP4/M4A + ALAC
+
+> Status: development release contract; no signed/notarized public artifact has
+> been created. / 状态：开发线发行契约；尚未创建已签名、公证的公开制品。
+
+- Added a constrained stable in-process MP4/M4A + ALAC route: compatible
+  version 0, 16/24-bit, 1–8 standard-layout channels, one audio-only track,
+  non-fragmented ISO BMFF, and exact declared frame counts.
+  新增受限的稳定进程内 MP4/M4A + ALAC 路径：compatible version 0、
+  16/24-bit、1–8 个标准布局声道、单一纯音频 track、非 fragmented ISO BMFF，
+  并要求准确声明总帧数。
+- Added bounded first-party ISO BMFF validation and cross-checks for ALAC
+  cookies, sample entries, edit lists, `mdhd`, `stts`, `stsz`, backend codec
+  identity, sample rate, and final decoded frame count.
+  新增有界第一方 ISO BMFF 首检，并交叉核对 ALAC cookie、sample entry、edit
+  list、`mdhd`、`stts`、`stsz`、backend codec 身份、采样率和最终解码帧数。
+- Added `.m4a` and `.mp4` to capability-driven discovery. AAC, video or extra
+  tracks, multiple audio tracks, fragmentation, cropped edits, ALAC 20/32-bit,
+  and nonstandard layouts remain unsupported.
+  capability 驱动的目录发现新增 `.m4a` 与 `.mp4`；AAC、视频或额外 track、
+  多音轨、fragmentation、裁剪 edit、ALAC 20/32-bit 和非标准布局仍不支持。
+- Added the deterministic `native-alac-v1` WAV-twin corpus and expanded
+  malformed-media coverage. FFmpeg 8.0.1 is a fixture-generation tool only;
+  it is not a product runtime dependency.
+  新增确定性的 `native-alac-v1` WAV 孪生语料并扩充 malformed-media 覆盖。
+  FFmpeg 8.0.1 仅为语料生成工具，不是产品运行时依赖。
+- Added public `mp4`/`alac` identities and upgraded the shared CLI/Tauri wire
+  envelope to schema v4. The fixed analysis algorithm and numeric report
+  fields are unchanged.
+  新增公开 `mp4`/`alac` 身份，共享 CLI/Tauri wire envelope 升级为 schema v4；
+  固定分析算法与数值报告字段不变。
+- The GUI release boundary remains unsigned/unnotarized Apple Silicon macOS
+  11.0+, without Intel/universal, Windows, or Linux GUI artifacts.
+  GUI 发行边界仍为未签名、未公证的 Apple Silicon macOS 11.0+，不增加
+  Intel/universal、Windows 或 Linux GUI 制品。
+
 ## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 
 > Status: unsigned Apple Silicon release.

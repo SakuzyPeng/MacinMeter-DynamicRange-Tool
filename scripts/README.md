@@ -44,6 +44,22 @@ Each Extensible fixture is paired with classic WAV bytes carrying identical
 PCM. The manifest records format fields, hashes, twin identity, normalization
 oracles, and provenance without requiring external tools or network access.
 
+## Native ALAC product fixtures
+
+The stable MP4/M4A + ALAC slice has its own WAV-twin corpus:
+
+```bash
+python3 scripts/generate-native-alac-v1.py
+python3 scripts/generate-native-alac-v1.py --check
+```
+
+Exact regeneration requires FFmpeg 8.0.1, used only as a fixture tool. Normal
+builds and tests consume the committed bytes and do not invoke FFmpeg. The
+manifest records the pinned encoder identity and normalized commands, file
+hashes, ISO BMFF box order, ALAC cookie/sample-entry/media-header/sample-table
+fields, twin relationships, finite interleaved-`f64` fingerprints, and
+synthetic provenance.
+
 ## Hostile malformed-media corpus
 
 The files under `tests/fixtures/malformed-media-v1` include forged

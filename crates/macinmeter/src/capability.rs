@@ -1,6 +1,6 @@
 //! Read-only capability query over the native codec catalog.
 //!
-//! This is an independent application API, separate from the schema-v3
+//! This is an independent application API, separate from the schema-v4
 //! analysis wire envelope. Container, codec, and status identifiers are
 //! forward-extensible strings: consumers must tolerate values they do not
 //! know rather than maintaining their own capability union.

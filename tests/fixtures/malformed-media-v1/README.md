@@ -1,9 +1,9 @@
 # malformed-media-v1 regression corpus
 
 本目录是 ADR-0003 §8 定义的固定 malformed/mutation 回归 corpus。每个 case 都是
-对已提交 `native-pcm-v1` 或 `native-pcm-extensible-v1` fixture 的确定性字节级派生
-（截断、定点补丁、固定 xorshift64 seed 的 XOR），或确定性合成字节串；不含任何
-个人音频或外部媒体。
+对已提交 `native-pcm-v1`、`native-pcm-extensible-v1` 或 `native-alac-v1` fixture
+的确定性字节级派生（截断、定点补丁、固定 xorshift64 seed 的 XOR），或确定性
+合成字节串；不含任何个人音频或外部媒体。
 
 ## 判据
 
@@ -30,7 +30,7 @@ runner 发生过量分配。结构化失败由隔离 verifier 核对；sticky te
 
 ## 字节接缝与 fuzz 入口
 
-第一方 WAV/AIFF chunk parser 接受 `Read + Seek`，crate 内测试可直接消费
+第一方 WAV/AIFF/ISO-BMFF parser 接受 `Read + Seek`，crate 内测试可直接消费
 in-memory bytes。外部 fuzz runner 使用 `macinmeter-codecs` 的非默认
 `malformed-dev` feature 暴露的隐藏 dev 入口（`dev::probe_container_bytes`）；
 默认产品 API 仍是基于 `Path` 的 `DecoderFactory`。fuzz 是独立本地任务，不进入

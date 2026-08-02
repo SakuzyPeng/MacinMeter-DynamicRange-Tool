@@ -2,12 +2,12 @@
 
 ## Architecture
 
-This repository is a virtual Cargo workspace targeting version 0.2.0:
+This repository is a virtual Cargo workspace targeting version 0.3.0:
 
 - `crates/macinmeter-domain` — valid domain types, reports, and stable errors
 - `crates/macinmeter-analysis` — the sole fixed-rule streaming analyzer
-- `crates/macinmeter-codecs` — strict in-process PCM sources; WAV/FLAC/AIFF
-  are currently the only stable routes
+- `crates/macinmeter-codecs` — strict in-process PCM sources; WAV/FLAC/AIFF and
+  constrained MP4/M4A + ALAC are the stable routes
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
 - `apps/macinmeter-cli` — CLI adapter and renderers
 - `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`
@@ -28,9 +28,10 @@ dependencies into lower layers.
 - Stable product analysis accepts at most 64 channels. Preserve broader source
   metadata types, but reject over-limit media before decoder creation and
   over-limit direct sessions before allocation.
-- Decoding remains serial. WAV integer/float PCM, FLAC, and AIFF integer PCM
-  remain the only stable routes until another in-process Symphonia route
-  satisfies ADR-0003's capability graduation contract.
+- Decoding remains serial. WAV integer/float PCM, FLAC, AIFF integer PCM, and
+  the ADR-0013 constrained MP4/M4A + ALAC matrix are the only stable routes
+  until another in-process Symphonia route satisfies ADR-0003's capability
+  graduation contract.
 - `Application` is the only public file-analysis, batch, and controlled
   discovery façade. Keep `Analyzer`/`BatchRunner` crate-private; adapters must
   not bypass the shared execution domain.
@@ -67,7 +68,7 @@ dependencies into lower layers.
   Manual dispatch may retain one clean unsigned Apple Silicon candidate for
   14 days, but it never signs, notarizes, creates a tag/Release, or implies
   Gatekeeper readiness.
-- The 0.2.0 packaged GUI targets only `aarch64-apple-darwin` with macOS 11.0 as
+- The 0.3.0 packaged GUI targets only `aarch64-apple-darwin` with macOS 11.0 as
   its minimum system version. Do not add Intel, universal, Windows, or Linux
   GUI artifacts without a separate target-bound decision.
 - M6 performance evidence uses the release `m6_baseline_worker` and

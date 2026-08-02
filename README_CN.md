@@ -3,8 +3,8 @@
 [English](README.md) | [中文](README_CN.md)
 
 MacinMeter 是一款离线、本地优先的音频动态范围（DR）分析工具。它为受支持的
-WAV、FLAC 与 AIFF 文件报告逐声道和逐轨 DR。命令行工具、Tauri 桌面前端与
-Rust API 共用同一套流式分析引擎。
+WAV、FLAC、AIFF 与 MP4/M4A ALAC 文件报告逐声道和逐轨 DR。命令行工具、Tauri
+桌面前端与 Rust API 共用同一套流式分析引擎。
 
 分析算法来自对一个固定 `foo_dr_meter 1.0.8 x64` 目标的重建。已记录 projection
 在固定 conformance corpus 上差分为零；准确性章节列出了对应的输入、字段和运行
@@ -17,15 +17,18 @@ Rust API 共用同一套流式分析引擎。
 | RIFF/WAVE（经典或受限 WAVE_FORMAT_EXTENSIBLE） | 8/16/24/32-bit 整数 PCM；IEEE 32/64-bit float |
 | 原生 FLAC | 声明非零总样本数的 FLAC |
 | AIFF | 8/16/24/32-bit 整数 PCM |
+| 非 fragmented MP4/M4A | ALAC version 0、16/24-bit、1–8 个标准布局声道 |
 
 显式文件路径按内容探测，可以使用任意扩展名。文件夹扫描会寻找 `.wav`、`.wave`、
-`.flac`、`.aif` 与 `.aiff`；其他后缀的受支持文件仍然可以通过直接传入路径分析。
+`.flac`、`.aif`、`.aiff`、`.m4a` 与 `.mp4`；其他后缀的受支持文件仍然可以通过
+直接传入路径分析。
 当前文件分析覆盖最多 64 声道。受限 WAVE_FORMAT_EXTENSIBLE 路径最多覆盖 26 声道，
 且 channel layout 保持 unknown；完整 valid-bit 与 mask 规则见支持格式文档。
 
 一些具有常见扩展名的文件采用了当前尚未支持的变体，例如 padded 或 valid bits
-未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、AIFC 与 Ogg FLAC。
-MP3、AAC、ALAC、Vorbis、Opus 和 DSD 目前也不可用。
+未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、AIFC、Ogg FLAC、
+fragmented MP4，以及带视频或额外 track 的 MP4。AAC、MP3、ALAC 20/32-bit 或
+非标准布局变体、Vorbis、Opus 和 DSD 目前也不可用。
 MacinMeter 会把它们报告为不支持，不会调用 FFmpeg，也不会静默重采样或预处理。
 更完整的 route 细节记录在
 [支持格式](docs/SUPPORTED_FORMATS_CN.md)。
@@ -116,7 +119,7 @@ macinmeter analyze track.flac --format json
 macinmeter analyze track.flac --format json --output track.json
 ```
 
-JSON 与 Tauri 使用同一套带版本的 schema-v3 `WireEnvelope`。信封包含
+JSON 与 Tauri 使用同一套带版本的 schema-v4 `WireEnvelope`。信封包含
 `schemaVersion`、`toolVersion`、`kind` 与 `data`，不包含时间戳。成功结果中的
 数值都是有限值；零振幅 dBFS 等情况会在相应位置显式表示为 `null`。stdout
 只包含请求结果，进度和诊断进入 stderr。
@@ -134,10 +137,10 @@ npm run tauri dev
 GUI 调用与 CLI 相同的 `Application` façade，并消费相同的 wire schema。每个
 job 拥有独立取消 token，共享 application 预算则保证顶层工作有界且串行。
 
-0.2.0 的 GUI 安装包只面向运行 macOS 11.0 或更新系统的 Apple Silicon Mac。本地
+0.3.0 的 GUI 安装包只面向运行 macOS 11.0 或更新系统的 Apple Silicon Mac。本地
 staging 与有界的 macOS 26 arm64 CI 门禁都会构建并结构化验证最终 DMG。安装包没有
 Developer ID 签名，也未经过 Apple 公证，因此 macOS 可能要求用户显式选择“打开”或
-“仍要打开”。Intel/universal macOS 与 Windows/Linux GUI 包不属于 0.2.0 发行范围。
+“仍要打开”。Intel/universal macOS 与 Windows/Linux GUI 包不属于 0.3.0 发行范围。
 目前的打包情况汇总在[发行与制品状态](docs/RELEASE_CN.md)。
 
 ## Rust API
@@ -203,7 +206,7 @@ fingerprint 不变的前提下降低了固定 8/64 声道 analyzer 中位耗时�
 
 ## 底层设计
 
-MacinMeter 0.2.0 是一个单向依赖的 virtual Cargo workspace：
+MacinMeter 0.3.0 是一个单向依赖的 virtual Cargo workspace：
 
 ```text
 macinmeter-domain

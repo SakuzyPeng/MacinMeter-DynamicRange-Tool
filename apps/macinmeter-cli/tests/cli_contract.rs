@@ -103,8 +103,8 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
 
     assert_code(&output, 0);
     let value = parse_stdout_json(&output);
-    assert_eq!(value["schemaVersion"], 3);
-    assert_eq!(value["toolVersion"], "0.2.0");
+    assert_eq!(value["schemaVersion"], 4);
+    assert_eq!(value["toolVersion"], "0.3.0");
     assert_eq!(value["kind"], "analysis");
     let algorithm = &value["data"]["analysis"]["algorithm"];
     assert!(algorithm.get("profile").is_none());
@@ -114,7 +114,7 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert_eq!(value["data"]["analysis"]["framesSeen"], 441);
     assert!(
         value["data"]["analysis"]["aggregates"]["track"]["drDb"].is_number(),
-        "schema v3 exposes the track aggregate under analysis.aggregates.track"
+        "schema v4 exposes the track aggregate under analysis.aggregates.track"
     );
     assert!(
         value["data"]["analysis"]["channels"][0]["outcome"]["measurement"]["loudWindowRms"]
@@ -200,6 +200,63 @@ fn aiff_and_flac_json_are_the_shared_application_report() {
 }
 
 #[test]
+fn alac_m4a_stdout_and_mp4_output_file_use_the_shared_application_report() {
+    let m4a = fixture("native-alac-v1/alac16-stereo-48000-multipacket.m4a");
+    let m4a_output = run([
+        "analyze".as_ref(),
+        m4a.as_os_str(),
+        "--format".as_ref(),
+        "json".as_ref(),
+    ]);
+    assert_code(&m4a_output, 0);
+    let m4a_json = parse_stdout_json(&m4a_output);
+    assert_eq!(m4a_json["schemaVersion"], macinmeter::WIRE_SCHEMA_VERSION);
+    assert_eq!(m4a_json["data"]["source"]["container"], "mp4");
+    assert_eq!(m4a_json["data"]["source"]["codec"], "alac");
+    assert_eq!(m4a_json["data"]["source"]["bitsPerSample"], 16);
+    assert_eq!(m4a_json["data"]["analysis"]["framesSeen"], 9_001);
+    assert!(stderr(&m4a_output).contains("[0] analyzing"));
+    let m4a_report = macinmeter::Application::new()
+        .analyze_file(macinmeter::AnalyzeRequest::new(&m4a))
+        .unwrap();
+    let m4a_api_json: Value = serde_json::from_slice(
+        &serde_json::to_vec(&macinmeter::WireEnvelope::analysis(m4a_report)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(m4a_json, m4a_api_json);
+
+    let directory = tempfile::tempdir().unwrap();
+    let report_path = directory.path().join("alac24.json");
+    let mp4 = fixture("native-alac-v1/alac24-stereo-96000-faststart.mp4");
+    let mp4_output = run([
+        "analyze".as_ref(),
+        mp4.as_os_str(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        "--output".as_ref(),
+        report_path.as_os_str(),
+    ]);
+    assert_code(&mp4_output, 0);
+    assert!(mp4_output.stdout.is_empty());
+    assert!(stderr(&mp4_output).contains("[0] analyzing"));
+    assert!(stderr(&mp4_output).contains("[0] ok:"));
+    let mp4_json: Value = serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
+    assert_eq!(mp4_json["schemaVersion"], macinmeter::WIRE_SCHEMA_VERSION);
+    assert_eq!(mp4_json["data"]["source"]["container"], "mp4");
+    assert_eq!(mp4_json["data"]["source"]["codec"], "alac");
+    assert_eq!(mp4_json["data"]["source"]["bitsPerSample"], 24);
+    assert_eq!(mp4_json["data"]["analysis"]["framesSeen"], 5_003);
+    let mp4_report = macinmeter::Application::new()
+        .analyze_file(macinmeter::AnalyzeRequest::new(&mp4))
+        .unwrap();
+    let mp4_api_json: Value = serde_json::from_slice(
+        &serde_json::to_vec(&macinmeter::WireEnvelope::analysis(mp4_report)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(mp4_json, mp4_api_json);
+}
+
+#[test]
 fn extensible_integer_and_float_json_match_their_classic_twins() {
     for twin in ["pcm-s24-stereo-mask", "float64-stereo-mask"] {
         let classic = fixture(&format!("native-pcm-extensible-v1/{twin}-classic.wav"));
@@ -221,8 +278,8 @@ fn extensible_integer_and_float_json_match_their_classic_twins() {
 
         let mut classic_json = parse_stdout_json(&classic_output);
         let mut extensible_json = parse_stdout_json(&extensible_output);
-        assert_eq!(classic_json["schemaVersion"], 3, "{twin}");
-        assert_eq!(extensible_json["schemaVersion"], 3, "{twin}");
+        assert_eq!(classic_json["schemaVersion"], 4, "{twin}");
+        assert_eq!(extensible_json["schemaVersion"], 4, "{twin}");
         classic_json["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
         extensible_json["data"]["source"]["displayPath"] = Value::String("<twin>".to_owned());
         assert_eq!(

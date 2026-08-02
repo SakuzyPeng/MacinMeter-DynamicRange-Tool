@@ -485,7 +485,7 @@ fn run_render_json(arguments: &[OsString]) -> Result<Value, String> {
         last.len(),
         json!({
             "path": display_name(&path),
-            "format": "wire_schema_v3_pretty_json",
+            "format": "wire_schema_v4_pretty_json",
             "bytesPerIteration": last.len(),
             "analysisOutsideTimedRegion": true,
         }),

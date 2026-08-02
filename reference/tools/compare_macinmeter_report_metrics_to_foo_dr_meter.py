@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare schema-v3 MacinMeter report metrics with a normalized DR report.
+"""Compare schema-v3/v4 MacinMeter report metrics with a normalized DR report.
 
 This comparator is intentionally separate from the schema-v2 DR-only tool so
 previous conformance records remain reproducible. It compares only public
@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 
-WIRE_SCHEMA_VERSION = 3
+WIRE_SCHEMA_VERSION = 4
+SUPPORTED_WIRE_SCHEMA_VERSIONS = (3, WIRE_SCHEMA_VERSION)
 LEGACY_PROFILE = "foo_dr_meter_1_0_8_candidate_v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DB_TOKEN_RE = re.compile(r"^(?:-inf|[-+]?\d+\.\d{2})$")
@@ -432,9 +433,10 @@ def compare(
     reference_cases = validate_reference(reference)
     reference_footer = validate_reference_footer(reference)
     schema_version = implementation.get("schemaVersion")
-    if schema_version != WIRE_SCHEMA_VERSION:
+    if schema_version not in SUPPORTED_WIRE_SCHEMA_VERSIONS:
         raise ComparisonError(
-            f"implementation WireEnvelope schemaVersion must be {WIRE_SCHEMA_VERSION}; "
+            "implementation WireEnvelope schemaVersion must be one of "
+            f"{SUPPORTED_WIRE_SCHEMA_VERSIONS}; "
             f"got {schema_version!r}"
         )
     if implementation.get("kind") != "batch":
@@ -812,7 +814,7 @@ def compare(
         },
         "footerConsistency": {
             "scope": (
-                "normalized reference footer versus successful schema-v3 track "
+                f"normalized reference footer versus successful schema-v{schema_version} track "
                 "reports; unweighted reconstruction only"
             ),
             "reference": reference_footer,

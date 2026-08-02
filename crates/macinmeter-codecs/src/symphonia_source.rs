@@ -9,10 +9,11 @@ use crate::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
         probe_error, runtime_error,
     },
+    isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac},
 };
 use macinmeter_domain::{
-    AnalysisError, AnalysisStage, ChannelCount, DecodeDiagnostics, DecodeProgress, ErrorCode,
-    PcmBlock, PcmStreamInfo, SourceInfo,
+    AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, DecodeDiagnostics, DecodeProgress,
+    ErrorCode, PcmBlock, PcmStreamInfo, SourceInfo, StreamSpec,
 };
 use std::{
     fs::File,
@@ -21,7 +22,7 @@ use std::{
 };
 use symphonia::core::{
     audio::SampleBuffer,
-    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_NULL, CodecParameters, Decoder, DecoderOptions},
     errors::Error as SymphoniaError,
     formats::{FormatOptions, FormatReader},
     io::MediaSourceStream,
@@ -40,16 +41,20 @@ pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
 fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
-    let (aiff_info, container_pcm) = match signature {
+    let (aiff_info, container_pcm, alac_info) = match signature {
         ContainerSignature::Aiff => {
             let info = inspect_aiff(&mut file, path)?;
-            (Some(info), Some((info.pcm, info.declared_frames)))
+            (Some(info), Some((info.pcm, info.declared_frames)), None)
         }
         ContainerSignature::Wave => {
             let info = inspect_wave(&mut file, path)?;
-            (None, Some((info.pcm, info.declared_frames)))
+            (None, Some((info.pcm, info.declared_frames)), None)
         }
-        ContainerSignature::Flac => (None, None),
+        ContainerSignature::Flac => (None, None, None),
+        ContainerSignature::Mp4 => {
+            let info = inspect_isobmff_alac(&mut file, path)?;
+            (None, Some((info.pcm, info.declared_frames)), Some(info))
+        }
     };
     file.seek(SeekFrom::Start(0))
         .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?;
@@ -87,7 +92,7 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
             path,
             ErrorCode::UnsupportedFormat,
             AnalysisStage::Probe,
-            "multiple audio tracks are not supported by the M0 decoder",
+            "multiple audio tracks are outside the stable native decoder matrix",
             None,
         ));
     }
@@ -95,9 +100,32 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     let track_id = track.id;
     let codec_params = track.codec_params.clone();
     let source_codec = validate_codec(path, signature, codec_params.codec)?;
-    let (stream_spec, channels) = stream_spec(path, &codec_params)?;
-    let bits_per_sample = source_bits_per_sample(&codec_params);
-    if let Some((validated_pcm, _)) = container_pcm {
+    let (stream_spec, channels, bits_per_sample) = if let Some(info) = alac_info.as_ref() {
+        validate_backend_alac_metadata(path, info, &codec_params)?;
+        let stream_spec = StreamSpec::new(
+            info.pcm.sample_rate,
+            info.pcm.channels,
+            ChannelLayout::Unknown,
+        )
+        .map_err(|error| {
+            analysis_error(
+                path,
+                ErrorCode::MalformedMedia,
+                AnalysisStage::Probe,
+                "validated ALAC metadata cannot form a PCM stream",
+                Some(error.message),
+            )
+        })?;
+        let channels = stream_spec.channels;
+        (stream_spec, channels, Some(info.pcm.bits_per_sample))
+    } else {
+        let (stream_spec, channels) = stream_spec(path, &codec_params)?;
+        let bits_per_sample = source_bits_per_sample(&codec_params);
+        (stream_spec, channels, bits_per_sample)
+    };
+    if let Some((validated_pcm, _)) = container_pcm
+        && alac_info.is_none()
+    {
         validate_backend_pcm_metadata(
             path,
             validated_pcm,
@@ -159,6 +187,43 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
     };
 
     Ok((source, reader))
+}
+
+pub(crate) fn validate_backend_alac_metadata(
+    path: &Path,
+    validated: &IsoBmffAlacInfo,
+    codec_params: &CodecParameters,
+) -> Result<(), AnalysisError> {
+    let cookie_matches = codec_params
+        .extra_data
+        .as_deref()
+        .is_some_and(|cookie| cookie == validated.magic_cookie.as_ref());
+    let sample_rate_matches = codec_params.sample_rate == Some(validated.pcm.sample_rate)
+        || (validated.pcm.sample_rate > u32::from(u16::MAX) && codec_params.sample_rate == Some(0));
+    if codec_params.codec != CODEC_TYPE_ALAC
+        || !sample_rate_matches
+        || codec_params.n_frames != Some(validated.declared_frames)
+        || !cookie_matches
+    {
+        return Err(analysis_error(
+            path,
+            ErrorCode::MalformedMedia,
+            AnalysisStage::Probe,
+            "decoder metadata disagrees with the validated ISO BMFF ALAC track",
+            Some(format!(
+                "container={}Hz/{}ch/{}bit/{}frames/{}cookie-bytes; decoder_codec={:?}; decoder_rate={:?}; decoder_frames={:?}; decoder_cookie_match={cookie_matches}",
+                validated.pcm.sample_rate,
+                validated.pcm.channels,
+                validated.pcm.bits_per_sample,
+                validated.declared_frames,
+                validated.magic_cookie.len(),
+                codec_params.codec,
+                codec_params.sample_rate,
+                codec_params.n_frames,
+            )),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_backend_pcm_metadata(

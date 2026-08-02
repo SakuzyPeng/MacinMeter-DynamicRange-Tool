@@ -182,6 +182,7 @@ pub enum ContainerFormat {
     Wave,
     Flac,
     Aiff,
+    Mp4,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +191,7 @@ pub enum SourceCodec {
     PcmInteger,
     PcmFloat,
     Flac,
+    Alac,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

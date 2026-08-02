@@ -21,12 +21,18 @@ from pathlib import Path
 CORPUS_ID = "malformed-media-v1"
 SOURCE_CORPUS = "native-pcm-v1"
 EXTENSIBLE_SOURCE_CORPUS = "native-pcm-extensible-v1"
+ALAC_SOURCE_CORPUS = "native-alac-v1"
 
 WAV_S16 = "wav-pcm-s16-stereo.wav"
 WAV_F32 = "wav-float32-stereo.wav"
 AIFF_S16 = "aiff-pcm-s16-stereo.aiff"
 FLAC_S16 = "flac-pcm-s16-stereo-multiblock.flac"
 WAV_EXTENSIBLE_S16 = "pcm-s16-stereo-mask-extensible.wav"
+ALAC_S16 = "alac16-stereo-48000-multipacket.m4a"
+ALAC_AAC = "unsupported-aac.m4a"
+ALAC_FRAGMENTED = "unsupported-fragmented-alac.mp4"
+ALAC_MULTITRACK = "unsupported-multitrack-alac.mp4"
+ALAC_VIDEO = "unsupported-video-alac.mp4"
 
 
 def xorshift64(seed: int) -> int:
@@ -102,12 +108,89 @@ def deterministic_noise(seed: int, length: int) -> bytes:
     return bytes(out[:length])
 
 
+def find_fourcc(data: bytes, kind: bytes, occurrence: int = 0) -> int:
+    start = 0
+    for _ in range(occurrence + 1):
+        found = data.find(kind, start)
+        if found < 0:
+            raise ValueError(f"missing {kind!r} occurrence {occurrence}")
+        start = found + len(kind)
+    return found
+
+
+def find_alac_config_type(data: bytes) -> int:
+    start = 0
+    marker = b"alac\x00\x00\x00\x00\x00\x00\x10\x00"
+    found = data.find(marker, start)
+    if found < 4:
+        raise ValueError("missing nested ALAC configuration box")
+    size = struct.unpack(">I", data[found - 4 : found])[0]
+    if size not in (36, 60):
+        raise ValueError(f"unexpected nested ALAC configuration size {size}")
+    return found
+
+
+def find_outer_alac_type(data: bytes) -> int:
+    config = find_alac_config_type(data)
+    found = data.rfind(b"alac", 0, config)
+    if found < 4:
+        raise ValueError("missing outer ALAC sample entry")
+    return found
+
+
+def add_alac_explicit_layout(data: bytes, layout_tag: int) -> bytes:
+    config = find_alac_config_type(data)
+    outer = find_outer_alac_type(data)
+    config_start = config - 4
+    config_size = struct.unpack(">I", data[config_start:config])[0]
+    if config_size != 36:
+        raise ValueError("explicit-layout mutation requires a 24-byte ALAC cookie")
+    insertion = config_start + config_size
+    layout = struct.pack(">I4sIIII", 24, b"chan", 0, layout_tag, 0, 0)
+
+    updated = data
+    for box_type in (b"moov", b"trak", b"mdia", b"minf", b"stbl", b"stsd"):
+        type_offset = find_fourcc(updated, box_type)
+        size_offset = type_offset - 4
+        size = struct.unpack(">I", updated[size_offset:type_offset])[0]
+        updated = patch(updated, size_offset, struct.pack(">I", size + len(layout)))
+    outer_size = struct.unpack(">I", updated[outer - 4 : outer])[0]
+    updated = patch(updated, outer - 4, struct.pack(">I", outer_size + len(layout)))
+    updated = patch(
+        updated,
+        config_start,
+        struct.pack(">I", config_size + len(layout)),
+    )
+    return insert(updated, insertion, layout)
+
+
 def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
     wav = sources[WAV_S16]
     wav_f32 = sources[WAV_F32]
     aiff = sources[AIFF_S16]
     flac = sources[FLAC_S16]
     wav_extensible = sources[WAV_EXTENSIBLE_S16]
+    alac = sources[ALAC_S16]
+
+    alac_config = find_alac_config_type(alac)
+    alac_cookie = alac_config + 8
+    alac_outer = find_outer_alac_type(alac)
+    alac_elst = find_fourcc(alac, b"elst")
+    alac_stts = find_fourcc(alac, b"stts")
+    alac_stsz = find_fourcc(alac, b"stsz")
+    alac_mdhd = find_fourcc(alac, b"mdhd")
+    alac_moov = find_fourcc(alac, b"moov")
+    alac_mdat = find_fourcc(alac, b"mdat")
+    alac_unknown_layout = add_alac_explicit_layout(alac, 0x1234_0002)
+    alac_mismatched_layout = add_alac_explicit_layout(alac, 0x0064_0001)
+    alac_zero_frames = patch(alac, alac_mdhd + 20, struct.pack(">I", 0))
+    alac_stts_entry_count = struct.unpack(">I", alac[alac_stts + 8 : alac_stts + 12])[0]
+    for entry in range(alac_stts_entry_count):
+        alac_zero_frames = patch(
+            alac_zero_frames,
+            alac_stts + 16 + entry * 8,
+            struct.pack(">I", 0),
+        )
 
     extensible_with_extra = insert(wav_extensible, 60, b"\0\0")
     extensible_with_extra = patch(
@@ -437,6 +520,189 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "expected": {"code": "decode_failed", "stage": "decode"},
         },
         {
+            "id": "alac-truncated-ftyp",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "truncate inside the first ftyp payload",
+            "bytes": truncate(alac, 10),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-ftyp-size-overrun",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the first box size beyond the file length",
+            "bytes": patch(alac, 0, struct.pack(">I", len(alac) + 1)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-zero-box-size",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the ftyp box size to zero",
+            "bytes": patch(alac, 0, struct.pack(">I", 0)),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-missing-moov",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "rename the top-level moov box to free",
+            "bytes": patch(alac, alac_moov, b"free"),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-missing-mdat",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "rename the top-level mdat box to free",
+            "bytes": patch(alac, alac_mdat, b"free"),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-nonidentity-edit",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the sole edit-list media_time to one",
+            "bytes": patch(alac, alac_elst + 16, struct.pack(">I", 1)),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-cropped-edit-duration",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "shorten the identity edit-list segment duration by one movie tick",
+            "bytes": patch(
+                alac,
+                alac_elst + 12,
+                struct.pack(
+                    ">I",
+                    struct.unpack(">I", alac[alac_elst + 12 : alac_elst + 16])[0] - 1,
+                ),
+            ),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-compatible-version-1",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set ALAC compatibleVersion to one",
+            "bytes": patch(alac, alac_cookie + 4, b"\x01"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-20bit",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the ALAC cookie bit depth to 20",
+            "bytes": patch(alac, alac_cookie + 5, b"\x14"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-32bit",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the ALAC cookie bit depth to 32",
+            "bytes": patch(alac, alac_cookie + 5, b"\x20"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-9channels",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the ALAC cookie channel count to nine",
+            "bytes": patch(alac, alac_cookie + 9, b"\x09"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-nonzero-config-flags",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set one ALAC configuration full-box flag",
+            "bytes": patch(alac, alac_config + 7, b"\x01"),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-nonstandard-explicit-layout",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "expand the cookie to 48 bytes with a nonstandard channel-layout tag",
+            "bytes": alac_unknown_layout,
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-explicit-layout-channel-mismatch",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "expand the stereo cookie with the standard mono channel-layout tag",
+            "bytes": alac_mismatched_layout,
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-channel-declaration-mismatch",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the sample-entry channel count to one while the cookie remains stereo",
+            "bytes": patch(alac, alac_outer + 20, struct.pack(">H", 1)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-sample-rate-mismatch",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set the sample-entry 16.16 sample rate to 44100",
+            "bytes": patch(alac, alac_outer + 28, struct.pack(">I", 44_100 << 16)),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-stts-duration-mismatch",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "increment the first stts sample duration",
+            "bytes": patch(
+                alac,
+                alac_stts + 16,
+                struct.pack(">I", struct.unpack(">I", alac[alac_stts + 16 : alac_stts + 20])[0] + 1),
+            ),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-stsz-count-mismatch",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "increment the stsz packet count without adding a size entry",
+            "bytes": patch(
+                alac,
+                alac_stsz + 12,
+                struct.pack(">I", struct.unpack(">I", alac[alac_stsz + 12 : alac_stsz + 16])[0] + 1),
+            ),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
+            "id": "alac-zero-frames",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "set mdhd duration and every stts packet duration to zero",
+            "bytes": alac_zero_frames,
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-corrupt-first-packet",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "xor the first byte of the first mdat packet with 0xff",
+            "bytes": xor_at(alac, alac_mdat + 4, b"\xff"),
+            "expected": {"code": "decode_failed", "stage": "decode"},
+        },
+        {
+            "id": "alac-aac-track",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_AAC}",
+            "operation": "use a valid ISO BMFF file containing one AAC audio track",
+            "bytes": sources[ALAC_AAC],
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-fragmented",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_FRAGMENTED}",
+            "operation": "use a valid fragmented ISO BMFF file containing ALAC",
+            "bytes": sources[ALAC_FRAGMENTED],
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-multiple-audio-tracks",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_MULTITRACK}",
+            "operation": "use a valid ISO BMFF file containing two ALAC audio tracks",
+            "bytes": sources[ALAC_MULTITRACK],
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
+            "id": "alac-video-track",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_VIDEO}",
+            "operation": "use a valid ISO BMFF file containing video plus ALAC audio",
+            "bytes": sources[ALAC_VIDEO],
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
             "id": "unknown-content",
             "source": None,
             "operation": "64 deterministic xorshift64 bytes from seed 0x4D4D_0001",
@@ -502,12 +768,16 @@ def case_file_name(case: dict[str, object]) -> str:
     return f"{case['id']}{suffix}"
 
 
-def generate(fixtures: Path, extensible_fixtures: Path, output: Path) -> None:
+def generate(
+    fixtures: Path, extensible_fixtures: Path, alac_fixtures: Path, output: Path
+) -> None:
     sources = {
         name: (fixtures / name).read_bytes()
         for name in (WAV_S16, WAV_F32, AIFF_S16, FLAC_S16)
     }
     sources[WAV_EXTENSIBLE_S16] = (extensible_fixtures / WAV_EXTENSIBLE_S16).read_bytes()
+    for name in (ALAC_S16, ALAC_AAC, ALAC_FRAGMENTED, ALAC_MULTITRACK, ALAC_VIDEO):
+        sources[name] = (alac_fixtures / name).read_bytes()
     output.mkdir(parents=True, exist_ok=True)
 
     cases = build_cases(sources)
@@ -531,7 +801,11 @@ def generate(fixtures: Path, extensible_fixtures: Path, output: Path) -> None:
 
     manifest = {
         "corpusId": CORPUS_ID,
-        "sourceCorpora": [SOURCE_CORPUS, EXTENSIBLE_SOURCE_CORPUS],
+        "sourceCorpora": [
+            SOURCE_CORPUS,
+            EXTENSIBLE_SOURCE_CORPUS,
+            ALAC_SOURCE_CORPUS,
+        ],
         "notes": (
             "Deterministic byte-level derivations of committed native PCM "
             "fixtures. Expected codes/stages are product regression targets "
@@ -547,11 +821,14 @@ def generate(fixtures: Path, extensible_fixtures: Path, output: Path) -> None:
 
 
 def check_committed(
-    fixtures: Path, extensible_fixtures: Path, destination: Path
+    fixtures: Path,
+    extensible_fixtures: Path,
+    alac_fixtures: Path,
+    destination: Path,
 ) -> None:
     with tempfile.TemporaryDirectory() as scratch:
         fresh = Path(scratch) / CORPUS_ID
-        generate(fixtures, extensible_fixtures, fresh)
+        generate(fixtures, extensible_fixtures, alac_fixtures, fresh)
         for candidate in sorted(fresh.iterdir()):
             committed = destination / candidate.name
             if not committed.exists():
@@ -576,6 +853,12 @@ def main() -> None:
         help="directory containing the committed native-pcm-v1 fixtures",
     )
     parser.add_argument(
+        "--alac-fixtures",
+        type=Path,
+        default=repo_root / "tests" / "fixtures" / ALAC_SOURCE_CORPUS,
+        help="directory containing the committed native-alac-v1 fixtures",
+    )
+    parser.add_argument(
         "--extensible-fixtures",
         type=Path,
         default=repo_root / "tests" / "fixtures" / EXTENSIBLE_SOURCE_CORPUS,
@@ -595,7 +878,10 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.check:
         check_committed(
-            arguments.fixtures, arguments.extensible_fixtures, arguments.output
+            arguments.fixtures,
+            arguments.extensible_fixtures,
+            arguments.alac_fixtures,
+            arguments.output,
         )
     else:
         if arguments.output.exists():
@@ -605,7 +891,12 @@ def main() -> None:
                         shutil.rmtree(stale)
                     else:
                         stale.unlink()
-        generate(arguments.fixtures, arguments.extensible_fixtures, arguments.output)
+        generate(
+            arguments.fixtures,
+            arguments.extensible_fixtures,
+            arguments.alac_fixtures,
+            arguments.output,
+        )
         print(f"{CORPUS_ID}: wrote corpus to {arguments.output}")
 
 
