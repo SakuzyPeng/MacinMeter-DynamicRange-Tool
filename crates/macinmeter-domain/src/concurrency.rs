@@ -1,11 +1,12 @@
 //! Bounded decode reservations handed down by the owning application layer.
 //!
 //! ADR-0014 makes one application-owned plan the single source of every
-//! internal worker and memory permit. [`DecodeReservation`] carries an
-//! already-granted permit downwards and deliberately exposes no way to ask for
-//! more: a lower layer may shrink from a reservation, never grow past it. The
-//! type has no application dependency, so `codecs` consumes it without knowing
-//! how the caller sized it.
+//! internal worker and memory allocation. [`DecodeReservation`] carries a
+//! validated upper bound downwards; its fields are immutable, so code receiving
+//! one cannot widen that particular allocation. The type has no application
+//! dependency, so `codecs` consumes it without knowing how the owning plan sized
+//! it. Its cross-crate constructor is hidden from supported public docs and is
+//! used by first-party production code only in the application plan.
 
 use crate::{AnalysisError, AnalysisStage, ErrorCode};
 use std::num::NonZeroUsize;
@@ -20,11 +21,17 @@ pub const MAX_DECODE_QUEUE_CAPACITY: usize = 64;
 /// inside one opened source.
 pub const MAX_IN_FLIGHT_PCM_BYTES: u64 = 64 * 1024 * 1024;
 
-/// A bounded decode permit granted before any decode sub-task is scheduled.
+/// A bounded decode allocation granted before any decode sub-task is scheduled.
 ///
 /// The serial reservation is the product default. Its zero in-flight PCM budget
 /// is the literal serial contract: a serial route decodes and commits one block
 /// at a time, so no decoded block may ever wait on an earlier index.
+///
+/// This type crosses the `macinmeter`/`macinmeter-codecs` crate boundary, so its
+/// validated constructor is technically public. It is not an authority token
+/// or supported tuning API: first-party production code obtains it only from
+/// the application-owned concurrency plan, and direct decoder callers use
+/// [`DecodeReservation::serial`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodeReservation {
     workers: NonZeroUsize,
@@ -47,6 +54,7 @@ impl DecodeReservation {
     /// The queue must hold at least one packet per worker, and any reservation
     /// that can decode out of order must budget the PCM those workers retain
     /// while waiting for earlier indices.
+    #[doc(hidden)]
     pub fn new(
         workers: NonZeroUsize,
         queue_capacity: NonZeroUsize,

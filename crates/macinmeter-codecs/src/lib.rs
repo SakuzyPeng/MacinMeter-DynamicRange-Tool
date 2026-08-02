@@ -95,10 +95,9 @@ pub trait PcmSource {
 
 /// Opens the small, correctness-first stable native codec set.
 ///
-/// The factory decodes inside the [`DecodeReservation`] the owning application
-/// layer granted it. It never widens that permit and never allocates workers of
-/// its own, so a caller that cannot obtain a permit simply gets the serial
-/// route.
+/// [`DecoderFactory::new`] always uses the serial route. First-party application
+/// wiring may hand the factory a validated [`DecodeReservation`]; the factory
+/// never widens that allocation or creates workers beyond it.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DecoderFactory {
     reservation: DecodeReservation,
@@ -112,13 +111,14 @@ impl DecoderFactory {
         }
     }
 
-    /// A factory bound to an already-granted decode permit.
-    pub const fn with_reservation(reservation: DecodeReservation) -> Self {
+    /// First-party wiring for a factory bound to an application allocation.
+    ///
+    /// This cross-crate entry exists for `macinmeter::Application`; it is not a
+    /// supported public worker or queue tuning surface. Direct decoder callers
+    /// should use [`DecoderFactory::new`], which is permanently serial.
+    #[doc(hidden)]
+    pub const fn with_application_reservation(reservation: DecodeReservation) -> Self {
         Self { reservation }
-    }
-
-    pub const fn reservation(&self) -> DecodeReservation {
-        self.reservation
     }
 
     pub fn open(&self, path: &Path) -> Result<OpenedAudio, AnalysisError> {

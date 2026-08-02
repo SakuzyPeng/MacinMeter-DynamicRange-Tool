@@ -420,8 +420,8 @@ impl PcmSource for SymphoniaPcmSource {
 
         loop {
             // Commit whatever the input packet order allows before pulling more
-            // work. On the serial route this drains what the previous iteration
-            // accepted.
+            // work. The serial route returns its head directly from `accept`,
+            // while this drain serves outcomes that were previously stalled.
             if let Some(outcome) = self.reorder.take_ready() {
                 match outcome {
                     PacketOutcome::Decoded(block) => return self.commit(block),
@@ -451,8 +451,10 @@ impl PcmSource for SymphoniaPcmSource {
             let index = self.next_packet_index;
             self.next_packet_index += 1;
             let outcome = self.decode_packet(&packet);
-            if let Err(error) = self.reorder.accept(index, outcome) {
-                return self.fail(error);
+            match self.reorder.accept(index, outcome) {
+                Ok(Some(PacketOutcome::Decoded(block))) => return self.commit(block),
+                Ok(Some(PacketOutcome::Empty)) | Ok(None) => {}
+                Ok(Some(PacketOutcome::Failed(error))) | Err(error) => return self.fail(error),
             }
         }
     }

@@ -598,29 +598,6 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
 }
 
 #[test]
-fn the_production_job_allocation_is_serial_in_0_3_0() {
-    let application = Application::new();
-    assert!(
-        application.budget().concurrency().is_serial(),
-        "ADR-0014 authorised bounded parallelism but 0.3.0 ships none of it"
-    );
-
-    let job = application.reserve(&CancellationToken::new()).unwrap();
-    let allocation = job.allocation();
-    assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
-
-    let decode = allocation.decode();
-    assert!(decode.is_serial(), "packet workers are not enabled yet");
-    assert_eq!(decode.workers().get(), 1);
-    assert_eq!(decode.queue_capacity().get(), 1);
-    assert_eq!(
-        decode.max_in_flight_pcm_bytes(),
-        0,
-        "a serial route may never leave decoded PCM waiting on an earlier index"
-    );
-}
-
-#[test]
 fn every_stable_route_reaches_its_exact_frame_count_through_the_commit_buffer() {
     // The serial route now commits through the shared in-order packet buffer.
     // These multi-packet fixtures therefore exercise repeated accept/commit

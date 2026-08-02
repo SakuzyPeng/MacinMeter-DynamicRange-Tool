@@ -7,8 +7,9 @@
 //! implementation instead of two that can drift.
 //!
 //! The serial route is the differential oracle. It runs on
-//! [`DecodeReservation::serial`], which retains no out-of-order PCM, so every
-//! `accept` is immediately followed by a matching `take_ready`.
+//! [`DecodeReservation::serial`], which retains no out-of-order PCM. A result
+//! at the commit head is returned directly from `accept`; only later indices
+//! enter the bounded pending map.
 
 use macinmeter_domain::{AnalysisError, AnalysisStage, DecodeReservation, ErrorCode, PcmBlock};
 use std::collections::BTreeMap;
@@ -73,17 +74,20 @@ impl PacketReorderBuffer {
 
     /// Accept one completed packet result.
     ///
-    /// Results arriving after a committed failure are discarded. Duplicate
-    /// indices, indices behind the commit point, and results that exceed the
-    /// granted queue or in-flight PCM permit are scheduler contract breaches
-    /// and become structured errors rather than silent truncation.
+    /// The commit head is returned immediately and never consumes a reorder
+    /// slot. This is also a liveness rule: a full pending map must still accept
+    /// the one earlier result that unlocks it. Results arriving after a
+    /// committed failure are discarded. Duplicate indices, indices behind the
+    /// commit point, and stalled results that exceed the granted queue or
+    /// in-flight PCM permit are scheduler contract breaches and become
+    /// structured errors rather than silent truncation.
     pub(crate) fn accept(
         &mut self,
         index: u64,
         outcome: PacketOutcome,
-    ) -> Result<(), AnalysisError> {
+    ) -> Result<Option<PacketOutcome>, AnalysisError> {
         if self.terminal {
-            return Ok(());
+            return Ok(None);
         }
         if index < self.next_index {
             return Err(self.contract_error(
@@ -97,6 +101,11 @@ impl PacketReorderBuffer {
                 format!("index={index}"),
             ));
         }
+
+        if index == self.next_index {
+            return Ok(Some(self.advance(outcome)));
+        }
+
         if self.pending.len() >= self.reservation.queue_capacity().get() {
             return Err(self.capacity_error(
                 "reordered packet results exceeded the granted queue permit",
@@ -108,27 +117,24 @@ impl PacketReorderBuffer {
             ));
         }
 
-        // Only a result that has to wait for an earlier index occupies the
-        // in-flight PCM permit. A serial route always accepts the head, which
-        // is why its zero budget is satisfiable rather than vacuous.
-        let stalls = index != self.next_index;
+        // Only results that wait for an earlier index reach this point. A
+        // serial route therefore uses neither the pending map nor its zero-byte
+        // in-flight PCM permit.
         let bytes = outcome.pcm_bytes();
-        if stalls {
-            let stalled = self.stalled_pcm_bytes.saturating_add(bytes);
-            if stalled > self.reservation.max_in_flight_pcm_bytes() {
-                return Err(self.capacity_error(
-                    "reordered packet PCM exceeded the granted in-flight permit",
-                    format!(
-                        "stalled_pcm_bytes={stalled}; max_in_flight_pcm_bytes={}",
-                        self.reservation.max_in_flight_pcm_bytes()
-                    ),
-                ));
-            }
-            self.stalled_pcm_bytes = stalled;
+        let stalled = self.stalled_pcm_bytes.saturating_add(bytes);
+        if stalled > self.reservation.max_in_flight_pcm_bytes() {
+            return Err(self.capacity_error(
+                "reordered packet PCM exceeded the granted in-flight permit",
+                format!(
+                    "stalled_pcm_bytes={stalled}; max_in_flight_pcm_bytes={}",
+                    self.reservation.max_in_flight_pcm_bytes()
+                ),
+            ));
         }
+        self.stalled_pcm_bytes = stalled;
 
         self.pending.insert(index, outcome);
-        Ok(())
+        Ok(None)
     }
 
     /// Take the next outcome in input order, if it has completed.
@@ -140,6 +146,10 @@ impl PacketReorderBuffer {
             return None;
         }
         let outcome = self.pending.remove(&self.next_index)?;
+        Some(self.advance(outcome))
+    }
+
+    fn advance(&mut self, outcome: PacketOutcome) -> PacketOutcome {
         self.next_index += 1;
         if let Some(bytes) = self
             .pending
@@ -148,10 +158,10 @@ impl PacketReorderBuffer {
         {
             self.stalled_pcm_bytes = self.stalled_pcm_bytes.saturating_sub(bytes);
         }
-        if matches!(outcome, PacketOutcome::Failed(_)) {
+        if matches!(&outcome, PacketOutcome::Failed(_)) {
             self.enter_terminal();
         }
-        Some(outcome)
+        outcome
     }
 
     /// Assert that every accepted index was committed before end of stream.
@@ -256,14 +266,22 @@ mod tests {
         }
     }
 
+    fn push_decoded(committed: &mut Vec<u64>, outcome: PacketOutcome) {
+        committed.push(match outcome {
+            PacketOutcome::Decoded(block) => block.samples()[0] as u64,
+            other => panic!("expected decoded PCM, got {other:?}"),
+        });
+    }
+
     #[test]
     fn the_serial_reservation_commits_every_packet_it_accepts() {
         let mut buffer = PacketReorderBuffer::new(DecodeReservation::serial());
         for index in 0..4 {
-            buffer
+            let ready = buffer
                 .accept(index, PacketOutcome::Decoded(block(index as f64)))
                 .unwrap();
-            assert_eq!(decoded_value(buffer.take_ready()), index as f64);
+            assert_eq!(decoded_value(ready), index as f64);
+            assert!(buffer.take_ready().is_none());
         }
         assert_eq!(buffer.next_index(), 4);
         buffer.finish().unwrap();
@@ -275,14 +293,14 @@ mod tests {
             let mut buffer = PacketReorderBuffer::new(parallel_reservation());
             let mut committed = Vec::new();
             for index in order.iter().copied() {
-                buffer
+                if let Some(outcome) = buffer
                     .accept(index, PacketOutcome::Decoded(block(index as f64)))
-                    .unwrap();
+                    .unwrap()
+                {
+                    push_decoded(&mut committed, outcome);
+                }
                 while let Some(outcome) = buffer.take_ready() {
-                    committed.push(match outcome {
-                        PacketOutcome::Decoded(block) => block.samples()[0] as u64,
-                        other => panic!("expected decoded PCM, got {other:?}"),
-                    });
+                    push_decoded(&mut committed, outcome);
                 }
             }
             buffer.finish().unwrap();
@@ -296,16 +314,27 @@ mod tests {
         let late = AnalysisError::new(ErrorCode::DecodeFailed, AnalysisStage::Decode, "late");
         let early = AnalysisError::new(ErrorCode::MalformedMedia, AnalysisStage::Decode, "early");
 
-        buffer.accept(2, PacketOutcome::Failed(late)).unwrap();
+        assert!(
+            buffer
+                .accept(2, PacketOutcome::Failed(late))
+                .unwrap()
+                .is_none()
+        );
         assert!(
             buffer.take_ready().is_none(),
             "a later failure must not overtake outstanding earlier indices"
         );
-        buffer.accept(1, PacketOutcome::Failed(early)).unwrap();
+        assert!(
+            buffer
+                .accept(1, PacketOutcome::Failed(early))
+                .unwrap()
+                .is_none()
+        );
         assert!(buffer.take_ready().is_none());
-        buffer.accept(0, PacketOutcome::Empty).unwrap();
-
-        assert!(matches!(buffer.take_ready(), Some(PacketOutcome::Empty)));
+        assert!(matches!(
+            buffer.accept(0, PacketOutcome::Empty).unwrap(),
+            Some(PacketOutcome::Empty)
+        ));
         let failure = match buffer.take_ready() {
             Some(PacketOutcome::Failed(error)) => error,
             other => panic!("expected the earliest failure, got {other:?}"),
@@ -321,15 +350,17 @@ mod tests {
     fn results_arriving_after_a_committed_failure_are_discarded() {
         let mut buffer = PacketReorderBuffer::new(parallel_reservation());
         let error = AnalysisError::new(ErrorCode::DecodeFailed, AnalysisStage::Decode, "failed");
-        buffer.accept(0, PacketOutcome::Failed(error)).unwrap();
         assert!(matches!(
-            buffer.take_ready(),
+            buffer.accept(0, PacketOutcome::Failed(error)).unwrap(),
             Some(PacketOutcome::Failed(_))
         ));
 
-        buffer
-            .accept(1, PacketOutcome::Decoded(block(1.0)))
-            .expect("a late worker result must not become a second error");
+        assert!(
+            buffer
+                .accept(1, PacketOutcome::Decoded(block(1.0)))
+                .expect("a late worker result must not become a second error")
+                .is_none()
+        );
         assert!(buffer.take_ready().is_none());
         buffer.finish().unwrap();
     }
@@ -337,7 +368,7 @@ mod tests {
     #[test]
     fn duplicate_and_already_committed_indices_are_contract_errors() {
         let mut buffer = PacketReorderBuffer::new(parallel_reservation());
-        buffer.accept(1, PacketOutcome::Empty).unwrap();
+        assert!(buffer.accept(1, PacketOutcome::Empty).unwrap().is_none());
         let error = buffer
             .accept(1, PacketOutcome::Empty)
             .expect_err("one index may complete only once");
@@ -345,8 +376,10 @@ mod tests {
         assert_eq!(error.stage, AnalysisStage::Internal);
 
         let mut buffer = PacketReorderBuffer::new(parallel_reservation());
-        buffer.accept(0, PacketOutcome::Empty).unwrap();
-        buffer.take_ready().unwrap();
+        assert!(matches!(
+            buffer.accept(0, PacketOutcome::Empty).unwrap(),
+            Some(PacketOutcome::Empty)
+        ));
         let error = buffer
             .accept(0, PacketOutcome::Empty)
             .expect_err("a committed index may not be reopened");
@@ -356,9 +389,12 @@ mod tests {
     #[test]
     fn an_uncommitted_index_gap_fails_instead_of_dropping_audio() {
         let mut buffer = PacketReorderBuffer::new(parallel_reservation());
-        buffer
-            .accept(1, PacketOutcome::Decoded(block(1.0)))
-            .unwrap();
+        assert!(
+            buffer
+                .accept(1, PacketOutcome::Decoded(block(1.0)))
+                .unwrap()
+                .is_none()
+        );
         let error = buffer
             .finish()
             .expect_err("packet index 0 never completed, so the stream is incomplete");
@@ -372,8 +408,8 @@ mod tests {
     fn stalled_results_may_not_exceed_the_granted_permits() {
         let reservation = DecodeReservation::new(nonzero(2), nonzero(2), 64 * 1024).unwrap();
         let mut buffer = PacketReorderBuffer::new(reservation);
-        buffer.accept(1, PacketOutcome::Empty).unwrap();
-        buffer.accept(2, PacketOutcome::Empty).unwrap();
+        assert!(buffer.accept(1, PacketOutcome::Empty).unwrap().is_none());
+        assert!(buffer.accept(2, PacketOutcome::Empty).unwrap().is_none());
         let error = buffer
             .accept(3, PacketOutcome::Empty)
             .expect_err("the queue permit is a hard bound");
@@ -382,9 +418,12 @@ mod tests {
 
         let reservation = DecodeReservation::new(nonzero(2), nonzero(8), 8).unwrap();
         let mut buffer = PacketReorderBuffer::new(reservation);
-        buffer
-            .accept(1, PacketOutcome::Decoded(block(1.0)))
-            .expect("one stalled f64 sample fits the permit exactly");
+        assert!(
+            buffer
+                .accept(1, PacketOutcome::Decoded(block(1.0)))
+                .expect("one stalled f64 sample fits the permit exactly")
+                .is_none()
+        );
         let error = buffer
             .accept(2, PacketOutcome::Decoded(block(2.0)))
             .expect_err("the in-flight PCM permit is a hard bound");
@@ -396,25 +435,53 @@ mod tests {
         let reservation = DecodeReservation::new(nonzero(2), nonzero(8), 8).unwrap();
         let mut buffer = PacketReorderBuffer::new(reservation);
         // Index 1 stalls and occupies the whole in-flight permit.
-        buffer
-            .accept(1, PacketOutcome::Decoded(block(1.0)))
-            .unwrap();
-        buffer
+        assert!(
+            buffer
+                .accept(1, PacketOutcome::Decoded(block(1.0)))
+                .unwrap()
+                .is_none()
+        );
+        let head = buffer
             .accept(0, PacketOutcome::Decoded(block(0.0)))
             .unwrap();
-        assert_eq!(decoded_value(buffer.take_ready()), 0.0);
+        assert_eq!(decoded_value(head), 0.0);
         assert_eq!(decoded_value(buffer.take_ready()), 1.0);
 
         // Index 1 stopped stalling when it became the head, so the permit is
         // free for the next out-of-order result.
-        buffer
-            .accept(3, PacketOutcome::Decoded(block(3.0)))
-            .expect("the released permit must be reusable");
-        buffer
+        assert!(
+            buffer
+                .accept(3, PacketOutcome::Decoded(block(3.0)))
+                .expect("the released permit must be reusable")
+                .is_none()
+        );
+        let head = buffer
             .accept(2, PacketOutcome::Decoded(block(2.0)))
             .unwrap();
-        assert_eq!(decoded_value(buffer.take_ready()), 2.0);
+        assert_eq!(decoded_value(head), 2.0);
         assert_eq!(decoded_value(buffer.take_ready()), 3.0);
+        buffer.finish().unwrap();
+    }
+
+    #[test]
+    fn a_full_reorder_queue_still_accepts_the_head_that_unlocks_it() {
+        let reservation = DecodeReservation::new(nonzero(2), nonzero(2), 64 * 1024).unwrap();
+        let mut buffer = PacketReorderBuffer::new(reservation);
+        for index in [1, 2] {
+            assert!(
+                buffer
+                    .accept(index, PacketOutcome::Decoded(block(index as f64)))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+
+        let head = buffer
+            .accept(0, PacketOutcome::Decoded(block(0.0)))
+            .expect("the commit head does not consume a reorder slot");
+        assert_eq!(decoded_value(head), 0.0);
+        assert_eq!(decoded_value(buffer.take_ready()), 1.0);
+        assert_eq!(decoded_value(buffer.take_ready()), 2.0);
         buffer.finish().unwrap();
     }
 }

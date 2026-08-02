@@ -25,13 +25,13 @@ const IN_FLIGHT_PCM_BYTES_PER_WORKER: u64 = 4 * 1024 * 1024;
 /// never derives its size from media declarations, batch length or recursion
 /// depth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ConcurrencyPlan {
+pub(crate) struct ConcurrencyPlan {
     total_workers: NonZeroUsize,
 }
 
 impl ConcurrencyPlan {
     /// The product default: one worker for the whole job.
-    pub const fn serial() -> Self {
+    pub(crate) const fn serial() -> Self {
         Self {
             total_workers: NonZeroUsize::MIN,
         }
@@ -39,7 +39,11 @@ impl ConcurrencyPlan {
 
     /// A plan of at most `requested` workers, capped by the product ceiling and
     /// the host.
-    pub fn bounded(requested: NonZeroUsize) -> Self {
+    #[allow(
+        dead_code,
+        reason = "ADR-0014 keeps non-serial production plans dormant until a route graduates"
+    )]
+    pub(crate) fn bounded(requested: NonZeroUsize) -> Self {
         let host = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
         let workers = requested.get().min(MAX_DECODE_WORKERS).min(host).max(1);
         Self {
@@ -47,11 +51,11 @@ impl ConcurrencyPlan {
         }
     }
 
-    pub const fn total_workers(self) -> NonZeroUsize {
+    pub(crate) const fn total_workers(self) -> NonZeroUsize {
         self.total_workers
     }
 
-    pub const fn is_serial(self) -> bool {
+    pub(crate) const fn is_serial(self) -> bool {
         self.total_workers.get() == 1
     }
 
@@ -60,11 +64,11 @@ impl ConcurrencyPlan {
     /// This is the only place permits are handed out. Lanes and their packet
     /// workers come out of the same total, so a batch that widens its lanes
     /// necessarily narrows each lane's decoder instead of stacking pools.
-    pub fn allocate(
+    pub(crate) fn allocate(
         self,
         requested_file_lanes: NonZeroUsize,
     ) -> Result<PlanAllocation, AnalysisError> {
-        let total = self.total_workers.get();
+        let total = self.total_workers().get();
         let lanes = requested_file_lanes.get().min(total);
         let workers_per_lane = total / lanes;
         debug_assert!(
@@ -99,18 +103,18 @@ impl Default for ConcurrencyPlan {
 
 /// One non-recursive split of a [`ConcurrencyPlan`] across concurrent work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlanAllocation {
+pub(crate) struct PlanAllocation {
     file_lanes: NonZeroUsize,
     decode: DecodeReservation,
 }
 
 impl PlanAllocation {
-    pub const fn file_lanes(self) -> NonZeroUsize {
+    pub(crate) const fn file_lanes(self) -> NonZeroUsize {
         self.file_lanes
     }
 
     /// The decode permit granted to each file lane.
-    pub const fn decode(self) -> DecodeReservation {
+    pub(crate) const fn decode(self) -> DecodeReservation {
         self.decode
     }
 }

@@ -45,7 +45,7 @@
 > [ADR-0013：稳定 MP4/M4A + ALAC 路由](adr/0013-mp4-m4a-alac-stable-route.md)（Accepted / Done）
 >
 > post-M6 并发方向：
-> [ADR-0014：确定性有界并行与 packet 解码优先](adr/0014-deterministic-decode-analysis-pipeline.md)（Accepted / Not started）
+> [ADR-0014：确定性有界并行与 packet 解码优先](adr/0014-deterministic-decode-analysis-pipeline.md)（Accepted / In progress；第 1 步完成，并行轴未启用）
 
 ## 1. 文档目的
 
@@ -683,7 +683,8 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 固定 packet P0、文件 P1、窗口 P2，首个 route 为受限 ALAC；
 - [x] 固定统一 application worker/memory 计划、顺序提交、最早错误、连续 progress、
   sticky terminal、取消/join 和 crate-private 串行 oracle 契约；
-- [ ] 实现共用资源计划与 ALAC packet worker，并完成长音频 exact-fingerprint A/B；
+- [x] 实现共用资源计划、向下传递的 decode allocation 与有界顺序提交层；
+- [ ] 实现 ALAC packet worker，并完成长音频 exact-fingerprint A/B；
 - [ ] 形成 FLAC ordered full-stream MD5 设计后再评估 FLAC packet worker；
 - [ ] 文件级与窗口级分别按自身毕业门槛评估，不与首个 packet 切片捆绑。
 

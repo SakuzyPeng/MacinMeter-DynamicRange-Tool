@@ -24,7 +24,7 @@ const PRODUCTION_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
 ///
 /// The queue bound limits work admitted by adapters before it enters their
 /// blocking thread pool; it does not claim to be a byte-accurate decoder memory
-/// quota. The [`ConcurrencyPlan`] is the separate, internal bound on the workers
+/// quota. The internal `ConcurrencyPlan` is the separate bound on the workers
 /// and memory one admitted job may spend, and it stays serial in 0.3.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExecutionBudget {
@@ -69,7 +69,7 @@ impl ExecutionBudget {
     }
 
     /// The internal worker and memory plan one active job draws from.
-    pub const fn concurrency(self) -> ConcurrencyPlan {
+    pub(crate) const fn concurrency(self) -> ConcurrencyPlan {
         self.concurrency
     }
 
@@ -101,6 +101,10 @@ impl Application {
     }
 
     pub fn with_budget(budget: ExecutionBudget) -> Self {
+        debug_assert!(
+            budget.concurrency().is_serial(),
+            "0.3.0 exposes no non-serial production budget"
+        );
         Self {
             coordinator: ExecutionCoordinator::new(budget),
         }
@@ -189,7 +193,7 @@ impl ApplicationJob {
     ///
     /// Permits are granted once, up front. Nothing below this job asks for a
     /// second permit, which is what keeps nested pools from deadlocking.
-    pub const fn allocation(&self) -> PlanAllocation {
+    pub(crate) const fn allocation(&self) -> PlanAllocation {
         self.allocation
     }
 
@@ -198,7 +202,7 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<AnalysisReport, AnalysisError> {
-        let decode = self.allocation.decode();
+        let decode = self.allocation().decode();
         self.execute(progress, |control| {
             Analyzer::new(decode).analyze_file_with_control(request, control)
         })
@@ -209,7 +213,7 @@ impl ApplicationJob {
         request: BatchRequest,
         progress: &dyn ProgressSink,
     ) -> Result<BatchReport, AnalysisError> {
-        let allocation = self.allocation;
+        let allocation = self.allocation();
         self.execute(progress, |control| {
             BatchRunner::new(allocation).run(request, control)
         })
@@ -430,6 +434,29 @@ mod tests {
     ) -> Result<(), AnalysisError> {
         let progress = NoopProgressSink;
         job.execute(&progress, |_| operation())
+    }
+
+    #[test]
+    fn the_production_job_allocation_is_serial_in_0_3_0() {
+        let application = Application::new();
+        assert!(
+            application.budget().concurrency().is_serial(),
+            "ADR-0014 authorised bounded parallelism but 0.3.0 ships none of it"
+        );
+
+        let job = application.reserve(&CancellationToken::new()).unwrap();
+        let allocation = job.allocation();
+        assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
+
+        let decode = allocation.decode();
+        assert!(decode.is_serial(), "packet workers are not enabled yet");
+        assert_eq!(decode.workers().get(), 1);
+        assert_eq!(decode.queue_capacity().get(), 1);
+        assert_eq!(
+            decode.max_in_flight_pcm_bytes(),
+            0,
+            "a serial route may never leave decoded PCM waiting on an earlier index"
+        );
     }
 
     #[test]

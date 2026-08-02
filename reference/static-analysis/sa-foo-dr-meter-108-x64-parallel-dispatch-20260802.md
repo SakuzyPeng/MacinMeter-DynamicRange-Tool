@@ -33,7 +33,8 @@ analyzer 三入口并绕过调度器，完整组件则包含一个能够在三�
 
 ## 并行相关导入
 
-固定 target 的导入表中与线程/并发相关的项全部集中在调度器一个函数内：
+固定 target 中负责原生线程创建、恢复、优先级与 join 的四项导入集中在调度器
+`0xdf30`；并行度查询另有一个无关调用方，`CreateEventW` 也位于本记录路径之外：
 
 | 导入 | IAT RVA | 调用方 |
 | --- | --- | --- |
@@ -56,7 +57,7 @@ n = min(工作量需求, _Thrd_hardware_concurrency())
 if n <= 1:
     直接在当前线程调用线程体并返回
 else:
-    重复 n - 1 次:
+    重复 n 次:
         CreateThread(lpStartAddress = 0xdaf0, lpParameter = 上下文,
                      dwCreationFlags = 4 /* CREATE_SUSPENDED */)
         SetThreadPriority(handle, -15)
@@ -65,9 +66,14 @@ else:
     WaitForMultipleObjects(n, 句柄数组, bWaitAll = TRUE, INFINITE)
 ```
 
-线程以 `CREATE_SUSPENDED` 创建、统一 `ResumeThread` 放行，收敛点是单一的
-`bWaitAll` 等待。线程优先级固定为 `-15`。`CreateThread` 失败时把线程数写回 1
-并退化为当前线程执行。
+线程以 `CREATE_SUSPENDED` 创建、统一 `ResumeThread` 放行，成功创建、恢复与
+`bWaitAll` 等待的数量均为 `n`。线程优先级固定为 `-15`。`CreateThread` 失败时，
+路径会关闭此前已保存的线程句柄、把线程数写回 1，并退化为当前线程执行。
+
+对同一 SHA-256 与既有 IDA 9.1 数据库的复核同时确认：创建循环以已创建计数与
+上下文 `+0x78` 的 `n` 比较后回跳；恢复循环也以该 `n` 为界；
+`WaitForMultipleObjects` 的 `nCount` 直接读取同一字段。因此这里不存在额外的
+“调用线程 handle”，此前写成 `n - 1` 是记录错误。
 
 线程体地址在调度器内出现两次，两次的引用类型不同，且与上述两条路径一一对应：
 

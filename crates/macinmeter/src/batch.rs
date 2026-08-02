@@ -71,6 +71,10 @@ impl BatchRunner {
     /// Items still run one at a time, so a batch spends the whole allocation on
     /// one file's decoder rather than splitting it across lanes.
     pub(crate) const fn new(allocation: PlanAllocation) -> Self {
+        debug_assert!(
+            allocation.file_lanes().get() == 1,
+            "0.3.0 batch execution supports exactly one file lane"
+        );
         Self {
             analyzer: Analyzer::new(allocation.decode()),
         }

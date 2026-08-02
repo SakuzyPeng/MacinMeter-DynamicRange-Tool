@@ -311,27 +311,33 @@ packet 级另加：
 
 - `domain` 新增 `DecodeReservation` 与固定上限 `MAX_DECODE_WORKERS = 8`、
   `MAX_DECODE_QUEUE_CAPACITY = 64`、`MAX_IN_FLIGHT_PCM_BYTES = 64 MiB`。它不含
-  application 依赖，只能收缩不能放大；serial reservation 的 in-flight 预算为
-  0 bytes，直接表达“串行路径不得让任何已解码 block 等待更早序号”；
+  application 依赖；allocation 字段不可变，收到它的 lower layer 不能就地放大。
+  跨 crate 构造入口因 Rust visibility 必须存在，但已从支持的 public docs 与顶层
+  façade 隐藏；第一方 production 只在 application plan 中构造。serial
+  reservation 的 in-flight 预算为 0 bytes，直接表达“串行路径不得让任何已解码
+  block 等待更早序号”；
 - `macinmeter` 新增 `ConcurrencyPlan`，每 worker 派生 4 个排队 packet 与 4 MiB
   in-flight PCM。`allocate()` 是唯一的 permit 发放点，在 job 进入 admission 队列
   前一次性完成，且以整除保证 `file_lanes × workers_per_lane ≤ total_workers`；
   `bounded()` 同时受产品上限和 `available_parallelism()` 约束；
 - `ApplicationJob` 持有该 allocation 并向 `codecs` 下发；`DecoderFactory` 只在
   收到的 permit 内解码，自身不创建 worker。当前生产 plan 恒为 serial、
-  file lanes 恒为 1；
+  file lanes 恒为 1；`ConcurrencyPlan`、`PlanAllocation` 与 job allocation accessor
+  均保持 crate-private，低层跨 crate wiring 入口为 doc-hidden，不形成支持的公共
+  worker/queue 调参面；
 - `codecs` 新增 crate-private `PacketReorderBuffer`：packet 在 demux 时获得稳定
   单调序号，失败是一等 `PacketOutcome::Failed` 而非空 PCM，提交严格按输入序，
   最早失败序号胜出，committed failure 之后的迟到结果被丢弃而不是二次报错；
   重复序号、落后于提交点的序号、超出 queue/in-flight permit 以及 EOF 时残留的
-  序号缺口都转为结构化 error；
+  序号缺口都转为结构化 error。commit head 从 `accept` 直接返回、不占 reorder
+  slot，因此满队列仍能接收并提交唯一可以解除阻塞的早期结果；
 - 串行路径本身走这条提交层，因此顺序契约由生产覆盖而非只由并行代码覆盖；
   `open_test_source` 固定在 serial reservation 上，作为后续 route-specific
   worker 的 differential oracle。`fault::completion_orders` 提供确定性乱序注入，
   不依赖 wall-clock 竞争。
 
-验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（16 套、194 项，含
-新增 17 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过。
+验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（197 项，含新增
+20 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过。
 另以 136 个 fixture 逐个运行 release CLI `analyze --format json`，改动前后输出
 逐字节相同（SHA-256 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`）。
 本步不建立任何性能声明，也不启用任何并行轴。
@@ -359,7 +365,7 @@ packet 级另加：
 
 ## 待补证据
 
-本 ADR 已接受架构方向与实施优先级，但尚未接受任何实现或性能声明：
+本 ADR 已接受架构方向与实施优先级，但尚未接受任何并行实现或性能声明：
 
 - ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立；
 - ALAC packet 独立性仍需用当前产品 route 的 raw-bit、错误与乱序测试完成证明；

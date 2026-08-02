@@ -4,6 +4,7 @@ mod concurrency;
 mod error;
 mod model;
 
+#[doc(hidden)]
 pub use concurrency::{
     DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_DECODE_WORKERS, MAX_IN_FLIGHT_PCM_BYTES,
 };

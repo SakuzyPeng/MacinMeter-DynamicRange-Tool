@@ -28,7 +28,7 @@ impl Analyzer {
     /// Build an analyzer that decodes inside an already-granted permit.
     pub(crate) const fn new(decode: DecodeReservation) -> Self {
         Self {
-            decoder_factory: DecoderFactory::with_reservation(decode),
+            decoder_factory: DecoderFactory::with_application_reservation(decode),
         }
     }
 
