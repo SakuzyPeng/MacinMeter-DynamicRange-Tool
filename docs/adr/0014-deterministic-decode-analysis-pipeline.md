@@ -1,7 +1,7 @@
 # ADR-0014：确定性有界并行与 packet 解码优先
 
 - 状态：Accepted
-- 实施状态：In progress（第 1 步已完成；三个并行轴均未启用，生产路径仍为串行）
+- 实施状态：In progress（第 1–2 步已完成；三个并行轴均未启用，生产路径仍为串行）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -363,12 +363,61 @@ packet 级另加：
 风险；尤其 FLAC 的流级 MD5 使“frame 可独立解码”不足以直接推出生产安全。实现与
 测试成本明显高于简单流水线，且最终收益仍须由正式长音频 A/B 决定。
 
+### 第 2 步（2026-08-02，实现与正确性部分完成；未启用）
+
+ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍恒为 serial，
+因此该路径目前只由测试的显式 reservation 驱动：
+
+- `codecs` 新增 `decode_engine`，把解码语义收敛为单一 `decode_packet`：串行
+  oracle 与 ALAC workers 共用同一份几何校验、错误分类与 `f64` 转换，两条路径
+  不可能在这些语义上漂移；调度差异之外的一切保持一致；
+- 拓扑为「顺序 demux 线程 → 每 worker 独立 inbox → N 个 worker → 有界 result
+  通道 → 主线程按输入序提交」。派发是 `index % workers` 的固定函数，与哪个
+  worker 恰好空闲无关，因此同一输入的 packet 到 worker 的映射完全可复现；
+- 每 worker inbox 深度固定为 2，result 通道容量为 worker 数。最坏滞留因此以
+  `workers × (2 + 1)` 为界，落在 plan 派生的 `workers × 4` reorder permit 内，
+  该关系由 `debug_assert` 固定；
+- worker 只在 `alac_info.is_some() && workers > 1` 时创建，绝不从扩展名或泛型
+  codec descriptor 推导；worker 数为 1 时在解码开始前退化为串行；
+- 每个 decoder 在调用线程预先创建，创建失败使 open 失败而非某个 worker 失败；
+- ADR §4 的完整性约束在此路径上被主动执行：worker 只见到自身子集，所以其
+  `finalize()` 不能代替流级签名。ALAC route 以“decoder 不报告任何流级 verdict”
+  为前提毕业；一旦某个 worker 返回了 `verify_ok`，并行路径直接失败，而不是
+  接受一次 per-subset 校验；
+- 所有线程由 pool 拥有，`Drop` 先释放 receiver 唤醒 worker、再 join demux 与
+  全部 worker；worker 或 demux panic 转为结构化 terminal error。
+
+正确性证据（9 个 ALAC fixture × 1/2/4/8 worker）：
+
+- 解码 raw `f64` bits 与 `SourceInfo` 与串行 oracle 逐位一致；
+- 强制乱序下同样逐位一致。测试注入使 worker 0 每包延迟，令 packet 0 最后完成，
+  并断言 reorder 确实发生了滞留。**未注入延迟时这些短 fixture 不会自然乱序**，
+  因此等价测试若不注入即无实际覆盖；这也说明现有 fixture 无法建立调度收益；
+- `alac-corrupt-first-packet` 在有无注入延迟、1/2/4/8 worker 下产生完全相同的
+  错误码、阶段、消息与 sticky 重放，且 progress 保持 0 帧、不转为 EOF；
+- WAV/float64/FLAC/AIFF 在多 worker reservation 下证明零个 worker pool 被创建，
+  PCM 仍逐位一致；
+- progress 单调、EOF 只在精确帧数提交后出现；提前 drop 会 join 全部线程；
+- 每个并行断言都以 pool 计数器确认该用例确实运行在 workers 上；把 route 判定
+  改成恒 false 会使等价测试失败（27 → 0），因此这些断言不会静默退化为串行。
+
+验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（204 项，含新增
+7 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过；
+136 个 fixture 的 release CLI 输出仍为 SHA-256
+`2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`，与串行基线
+逐字节相同。
+
+本步不建立任何性能声明。长音频 source-bound corpus 与 ADR-0007 的 1/2/4/8
+worker 交错 A/B 仍未进行，因此 ALAC packet workers 不得默认启用。
+
 ## 待补证据
 
 本 ADR 已接受架构方向与实施优先级，但尚未接受任何并行实现或性能声明：
 
-- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立；
-- ALAC packet 独立性仍需用当前产品 route 的 raw-bit、错误与乱序测试完成证明；
+- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立，因此没有任何
+  加速比可以声明，packet workers 也不得默认启用；
+- ALAC packet 独立性已由当前产品 route 的 raw-bit、错误与强制乱序测试在committed
+  fixture 上证明；但这些 fixture 都很短，独立性在长音频与更深队列下仍未验证；
 - FLAC 的 ordered full-stream MD5 设计尚未形成；
 - 文件级与窗口级仍只有准入契约，没有生产实现。
 

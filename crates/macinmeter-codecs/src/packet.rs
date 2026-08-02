@@ -53,6 +53,12 @@ pub(crate) struct PacketReorderBuffer {
     pending: BTreeMap<u64, PacketOutcome>,
     stalled_pcm_bytes: u64,
     terminal: bool,
+    /// Results that had to wait for an earlier index.
+    ///
+    /// A parallel test whose packets all happened to finish in order would
+    /// prove nothing about reordering, so tests assert this actually rose.
+    #[cfg(test)]
+    stalled_accepts: usize,
 }
 
 impl PacketReorderBuffer {
@@ -63,7 +69,15 @@ impl PacketReorderBuffer {
             pending: BTreeMap::new(),
             stalled_pcm_bytes: 0,
             terminal: false,
+            #[cfg(test)]
+            stalled_accepts: 0,
         }
+    }
+
+    /// Results so far that had to wait for an earlier index.
+    #[cfg(test)]
+    pub(crate) const fn stalled_accepts(&self) -> usize {
+        self.stalled_accepts
     }
 
     /// The next packet index the buffer will commit.
@@ -133,6 +147,10 @@ impl PacketReorderBuffer {
         }
         self.stalled_pcm_bytes = stalled;
 
+        #[cfg(test)]
+        {
+            self.stalled_accepts += 1;
+        }
         self.pending.insert(index, outcome);
         Ok(None)
     }

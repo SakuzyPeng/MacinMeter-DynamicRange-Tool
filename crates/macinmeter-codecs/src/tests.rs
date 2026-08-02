@@ -3,14 +3,15 @@ use crate::{
     stable_discovery_extensions,
 };
 use macinmeter_domain::{
-    AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, ErrorCode,
-    MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
+    AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, DecodeReservation,
+    ErrorCode, MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     fs,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -157,6 +158,61 @@ fn decode_all_samples(path: &Path) -> (macinmeter_domain::SourceInfo, Vec<f64>) 
         samples.extend_from_slice(block.samples());
     }
     (source, samples)
+}
+
+/// Worker counts every ALAC parallel-equivalence test sweeps.
+const ALAC_WORKER_COUNTS: [usize; 3] = [2, 4, 8];
+
+/// A reservation shaped exactly like the one the application plan derives.
+fn worker_reservation(workers: usize) -> DecodeReservation {
+    DecodeReservation::new(
+        NonZeroUsize::new(workers).unwrap(),
+        NonZeroUsize::new(workers * 4).unwrap(),
+        4 * 1024 * 1024 * workers as u64,
+    )
+    .expect("the plan's per-worker derivation must stay inside the domain ceilings")
+}
+
+fn decode_all_samples_with(
+    path: &Path,
+    reservation: DecodeReservation,
+) -> (macinmeter_domain::SourceInfo, Vec<f64>) {
+    let mut opened = DecoderFactory::with_application_reservation(reservation)
+        .open(path)
+        .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+    let source = opened.source.clone();
+    let mut samples = Vec::new();
+    while let ReadOutcome::Data(block) = opened.reader.read_block().expect("fixture should decode")
+    {
+        samples.extend_from_slice(block.samples());
+    }
+    (source, samples)
+}
+
+/// Count worker pools started while `body` runs.
+///
+/// An equivalence test that quietly fell back to the serial route would pass
+/// without proving anything, so every parallel test states how many pools it
+/// expects to have started.
+fn started_worker_pools(body: impl FnOnce()) -> usize {
+    let counter = &crate::decode_engine::STARTED_WORKER_POOLS;
+    let before = counter.with(std::cell::Cell::get);
+    body();
+    counter.with(std::cell::Cell::get) - before
+}
+
+fn raw_bits(samples: &[f64]) -> Vec<u64> {
+    samples.iter().map(|sample| sample.to_bits()).collect()
+}
+
+fn alac_fixture_names() -> Vec<String> {
+    alac_fixture_manifest()["fixtures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|fixture| fixture["kind"] == "alac")
+        .map(|fixture| fixture["path"].as_str().unwrap().to_owned())
+        .collect()
 }
 
 struct PcmSourceContractCase {
@@ -2299,4 +2355,242 @@ fn flac_without_a_declared_total_sample_count_is_rejected_at_probe() {
     };
     assert_eq!(error.code, ErrorCode::DecodeFailed);
     assert_eq!(error.stage, AnalysisStage::Decode);
+}
+
+// ADR-0014 step 2: the ALAC packet workers. Production still runs on the serial
+// plan, so these tests drive the parallel engine through an explicit
+// reservation and hold it to the serial oracle's exact results.
+
+#[test]
+fn alac_packet_workers_decode_bit_identically_at_every_worker_count() {
+    let names = alac_fixture_names();
+    let started = started_worker_pools(|| {
+        for name in &names {
+            let path = alac_fixture_path(name);
+            let (oracle_source, oracle_samples) = decode_all_samples(&path);
+            let oracle_bits = raw_bits(&oracle_samples);
+
+            for workers in ALAC_WORKER_COUNTS {
+                let (source, samples) = decode_all_samples_with(&path, worker_reservation(workers));
+                assert_eq!(
+                    raw_bits(&samples),
+                    oracle_bits,
+                    "{name} decoded different raw f64 bits on {workers} workers"
+                );
+                assert_eq!(
+                    source, oracle_source,
+                    "{name} reported different source metadata on {workers} workers"
+                );
+            }
+        }
+    });
+    assert_eq!(
+        started,
+        names.len() * ALAC_WORKER_COUNTS.len(),
+        "every parallel case must actually have run on packet workers"
+    );
+}
+
+#[test]
+fn a_single_worker_reservation_stays_on_the_serial_route() {
+    // A worker count of one must degrade before decoding starts, even when the
+    // reservation would otherwise permit a deeper queue.
+    let reservation = DecodeReservation::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        4 * 1024 * 1024,
+    )
+    .unwrap();
+
+    let started = started_worker_pools(|| {
+        for name in alac_fixture_names() {
+            let path = alac_fixture_path(&name);
+            let (oracle_source, oracle_samples) = decode_all_samples(&path);
+            let (source, samples) = decode_all_samples_with(&path, reservation);
+            assert_eq!(raw_bits(&samples), raw_bits(&oracle_samples), "{name}");
+            assert_eq!(source, oracle_source, "{name}");
+        }
+    });
+    assert_eq!(started, 0, "one worker must not start a pool at all");
+}
+
+#[test]
+fn only_the_graduated_alac_route_creates_packet_workers() {
+    // ADR-0014 forbids inferring packet independence from an extension or a
+    // generic codec descriptor. Every other stable route must ignore a
+    // multi-worker reservation entirely and still produce identical PCM.
+    let reservation = worker_reservation(4);
+    let started = started_worker_pools(|| {
+        for name in [
+            "native-pcm-v1/wav-pcm-s16-stereo.wav",
+            "native-pcm-v1/wav-float64-stereo.wav",
+            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+            "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+        ] {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures")
+                .join(name);
+            let (oracle_source, oracle_samples) = decode_all_samples(&path);
+            let (source, samples) = decode_all_samples_with(&path, reservation);
+            assert_eq!(raw_bits(&samples), raw_bits(&oracle_samples), "{name}");
+            assert_eq!(source, oracle_source, "{name}");
+        }
+    });
+    assert_eq!(
+        started, 0,
+        "a route that has not graduated must never start packet workers"
+    );
+}
+
+#[test]
+fn a_corrupt_alac_packet_fails_identically_at_every_worker_count() {
+    let path = malformed_fixture_path("alac-corrupt-first-packet.m4a");
+    let oracle_error = {
+        let mut opened = DecoderFactory::new().open(&path).unwrap();
+        opened.reader.read_block().unwrap_err()
+    };
+    assert_eq!(oracle_error.code, ErrorCode::DecodeFailed);
+    assert_eq!(oracle_error.stage, AnalysisStage::Decode);
+
+    // The corrupt packet is index 0. Stalling worker 0 makes it finish *last*,
+    // so later packets that already succeeded must not be committed ahead of
+    // it and must not turn the failure into data or EOF.
+    for stall_micros in [0, 2_000] {
+        for workers in ALAC_WORKER_COUNTS {
+            crate::decode_engine::STALL_FIRST_WORKER_MICROS
+                .store(stall_micros, std::sync::atomic::Ordering::Relaxed);
+            let mut opened =
+                DecoderFactory::with_application_reservation(worker_reservation(workers))
+                    .open(&path)
+                    .unwrap();
+            let error = opened
+                .reader
+                .read_block()
+                .expect_err("a corrupt packet must never be skipped");
+            let terminal_progress = opened.reader.progress();
+            let repeated: Vec<_> = (0..2)
+                .map(|_| (opened.reader.read_block(), opened.reader.progress()))
+                .collect();
+            crate::decode_engine::STALL_FIRST_WORKER_MICROS
+                .store(0, std::sync::atomic::Ordering::Relaxed);
+
+            let case = format!("{workers} workers, stall {stall_micros}us");
+            assert_eq!(
+                error, oracle_error,
+                "{case} changed the failing packet's identity"
+            );
+            assert_eq!(terminal_progress.decoded_frames(), 0, "{case}");
+            assert!(!terminal_progress.is_eof(), "{case}");
+            for (repeated_read, progress) in repeated {
+                assert_eq!(
+                    repeated_read.unwrap_err(),
+                    error,
+                    "{case} lost sticky terminal state"
+                );
+                assert_eq!(progress, terminal_progress, "{case}");
+            }
+        }
+    }
+}
+
+#[test]
+fn worker_progress_stays_monotonic_and_reaches_eof_only_after_every_commit() {
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let expected_frames = alac_fixture_manifest()["fixtures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|fixture| fixture["path"] == "alac16-stereo-48000-multipacket.m4a")
+        .unwrap()["frames"]
+        .as_u64()
+        .unwrap();
+
+    for workers in ALAC_WORKER_COUNTS {
+        let mut opened = DecoderFactory::with_application_reservation(worker_reservation(workers))
+            .open(&path)
+            .unwrap();
+        let mut previous = 0;
+        let mut blocks = 0;
+        while let ReadOutcome::Data(block) =
+            opened.reader.read_block().expect("fixture should decode")
+        {
+            blocks += 1;
+            let progress = opened.reader.progress();
+            assert!(
+                progress.decoded_frames() > previous,
+                "{workers} workers published non-monotonic progress"
+            );
+            assert!(
+                !progress.is_eof(),
+                "{workers} workers reported EOF while data remained"
+            );
+            previous = progress.decoded_frames();
+            assert!(block.frames() > 0);
+        }
+        assert!(blocks > 1, "this fixture must exercise multiple packets");
+        let progress = opened.reader.progress();
+        assert!(progress.is_eof());
+        assert_eq!(
+            progress.decoded_frames(),
+            expected_frames,
+            "{workers} workers committed a different frame count"
+        );
+    }
+}
+
+#[test]
+fn dropping_a_worker_source_early_joins_every_thread() {
+    // Abandoning a source mid-stream must not leave decoding running behind it.
+    // A leaked thread would keep the channel alive and hang this test.
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    for workers in ALAC_WORKER_COUNTS {
+        let mut opened = DecoderFactory::with_application_reservation(worker_reservation(workers))
+            .open(&path)
+            .unwrap();
+        assert!(matches!(
+            opened.reader.read_block().unwrap(),
+            ReadOutcome::Data(_)
+        ));
+        drop(opened);
+    }
+}
+
+#[test]
+fn forced_out_of_order_completion_still_commits_identical_pcm() {
+    use std::sync::atomic::Ordering;
+
+    // Stalling worker 0 makes packet 0 finish last, so every other worker's
+    // result must sit in the reorder buffer waiting for it. This is the worst
+    // reordering the granted permits have to survive.
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let (_, oracle_samples) = decode_all_samples(&path);
+    let oracle_bits = raw_bits(&oracle_samples);
+
+    for workers in ALAC_WORKER_COUNTS {
+        crate::decode_engine::STALL_FIRST_WORKER_MICROS.store(2_000, Ordering::Relaxed);
+        let mut reader =
+            crate::symphonia_source::open_test_source_with(&path, worker_reservation(workers))
+                .unwrap();
+        let mut samples = Vec::new();
+        let outcome = loop {
+            match reader.read_block() {
+                Ok(ReadOutcome::Data(block)) => samples.extend_from_slice(block.samples()),
+                Ok(ReadOutcome::Eof) => break Ok(()),
+                Err(error) => break Err(error),
+            }
+        };
+        let stalled = reader.stalled_accepts();
+        crate::decode_engine::STALL_FIRST_WORKER_MICROS.store(0, Ordering::Relaxed);
+
+        outcome.unwrap_or_else(|error| panic!("{workers} workers failed to decode: {error}"));
+        assert_eq!(
+            raw_bits(&samples),
+            oracle_bits,
+            "{workers} workers changed the PCM under forced reordering"
+        );
+        assert!(
+            stalled > 0,
+            "{workers} workers never reordered, so this proved nothing"
+        );
+    }
 }

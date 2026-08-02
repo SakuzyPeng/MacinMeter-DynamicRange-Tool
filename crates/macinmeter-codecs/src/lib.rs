@@ -3,6 +3,7 @@
 mod capability;
 mod codec;
 mod container;
+mod decode_engine;
 mod error;
 mod isobmff;
 mod packet;
