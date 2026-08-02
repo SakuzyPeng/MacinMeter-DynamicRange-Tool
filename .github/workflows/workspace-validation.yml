@@ -132,7 +132,7 @@ jobs:
           $document = & .\target\release\macinmeter.exe analyze `
             .\tests\fixtures\native-pcm-v1\wav-pcm-s16-stereo.wav `
             --format json | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $document.schemaVersion -ne 3 `
+          if ($LASTEXITCODE -ne 0 -or $document.schemaVersion -ne 4 `
               -or $document.kind -ne "analysis") {
             throw "release CLI analysis smoke test failed"
           }
