@@ -4,7 +4,7 @@ use crate::{
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, DecodeReservation,
-    ErrorCode, MAX_ANALYSIS_CHANNELS, PcmBlock, SourceCodec,
+    ErrorCode, MAX_ANALYSIS_CHANNELS, MAX_DECODE_QUEUE_CAPACITY, PcmBlock, SourceCodec,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -165,9 +165,13 @@ const ALAC_WORKER_COUNTS: [usize; 3] = [2, 4, 8];
 
 /// A reservation shaped exactly like the one the application plan derives.
 fn worker_reservation(workers: usize) -> DecodeReservation {
+    worker_reservation_with_queue(workers, workers * 4)
+}
+
+fn worker_reservation_with_queue(workers: usize, queue_capacity: usize) -> DecodeReservation {
     DecodeReservation::new(
         NonZeroUsize::new(workers).unwrap(),
-        NonZeroUsize::new(workers * 4).unwrap(),
+        NonZeroUsize::new(queue_capacity).unwrap(),
         4 * 1024 * 1024 * workers as u64,
     )
     .expect("the plan's per-worker derivation must stay inside the domain ceilings")
@@ -2452,29 +2456,31 @@ fn a_corrupt_alac_packet_fails_identically_at_every_worker_count() {
     assert_eq!(oracle_error.code, ErrorCode::DecodeFailed);
     assert_eq!(oracle_error.stage, AnalysisStage::Decode);
 
-    // The corrupt packet is index 0. Stalling worker 0 makes it finish *last*,
-    // so later packets that already succeeded must not be committed ahead of
-    // it and must not turn the failure into data or EOF.
-    for stall_micros in [0, 2_000] {
+    // The corrupt packet is index 0. The instance-owned injection holds its
+    // outcome until a later packet has been published, so successful work may
+    // not overtake the earlier failure or turn it into data or EOF.
+    for force_reordering in [false, true] {
         for workers in ALAC_WORKER_COUNTS {
-            crate::decode_engine::STALL_FIRST_WORKER_MICROS
-                .store(stall_micros, std::sync::atomic::Ordering::Relaxed);
-            let mut opened =
-                DecoderFactory::with_application_reservation(worker_reservation(workers))
-                    .open(&path)
-                    .unwrap();
-            let error = opened
-                .reader
+            let options = if force_reordering {
+                crate::decode_engine::PoolOptions::force_first_result_after_later()
+            } else {
+                crate::decode_engine::PoolOptions::default()
+            };
+            let mut reader = crate::symphonia_source::open_test_source_with_pool_options(
+                &path,
+                worker_reservation(workers),
+                options,
+            )
+            .unwrap();
+            let error = reader
                 .read_block()
                 .expect_err("a corrupt packet must never be skipped");
-            let terminal_progress = opened.reader.progress();
+            let terminal_progress = reader.progress();
             let repeated: Vec<_> = (0..2)
-                .map(|_| (opened.reader.read_block(), opened.reader.progress()))
+                .map(|_| (reader.read_block(), reader.progress()))
                 .collect();
-            crate::decode_engine::STALL_FIRST_WORKER_MICROS
-                .store(0, std::sync::atomic::Ordering::Relaxed);
 
-            let case = format!("{workers} workers, stall {stall_micros}us");
+            let case = format!("{workers} workers, force_reordering={force_reordering}");
             assert_eq!(
                 error, oracle_error,
                 "{case} changed the failing packet's identity"
@@ -2557,20 +2563,20 @@ fn dropping_a_worker_source_early_joins_every_thread() {
 
 #[test]
 fn forced_out_of_order_completion_still_commits_identical_pcm() {
-    use std::sync::atomic::Ordering;
-
-    // Stalling worker 0 makes packet 0 finish last, so every other worker's
-    // result must sit in the reorder buffer waiting for it. This is the worst
-    // reordering the granted permits have to survive.
+    // Hold packet zero at the engine boundary until a later result has been
+    // published. This deterministically exercises the production reorder and
+    // commit path without relying on thread timing.
     let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
     let (_, oracle_samples) = decode_all_samples(&path);
     let oracle_bits = raw_bits(&oracle_samples);
 
     for workers in ALAC_WORKER_COUNTS {
-        crate::decode_engine::STALL_FIRST_WORKER_MICROS.store(2_000, Ordering::Relaxed);
-        let mut reader =
-            crate::symphonia_source::open_test_source_with(&path, worker_reservation(workers))
-                .unwrap();
+        let mut reader = crate::symphonia_source::open_test_source_with_pool_options(
+            &path,
+            worker_reservation(workers),
+            crate::decode_engine::PoolOptions::force_first_result_after_later(),
+        )
+        .unwrap();
         let mut samples = Vec::new();
         let outcome = loop {
             match reader.read_block() {
@@ -2580,7 +2586,6 @@ fn forced_out_of_order_completion_still_commits_identical_pcm() {
             }
         };
         let stalled = reader.stalled_accepts();
-        crate::decode_engine::STALL_FIRST_WORKER_MICROS.store(0, Ordering::Relaxed);
 
         outcome.unwrap_or_else(|error| panic!("{workers} workers failed to decode: {error}"));
         assert_eq!(
@@ -2591,6 +2596,81 @@ fn forced_out_of_order_completion_still_commits_identical_pcm() {
         assert!(
             stalled > 0,
             "{workers} workers never reordered, so this proved nothing"
+        );
+    }
+}
+
+#[test]
+fn alac_workers_honor_minimum_and_maximum_queue_reservations() {
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let (oracle_source, oracle_samples) = decode_all_samples(&path);
+    let oracle_bits = raw_bits(&oracle_samples);
+
+    let started = started_worker_pools(|| {
+        for workers in ALAC_WORKER_COUNTS {
+            for queue_capacity in [workers, MAX_DECODE_QUEUE_CAPACITY] {
+                let reservation = worker_reservation_with_queue(workers, queue_capacity);
+                let expected_depth = if queue_capacity == workers { 0 } else { 2 };
+                assert_eq!(
+                    crate::decode_engine::dispatch_depth(reservation),
+                    expected_depth,
+                    "inbox depth widened the queue_capacity={queue_capacity} permit"
+                );
+                let (source, samples) = decode_all_samples_with(&path, reservation);
+                assert_eq!(
+                    raw_bits(&samples),
+                    oracle_bits,
+                    "{workers} workers changed PCM with queue_capacity={queue_capacity}"
+                );
+                assert_eq!(
+                    source, oracle_source,
+                    "{workers} workers changed metadata with queue_capacity={queue_capacity}"
+                );
+            }
+        }
+    });
+    assert_eq!(
+        started,
+        ALAC_WORKER_COUNTS.len() * 2,
+        "every queue-bound case must run on packet workers"
+    );
+}
+
+#[test]
+fn pool_spawn_failures_join_every_thread_started_during_construction() {
+    let path = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let reservation = worker_reservation(4);
+    let joined = &crate::decode_engine::FAILED_START_JOINED_THREADS;
+
+    for (options, expected_joins, expected_message) in [
+        (
+            crate::decode_engine::PoolOptions::fail_worker_spawn(2),
+            1,
+            "failed to start an ALAC decode worker",
+        ),
+        (
+            crate::decode_engine::PoolOptions::fail_demux_spawn(),
+            3,
+            "failed to start the ALAC demux thread",
+        ),
+    ] {
+        let before = joined.with(std::cell::Cell::get);
+        let error = match crate::symphonia_source::open_test_source_with_pool_options(
+            &path,
+            reservation,
+            options,
+        ) {
+            Ok(_) => panic!("the injected thread creation failure unexpectedly opened"),
+            Err(error) => error,
+        };
+        let joined_during_open = joined.with(std::cell::Cell::get) - before;
+
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Decode);
+        assert_eq!(error.message, expected_message);
+        assert_eq!(
+            joined_during_open, expected_joins,
+            "open returned before every previously started thread was joined"
         );
     }
 }

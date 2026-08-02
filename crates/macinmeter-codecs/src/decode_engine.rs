@@ -28,21 +28,71 @@ use symphonia::core::{
     formats::{FormatReader, Packet},
 };
 
-/// Packets a worker may hold in its own inbox, beyond the one it is decoding.
+/// Maximum packets a worker may hold in its own inbox, beyond the one it is
+/// decoding.
 ///
-/// With one inbox per worker the dispatch order is a fixed `index % workers`,
-/// so which worker sees which packet never depends on scheduling.
-const DISPATCH_DEPTH: usize = 2;
+/// For workers other than the demux-owned slot zero, dispatch order is a fixed
+/// `index % workers`, so which decoder sees which packet never depends on
+/// scheduling. A smaller reservation shrinks this depth, including to a
+/// zero-capacity rendezvous.
+const MAX_DISPATCH_DEPTH: usize = 2;
 
-/// Microseconds the first worker sleeps before each decode, for tests.
-///
-/// Out-of-order completion must not be left to the scheduler's mood. Stalling
-/// exactly one worker forces every packet it owns — starting with index 0 — to
-/// finish last, which is the worst reordering the permits have to survive. A
-/// zero value, the default, is a plain load with no timing effect.
+pub(crate) fn dispatch_depth(reservation: DecodeReservation) -> usize {
+    reservation
+        .queue_capacity()
+        .get()
+        .checked_div(reservation.workers().get())
+        .unwrap_or(1)
+        .saturating_sub(1)
+        .min(MAX_DISPATCH_DEPTH)
+}
+
+/// Test-only failure points for thread construction.
 #[cfg(test)]
-pub(crate) static STALL_FIRST_WORKER_MICROS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum SpawnFault {
+    #[default]
+    None,
+    Worker(usize),
+    Demux,
+}
+
+/// Internal options for one worker pool.
+///
+/// Production always uses the default. Tests pass instance-owned injection
+/// state instead of mutating process-global scheduling knobs.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PoolOptions {
+    _private: (),
+    #[cfg(test)]
+    force_first_result_after_later: bool,
+    #[cfg(test)]
+    spawn_fault: SpawnFault,
+}
+
+#[cfg(test)]
+impl PoolOptions {
+    pub(crate) fn force_first_result_after_later() -> Self {
+        Self {
+            force_first_result_after_later: true,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn fail_worker_spawn(worker: usize) -> Self {
+        Self {
+            spawn_fault: SpawnFault::Worker(worker),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn fail_demux_spawn() -> Self {
+        Self {
+            spawn_fault: SpawnFault::Demux,
+            ..Self::default()
+        }
+    }
+}
 
 #[cfg(test)]
 thread_local! {
@@ -54,6 +104,10 @@ thread_local! {
     /// thread that opens the source, so a thread-local count stays exact while
     /// the test harness runs cases in parallel.
     pub(crate) static STARTED_WORKER_POOLS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+
+    /// Threads joined while unwinding a failed pool construction on this thread.
+    pub(crate) static FAILED_START_JOINED_THREADS: std::cell::Cell<usize> =
         const { std::cell::Cell::new(0) };
 }
 
@@ -252,9 +306,17 @@ struct WorkerVerdict {
 /// dropped, so no decoding ever outlives the source that started it.
 pub(crate) struct AlacWorkerPool {
     context: Arc<PacketDecodeContext>,
-    demux: Option<JoinHandle<Result<(), AnalysisError>>>,
+    demux: Option<JoinHandle<Result<WorkerVerdict, AnalysisError>>>,
     workers: Vec<JoinHandle<WorkerVerdict>>,
     results: Option<Receiver<(u64, PacketOutcome)>>,
+    #[cfg(test)]
+    force_first_result_after_later: bool,
+    #[cfg(test)]
+    held_first_result: Option<(u64, PacketOutcome)>,
+    #[cfg(test)]
+    later_result_emitted: bool,
+    #[cfg(test)]
+    first_result_emitted: bool,
 }
 
 impl AlacWorkerPool {
@@ -268,10 +330,12 @@ impl AlacWorkerPool {
         codec_params: &CodecParameters,
         track_id: u32,
         reservation: DecodeReservation,
+        _options: PoolOptions,
     ) -> Result<Self, AnalysisError> {
         let worker_count = reservation.workers().get();
+        let dispatch_depth = dispatch_depth(reservation);
         debug_assert!(
-            worker_count.saturating_mul(DISPATCH_DEPTH + 1) <= reservation.queue_capacity().get(),
+            worker_count.saturating_mul(dispatch_depth + 1) <= reservation.queue_capacity().get(),
             "dispatched packets must fit the granted reorder permit"
         );
 
@@ -286,48 +350,92 @@ impl AlacWorkerPool {
 
         let context = Arc::new(context);
         let (result_tx, results) = sync_channel::<(u64, PacketOutcome)>(worker_count);
-        let mut inboxes = Vec::with_capacity(worker_count);
-        let mut workers = Vec::with_capacity(worker_count);
+        let mut decoders = decoders.into_iter();
+        let demux_decoder = decoders.next().ok_or_else(|| {
+            analysis_error(
+                context.path(),
+                ErrorCode::Internal,
+                AnalysisStage::Internal,
+                "an ALAC worker reservation contained no decoder slot",
+                None,
+            )
+        })?;
+        let mut inboxes = Vec::with_capacity(worker_count.saturating_sub(1));
+        let mut workers = Vec::with_capacity(worker_count.saturating_sub(1));
 
-        for (worker, decoder) in decoders.into_iter().enumerate() {
-            let (packet_tx, packet_rx) = sync_channel::<IndexedPacket>(DISPATCH_DEPTH);
+        for (worker, decoder) in (1..worker_count).zip(decoders) {
+            let (packet_tx, packet_rx) = sync_channel::<IndexedPacket>(dispatch_depth);
             inboxes.push(packet_tx);
             let worker_context = Arc::clone(&context);
             let result_tx = result_tx.clone();
-            workers.push(
-                thread::Builder::new()
-                    .name(format!("macinmeter-alac-{worker}"))
-                    .spawn(move || {
-                        run_worker(worker, &worker_context, decoder, &packet_rx, &result_tx)
-                    })
-                    .map_err(|error| {
-                        analysis_error(
-                            context.path(),
-                            ErrorCode::ResourceExhausted,
-                            AnalysisStage::Decode,
-                            "failed to start an ALAC decode worker",
-                            Some(error.to_string()),
-                        )
-                    })?,
-            );
+
+            #[cfg(test)]
+            if _options.spawn_fault == SpawnFault::Worker(worker) {
+                let error = worker_spawn_error(
+                    context.path(),
+                    io::Error::other("injected ALAC worker spawn failure"),
+                );
+                cleanup_failed_construction(inboxes, results, workers);
+                return Err(error);
+            }
+
+            let handle = match thread::Builder::new()
+                .name(format!("macinmeter-alac-{worker}"))
+                .spawn(move || run_worker(&worker_context, decoder, &packet_rx, &result_tx))
+            {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let error = worker_spawn_error(context.path(), error);
+                    cleanup_failed_construction(inboxes, results, workers);
+                    return Err(error);
+                }
+            };
+            workers.push(handle);
         }
-        // Only the workers may keep the result channel open, so the reader can
-        // recognise "every worker finished" as a plain disconnect.
-        drop(result_tx);
 
         let demux_context = Arc::clone(&context);
-        let demux = thread::Builder::new()
+        let demux_inboxes = inboxes.clone();
+        let demux_result_tx = result_tx.clone();
+
+        #[cfg(test)]
+        if _options.spawn_fault == SpawnFault::Demux {
+            let error = demux_spawn_error(
+                context.path(),
+                io::Error::other("injected ALAC demux spawn failure"),
+            );
+            drop(demux_inboxes);
+            cleanup_failed_construction(inboxes, results, workers);
+            return Err(error);
+        }
+
+        let demux = match thread::Builder::new()
             .name("macinmeter-alac-demux".to_owned())
-            .spawn(move || run_demux(&demux_context, format, track_id, &inboxes))
-            .map_err(|error| {
-                analysis_error(
-                    context.path(),
-                    ErrorCode::ResourceExhausted,
-                    AnalysisStage::Decode,
-                    "failed to start the ALAC demux thread",
-                    Some(error.to_string()),
+            .spawn(move || {
+                run_demux(
+                    &demux_context,
+                    format,
+                    demux_decoder,
+                    track_id,
+                    worker_count,
+                    &demux_inboxes,
+                    &demux_result_tx,
                 )
-            })?;
+            }) {
+            Ok(handle) => handle,
+            Err(error) => {
+                let error = demux_spawn_error(context.path(), error);
+                cleanup_failed_construction(inboxes, results, workers);
+                return Err(error);
+            }
+        };
+        debug_assert_eq!(
+            workers.len() + 1,
+            worker_count,
+            "the demux decoder and worker handles must exactly spend the reservation"
+        );
+        // Only the decoder threads may keep channels open after construction.
+        drop(inboxes);
+        drop(result_tx);
 
         #[cfg(test)]
         STARTED_WORKER_POOLS.with(|started| started.set(started.get() + 1));
@@ -337,40 +445,86 @@ impl AlacWorkerPool {
             demux: Some(demux),
             workers,
             results: Some(results),
+            #[cfg(test)]
+            force_first_result_after_later: _options.force_first_result_after_later,
+            #[cfg(test)]
+            held_first_result: None,
+            #[cfg(test)]
+            later_result_emitted: false,
+            #[cfg(test)]
+            first_result_emitted: false,
         })
     }
 
     fn next(&mut self) -> Result<EngineOutcome, AnalysisError> {
+        #[cfg(test)]
+        if self.force_first_result_after_later {
+            return Ok(self.next_with_forced_reordering());
+        }
+
+        Ok(self.receive())
+    }
+
+    fn receive(&self) -> EngineOutcome {
         let Some(results) = self.results.as_ref() else {
-            return Ok(EngineOutcome::Exhausted);
+            return EngineOutcome::Exhausted;
         };
         match results.recv() {
-            Ok((index, outcome)) => Ok(EngineOutcome::Indexed { index, outcome }),
+            Ok((index, outcome)) => EngineOutcome::Indexed { index, outcome },
             // Every worker dropped its sender, so every dispatched packet has
             // already been reported.
-            Err(_) => Ok(EngineOutcome::Exhausted),
+            Err(_) => EngineOutcome::Exhausted,
+        }
+    }
+
+    /// Deterministically publish a later result before packet zero.
+    ///
+    /// This is an instance-owned test seam at the engine boundary. It exercises
+    /// the exact production reorder/commit path without process-global state or
+    /// a wall-clock race between worker threads.
+    #[cfg(test)]
+    fn next_with_forced_reordering(&mut self) -> EngineOutcome {
+        if self.later_result_emitted
+            && let Some((index, outcome)) = self.held_first_result.take()
+        {
+            self.first_result_emitted = true;
+            return EngineOutcome::Indexed { index, outcome };
+        }
+
+        loop {
+            match self.receive() {
+                EngineOutcome::Indexed { index: 0, outcome }
+                    if !self.first_result_emitted && !self.later_result_emitted =>
+                {
+                    self.held_first_result = Some((0, outcome));
+                }
+                EngineOutcome::Indexed { index: 0, outcome } => {
+                    self.first_result_emitted = true;
+                    return EngineOutcome::Indexed { index: 0, outcome };
+                }
+                EngineOutcome::Indexed { index, outcome } if !self.first_result_emitted => {
+                    self.later_result_emitted = true;
+                    return EngineOutcome::Indexed { index, outcome };
+                }
+                EngineOutcome::Indexed { index, outcome } => {
+                    return EngineOutcome::Indexed { index, outcome };
+                }
+                EngineOutcome::Exhausted => {
+                    if let Some((index, outcome)) = self.held_first_result.take() {
+                        self.first_result_emitted = true;
+                        return EngineOutcome::Indexed { index, outcome };
+                    }
+                    return EngineOutcome::Exhausted;
+                }
+            }
         }
     }
 
     fn finish(&mut self) -> Result<(), AnalysisError> {
         let (demux_result, verdicts) = self.shutdown();
-        demux_result?;
+        reject_worker_verdict(&self.context, demux_result?)?;
         for verdict in verdicts {
-            // ADR-0014 §4: a worker only ever saw its own subset of packets, so
-            // its `finalize()` cannot stand in for a stream-level integrity
-            // signature. This route is graduated on a decoder that reports no
-            // such verdict at all; if one ever appears, the parallel path must
-            // fail rather than quietly accept a per-subset check.
-            if let Some(verify_ok) = verdict?.verify_ok {
-                return Err(analysis_error(
-                    self.context.path(),
-                    ErrorCode::Internal,
-                    AnalysisStage::Internal,
-                    "the ALAC route decoder reported a stream-level integrity verdict that \
-                     worker-local finalization cannot reproduce",
-                    Some(format!("worker_verify_ok={verify_ok}")),
-                ));
-            }
+            reject_worker_verdict(&self.context, verdict?)?;
         }
         Ok(())
     }
@@ -382,7 +536,7 @@ impl AlacWorkerPool {
     fn shutdown(
         &mut self,
     ) -> (
-        Result<(), AnalysisError>,
+        Result<WorkerVerdict, AnalysisError>,
         Vec<Result<WorkerVerdict, AnalysisError>>,
     ) {
         self.results = None;
@@ -413,7 +567,7 @@ impl AlacWorkerPool {
                     None,
                 ))
             }),
-            None => Ok(()),
+            None => Ok(WorkerVerdict { verify_ok: None }),
         };
 
         (demux_result, verdicts)
@@ -427,23 +581,12 @@ impl Drop for AlacWorkerPool {
 }
 
 fn run_worker(
-    worker: usize,
     context: &PacketDecodeContext,
     mut decoder: Box<dyn Decoder>,
     packets: &Receiver<IndexedPacket>,
     results: &SyncSender<(u64, PacketOutcome)>,
 ) -> WorkerVerdict {
     while let Ok(indexed) = packets.recv() {
-        #[cfg(test)]
-        if worker == 0 {
-            let micros = STALL_FIRST_WORKER_MICROS.load(std::sync::atomic::Ordering::Relaxed);
-            if micros > 0 {
-                thread::sleep(std::time::Duration::from_micros(micros));
-            }
-        }
-        #[cfg(not(test))]
-        let _ = worker;
-
         let outcome = decode_packet(context, decoder.as_mut(), &indexed.packet);
         if results.send((indexed.index, outcome)).is_err() {
             // The reader is gone; stop rather than decode into a closed channel.
@@ -458,14 +601,21 @@ fn run_worker(
 fn run_demux(
     context: &PacketDecodeContext,
     mut format: Box<dyn FormatReader>,
+    mut decoder: Box<dyn Decoder>,
     track_id: u32,
+    worker_count: usize,
     inboxes: &[SyncSender<IndexedPacket>],
-) -> Result<(), AnalysisError> {
+    results: &SyncSender<(u64, PacketOutcome)>,
+) -> Result<WorkerVerdict, AnalysisError> {
     let mut next_index = 0_u64;
     loop {
         let packet = match next_track_packet(&mut format, track_id) {
             DemuxStep::Packet(packet) => packet,
-            DemuxStep::Exhausted => return Ok(()),
+            DemuxStep::Exhausted => {
+                return Ok(WorkerVerdict {
+                    verify_ok: decoder.finalize().verify_ok,
+                });
+            }
             DemuxStep::Failed(error) => {
                 return Err(runtime_error(
                     context.path(),
@@ -478,12 +628,84 @@ fn run_demux(
         let index = next_index;
         next_index += 1;
         // Dispatch is a fixed function of the index, never of which worker
-        // happens to be free.
-        let inbox = &inboxes[(index % inboxes.len() as u64) as usize];
-        if inbox.send(IndexedPacket { index, packet }).is_err() {
-            // The worker stopped, so the reader is already shutting down.
-            return Ok(());
+        // happens to be free. Slot zero shares this thread with sequential
+        // demux, so the reservation's N permits create exactly N threads.
+        let worker = (index % worker_count as u64) as usize;
+        if worker == 0 {
+            let outcome = decode_packet(context, decoder.as_mut(), &packet);
+            if results.send((index, outcome)).is_err() {
+                return Ok(WorkerVerdict {
+                    verify_ok: decoder.finalize().verify_ok,
+                });
+            }
+        } else {
+            let inbox = &inboxes[worker - 1];
+            if inbox.send(IndexedPacket { index, packet }).is_err() {
+                // A worker stopped, so the reader is already shutting down or
+                // its panic will be reported by the owning join handle.
+                return Ok(WorkerVerdict {
+                    verify_ok: decoder.finalize().verify_ok,
+                });
+            }
         }
+    }
+}
+
+fn reject_worker_verdict(
+    context: &PacketDecodeContext,
+    verdict: WorkerVerdict,
+) -> Result<(), AnalysisError> {
+    // ADR-0014 §4: each decoder only sees its own subset of packets, so its
+    // `finalize()` cannot stand in for a stream-level integrity signature. The
+    // ALAC route is graduated on a decoder that reports no such verdict at all.
+    if let Some(verify_ok) = verdict.verify_ok {
+        return Err(analysis_error(
+            context.path(),
+            ErrorCode::Internal,
+            AnalysisStage::Internal,
+            "the ALAC route decoder reported a stream-level integrity verdict that \
+             worker-local finalization cannot reproduce",
+            Some(format!("worker_verify_ok={verify_ok}")),
+        ));
+    }
+    Ok(())
+}
+
+fn worker_spawn_error(path: &Path, error: io::Error) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::ResourceExhausted,
+        AnalysisStage::Decode,
+        "failed to start an ALAC decode worker",
+        Some(error.to_string()),
+    )
+}
+
+fn demux_spawn_error(path: &Path, error: io::Error) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::ResourceExhausted,
+        AnalysisStage::Decode,
+        "failed to start the ALAC demux thread",
+        Some(error.to_string()),
+    )
+}
+
+/// Disconnect every not-yet-owned inbox and join all threads that did start.
+///
+/// This guard path runs before `AlacWorkerPool` itself exists, so it cannot rely
+/// on the pool's `Drop` implementation.
+fn cleanup_failed_construction(
+    inboxes: Vec<SyncSender<IndexedPacket>>,
+    results: Receiver<(u64, PacketOutcome)>,
+    workers: Vec<JoinHandle<WorkerVerdict>>,
+) {
+    drop(results);
+    drop(inboxes);
+    for worker in workers {
+        let _ = worker.join();
+        #[cfg(test)]
+        FAILED_START_JOINED_THREADS.with(|joined| joined.set(joined.get() + 1));
     }
 }
 

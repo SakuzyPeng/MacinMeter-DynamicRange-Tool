@@ -6,7 +6,7 @@ use crate::{
         inspect_wave, media_source,
     },
     decode_engine::{
-        AlacWorkerPool, EngineOutcome, PacketDecodeContext, PacketEngine, SerialEngine,
+        AlacWorkerPool, EngineOutcome, PacketDecodeContext, PacketEngine, PoolOptions, SerialEngine,
     },
     error::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
@@ -46,6 +46,14 @@ pub(crate) fn open(
 fn open_source(
     path: &Path,
     reservation: DecodeReservation,
+) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
+    open_source_with_pool_options(path, reservation, PoolOptions::default())
+}
+
+fn open_source_with_pool_options(
+    path: &Path,
+    reservation: DecodeReservation,
+    pool_options: PoolOptions,
 ) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
@@ -170,6 +178,7 @@ fn open_source(
             &codec_params,
             track_id,
             reservation,
+            pool_options,
         )?)
     } else {
         let decoder = symphonia::default::get_codecs()
@@ -496,11 +505,12 @@ pub(crate) fn open_test_source(path: &Path) -> Result<SymphoniaPcmSource, Analys
 }
 
 #[cfg(test)]
-pub(crate) fn open_test_source_with(
+pub(crate) fn open_test_source_with_pool_options(
     path: &Path,
     reservation: DecodeReservation,
+    options: PoolOptions,
 ) -> Result<SymphoniaPcmSource, AnalysisError> {
-    open_source(path, reservation).map(|(_, reader)| reader)
+    open_source_with_pool_options(path, reservation, options).map(|(_, reader)| reader)
 }
 
 #[cfg(test)]

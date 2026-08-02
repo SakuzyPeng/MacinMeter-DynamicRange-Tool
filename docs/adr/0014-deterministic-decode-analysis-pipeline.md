@@ -363,7 +363,7 @@ packet 级另加：
 风险；尤其 FLAC 的流级 MD5 使“frame 可独立解码”不足以直接推出生产安全。实现与
 测试成本明显高于简单流水线，且最终收益仍须由正式长音频 A/B 决定。
 
-### 第 2 步（2026-08-02，实现与正确性部分完成；未启用）
+### 第 2 步（2026-08-02，实现与正确性部分完成；2026-08-03 加固；未启用）
 
 ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍恒为 serial，
 因此该路径目前只由测试的显式 reservation 驱动：
@@ -371,12 +371,15 @@ ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍�
 - `codecs` 新增 `decode_engine`，把解码语义收敛为单一 `decode_packet`：串行
   oracle 与 ALAC workers 共用同一份几何校验、错误分类与 `f64` 转换，两条路径
   不可能在这些语义上漂移；调度差异之外的一切保持一致；
-- 拓扑为「顺序 demux 线程 → 每 worker 独立 inbox → N 个 worker → 有界 result
+- 拓扑为「顺序 demux + decoder slot 0 → 其余每 worker 独立 inbox → 有界 result
   通道 → 主线程按输入序提交」。派发是 `index % workers` 的固定函数，与哪个
-  worker 恰好空闲无关，因此同一输入的 packet 到 worker 的映射完全可复现；
-- 每 worker inbox 深度固定为 2，result 通道容量为 worker 数。最坏滞留因此以
-  `workers × (2 + 1)` 为界，落在 plan 派生的 `workers × 4` reorder permit 内，
-  该关系由 `debug_assert` 固定；
+  worker 恰好空闲无关，因此同一输入的 packet 到 worker 的映射完全可复现；demux
+  线程同时承担 slot 0 的解码，N-worker reservation 恰好创建 N 条内部线程，而不是
+  在 N 个 decoder worker 之外再建立一条未计量 coordinator；
+- worker inbox 深度上限为 2，并按 reservation 向下收缩；最小合法的
+  `queue_capacity == workers` 使用零容量 rendezvous，绝不因 lower layer 的额外
+  假设 panic 或扩大许可。application 派生的 `workers × 4` 仍使用深度 2，result
+  通道容量仍为 worker 数；
 - worker 只在 `alac_info.is_some() && workers > 1` 时创建，绝不从扩展名或泛型
   codec descriptor 推导；worker 数为 1 时在解码开始前退化为串行；
 - 每个 decoder 在调用线程预先创建，创建失败使 open 失败而非某个 worker 失败；
@@ -385,24 +388,29 @@ ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍�
   为前提毕业；一旦某个 worker 返回了 `verify_ok`，并行路径直接失败，而不是
   接受一次 per-subset 校验；
 - 所有线程由 pool 拥有，`Drop` 先释放 receiver 唤醒 worker、再 join demux 与
-  全部 worker；worker 或 demux panic 转为结构化 terminal error。
+  全部 worker；worker 或 demux panic 转为结构化 terminal error。若第 N 个 worker
+  或 demux 本身创建失败，构造期清理路径会先断开 channel、join 已启动线程，再返回
+  结构化 `resource_exhausted/decode`，不会因 `JoinHandle` drop 留下 detached thread。
 
 正确性证据（9 个 ALAC fixture × 1/2/4/8 worker）：
 
 - 解码 raw `f64` bits 与 `SourceInfo` 与串行 oracle 逐位一致；
-- 强制乱序下同样逐位一致。测试注入使 worker 0 每包延迟，令 packet 0 最后完成，
-  并断言 reorder 确实发生了滞留。**未注入延迟时这些短 fixture 不会自然乱序**，
-  因此等价测试若不注入即无实际覆盖；这也说明现有 fixture 无法建立调度收益；
-- `alac-corrupt-first-packet` 在有无注入延迟、1/2/4/8 worker 下产生完全相同的
+- 强制乱序下同样逐位一致。实例级测试 seam 在 engine 边界持有 packet 0，直到一个
+  较晚结果已经发布，并断言 reorder 确实发生滞留；它不使用 process-global 开关、
+  sleep 或调度时序，因此默认并行 test harness 下也确定；
+- `alac-corrupt-first-packet` 在自然与强制乱序、1/2/4/8 worker 下产生完全相同的
   错误码、阶段、消息与 sticky 重放，且 progress 保持 0 帧、不转为 EOF；
+- 多 packet fixture 在 2/4/8 worker 下分别覆盖最小 `queue_capacity == workers` 与
+  固定产品最大 `queue_capacity == 64`，两端均与串行 raw bits、metadata 完全一致；
 - WAV/float64/FLAC/AIFF 在多 worker reservation 下证明零个 worker pool 被创建，
   PCM 仍逐位一致；
 - progress 单调、EOF 只在精确帧数提交后出现；提前 drop 会 join 全部线程；
-- 每个并行断言都以 pool 计数器确认该用例确实运行在 workers 上；把 route 判定
-  改成恒 false 会使等价测试失败（27 → 0），因此这些断言不会静默退化为串行。
+- route 选择与 queue-bound 等价矩阵以 thread-local pool 计数器确认用例确实运行在
+  workers 上；把 route 判定改成恒 false 会使这些计数断言失败，而不会静默串行。
 
-验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（204 项，含新增
-7 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过；
+验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（206 项，含新增
+9 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过；
+另在默认并行 test harness 下重复运行 codecs 100 次，全部通过；
 136 个 fixture 的 release CLI 输出仍为 SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`，与串行基线
 逐字节相同。
@@ -416,11 +424,12 @@ worker 交错 A/B 仍未进行，因此 ALAC packet workers 不得默认启用�
 
 - ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立，因此没有任何
   加速比可以声明，packet workers 也不得默认启用；
-- ALAC packet 独立性已由当前产品 route 的 raw-bit、错误与强制乱序测试在committed
-  fixture 上证明；但这些 fixture 都很短，独立性在长音频与更深队列下仍未验证；
+- ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
+  测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
+  验证；
 - FLAC 的 ordered full-stream MD5 设计尚未形成；
 - 文件级与窗口级仍只有准入契约，没有生产实现。
 
 第 1 步已经明确并测试了 application 共用 worker/memory hard cap、reservation 数值
-与退化规则；但这些上限至今只在 serial 配置下被生产使用，多 worker 取值仍只有单元
-测试证据，没有真实解码负载的验证。
+与退化规则；这些上限至今只在 serial 配置下被生产使用，多 worker 取值已有 committed
+短 fixture 的真实解码覆盖，但仍没有 source-bound 长音频与正式性能证据。
