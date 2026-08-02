@@ -675,6 +675,13 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "expected": {"code": "decode_failed", "stage": "decode"},
         },
         {
+            "id": "alac-non-alac-sample-entry",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": "rewrite the outer sample entry type from alac to mp4a",
+            "bytes": patch(alac, alac_outer, b"mp4a"),
+            "expected": {"code": "unsupported_format", "stage": "probe"},
+        },
+        {
             "id": "alac-aac-track",
             "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_AAC}",
             "operation": "use a valid ISO BMFF file containing one AAC audio track",

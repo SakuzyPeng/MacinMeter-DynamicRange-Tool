@@ -94,7 +94,13 @@ faststart/普通 atom 顺序及 metadata。
 manifest 记录生成器与 encoder 身份、归一化命令、文件 hash、box 顺序、cookie、
 sample entry、`mdhd`、`stts`、`stsz` 字段、孪生关系、来源及 interleaved-`f64`
 fingerprint。`malformed-media-v1` 增加长度、轨道、fragmentation、edit、AAC、
-20/32-bit、9 声道、24/48-byte cookie/layout、sample-table、零帧和损坏 packet case。
+非 ALAC sample entry、20/32-bit、9 声道、24/48-byte cookie/layout、sample-table、
+零帧和损坏 packet case。
+
+真实 AAC 文件带 encoder-delay edit list，会先被 edit-list 规则拒绝，不会到达
+sample-entry codec 判定。因此非 ALAC codec 拒绝由独立的 `alac-non-alac-sample-entry`
+case 固定：它只把 outer sample entry 的 fourcc 改写为 `mp4a`，并断言具体消息与
+`sample_entry=mp4a` details。
 
 共享 `PcmSource` contract 对每个 ALAC fixture 验证 immutable metadata、有限逐位
 PCM、progress、精确帧数、EOF 与 sticky 状态；ALAC/WAV 孪生还比较 PCM raw bits、

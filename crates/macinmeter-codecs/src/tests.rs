@@ -907,6 +907,25 @@ fn alac_malformed_corpus_uses_the_fixed_probe_error_classification() {
 }
 
 #[test]
+fn alac_route_rejects_a_non_alac_sample_entry_by_codec_identity() {
+    let path = malformed_fixture_path("alac-non-alac-sample-entry.m4a");
+    let error = expect_open_error(&path);
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{error}");
+    assert_eq!(error.stage, AnalysisStage::Probe, "{error}");
+    assert!(
+        error
+            .message
+            .contains("audio codec is outside the stable ALAC route"),
+        "{error}"
+    );
+    assert_eq!(
+        error.details.as_deref(),
+        Some("sample_entry=mp4a"),
+        "{error}"
+    );
+}
+
+#[test]
 fn alac_backend_metadata_must_match_the_validated_container() {
     use symphonia::core::codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CodecParameters};
 

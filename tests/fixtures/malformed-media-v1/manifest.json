@@ -761,6 +761,18 @@
         "code": "unsupported_format",
         "stage": "probe"
       },
+      "id": "alac-non-alac-sample-entry",
+      "operation": "rewrite the outer sample entry type from alac to mp4a",
+      "path": "alac-non-alac-sample-entry.m4a",
+      "sha256": "2dc132e4c7c2cded326b596d3a9962d46c5da33511ab95119a194ce4877c8d66",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
+        "code": "unsupported_format",
+        "stage": "probe"
+      },
       "id": "alac-aac-track",
       "operation": "use a valid ISO BMFF file containing one AAC audio track",
       "path": "alac-aac-track.m4a",
