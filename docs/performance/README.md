@@ -33,6 +33,14 @@ valid only when it follows
 result/PCM fingerprints, compatible work units, and all variants interleaved in
 one run on the same machine.
 
+Accepted
+[`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) makes
+route-specific packet decode the first future parallel candidate, followed by
+file- and window-level work. It does not turn the historical M6 records into a
+parallelism claim: every candidate needs a new source-bound record under the
+same ADR-0007 protocol, and the current production implementation remains
+serial until graduation.
+
 Generated media remain under ignored `target/performance-corpus`; only their
 deterministic generator and manifest identity enter a record. Large Xcode trace
 bundles remain under ignored `target/performance-profiles`; profile conclusions

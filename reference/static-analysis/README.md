@@ -18,7 +18,8 @@
 - [`SA-foo-dr-meter-108-x64-parallel-dispatch-20260802`](sa-foo-dr-meter-108-x64-parallel-dispatch-20260802.md)：
   固定 1.0.8 x64 的 fork-join 并行调度器 `0xdf30`、线程体 `0xdaf0` 与线程相关
   导入的调用方；登记它们与 analyzer 三入口的固定调用图可达关系，并据此解释
-  隔离 core 单线程路径与 foobar 多线程路径在公开字段上的逐位一致。不建立工作
+  隔离 core 单线程路径与完整 foobar 宿主路径在公开字段上的逐位一致；既有宿主
+  observation 未记录调度分支，因此不把它表述为已观测的多线程运行。不建立工作
   分割粒度、实际线程数或任何性能声明。
 - [`SA-foo-dr-meter-108-x64-report-renderer-20260718`](sa-foo-dr-meter-108-x64-report-renderer-20260718.md)：
   固定 1.0.8 x64 duration 舍入与 minute/hour/day/week 格式、channel label

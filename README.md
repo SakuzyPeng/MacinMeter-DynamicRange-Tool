@@ -68,6 +68,12 @@ macinmeter batch "My Album/" --recursive
 prevent later items from running. It produces independent track reports and
 does not implicitly calculate an album DR.
 
+That is the current 0.3.0 implementation state, not a permanent architecture
+ban. [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) has
+accepted bounded packet-, file-, and window-level parallelism as future work,
+with route-specific packet decoding first; none is enabled until its separate
+correctness, resource, and performance gates pass.
+
 The following is real stdout generated from a committed synthetic fixture:
 
 ```bash
@@ -183,9 +189,11 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-Clones of one `Application` share a bounded serial execution queue, while
-separately constructed `Application` values remain independent. Queue sizing
-is available through `Application::with_budget`.
+Clones of one `Application` share a bounded top-level execution queue, which
+currently admits one active job; separately constructed `Application` values
+remain independent. Queue sizing is available through
+`Application::with_budget`. Future ADR-0014 internal workers must remain inside
+that application-owned execution domain.
 
 `AnalyzerSession` is available for callers that already have finite,
 frame-aligned, interleaved `f64` PCM. `AlbumAggregator` is a separate numeric
@@ -248,9 +256,11 @@ macinmeter-domain
     └── macinmeter-gui
 ```
 
-Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The product has
-one analyzer, serial native decoding, and serial batch execution. Its design
-history and deeper technical material live in:
+Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The current product
+has one analyzer implementation, serial native decoding, and serial batch
+execution. ADR-0014 permits only bounded, deterministic internal parallelism
+after per-route/per-axis graduation; it does not restore the removed 0.1.x
+parallel decoder. Design history and deeper technical material live in:
 
 - [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [architecture decision records](docs/adr/)

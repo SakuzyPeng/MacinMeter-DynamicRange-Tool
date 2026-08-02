@@ -10,6 +10,11 @@
 - raw record SHA-256：
   `936005f088c9c75d012d99c190db0f69d938b75d8f4c71d393ae8c564b333c40`
 
+> 后继说明（2026-08-02）：本文的“不恢复并行”是 profile 前的 M6 时点结论。
+> [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) 后来独立接受
+> packet-first 的有界并行方向；当前实现仍串行，新 candidate 必须继续以本基线
+> 协议建立 source-bound 同轮 A/B。
+
 ## 结论
 
 M6 已经得到第一份可复核的 0.2.0 安全标量/串行基线。它建立了后续比较的零点，但

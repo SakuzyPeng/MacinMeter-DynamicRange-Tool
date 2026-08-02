@@ -4,7 +4,7 @@ MacinMeter 0.3.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 
 ## 0.3.0 能力边界
 
-- 支持单文件与串行批量分析。
+- 支持单文件与当前串行的批量分析。
 - 支持整窗拖入单文件、多文件、目录或混合输入；目录可选择当前层或递归发现。
 - 提供中英文界面、结果搜索与 DR 精细值排序、路径隐藏，以及 Markdown、共享
   `WireEnvelope` JSON、PNG 和 SVG 导出。
@@ -14,7 +14,12 @@ MacinMeter 0.3.0 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 - 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`。
 - 分析、批量和错误共用 schema version 4 的 `WireEnvelope`；channel/track
   report metrics、精确 decoded duration 与 DR diagnostics 分层保存。
-- 不包含 FFmpeg、DSD、Opus、预处理、文件级并行或环境变量修改。
+- 不包含 FFmpeg、DSD、Opus、预处理或环境变量修改；当前版本尚未启用文件级并行。
+
+已接受的
+[`ADR-0014`](../docs/adr/0014-deterministic-decode-analysis-pipeline.md) 允许未来在
+共享 `Application` 内部逐轴毕业有界 packet/file/window 并行，首个方向为 ALAC
+packet 解码。该决策不是当前 GUI 功能；Tauri 不建立独立 scheduler 或线程池。
 
 拖放和文件选择最终都进入同一 `discover_inputs` / `run_batch` 路径；图片、语言、
 排序和路径显示只属于前端呈现，不会形成第二套分析配置。JSON 导出保留后端返回的

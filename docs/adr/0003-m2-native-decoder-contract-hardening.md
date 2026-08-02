@@ -8,6 +8,10 @@
 - 前置决策：
   - [ADR-0001：以 0.2.0 重建可信主干](0001-m0-0.2.0-trusted-trunk-rebuild.md)
   - [ADR-0002：限定 M1 的参考数值契约](0002-m1-reference-numeric-scope.md)
+- 后继并发修订：
+  [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 已在 M2/M6 门禁建立后
+  解除并行 blanket ban，并固定 route-specific packet 优先、统一资源计划与逐轴
+  毕业条件。本文“不恢复并行”仍是 M2 当时的范围排除，不是当前永久禁令。
 
 ## 背景
 

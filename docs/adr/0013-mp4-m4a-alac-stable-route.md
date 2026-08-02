@@ -8,6 +8,10 @@
 - 前置决策：
   - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)
   - [ADR-0012：WAVE_FORMAT_EXTENSIBLE 线性 PCM](0012-wave-format-extensible-linear-pcm.md)
+- 后继并发修订：
+  [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 保留本文的稳定 ALAC
+  格式矩阵与严格错误契约，但允许在独立毕业后为该 route 增加有界、顺序提交的
+  packet workers。本文的串行/并行非目标描述仍只限定 ADR-0013 的毕业切片。
 
 ## 背景
 

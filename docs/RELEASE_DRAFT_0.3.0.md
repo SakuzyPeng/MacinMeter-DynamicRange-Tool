@@ -16,8 +16,11 @@ Highlights:
   cookie, sample entry, media timing, sample tables, backend codec identity,
   sample rate, and exact decoded frame count;
 - adds `.m4a` and `.mp4` to capability-driven directory discovery;
-- retains serial in-process Symphonia decoding, finite interleaved `f64`, the
-  single `Application` façade, and the fixed analysis rules;
+- retains the currently serial in-process Symphonia implementation, finite
+  interleaved `f64`, the single `Application` façade, and the fixed analysis
+  rules; the future bounded concurrency accepted by
+  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) is not an
+  implemented 0.3.0 release feature;
 - upgrades the shared CLI/Tauri `WireEnvelope` to schema v4 for the new
   `mp4` container and `alac` codec identifiers.
 
@@ -43,8 +46,10 @@ MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路�
 - 在创建 decoder 前首检 ISO BMFF，并交叉核对 ALAC cookie、sample entry、媒体
   时序、sample tables、backend codec 身份、采样率和最终精确解码帧数；
 - capability 驱动的目录发现新增 `.m4a` 与 `.mp4`；
-- 保持串行进程内 Symphonia、有限交错 `f64`、唯一 `Application` façade 和固定
-  分析规则；
+- 保持当前串行的进程内 Symphonia 实现、有限交错 `f64`、唯一 `Application`
+  façade 和固定分析规则；
+  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) 接受的后续有界并发
+  尚不是 0.3.0 已实现功能；
 - 共享 CLI/Tauri `WireEnvelope` 因新增 `mp4` container 与 `alac` codec 标识升级
   到 schema v4。
 

@@ -3,6 +3,11 @@
 - 状态：Accepted
 - 日期：2026-07-20
 - 范围：0.2.0 标量生产主链的 benchmark、profile 与后续优化比较
+- 后继使用：
+  [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 是独立的并行架构授权，
+  并要求 packet/file/window candidate 继续使用本文的 source-bound、
+  exact-fingerprint、same-run interleaved A/B 协议。本文本身仍不构成任何实现的
+  性能预授权。
 
 ## 背景
 

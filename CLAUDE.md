@@ -1,9 +1,11 @@
 # MacinMeter contributor context
 
 MacinMeter 0.3.0 continues the correctness-first trunk rebuilt in 0.2.0. The former 0.1.x
-decoder, dual DR engines, packet/file parallelism, SIMD/unsafe conversion,
-EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes, and duplicate GUI DTOs
-have been removed. Do not reintroduce them as compatibility helpers.
+decoder, dual DR engines, untrusted packet/file parallel implementations,
+SIMD/unsafe conversion, EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes,
+and duplicate GUI DTOs have been removed. Do not reintroduce them as
+compatibility helpers. New parallel work must follow the clean-room,
+route-specific ADR-0014 contract.
 
 The product has one fixed analysis algorithm backed by the versioned
 specification, recorded 1.0.8 target hashes, static analysis, fixed x86/x64
@@ -25,13 +27,22 @@ domain
 
 - `domain` owns valid stream/source/report/error types.
 - `analysis` owns the only frame-streaming `AnalyzerSession`.
-- `codecs` owns content probing and strict sequential PCM sources.
+- `codecs` owns content probing and the strict `PcmSource` contract. The current
+  implementation reads serially; future route-specific packet workers remain
+  private behind the same `Data / Eof / Error` boundary.
 - The shared PCM contract is finite interleaved `f64`; do not narrow float64
   sources before analysis.
 - `macinmeter::Application` is the only public file-analysis, batch, and
   controlled-discovery façade. Its clones share the execution domain
   established in M3, with one active job and at most 64 queued FIFO
   reservations.
+- Current decoding and batch execution remain serial. ADR-0014 has accepted
+  bounded packet-, file-, and window-level parallelism as future work, with
+  packet decode as P0 and constrained ALAC as the first slice. Do not describe
+  this decision as an implemented 0.3.0 capability.
+- All internal concurrency axes must consume one application-owned worker and
+  memory plan; nested file × packet × window pools are forbidden. FLAC packet
+  workers may not graduate by disabling or weakening ordered full-stream MD5.
 - Tauri reserves an `ApplicationJob` before `spawn_blocking`; queued
   cancellation and RAII release are part of the application contract.
 - CLI and GUI only parse, render, and adapt I/O.
@@ -89,6 +100,7 @@ See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0006-m5-product-repository-convergence.md`,
 `docs/adr/0007-m6-reproducible-performance-baseline.md`,
 `docs/adr/0013-mp4-m4a-alac-stable-route.md`,
+`docs/adr/0014-deterministic-decode-analysis-pipeline.md`,
 `docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md`, and
 `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md` before changing architecture
 or algorithm behavior.

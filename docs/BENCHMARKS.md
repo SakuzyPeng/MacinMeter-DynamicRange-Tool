@@ -76,11 +76,14 @@ performance within noise while reducing median elapsed time by 12.92% at 8
 channels and 26.72% at 64 channels, with identical cross-variant result
 fingerprints.
 
-Packet-level parallelism, SIMD, unsafe code, and external decoder processes are
-not implied by this document. See
-[ADR-0007](adr/0007-m6-reproducible-performance-baseline.md) for the exact
-measurement and claim boundary. The initial clean-source results and raw
-samples are recorded in the [M6 scalar-baseline
+The historical M6 evidence did not itself authorize packet/file/window
+parallelism, SIMD, unsafe code, or external decoders. A later, separate
+[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) now permits
+bounded deterministic parallel candidates and makes route-specific packet
+decode the first priority; the current product remains serial until each
+candidate graduates. Every comparison and any future speed claim must still
+follow [ADR-0007](adr/0007-m6-reproducible-performance-baseline.md). The initial
+clean-source results and raw samples are recorded in the [M6 scalar-baseline
 report](performance/M6_SCALAR_BASELINE_REPORT.md), [M6 sampling-profile
 report](performance/M6_SAMPLING_PROFILE_REPORT.md), and [validation-traversal
 A/B report](performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md). The complete

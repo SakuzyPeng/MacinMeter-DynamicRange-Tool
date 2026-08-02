@@ -56,8 +56,14 @@ list 只能缺失或是一条 identity mapping。报告中的 channel layout 仍
   20/32-bit 或非 version-0、非标准 ALAC layout、raw/CAF ALAC，以及 Ogg、
   Matroska/WebM、DSF、DFF 容器；
 - FFmpeg 回退或任何外部解码进程；
-- 重采样、增益、滤波、边缘裁切和静音预处理；
-- 包级并行或文件级并行解码。
+- 重采样、增益、滤波、边缘裁切和静音预处理。
+
+并行属于执行策略，不是 codec 能力。当前 0.3.0 实现仍串行解码并串行处理 batch
+item；已接受的
+[`ADR-0014`](adr/0014-deterministic-decode-analysis-pipeline.md) 解除有界 packet、
+文件与窗口级并行的永久禁令，并以 route-specific ALAC packet 解码为第一切片。
+各路径在独立毕业前都不是当前稳定功能；这项决策也不扩张上面的格式矩阵或增加
+公共线程调参。
 
 稳定 AIFF 路径还要求 80-bit sample rate 为有限、正数、可由 `u32` 精确表示的
 整数、COMM chunk 恰好为 18 bytes，且 SSND offset/block-size 均为零。稳定 FLAC

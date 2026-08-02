@@ -1,5 +1,10 @@
 # MacinMeter 0.2.0 — Apple Silicon macOS
 
+> Historical 0.2.0 release record. Its serial/parallel exclusions describe that
+> artifact only; current post-M6 concurrency policy is
+> [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md). / 历史 0.2.0
+> 发行记录；其中串行/并行排除项只描述该制品，当前 post-M6 并发策略见 ADR-0014。
+>
 > **Unsigned Apple Silicon release / 未签名 Apple Silicon 版本**
 >
 > This release is built only for Apple Silicon Macs (`arm64`) running macOS

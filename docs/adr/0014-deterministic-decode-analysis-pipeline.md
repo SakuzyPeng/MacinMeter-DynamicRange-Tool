@@ -1,19 +1,31 @@
-# ADR-0014：确定性解码-分析流水线
+# ADR-0014：确定性有界并行与 packet 解码优先
 
-- 状态：Proposed
-- 实施状态：Not started
+- 状态：Accepted
+- 实施状态：Not started（当前生产路径仍为串行）
 - 日期：2026-08-02
-- 决策范围：单文件分析路径内部的解码/分析线程分离；不改固定算法、不改 wire
-  schema、不新增 route、不改发行边界
+- 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
+  确定性契约；把受限 route 的 packet 级解码定为首要优化方向
 - 前置决策：
   - [ADR-0001：以 0.2.0 重建可信主干](0001-m0-0.2.0-trusted-trunk-rebuild.md)
-  - [ADR-0004：M3 应用执行预算](0004-m3-application-execution-budget.md)
+  - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)
+  - [ADR-0004：M3 application 执行预算](0004-m3-application-execution-budget.md)
   - [ADR-0005：M4 固定 x64 数值声明与 decoder-independent 验收](0005-m4-bounded-x64-numeric-claim.md)
   - [ADR-0007：M6 可复现性能基线](0007-m6-reproducible-performance-baseline.md)
+  - [ADR-0013：稳定 MP4/M4A + ALAC 路由](0013-mp4-m4a-alac-stable-route.md)
 
 ## 背景
 
-### 参考实现确实并行
+### 串行基线已经完成了它的任务
+
+M0 删除 0.1.x 未受信的并行路径，M2 固定严格 `PcmSource` 契约，M3 建立唯一的
+application 执行域，M4/M6 又建立 bit-exact 差分与 source-bound 性能协议。此前
+“不恢复并行”的约束用于先取得可信串行基线，不是永久否定并行本身。
+
+现在可以解除窗口级、packet 级和文件级并行的 blanket ban，但不能把“允许立项”
+误写成“已经实现”或“一次性开放所有轴”。当前产品仍串行；每条并行路径只有通过本
+ADR 的逐轴毕业门槛后，才可以成为默认生产路径。
+
+### 参考实现包含并行调度能力
 
 [`SA-foo-dr-meter-108-x64-parallel-dispatch-20260802`](../../reference/static-analysis/sa-foo-dr-meter-108-x64-parallel-dispatch-20260802.md)
 登记了固定 target `TARGET-foo-dr-meter-1.0.8-x64-static-ff3556ad` 内部的
@@ -28,121 +40,297 @@ fork-join 并行：
 - 从该调度器可达 analyzer 的三个固定入口 `0x8410` / `0x89f0` / `0x8df0`；反过来
   从这三个入口出发不可达调度器。
 
-这解释了一处此前未被解释的观测：既有隔离 core 记录走的是三个入口的**单线程**
-路径，而既有 foobar report 走的是**多线程**路径，两者在
+这补充了一处此前未登记的结构关系：既有隔离 core 记录直接调用三个入口，明确
+绕过并行调度器；完整组件则包含一个能够在这些入口之上 fork-join 的外层调度器。
+两条既有记录在
 [`窄字段对照`](../../reference/conformance/conf-foo-dr-meter-108-x64-isolated-core-safe-master-report-run1-20260719/record.md)
-中精确匹配。参考实现的并行是结果不变的。
+中精确匹配。不过，既有 foobar observation 没有动态记录调度分支或实际线程数，
+因此该对照只证明直接单线程 core 与完整宿主路径的公开字段一致；它与结果不变的
+并行结构相容，但不单独证明那次 report 运行实际进入了 `n > 1` 分支，也不决定
+MacinMeter 应采用哪一种并行粒度。
 
-### 算法结构允许结果不变的并行
+### 单文件压缩解码是更大的杠杆
 
-[`固定算法规格`](../../reference/specs/foo-dr-meter-1.0.8-candidate-v1.md) 的状态
-更新中，浮点累加只发生在窗口内部：`current_sum_squares` 在窗口内逐样本累加、
-窗口结束后归零，跨窗口只保留窗口级的 `sum_window_rms2`。因此窗口内顺序不变、
-跨窗口按窗口索引序归约即可保持逐位一致；RMS histogram 是整数计数、peak 是
-取最大值，合并均无精度损失。
-
-### 瓶颈不在分析
-
-一次本机同机测量（i7-11800H / Windows 11，同一 DAW 母带的三种编码，
+一次指示性本机测量（i7-11800H / Windows 11，同一 DAW 母带的三种编码，
 222.1 s / 48 kHz / 立体声，扣除 80 ms 进程启动后的中位数）给出：
 
 | 编码 | 端到端 | 其中解码 | 其中分析 |
-| --- | --- | --- | --- |
+| --- | ---: | ---: | ---: |
 | WAV 16-bit | 182 ms | 约 90 ms | 约 92 ms |
 | FLAC 24-bit | 607 ms | 约 515 ms | 约 92 ms |
 | ALAC 24-bit | 1052 ms | 约 960 ms | 约 92 ms |
 
-分析时间由本机测得的单线程分析核心吞吐折算；解码时间为差值。**这些数字不满足
-ADR-0007**（不是 same-run interleaved A/B，没有 result/PCM fingerprint 绑定，
-单机单 CPU），只用于定位瓶颈量级，不构成优化声明，也不进入任何证据体系。
+这些数字不满足 ADR-0007：它们不是 same-run interleaved A/B，没有与
+result/PCM fingerprint 绑定，也只来自一台机器。它们只用于判断优化量级，不是
+性能声明。
 
-结论是：并行分析层最多只能消除约 92 ms。对 FLAC 是 15%、对 ALAC 是 9%，
-对最常见的无损格式收益有限。
+已提交的 M6 sampling profile 也把固定 FLAC case 的主要成本定位在 Symphonia
+decoder 内部，并记录完整性 validator 是其中不可删除的一部分。两份证据共同说明：
+只把串行 decoder 与串行 analyzer 放到两个线程重叠，理论上最多消除约 92 ms；
+它没有触及 FLAC/ALAC 的主要单文件瓶颈。首个生产切片因此从“解码—分析流水线”
+调整为 packet 级解码并行。
 
-### ADR-0001 留下的恢复条件
+### 不能复活 0.1.x generic parallel decoder
 
-ADR-0001 把包级并行判定为“尚不满足可信生产契约”，并写明“批处理先以确定性
-串行语义为基准，并发只能在同一应用调度器下恢复”。这两个前置条件现已具备：
-0.2.0/0.3.0 建立了确定性串行基准并保有逐 token conformance，M3 建立了唯一的
-应用执行域。`CLAUDE.md` 的禁令针对的是“作为兼容助手重新引入”，不覆盖一条有本
-ADR 支撑的新能力。
+旧提交 `2eb49f4` 中的通用并行 decoder 使用 `Vec<f32>`、
+`DecoderOptions::default()`，并把 packet `DecodeError` 或 worker error 变成空 samples
+以维持序号连续；这会跳过坏包并可能生成部分成功结果，违反当前有限 `f64`、
+`verify: true` 和 sticky terminal error 契约。该提交记录的局部变化只有
+208 → 217 MB/s（+4.3%），同时内存 54 → 65 MB（+20%）；这些旧数字也不满足
+ADR-0007。后续一次调度替换只记录 +0.4%，明确处于测量误差内。
+
+本决策只接受在 0.2.0/0.3.0 可信主干上重新设计的、route-specific 的有界实现；
+不移植、包装或恢复旧 generic parallel decoder。
 
 ## 决策
 
-### 1. 首个切片只做解码-分析流水线
+### 1. 解除三类并行的硬禁令，并固定优先级
 
-单文件分析路径拆为两个线程：解码线程从 `PcmSource` 顺序读取 PCM 块并投入一个
-有界 FIFO 队列；分析线程按同一顺序取出并交给 `AnalyzerSession`。
+| 优先级 | 并行轴 | 主要目标 | 当前决定 |
+| --- | --- | --- | --- |
+| P0 | packet 级解码 | 单个 FLAC/ALAC 文件的解码延迟 | 立即允许按 route 实施；首个切片为 ALAC，FLAC 必须先解决全流 MD5 |
+| P1 | 文件级 | batch/album 总吞吐 | 允许在同一 `ApplicationJob` 内实施有界 file lanes |
+| P2 | 窗口级分析 | analyzer 吞吐 | 允许实施，但在压缩解码瓶颈之后 |
 
-不做窗口级分析并行，不做 packet 级解码并行。选择流水线是因为它不改变解码输出
-顺序，也不改变 `AnalyzerSession` 接收样本的顺序——分析侧看到的字节流与串行实现
-完全相同，逐位一致由构造保证而非由归约设计保证。
+这张表是架构授权与实施顺序，不是完成状态。每个轴可以独立毕业，也可以继续保持
+串行；无需再为“是否原则上允许”另立 ADR，但任何超出本 ADR 的 public tuning、
+第二 backend、外部进程或 codec 能力扩张仍需单独决策。
 
-理论收益上限是 `min(解码总时间, 分析总时间)`，即上表中约 92 ms。
+原草案提出的双线程 decode-analysis overlap 不再是首个切片。它以后可以作为共享
+预算下的内部实现细节接受差分与 A/B，但不是 packet 并行的前置条件，也不能占用
+独立、未计量的线程池。
 
-### 2. 确定性契约
+### 2. packet 级生产拓扑固定为顺序提交
 
-- 分析结果不得依赖线程数、队列容量、调度时序或宿主负载；
-- 队列必须是有界 FIFO，容量固定且不由媒体声明决定；
-- 关闭流水线（退化为单线程）必须产出逐位相同的结果，并作为可测试的配置存在；
-- PCM 主链仍是有限交错 `f64`，不得在流水线边界改变精度或分块几何对结果的影响。
+首选拓扑为：
 
-### 3. 与 M3 执行预算的关系
+```text
+顺序 probe / demux / packet 编号
+              ↓
+      有界 compressed-packet 队列
+              ↓
+  N 个 route-specific decoder worker
+              ↓
+      indexed Result + 有界重排序
+              ↓
+  按 packet 序核验、提交 finite f64 PCM
+              ↓
+       每文件一个 AnalyzerSession
+```
 
-ADR-0004 写明“一个 active job 把并行 CPU/decoder/analyzer 数量收紧到 1”。本
-决策不放宽该约束：仍然是一个 active job、一个 `PcmSource`、一个
-`AnalyzerSession`。流水线只是把同一条串行流水拆到两个线程上执行，不增加并发的
-decoder 或 analyzer 实例，也不改变 64 个排队 FIFO reservation 的语义。
+- probe、container validation、track 选择和 demux 保持顺序；第一切片不并行解析
+  ISO BMFF box 或 sample table；
+- packet 在进入 worker 前获得稳定、单调的序号和预期 frame 几何；worker 只能返回
+  `Result<DecodedPacket, AnalysisError>`，不能用空 PCM 表示失败；
+- decoder worker 只按已经毕业的具体 route 创建，不建立从扩展名或泛型 codec
+  descriptor 猜测“packet 独立”的公共工厂；
+- 乱序完成可以发生，但 finite `f64` PCM、frame count、完整性状态与错误只按输入
+  packet 序提交；`PcmSource::read_block` 的公共 `Data / Eof / Error` 契约不变；
+- worker 数为 1 或输入不足时可以在开始解码前退化为串行；生产路径不得在并行错误
+  后重跑串行并把失败隐藏成成功。
 
-批处理仍串行处理文件，不引入文件级并行。
+### 3. ALAC 是第一个 packet 并行切片
 
-### 4. 错误、取消与进度语义
+ADR-0013 的稳定 ALAC route 已经在 decoder 创建前固定单一 track、非 fragmented
+ISO BMFF、`stts`/`stsz`、精确 packet/frame 数和 4096-frame cookie。这给顺序 demux
+与 packet 编号提供了比 generic container 更窄的输入边界。
 
-- 解码错误仍是 sticky terminal，且必须在分析线程侧以与串行相同的顺序和分类
-  暴露；不得因线程边界变成 EOF 或部分报告；
-- 取消必须在两个线程上都及时生效，且不得产生部分写出的报告；
-- 进度语义保持既有定义，不因流水线出现回退或跳变；
-- 任一线程 panic 必须转为结构化错误，不得静默丢失或悬挂队列。
+Symphonia 0.5.5 的
+[`AlacDecoder`](https://github.com/pdeljanov/Symphonia/blob/v0.5.5/symphonia-codec-alac/src/lib.rs#L605-L629)
+将 `reset()` 实现为空操作，`finalize()` 返回默认结果。这使 ALAC 成为当前最强的
+首批候选，但源码形状本身不是“任意 packet 可独立解码”的充分证明；实现仍必须以
+多 packet、短尾、1–8 声道、损坏 packet 和注入乱序完成的 route-specific 测试，
+证明 worker 数变化不改变 decoded-f64 raw bits、帧数、错误或报告。
 
-### 5. 验收门槛
+现有短小 fixture 足以固定正确性边界，但不能建立真实长音频的调度收益。默认启用
+前必须增加 source-bound 的长 ALAC corpus，并按 ADR-0007 比较 1/2/4/8 worker 与
+不同队列容量。没有正式 A/B 前，不声明 ALAC 加速比。
+
+### 4. FLAC packet 并行必须先保住全流 MD5
+
+FLAC frame 是独立编码的 block；Symphonia 0.5.5 的
+[`FlacDecoder`](https://github.com/pdeljanov/Symphonia/blob/v0.5.5/symphonia-bundle-flac/src/decoder.rs#L236-L266)
+也明确不在 packet 之间保存解码状态。但当前产品以 `verify: true` 打开 decoder，
+decoder 会按整条 PCM 流更新 validator，并在 `finalize()` 将结果与 STREAMINFO MD5
+比较。FLAC 格式同时把该 MD5 定义为未编码音频数据的流级签名，见
+[Xiph FLAC format overview](https://www.xiph.org/flac/documentation_format_overview.html)。
+
+因此多个 worker-local validator 的 `finalize()` 不能等价替代当前全流校验。FLAC
+只有在提供“按原 packet 序更新的产品级全流 verifier”或另一条同等、可复核的完整性
+设计后才可毕业。以下做法明确禁止：
+
+- 为了吞吐把 `verify` 改为 `false` 或忽略 verification failure；
+- 只验证每个 worker 的子序列，然后声称等价于全流 MD5；
+- 在 parallel path 后再做一次完整串行解码，并把它描述为有效加速；
+- 因某个 packet 失败而跳包、补零或返回 partial report。
+
+WAV/AIFF 的解码成本当前不是 packet 级 P0；它们仍可通过文件级 lanes 获得 batch
+吞吐。未来新增或扩张 codec route 时，不得从扩展名、FLAC/ALAC 的结论或
+Symphonia generic 支持推导 packet 独立性，必须逐 route 重新毕业。
+
+### 5. 三个轴共用一个 application 资源计划
+
+ADR-0004 的“一个 active 顶层 job、最多 64 个 FIFO 排队 reservation”保持不变。
+本 ADR 只定向取代其中“一个 active job 内 CPU/decoder/analyzer 并发数固定为 1”
+和“batch 内文件必须永久串行”的约束。
+
+每个 active job 在开始执行前由 `Application` 形成一个有界内部资源计划：
+
+- worker permit、decoder reservation、queue/reorder PCM 预算由同一个计划拥有；
+- `Application` 只向 owning lower layer 下发不含 application 依赖的 reservation/
+  执行参数；`codecs` 与 `analysis` 不反向依赖 application，也不能绕过 reservation
+  自建未计量 worker；
+- 数值上限必须是代码中的固定、可测试上限，可结合宿主并行度向下收缩，但不得由
+  媒体声明、batch 长度或递归任务自行放大；
+- file lane、packet worker、window worker 和 decode-analysis overlap 消耗同一组
+  permits，不允许形成 `file lanes × packet workers × window workers` 的乘法并发；
+- 所需 permit 在调度子任务前一次性分配，worker 不递归等待另一层 pool 的 permit，
+  避免嵌套 pool 死锁；预算不足时向更低并发或串行退化；
+- compressed packet、decoded `f64`、重排序项和 decoder/session reservation 均
+  计入有界计划；队列容量不能随媒体时长、packet count 或声明的 frame count 增长；
+- Tauri/CLI 不建立自己的 Rayon/Tokio pool，也不绕过 `Application`。
+
+只有持有该内部计划的 production `Application` 路径可以激活并行。直接使用低层
+`PcmSource` 或 `AnalyzerSession`、以及无法取得内部 permit 的路径保持串行；这避免
+新增公共线程调参或 process-global scheduler。
+
+这仍是保守的资源上界，不冒充对 Symphonia 或系统 allocator 的逐 byte sandbox。
+每个实现切片必须把实际 worker hard cap、队列容量、单 reservation 估算和退化规则
+写入测试或伴随设计记录，不能只调用 `available_parallelism()` 后无上限扩张。
+
+### 6. 确定性、错误、进度与取消是共同硬契约
+
+所有并行轴必须满足：
+
+- 同一输入的 decoded-f64 raw-bit fingerprint、`AnalysisResult` raw bits、报告字段、
+  错误分类与 batch item 顺序不依赖 worker 数、队列容量、调度时序或宿主负载；
+- packet/window worker 的结果以输入序号提交。多个 packet 失败时，输入序最早的
+  packet error 胜出；即使较晚错误先完成，也必须等待所有更早序号确定后再暴露；
+- progress 只按已经连续提交的 decoded frames 前进，保持单调，不把“worker 已完成
+  但前序尚未提交”计入公开进度；
+- EOF 只能在所有前序结果提交、精确 frame count 与 route integrity/finalization
+  通过后出现。错误仍为 sticky terminal，且永远不能变成 EOF 或 partial report；
+- 取消会停止继续分发、唤醒队列两端、回收并 join 所有 worker，再通过 RAII 释放
+  reservation；不得留下 detached thread、后台解码、悬挂 channel 或部分报告；
+- worker panic、channel disconnect、索引重复/缺口和 reorder overflow 都转为结构化
+  terminal error，并在返回前完成 join；不得恢复 poisoned state 后继续出报告；
+- crate-private 串行路径长期保留为 differential oracle，但不是公共 profile、
+  compatibility engine、用户线程开关或第二套 analyzer。
+
+### 7. 文件级并行的边界
+
+文件级并行只发生在一个已获准的 batch `ApplicationJob` 内：
+
+- 输入发现与 item 编号保持稳定；file lane 可以乱序运行，最终 `BatchResult` 仍按
+  输入索引排列，既有全部/部分失败语义不变；
+- progress event 可以交错，但必须携带足以区分 item 的稳定索引/路径，单文件内部
+  progress 仍满足上一节的连续提交规则；
+- 每个文件使用同一固定 `AnalyzerSession` 实现的一次独立会话；这不是第二 analyzer
+  engine 或 profile；
+- lane 与其 packet/window worker 共用同一资源计划。若一个压缩文件取得更多 packet
+  permits，调度器必须相应减少 file lanes，而不是为每个文件建立独立线程池；
+- batch 取消必须停止并 join 全部 in-flight item；某个 item 的普通失败仍按既有
+  batch 契约记录，不得取消或吞掉其他已准入 item，除非用户请求取消。
+
+文件级并行面向 batch/album 总吞吐，不用来声称单文件更快。默认启用前必须用包含
+WAV、FLAC、ALAC 与混合时长的 batch corpus 验证吞吐、公平性、稳定结果顺序和 RSS。
+
+### 8. 窗口级并行的边界
+
+窗口级并行保留在单一固定分析算法内部，不增加公共 analyzer 类型或 profile：
+
+- 只按规格的固定完整窗口边界分配工作；每个窗口内部的 frame/sample 运算顺序不变，
+  唯一不足整窗的尾部按现有规则处理；
+- window summary 可以乱序计算，但必须按窗口索引提交。任何跨窗口浮点累加仍按原
+  窗口序执行；不能因 histogram 为整数计数、peak 为 max 就顺带重排其他浮点归约；
+- numeric validation 与 commit 的分离、chunk 不变性和原始输入序的错误优先级保持
+  不变；并行 inspector 不得用 rollback 取代当前事务性验证；
+- 不得为窗口 worker 复制整份媒体 PCM。待处理窗口、summary 与 shadow state 必须
+  受同一内存计划约束。
+
+现有量级显示 analyzer 不是 FLAC/ALAC 的首要瓶颈，因此窗口级为 P2。只有新的
+source-bound profile 显示它在目标 workload 中重新成为主导时，才默认启用。
+
+## 毕业门槛
+
+共同门槛：
 
 - 39 项 safe-master 逐 token 对照保持 track DR 39/39、channel DR 62/62、
   overall peak 39/39、overall RMS 39/39、channel RMS 62/62、duration 39/39、
   差异数 0；
-- 三套合法 corpus 的共享 `PcmSource` contract 与 ALAC/WAV 孪生逐位 PCM 等价
-  全部保持；
-- 新增确定性测试：同一输入在不同队列容量与线程配置下产出逐位相同的
-  `AnalysisResult`；
-- 性能声明必须按 ADR-0007 提供精确 result/PCM fingerprint 与同轮次交替 A/B；
-  在此之前不得对外宣称任何加速比。
+- 同一 corpus 在串行与 1/2/4/8 worker、最小/默认/最大队列容量下具有完全相同的
+  decoded-f64 fingerprint、`AnalysisResult` raw bits 与 wire-visible report；
+- 当前三套合法 corpus 的共享 `PcmSource` contract、ALAC/WAV 孪生与 route-specific
+  malformed matrix 全部保持；新增长音频、多 packet、短尾与多声道 corpus；
+- 用确定性 delay/fault injection 强制反序完成，覆盖最早/中间/最后 packet 或窗口
+  失败、多个并发失败、worker panic、channel disconnect、取消和 EOF 竞争；
+- sticky EOF/error、最早输入序错误优先级、连续 progress、精确 frame count、无
+  partial report、所有线程 join 与 reservation 释放均有独立测试；
+- 通过小队列长流与最坏乱序压力测试证明 queue/reorder 内存不随媒体时长增长；记录
+  各 worker 配置的 RSS，不把 RSS 变成普通 CI 的跨主机阈值；
+- 性能裁决按 ADR-0007 在同一次 run 完成交错 A/B，绑定 source、binary、suite、
+  corpus、toolchain、环境、raw samples 与精确 result/PCM fingerprints；至少比较
+  1/2/4/8 worker，并记录吞吐、elapsed、RSS 和退化点；
+- candidate 只有在收益稳定超出同轮噪声、资源代价可接受且正确性门禁全通过后才
+  默认启用；否则保留串行生产路径。正式记录前不得发布加速比。
+
+packet 级另加：
+
+- 每个 route 独立证明 decoder 初始化、packet state、finalization、完整性与
+  normalized-f64 顺序；ALAC 先毕业，FLAC 必须额外证明与当前全流 MD5 等价；
+- 损坏 packet 永不跳过，worker 数变化不改变错误阶段、错误码或最早失败身份。
+
+文件级另加：
+
+- batch item 顺序、独立失败语义、交错 event 身份与整批取消在不同 lane 数下完全
+  一致；混合 route 不产生嵌套超额并发。
+
+窗口级另加：
+
+- 所有窗口/随机 chunk/声道几何、极端有限数值和 window-boundary corpus 的 raw-bit
+  结果一致；浮点归约与 numeric-error precedence 保持原序。
+
+## 实施顺序
+
+1. 在 `Application` 建立共用 worker/memory 计划与向下传递的 reservation；在
+   `codecs` owning layer 内建立 packet indexed result/reorder、crate-private 串行
+   oracle 和确定性 fault-injection seam，不改变层间依赖方向；
+2. 只为 ADR-0013 稳定 ALAC route 实现 packet 级 worker，补长 ALAC corpus 与正式
+   ADR-0007 A/B；
+3. 设计并验证 FLAC 的有序全流 MD5，再决定是否启用 FLAC packet workers；
+4. 在同一预算上评估并实现 batch file lanes；
+5. 只有 profile 重新指向 analyzer 时，才实现窗口级并行。
+
+每一步单独提交、验证和记录；后一步不是前一步毕业的捆绑条件。
 
 ## 明确非目标
 
-- packet 级或帧级解码并行、文件级并行；
-- 窗口级分析并行（本 ADR 只论证其可行性，不实施）；
-- SIMD、unsafe、第二 backend、外部解码进程；
-- 修改固定分析算法、数值参数、报告字段或 wire schema；
-- 把 elapsed time 或 RSS 变成普通测试/CI 阈值；
-- 改变发行边界、平台矩阵或签名/公证状态。
+- 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
+- 恢复 0.1.x generic parallel decoder、`f32` PCM、坏包跳过或错误回退成功；
+- 公共 `--threads`、batch size、queue size、profile 或兼容模式；
+- 并行 container probe/demux、支持未毕业的 codec，或从扩展名猜测并行安全；
+- 禁用 FLAC checksum、弱化 sticky terminal error、允许 partial report；
+- SIMD、unsafe、第二 backend、外部解码进程或另一套 analyzer；
+- 修改固定分析算法、数值参数、报告字段、wire schema、发行边界或平台矩阵；
+- 把 elapsed time 或 RSS 变成普通 test/CI 的跨主机阈值。
 
 ## 后果
 
-正面：解码与分析重叠可消除分析层的串行时间，且逐位一致由顺序不变构造保证，
-是所有并行方案中风险最低的一档。它同时建立确定性并发的测试框架，为后续是否
-推进 packet 级解码并行提供可复用的验收手段。
+正面：项目不再被阶段性的“全串行”约束锁死，优化直接指向最明显的单文件压缩解码
+瓶颈；packet、文件和窗口三个轴共享同一套确定性、错误、取消与资源规则，后续不会
+靠多个互不知情的线程池叠加吞吐。
 
-代价：单个 job 内部出现第二个线程，错误、取消与 panic 的传播路径变复杂；
-需要新增确定性测试面。对 FLAC 与 ALAC 的端到端收益分别只有约 15% 与 9%，
-真正的解码瓶颈仍未触及。
+代价：packet 并行同时放大 decoder state、完整性、错误优先级、重排序、取消和内存
+风险；尤其 FLAC 的流级 MD5 使“frame 可独立解码”不足以直接推出生产安全。实现与
+测试成本明显高于简单流水线，且最终收益仍须由正式长音频 A/B 决定。
 
 ## 待补证据
 
-静态分析发现已落成独立记录并与固定 target 绑定。转为 Accepted 前仍需补齐：
+本 ADR 已接受架构方向与实施优先级，但尚未接受任何实现或性能声明：
 
-- 背景中的性能分解只是指示性测量，不满足 ADR-0007，也不进入证据体系。流水线
-  落地后若要给出任何加速比，必须另行提供符合 ADR-0007 的 fingerprint 与同轮次
-  交替 A/B；
-- 确定性测试面尚未设计：需要明确以何种方式在测试中改变队列容量与线程配置，
-  并证明 `AnalysisResult` 逐位不变；
-- 取消与 panic 在跨线程边界的语义需要在实现前细化到可测试的断言，而不是留给
-  实现自行决定。
+- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立；
+- ALAC packet 独立性仍需用当前产品 route 的 raw-bit、错误与乱序测试完成证明；
+- FLAC 的 ordered full-stream MD5 设计尚未形成；
+- application 共用 worker/memory hard cap、reservation 数值和退化策略尚待实现切片
+  明确并验证；
+- 文件级与窗口级仍只有准入契约，没有生产实现。

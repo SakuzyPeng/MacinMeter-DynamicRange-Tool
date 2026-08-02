@@ -64,9 +64,13 @@ FLAC 有 79.07% 位于 Symphonia decoder 内，产品 sample materialization 与
 限定的 refinement，最终 clean 交错 A/B 中 stereo 保持在噪声内，8 声道中位
 耗时下降 12.92%，64 声道下降 26.72%，跨 variant result fingerprint 完全相同。
 
-本文档不暗示包级并行、SIMD、unsafe 或外部解码进程会恢复。准确测量方法与声明
-边界见 [`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，首次
-clean-source 结果与原始样本见
+历史 M6 证据本身不授权 packet/file/window 并行、SIMD、unsafe 或外部 decoder。
+后继独立决策
+[`ADR-0014`](adr/0014-deterministic-decode-analysis-pipeline.md) 现已允许有界确定性
+并行 candidate，并把 route-specific packet 解码设为第一优先级；当前产品在各
+candidate 独立毕业前仍保持串行。所有比较与未来加速声明仍必须遵循
+[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)。首次 clean-source
+结果与原始样本见
 [`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)、
 [`M6 sampling-profile 报告`](performance/M6_SAMPLING_PROFILE_REPORT.md)和
 [`validation-traversal A/B 报告`](performance/M6_VALIDATION_TRAVERSAL_AB_REPORT.md)；

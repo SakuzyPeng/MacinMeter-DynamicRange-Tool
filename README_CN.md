@@ -63,6 +63,11 @@ macinmeter batch "My Album/" --recursive
 `batch` 按稳定输入顺序串行处理文件。某一项失败不会阻止后续项目继续运行。它返回
 相互独立的逐轨报告，不会隐式计算 album DR。
 
+这是当前 0.3.0 的实现状态，不是永久架构禁令。
+[`ADR-0014`](docs/adr/0014-deterministic-decode-analysis-pipeline.md) 已接受有界的
+packet、文件与窗口级并行作为后续方向，并以 route-specific packet 解码为先；各
+路径在独立通过正确性、资源与性能门禁前均未启用。
+
 下面是仓库内固定合成 fixture 实际产生的 stdout：
 
 ```bash
@@ -161,8 +166,10 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 }
 ```
 
-同一个 `Application` 的 clone 共享有界串行执行队列，分别构造的 `Application`
-则彼此独立；队列大小可以通过 `Application::with_budget` 配置。
+同一个 `Application` 的 clone 共享有界顶层执行队列，当前只准入一个 active job；
+分别构造的 `Application` 彼此独立，队列大小可以通过
+`Application::with_budget` 配置。未来 ADR-0014 内部 worker 仍必须受该
+application 执行域统一管理。
 
 已经持有有限、帧对齐、交错 `f64` PCM 的调用者可以直接使用
 `AnalyzerSession`。`AlbumAggregator` 是针对逐轨报告的独立数值操作，支持
@@ -217,8 +224,10 @@ macinmeter-domain
     └── macinmeter-gui
 ```
 
-所有第一方 Rust crate 都使用 `#![forbid(unsafe_code)]`。产品只有一个分析器，
-采用串行原生解码与串行 batch。它的设计历史与进一步技术资料集中在：
+所有第一方 Rust crate 都使用 `#![forbid(unsafe_code)]`。当前产品只有一个分析器
+实现，采用串行原生解码与串行 batch。ADR-0014 只允许通过逐 route/逐轴毕业的
+有界确定性内部并行，不恢复已删除的 0.1.x 并行 decoder。设计历史与进一步技术
+资料集中在：
 
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [架构决策记录](docs/adr/)

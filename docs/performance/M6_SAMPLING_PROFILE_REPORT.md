@@ -11,6 +11,12 @@
 - 前置 timing baseline：
   [`M6_SCALAR_BASELINE_REPORT.md`](M6_SCALAR_BASELINE_REPORT.md)
 
+> 后继说明（2026-08-02）：本文“没有恢复包级并行理由”的结论限定于当时固定的
+> FLAC corpus 与 M6 scope。后继
+> [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) 纳入新增 ALAC
+> 单文件瓶颈范围，接受 route-specific packet-first 方向，并保留本文对 FLAC MD5、
+> checksum 不得放宽及 source-bound 测量的约束。
+
 ## 结论
 
 首批 sampling profile 已经把 M6 timing baseline 中的两个主要 scope 归因到具体

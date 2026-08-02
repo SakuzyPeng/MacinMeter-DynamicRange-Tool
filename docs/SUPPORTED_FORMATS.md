@@ -65,8 +65,15 @@ The following routes are not built into the current stable surface:
   cropped edit lists, ALAC 20/32-bit or non-version-0 streams, nonstandard
   ALAC layouts, raw/CAF ALAC, Ogg, Matroska/WebM, DSF, and DFF containers;
 - FFmpeg fallback or external decoder processes;
-- resampling, gain, filters, edge trimming, and silence preprocessing;
-- packet-level or file-level parallel decoding.
+- resampling, gain, filters, edge trimming, and silence preprocessing.
+
+Parallelism is an execution policy, not a codec capability. The current 0.3.0
+implementation still decodes and processes batch items serially. Accepted
+[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) removes the
+permanent ban on bounded packet-, file-, and window-level parallelism, with
+route-specific ALAC packet decoding first; no parallel path is a current stable
+feature until its independent graduation gates pass. This does not broaden the
+format matrix above or add public thread controls.
 
 The stable AIFF route also requires a finite, positive, exactly integral
 80-bit sample rate representable as `u32`, an exact 18-byte COMM chunk, plus

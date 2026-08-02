@@ -15,7 +15,9 @@
 > `foo_dr_meter 1.0.8 x64`。后继 M1 的验收范围由
 > [`ADR-0002`](../../docs/adr/0002-m1-reference-numeric-scope.md) 固定：最终
 > 可观测数值 conformance 与可追溯白盒规则是收口条件，内部状态同构不是条件；
-> M1 现已完成。
+> M1 现已完成。本文的 M0 串行 MUST 同样只属于历史基线；当前并发准入由
+> [`ADR-0014`](../../docs/adr/0014-deterministic-decode-analysis-pipeline.md) 管理，
+> 不回写本文件的历史规范文本。
 
 ## 1. 目的
 

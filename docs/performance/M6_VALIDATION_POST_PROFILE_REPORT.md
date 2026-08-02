@@ -11,6 +11,11 @@
 - 前置 A/B：
   [`M6_VALIDATION_TRAVERSAL_AB_REPORT.md`](M6_VALIDATION_TRAVERSAL_AB_REPORT.md)
 
+> 后继说明（2026-08-02）：下文“不增加并行”约束只限定本次 analyzer refinement，
+> 仍用于禁止借并行重排浮点运算或改变错误优先级。后继
+> [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) 已另行允许通过
+> 逐轴毕业的有界并行，不改写本报告的 profile 与 A/B 结论。
+
 ## 结论
 
 accepted candidate 的 64-channel post-profile 证实局部性优化命中了原归因路径：

@@ -21,26 +21,37 @@ dependencies into lower layers.
 ## Trusted trunk and post-M3 constraints
 
 - Every first-party Rust crate uses `#![forbid(unsafe_code)]`.
-- Production analysis has one `AnalyzerSession`; do not add a compatibility
-  engine or a selectable profile.
+- Production analysis has one `AnalyzerSession` implementation and each file
+  uses one session; do not add a compatibility engine or a selectable profile.
 - Valid PCM blocks and the analyzer boundary use finite interleaved `f64`;
   source float64 samples must not be narrowed before analysis.
 - Stable product analysis accepts at most 64 channels. Preserve broader source
   metadata types, but reject over-limit media before decoder creation and
   over-limit direct sessions before allocation.
-- Decoding remains serial. WAV integer/float PCM, FLAC, AIFF integer PCM, and
-  the ADR-0013 constrained MP4/M4A + ALAC matrix are the only stable routes
-  until another in-process Symphonia route satisfies ADR-0003's capability
-  graduation contract.
+- The current production implementation decodes and batches serially. ADR-0014
+  removes the blanket ban on bounded window-, packet-, and file-level
+  parallelism: packet decoding is P0, with constrained ALAC first and FLAC only
+  after preserving equivalent ordered full-stream MD5 verification. Every axis
+  remains disabled until its route/axis-specific differential, failure,
+  cancellation, resource, and ADR-0007 performance gates pass.
+- WAV integer/float PCM, FLAC, AIFF integer PCM, and the ADR-0013 constrained
+  MP4/M4A + ALAC matrix remain the only stable routes until another in-process
+  Symphonia route satisfies ADR-0003's capability graduation contract.
 - `Application` is the only public file-analysis, batch, and controlled
   discovery façade. Keep `Analyzer`/`BatchRunner` crate-private; adapters must
   not bypass the shared execution domain.
 - The product budget established in M3 remains one active top-level job with at
   most 64 queued reservations. Tauri must reserve `ApplicationJob` before
   `spawn_blocking`; queued cancellation and RAII release are contract behavior.
+  Any ADR-0014 internal workers, file lanes, decoder instances, queues, and
+  reorder buffers share one application-owned worker/memory plan. Never
+  multiply independent file, packet, and window pools.
 - Completed M3 did not add a second backend, FFmpeg, DSD, Songbird/Opus,
   Tokio/Rayon scheduling, SIMD, trimming, silence preprocessing, or file-level
-  parallelism. Any such change requires a separate evidence-backed decision.
+  parallelism. ADR-0014 supersedes the file-level/internal-scheduling ban only
+  for a bounded implementation under the shared application plan; it does not
+  itself select Tokio/Rayon, authorize the other removed capabilities, or
+  permit an adapter-owned scheduler.
 - Analysis reports contain the fixed numeric parameters needed for
   reproducibility. Internal profile names and compatibility status are not
   report fields; do not serialize or render them, and do not claim reference
@@ -79,8 +90,9 @@ dependencies into lower layers.
 - Completed M6 keeps validation geometry-sensitive: 1–4 channels use the
   channel-major path; 5–64 channels use frame-major transactional shadows and
   replay the immutable channel-major inspector only for numeric-error
-  precedence. Do not merge validation with commit or add SIMD, unsafe,
-  parallelism, or a second backend without a new source-bound decision.
+  precedence. Do not merge validation with commit. ADR-0014 is the source-bound
+  decision for bounded parallelism; it does not authorize SIMD, unsafe, a
+  second backend, reordered floating reduction, or relaxed error precedence.
 
 ## Commands
 

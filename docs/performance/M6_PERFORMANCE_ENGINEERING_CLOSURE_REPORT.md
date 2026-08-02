@@ -16,6 +16,12 @@
 - final raw SHA-256：
   `a946570d5c86265c32798964b0f5a9483452a2f5d05be2e08de47e3311368747`
 
+> 后继说明（2026-08-02）：本文对串行路径与“并行保持删除”的描述准确记录 M6
+> 收口时点，不是永久禁令。后继
+> [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) 已基于新增 ALAC
+> 单文件瓶颈范围接受 packet-first 的有界并行方向；它仍须使用本文采用的
+> exact-fingerprint 与 ADR-0007 同轮 A/B，且没有改写以下历史结果。
+
 ## 结论
 
 M6 已完成“先建立可信标量基线、再 profile、只优化已确认热点、以 bit-exact 同轮

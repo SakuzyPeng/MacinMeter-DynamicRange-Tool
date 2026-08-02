@@ -40,6 +40,12 @@
 >
 > 后续 WAV 封装扩展：
 > [ADR-0012：稳定 WAV 路由扩展至 WAVE_FORMAT_EXTENSIBLE 线性 PCM](adr/0012-wave-format-extensible-linear-pcm.md)（Accepted）
+>
+> 0.3.0 ALAC 路由：
+> [ADR-0013：稳定 MP4/M4A + ALAC 路由](adr/0013-mp4-m4a-alac-stable-route.md)（Accepted / Done）
+>
+> post-M6 并发方向：
+> [ADR-0014：确定性有界并行与 packet 解码优先](adr/0014-deterministic-decode-analysis-pipeline.md)（Accepted / Not started）
 
 ## 1. 文档目的
 
@@ -382,12 +388,20 @@ Error
 
 ### 7.4 并发策略
 
-- M0 使用串行文件处理和串行解码作为确定性基线；
-- 文件级并行只在 application 层具有统一资源预算和差分测试后恢复；
-- 包级并行在重新证明 codec 独立性、EOF 和错误传播前保持关闭；
-- 有状态 codec 不按文件扩展名猜测并行安全性；
-- application 层为文件任务、decoder worker 和外部进程分配统一预算；
-- 若实测证明包级并行收益不足以抵消复杂度，允许直接删除。
+- M0 的串行文件处理和串行解码继续作为确定性差分基线；当前生产实现也仍串行，
+  但 ADR-0014 已解除窗口级、packet 级和文件级并行的永久硬禁令；
+- 优先级固定为 packet P0、文件 P1、窗口 P2。packet 首批只做 ADR-0013 的受限
+  ALAC route；FLAC 必须先保存与现有 `verify: true` 等价的有序全流 MD5；
+- packet 允许乱序计算但只按输入序提交 PCM、错误与 progress；坏包不得变成空块、
+  EOF 或 partial report，最早输入序错误胜出；
+- 文件级并行只在同一 batch `ApplicationJob` 内建立有界 lanes，最终 item 顺序和
+  既有部分失败语义不变；窗口级并行保持窗口内与跨窗口浮点归约的原始顺序；
+- 一个 active 顶层 job 与最多 64 个 FIFO reservation 保持不变。file lane、decoder
+  worker、window worker、队列和重排序内存共用 application-owned 资源计划，禁止
+  `file × packet × window` 乘法并发或 adapter 自建 pool；
+- 有状态 codec 不按扩展名或 generic backend 能力猜测并行安全性。每条 route/axis
+  在差分、错误、取消、资源和 ADR-0007 A/B 门禁通过前保持串行；
+- 若正式 A/B 证明某条并行路径收益不足以抵消复杂度与 RSS，允许不启用该路径。
 
 ## 8. 分阶段实施
 
@@ -411,7 +425,8 @@ Error
   单文件自动保存路径；
 - 重建显式 CLI 操作、JSON schema、stdout/stderr 和全部/部分失败退出语义；
 - 让 CLI 与 Tauri 最终消费同一 application API 和 wire DTO；
-- 默认关闭包级并行，EdgeTrimmer 不进入生产管线、公共请求或结果 schema；
+- 默认关闭包级并行，EdgeTrimmer 不进入生产管线、公共请求或结果 schema；这里
+  冻结的是 M0 基线，post-M6 的并发准入由 ADR-0014 定向修订；
 - 建立 reference 目录与 provisional v1 规格，明确当前尚未具有参考兼容证明；
 - 施工期 CI 只保留手动 Ubuntu workspace fmt/clippy/test，pre-commit 只保留
   快速格式与 workspace 编译检查；
@@ -656,10 +671,21 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 从 clean harness commit 运行 15-case × 7-sample 标量基线并保存原始记录；
 - [x] 根据基线对 direct analyzer 与 FLAC decode 做 clean sampling profile，
   保存完整折叠栈证据并选择首个有界 candidate；
-- [x] 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；包级并行
-  除非出现新的必要性证据，否则维持删除状态；
+- [x] 根据 profile 决定是否需要任何优化，包括文件级并行或函数级 SIMD；M6 当时
+  没有新必要性证据，因此包级并行维持删除；后继 ADR-0014 依据新的 ALAC 单文件
+  瓶颈范围另行接受 packet-first 方向，不改写本项历史结论；
 - [x] 只优化已确认瓶颈；
 - [x] 性能路径必须通过与标量参考路径的差分测试。
+
+### post-M6：有界并行准入
+
+- [x] 接受 ADR-0014，解除窗口级、packet 级与文件级并行的 blanket ban；
+- [x] 固定 packet P0、文件 P1、窗口 P2，首个 route 为受限 ALAC；
+- [x] 固定统一 application worker/memory 计划、顺序提交、最早错误、连续 progress、
+  sticky terminal、取消/join 和 crate-private 串行 oracle 契约；
+- [ ] 实现共用资源计划与 ALAC packet worker，并完成长音频 exact-fingerprint A/B；
+- [ ] 形成 FLAC ordered full-stream MD5 设计后再评估 FLAC packet worker；
+- [ ] 文件级与窗口级分别按自身毕业门槛评估，不与首个 packet 切片捆绑。
 
 ## 9. 实施顺序记录
 

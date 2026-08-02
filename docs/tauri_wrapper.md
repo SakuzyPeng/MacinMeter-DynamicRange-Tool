@@ -17,6 +17,11 @@ The backend exposes:
 | `cancel_job` | cancel exactly one caller-generated `jobId` |
 | `get_capabilities` | return the read-only native capability snapshot; the picker builds its extension filter from `stableDiscoveryExtensions` instead of a handwritten list |
 
+`run_batch` is serial in the current 0.3.0 implementation. Accepted
+[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) permits future
+bounded packet/file/window work only inside the shared `Application` execution
+domain; Tauri remains an adapter and does not become a scheduler or own a pool.
+
 The frontend creates each `jobId`. Tauri state maps that ID to an independent
 `CancellationToken`; inserting a duplicate active ID is an error. Progress
 events have the single shape `{ jobId, event }`, so simultaneous jobs cannot
@@ -78,8 +83,8 @@ See [`RELEASE.md`](RELEASE.md).
 The backend performs admitted blocking analysis through Tauri's blocking task
 facility, leaving the UI event loop responsive. Admission happens first so the
 runtime is not used as an unbounded hidden queue. The backend does not modify
-environment variables, look for FFmpeg, use a global cancel flag, or create a
-Rayon batch pool.
+environment variables, look for FFmpeg, use a global cancel flag, or create an
+adapter-owned Rayon batch pool.
 
 The structured result records fixed numeric parameters for reproducibility,
 but does not expose an internal profile name or project status. The fixed

@@ -8,6 +8,11 @@
 - 前置决策：
   - [ADR-0001：以 0.2.0 重建可信主干](0001-m0-0.2.0-trusted-trunk-rebuild.md)
   - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)
+- 后继并发修订：
+  [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 保留一个 active 顶层
+  job 与最多 64 个排队 reservation，但定向取代 active job 内 CPU/decoder 数量
+  固定为 1 及 batch 永久串行的限制。所有内部并行轴必须共用 `Application` 的
+  worker/memory 计划。
 
 ## 背景
 

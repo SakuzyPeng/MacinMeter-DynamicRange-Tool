@@ -4,6 +4,14 @@
 
 > Status: development release contract; no signed/notarized public artifact has
 > been created. / 状态：开发线发行契约；尚未创建已签名、公证的公开制品。
+>
+> Concurrency note: the current 0.3.0 implementation remains serial. Accepted
+> [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) permits
+> bounded packet/file/window candidates as future work, but
+> none is shipped here; the v0.2.0 exclusions below are historical release
+> boundaries, not a permanent post-M6 ban. / 并发说明：当前 0.3.0 实现仍串行；
+> ADR-0014 已允许后续有界 packet/file/window candidate，但本版本尚未交付。下方
+> v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
 
 - Added a constrained stable in-process MP4/M4A + ALAC route: compatible
   version 0, 16/24-bit, 1–8 standard-layout channels, one audio-only track,
