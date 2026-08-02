@@ -3,6 +3,7 @@ use crate::{
 };
 use macinmeter_analysis::AnalyzerSession;
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
+use macinmeter_domain::DecodeReservation;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -24,8 +25,11 @@ pub(crate) struct Analyzer {
 }
 
 impl Analyzer {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    /// Build an analyzer that decodes inside an already-granted permit.
+    pub(crate) const fn new(decode: DecodeReservation) -> Self {
+        Self {
+            decoder_factory: DecoderFactory::with_reservation(decode),
+        }
     }
 
     pub(crate) fn analyze_file_with_control(

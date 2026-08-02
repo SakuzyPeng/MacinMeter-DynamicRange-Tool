@@ -597,6 +597,57 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     assert!(silent.get("valid_windows").is_none());
 }
 
+#[test]
+fn the_production_job_allocation_is_serial_in_0_3_0() {
+    let application = Application::new();
+    assert!(
+        application.budget().concurrency().is_serial(),
+        "ADR-0014 authorised bounded parallelism but 0.3.0 ships none of it"
+    );
+
+    let job = application.reserve(&CancellationToken::new()).unwrap();
+    let allocation = job.allocation();
+    assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
+
+    let decode = allocation.decode();
+    assert!(decode.is_serial(), "packet workers are not enabled yet");
+    assert_eq!(decode.workers().get(), 1);
+    assert_eq!(decode.queue_capacity().get(), 1);
+    assert_eq!(
+        decode.max_in_flight_pcm_bytes(),
+        0,
+        "a serial route may never leave decoded PCM waiting on an earlier index"
+    );
+}
+
+#[test]
+fn every_stable_route_reaches_its_exact_frame_count_through_the_commit_buffer() {
+    // The serial route now commits through the shared in-order packet buffer.
+    // These multi-packet fixtures therefore exercise repeated accept/commit
+    // cycles on all four stable routes, and each must still land on its exact
+    // declared frame count rather than a truncated or padded one.
+    for name in [
+        "native-pcm-v1/wav-pcm-s16-stereo.wav",
+        "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+        "native-pcm-v1/aiff-pcm-s16-stereo.aiff",
+        "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+    ] {
+        let report = Application::new()
+            .analyze_file(AnalyzeRequest::new(fixture(name)))
+            .unwrap_or_else(|error| panic!("{name} must analyze: {error}"));
+        let declared = report
+            .source()
+            .expected_frames
+            .unwrap_or_else(|| panic!("{name} must declare a total frame count"));
+        assert!(declared > 0, "{name} declared an empty stream");
+        assert_eq!(
+            report.diagnostics().decoded_frames,
+            declared,
+            "{name} committed a different frame count than it declared"
+        );
+    }
+}
+
 fn assert_json_contract(value: &Value) {
     match value {
         Value::Object(object) => {

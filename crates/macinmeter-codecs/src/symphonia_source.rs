@@ -10,10 +10,11 @@ use crate::{
         probe_error, runtime_error,
     },
     isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac},
+    packet::{PacketOutcome, PacketReorderBuffer},
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, DecodeDiagnostics, DecodeProgress,
-    ErrorCode, PcmBlock, PcmStreamInfo, SourceInfo, StreamSpec,
+    DecodeReservation, ErrorCode, PcmBlock, PcmStreamInfo, SourceInfo, StreamSpec,
 };
 use std::{
     fs::File,
@@ -24,21 +25,27 @@ use symphonia::core::{
     audio::SampleBuffer,
     codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_NULL, CodecParameters, Decoder, DecoderOptions},
     errors::Error as SymphoniaError,
-    formats::{FormatOptions, FormatReader},
+    formats::{FormatOptions, FormatReader, Packet},
     io::MediaSourceStream,
     meta::MetadataOptions,
     probe::Hint,
 };
 
-pub(crate) fn open(path: &Path) -> Result<OpenedAudio, AnalysisError> {
-    let (source, reader) = open_source(path)?;
+pub(crate) fn open(
+    path: &Path,
+    reservation: DecodeReservation,
+) -> Result<OpenedAudio, AnalysisError> {
+    let (source, reader) = open_source(path, reservation)?;
     Ok(OpenedAudio {
         source,
         reader: Box::new(reader),
     })
 }
 
-fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
+fn open_source(
+    path: &Path,
+    reservation: DecodeReservation,
+) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
     let (aiff_info, container_pcm, alac_info) = match signature {
@@ -176,6 +183,8 @@ fn open_source(path: &Path) -> Result<(SourceInfo, SymphoniaPcmSource), Analysis
         pcm: pcm.clone(),
         channels,
         decoded_frames: 0,
+        next_packet_index: 0,
+        reorder: PacketReorderBuffer::new(reservation),
         terminal: TerminalState::Active,
         #[cfg(test)]
         injected_read_error: None,
@@ -279,6 +288,12 @@ impl TerminalState {
     }
 }
 
+/// The serial decode route, and the differential oracle every future
+/// route-specific packet worker is measured against.
+///
+/// Demux, packet numbering and commit stay in input order here. The reorder
+/// buffer is on the serial path too, so the ordering contract is exercised by
+/// production rather than by parallel code alone.
 pub(crate) struct SymphoniaPcmSource {
     path: PathBuf,
     format: Box<dyn FormatReader>,
@@ -287,6 +302,8 @@ pub(crate) struct SymphoniaPcmSource {
     pcm: PcmStreamInfo,
     channels: ChannelCount,
     decoded_frames: u64,
+    next_packet_index: u64,
+    reorder: PacketReorderBuffer,
     terminal: TerminalState,
     #[cfg(test)]
     injected_read_error: Option<AnalysisError>,
@@ -300,6 +317,13 @@ impl SymphoniaPcmSource {
     }
 
     fn finish(&mut self) -> Result<ReadOutcome, AnalysisError> {
+        // A packet that was decoded but never committed would silently drop
+        // audio, so the index space must be closed before integrity and frame
+        // count are allowed to pass.
+        if let Err(error) = self.reorder.finish() {
+            return self.fail(error);
+        }
+
         let verification = self.decoder.finalize();
         if verification.verify_ok == Some(false) {
             return self.fail(analysis_error(
@@ -395,6 +419,17 @@ impl PcmSource for SymphoniaPcmSource {
         }
 
         loop {
+            // Commit whatever the input packet order allows before pulling more
+            // work. On the serial route this drains what the previous iteration
+            // accepted.
+            if let Some(outcome) = self.reorder.take_ready() {
+                match outcome {
+                    PacketOutcome::Decoded(block) => return self.commit(block),
+                    PacketOutcome::Empty => continue,
+                    PacketOutcome::Failed(error) => return self.fail(error),
+                }
+            }
+
             let packet = match self.format.next_packet() {
                 Ok(packet) => packet,
                 Err(SymphoniaError::IoError(error))
@@ -411,84 +446,14 @@ impl PcmSource for SymphoniaPcmSource {
                 continue;
             }
 
-            let decoded = match self.decoder.decode(&packet) {
-                Ok(decoded) => decoded,
-                Err(error) => {
-                    let error =
-                        runtime_error(&self.path, "failed to decode an audio packet", error);
-                    return self.fail(error);
-                }
-            };
-            if decoded.frames() == 0 {
-                continue;
-            }
-
-            let decoded_rate = decoded.spec().rate;
-            let decoded_channels = decoded.spec().channels.count();
-            if decoded_rate != self.pcm.spec.sample_rate.get()
-                || decoded_channels != self.channels.as_usize()
-            {
-                let details = format!(
-                    "opened as {} Hz/{} channels, decoder produced {} Hz/{} channels",
-                    self.pcm.spec.sample_rate.get(),
-                    self.channels.get(),
-                    decoded_rate,
-                    decoded_channels
-                );
-                let error = analysis_error(
-                    &self.path,
-                    ErrorCode::DecodeFailed,
-                    AnalysisStage::Decode,
-                    "PCM stream parameters changed after opening",
-                    Some(details),
-                );
+            // Packets get their stable, monotonic index at demux time, before
+            // any decode work is dispatched.
+            let index = self.next_packet_index;
+            self.next_packet_index += 1;
+            let outcome = self.decode_packet(&packet);
+            if let Err(error) = self.reorder.accept(index, outcome) {
                 return self.fail(error);
             }
-
-            let duration = match u64::try_from(decoded.capacity()) {
-                Ok(duration) => duration,
-                Err(_) => {
-                    let error = analysis_error(
-                        &self.path,
-                        ErrorCode::ResourceExhausted,
-                        AnalysisStage::Decode,
-                        "decoded audio buffer is too large",
-                        None,
-                    );
-                    return self.fail(error);
-                }
-            };
-            let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
-            sample_buffer.copy_interleaved_ref(decoded);
-            let block = match PcmBlock::new(sample_buffer.samples().to_vec(), self.channels) {
-                Ok(block) => block,
-                Err(error) => {
-                    let error = error
-                        .with_display_path(self.path.display().to_string())
-                        .with_backend(BACKEND);
-                    return self.fail(error);
-                }
-            };
-
-            let new_total = self.checked_frame_total(&block)?;
-            if let Some(expected) = self.pcm.expected_frames
-                && new_total > expected
-            {
-                let message = format!(
-                    "decoded frame count {new_total} exceeds the expected frame count {expected}"
-                );
-                self.diagnostics.warnings.push(message.clone());
-                return self.fail(analysis_error(
-                    &self.path,
-                    ErrorCode::DecodeFailed,
-                    AnalysisStage::Decode,
-                    message,
-                    None,
-                ));
-            }
-            self.decoded_frames = new_total;
-            self.diagnostics.decoded_frames = new_total;
-            return Ok(ReadOutcome::Data(block));
         }
     }
 
@@ -505,7 +470,105 @@ impl PcmSource for SymphoniaPcmSource {
     }
 }
 
+impl SymphoniaPcmSource {
+    /// Decode one packet into an indexed outcome.
+    ///
+    /// Failure is returned as [`PacketOutcome::Failed`] instead of being made
+    /// sticky here: the terminal state belongs to the commit step, so the
+    /// earliest input index always decides which error escapes.
+    fn decode_packet(&mut self, packet: &Packet) -> PacketOutcome {
+        let decoded = match self.decoder.decode(packet) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                return PacketOutcome::Failed(runtime_error(
+                    &self.path,
+                    "failed to decode an audio packet",
+                    error,
+                ));
+            }
+        };
+        if decoded.frames() == 0 {
+            return PacketOutcome::Empty;
+        }
+
+        let decoded_rate = decoded.spec().rate;
+        let decoded_channels = decoded.spec().channels.count();
+        if decoded_rate != self.pcm.spec.sample_rate.get()
+            || decoded_channels != self.channels.as_usize()
+        {
+            let details = format!(
+                "opened as {} Hz/{} channels, decoder produced {} Hz/{} channels",
+                self.pcm.spec.sample_rate.get(),
+                self.channels.get(),
+                decoded_rate,
+                decoded_channels
+            );
+            return PacketOutcome::Failed(analysis_error(
+                &self.path,
+                ErrorCode::DecodeFailed,
+                AnalysisStage::Decode,
+                "PCM stream parameters changed after opening",
+                Some(details),
+            ));
+        }
+
+        let duration = match u64::try_from(decoded.capacity()) {
+            Ok(duration) => duration,
+            Err(_) => {
+                return PacketOutcome::Failed(analysis_error(
+                    &self.path,
+                    ErrorCode::ResourceExhausted,
+                    AnalysisStage::Decode,
+                    "decoded audio buffer is too large",
+                    None,
+                ));
+            }
+        };
+        let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
+        sample_buffer.copy_interleaved_ref(decoded);
+        match PcmBlock::new(sample_buffer.samples().to_vec(), self.channels) {
+            Ok(block) => PacketOutcome::Decoded(block),
+            Err(error) => PacketOutcome::Failed(
+                error
+                    .with_display_path(self.path.display().to_string())
+                    .with_backend(BACKEND),
+            ),
+        }
+    }
+
+    /// Publish one committed block's frames.
+    ///
+    /// Progress only advances on frames that have been committed in input
+    /// order, so it stays monotonic no matter which packet finished first.
+    fn commit(&mut self, block: PcmBlock) -> Result<ReadOutcome, AnalysisError> {
+        let new_total = self.checked_frame_total(&block)?;
+        if let Some(expected) = self.pcm.expected_frames
+            && new_total > expected
+        {
+            let message = format!(
+                "decoded frame count {new_total} exceeds the expected frame count {expected}"
+            );
+            self.diagnostics.warnings.push(message.clone());
+            return self.fail(analysis_error(
+                &self.path,
+                ErrorCode::DecodeFailed,
+                AnalysisStage::Decode,
+                message,
+                None,
+            ));
+        }
+        self.decoded_frames = new_total;
+        self.diagnostics.decoded_frames = new_total;
+        Ok(ReadOutcome::Data(block))
+    }
+}
+
+/// Open the serial differential oracle for `path`.
+///
+/// Route-specific packet workers are graduated by comparing against this path,
+/// so it is pinned to [`DecodeReservation::serial`] rather than to whatever the
+/// caller happens to hold.
 #[cfg(test)]
 pub(crate) fn open_test_source(path: &Path) -> Result<SymphoniaPcmSource, AnalysisError> {
-    open_source(path).map(|(_, reader)| reader)
+    open_source(path, DecodeReservation::serial()).map(|(_, reader)| reader)
 }

@@ -5,6 +5,7 @@ mod codec;
 mod container;
 mod error;
 mod isobmff;
+mod packet;
 mod symphonia_source;
 
 pub use capability::{
@@ -49,7 +50,8 @@ pub mod dev {
 }
 
 use macinmeter_domain::{
-    AnalysisError, DecodeDiagnostics, DecodeProgress, PcmBlock, PcmStreamInfo, SourceInfo,
+    AnalysisError, DecodeDiagnostics, DecodeProgress, DecodeReservation, PcmBlock, PcmStreamInfo,
+    SourceInfo,
 };
 use std::path::Path;
 
@@ -92,15 +94,34 @@ pub trait PcmSource {
 }
 
 /// Opens the small, correctness-first stable native codec set.
+///
+/// The factory decodes inside the [`DecodeReservation`] the owning application
+/// layer granted it. It never widens that permit and never allocates workers of
+/// its own, so a caller that cannot obtain a permit simply gets the serial
+/// route.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct DecoderFactory;
+pub struct DecoderFactory {
+    reservation: DecodeReservation,
+}
 
 impl DecoderFactory {
+    /// A factory on the serial reservation.
     pub const fn new() -> Self {
-        Self
+        Self {
+            reservation: DecodeReservation::serial(),
+        }
+    }
+
+    /// A factory bound to an already-granted decode permit.
+    pub const fn with_reservation(reservation: DecodeReservation) -> Self {
+        Self { reservation }
+    }
+
+    pub const fn reservation(&self) -> DecodeReservation {
+        self.reservation
     }
 
     pub fn open(&self, path: &Path) -> Result<OpenedAudio, AnalysisError> {
-        symphonia_source::open(path)
+        symphonia_source::open(path, self.reservation)
     }
 }

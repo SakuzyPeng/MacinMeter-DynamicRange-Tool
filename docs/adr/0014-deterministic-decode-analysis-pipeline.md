@@ -1,7 +1,7 @@
 # ADR-0014：确定性有界并行与 packet 解码优先
 
 - 状态：Accepted
-- 实施状态：Not started（当前生产路径仍为串行）
+- 实施状态：In progress（第 1 步已完成；三个并行轴均未启用，生产路径仍为串行）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -303,6 +303,39 @@ packet 级另加：
 
 每一步单独提交、验证和记录；后一步不是前一步毕业的捆绑条件。
 
+## 实施进度
+
+### 第 1 步（2026-08-02，已完成）
+
+共用预算与顺序提交层已落地，且不改变任何生产行为：
+
+- `domain` 新增 `DecodeReservation` 与固定上限 `MAX_DECODE_WORKERS = 8`、
+  `MAX_DECODE_QUEUE_CAPACITY = 64`、`MAX_IN_FLIGHT_PCM_BYTES = 64 MiB`。它不含
+  application 依赖，只能收缩不能放大；serial reservation 的 in-flight 预算为
+  0 bytes，直接表达“串行路径不得让任何已解码 block 等待更早序号”；
+- `macinmeter` 新增 `ConcurrencyPlan`，每 worker 派生 4 个排队 packet 与 4 MiB
+  in-flight PCM。`allocate()` 是唯一的 permit 发放点，在 job 进入 admission 队列
+  前一次性完成，且以整除保证 `file_lanes × workers_per_lane ≤ total_workers`；
+  `bounded()` 同时受产品上限和 `available_parallelism()` 约束；
+- `ApplicationJob` 持有该 allocation 并向 `codecs` 下发；`DecoderFactory` 只在
+  收到的 permit 内解码，自身不创建 worker。当前生产 plan 恒为 serial、
+  file lanes 恒为 1；
+- `codecs` 新增 crate-private `PacketReorderBuffer`：packet 在 demux 时获得稳定
+  单调序号，失败是一等 `PacketOutcome::Failed` 而非空 PCM，提交严格按输入序，
+  最早失败序号胜出，committed failure 之后的迟到结果被丢弃而不是二次报错；
+  重复序号、落后于提交点的序号、超出 queue/in-flight permit 以及 EOF 时残留的
+  序号缺口都转为结构化 error；
+- 串行路径本身走这条提交层，因此顺序契约由生产覆盖而非只由并行代码覆盖；
+  `open_test_source` 固定在 serial reservation 上，作为后续 route-specific
+  worker 的 differential oracle。`fault::completion_orders` 提供确定性乱序注入，
+  不依赖 wall-clock 竞争。
+
+验证：仓库契约、fmt、严格 Clippy、workspace all-target tests（16 套、194 项，含
+新增 17 项）、release CLI build、两套 Python 测试与 Tauri frontend build 全部通过。
+另以 136 个 fixture 逐个运行 release CLI `analyze --format json`，改动前后输出
+逐字节相同（SHA-256 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`）。
+本步不建立任何性能声明，也不启用任何并行轴。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
@@ -331,6 +364,8 @@ packet 级另加：
 - ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立；
 - ALAC packet 独立性仍需用当前产品 route 的 raw-bit、错误与乱序测试完成证明；
 - FLAC 的 ordered full-stream MD5 设计尚未形成；
-- application 共用 worker/memory hard cap、reservation 数值和退化策略尚待实现切片
-  明确并验证；
 - 文件级与窗口级仍只有准入契约，没有生产实现。
+
+第 1 步已经明确并测试了 application 共用 worker/memory hard cap、reservation 数值
+与退化规则；但这些上限至今只在 serial 配置下被生产使用，多 worker 取值仍只有单元
+测试证据，没有真实解码负载的验证。

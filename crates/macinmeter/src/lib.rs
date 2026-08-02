@@ -4,6 +4,7 @@ mod album;
 mod application;
 mod batch;
 mod capability;
+mod concurrency;
 mod control;
 mod execution;
 mod wire;
@@ -16,6 +17,7 @@ pub use batch::{
 pub use capability::{
     CapabilityRoute, CapabilitySnapshot, CapabilityStatus, NativeRouteCapability, capabilities,
 };
+pub use concurrency::{ConcurrencyPlan, PlanAllocation};
 pub use control::{
     AnalysisEvent, CancellationToken, ExecutionControl, NoopProgressSink, ProgressSink,
 };

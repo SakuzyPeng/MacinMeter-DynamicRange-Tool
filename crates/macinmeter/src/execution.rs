@@ -3,9 +3,11 @@ use crate::{
     CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
     application::Analyzer,
     batch::{BatchRunner, discover_inputs_with_control},
+    concurrency::{ConcurrencyPlan, PlanAllocation},
 };
 use std::{
     collections::VecDeque,
+    num::NonZeroUsize,
     sync::{Arc, Condvar, Mutex, MutexGuard},
     time::Duration,
 };
@@ -14,14 +16,20 @@ const SERIAL_ACTIVE_JOBS: usize = 1;
 const DEFAULT_MAX_QUEUED_JOBS: usize = 64;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
+/// Batch items still run one at a time. ADR-0014 admits file lanes as P1, after
+/// packet-level decoding.
+const PRODUCTION_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
+
 /// The process-local application execution budget.
 ///
-/// M3 deliberately exposes only a serial policy. The queue bound limits work
-/// admitted by adapters before it enters their blocking thread pool; it does
-/// not claim to be a byte-accurate decoder memory quota.
+/// The queue bound limits work admitted by adapters before it enters their
+/// blocking thread pool; it does not claim to be a byte-accurate decoder memory
+/// quota. The [`ConcurrencyPlan`] is the separate, internal bound on the workers
+/// and memory one admitted job may spend, and it stays serial in 0.3.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExecutionBudget {
     max_queued_jobs: usize,
+    concurrency: ConcurrencyPlan,
 }
 
 impl ExecutionBudget {
@@ -29,6 +37,7 @@ impl ExecutionBudget {
     pub const fn serial() -> Self {
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
+            concurrency: ConcurrencyPlan::serial(),
         }
     }
 
@@ -45,7 +54,10 @@ impl ExecutionBudget {
                     "execution queue capacity is too large",
                 )
             })?;
-        Ok(Self { max_queued_jobs })
+        Ok(Self {
+            max_queued_jobs,
+            concurrency: ConcurrencyPlan::serial(),
+        })
     }
 
     pub const fn max_active_jobs(self) -> usize {
@@ -54,6 +66,11 @@ impl ExecutionBudget {
 
     pub const fn max_queued_jobs(self) -> usize {
         self.max_queued_jobs
+    }
+
+    /// The internal worker and memory plan one active job draws from.
+    pub const fn concurrency(self) -> ConcurrencyPlan {
+        self.concurrency
     }
 
     fn max_admitted_jobs(self) -> usize {
@@ -164,16 +181,26 @@ impl Default for Application {
 #[derive(Debug)]
 pub struct ApplicationJob {
     reservation: ExecutionReservation,
+    allocation: PlanAllocation,
 }
 
 impl ApplicationJob {
+    /// The permits this job received before any sub-task was scheduled.
+    ///
+    /// Permits are granted once, up front. Nothing below this job asks for a
+    /// second permit, which is what keeps nested pools from deadlocking.
+    pub const fn allocation(&self) -> PlanAllocation {
+        self.allocation
+    }
+
     pub fn analyze_file(
         self,
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<AnalysisReport, AnalysisError> {
+        let decode = self.allocation.decode();
         self.execute(progress, |control| {
-            Analyzer::new().analyze_file_with_control(request, control)
+            Analyzer::new(decode).analyze_file_with_control(request, control)
         })
     }
 
@@ -182,7 +209,10 @@ impl ApplicationJob {
         request: BatchRequest,
         progress: &dyn ProgressSink,
     ) -> Result<BatchReport, AnalysisError> {
-        self.execute(progress, |control| BatchRunner::new().run(request, control))
+        let allocation = self.allocation;
+        self.execute(progress, |control| {
+            BatchRunner::new(allocation).run(request, control)
+        })
     }
 
     pub fn discover_inputs(
@@ -232,6 +262,14 @@ impl ExecutionCoordinator {
             return Err(AnalysisError::cancelled());
         }
 
+        // Every permit this job may ever spend is granted here, up front and
+        // outside the admission lock. Nothing below it asks for a second one.
+        let allocation = self
+            .inner
+            .budget
+            .concurrency()
+            .allocate(PRODUCTION_FILE_LANES)?;
+
         let mut state = self.inner.lock_state()?;
         if cancellation.is_cancelled() {
             return Err(AnalysisError::cancelled());
@@ -269,6 +307,7 @@ impl ExecutionCoordinator {
                 ticket,
                 phase: ReservationPhase::Queued,
             },
+            allocation,
         })
     }
 }

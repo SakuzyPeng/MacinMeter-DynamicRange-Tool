@@ -1,8 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod concurrency;
 mod error;
 mod model;
 
+pub use concurrency::{
+    DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_DECODE_WORKERS, MAX_IN_FLIGHT_PCM_BYTES,
+};
 pub use error::{AnalysisError, AnalysisStage, ErrorCode};
 pub use model::{
     AggregateResults, AlgorithmDescriptor, AlgorithmParameters, AnalysisReport, AnalysisResult,

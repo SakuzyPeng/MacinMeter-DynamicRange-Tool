@@ -1,6 +1,6 @@
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
-    ErrorCode, ExecutionControl, application::Analyzer,
+    ErrorCode, ExecutionControl, application::Analyzer, concurrency::PlanAllocation,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -66,8 +66,14 @@ pub(crate) struct BatchRunner {
 }
 
 impl BatchRunner {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    /// Build a runner over the job's allocation.
+    ///
+    /// Items still run one at a time, so a batch spends the whole allocation on
+    /// one file's decoder rather than splitting it across lanes.
+    pub(crate) const fn new(allocation: PlanAllocation) -> Self {
+        Self {
+            analyzer: Analyzer::new(allocation.decode()),
+        }
     }
 
     pub(crate) fn run(
