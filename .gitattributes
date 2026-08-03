@@ -1,4 +1,25 @@
+# Working-tree bytes are identity in this repository: generator scripts hash
+# their own bytes into the corpora and records they produce, and fixture and
+# record digests are compared across hosts. Line endings therefore may not
+# depend on which platform a checkout happened on, so text is normalized to LF
+# in the working tree everywhere rather than left to `core.autocrlf`.
+* text=auto eol=lf
+
+# Fixture and reference media are byte-pinned by SHA-256 in their manifests.
+# Content detection would already classify these as binary; saying so leaves
+# nothing to detection.
+*.wav binary
+*.aif binary
+*.aiff binary
+*.flac binary
+*.m4a binary
+*.mp4 binary
+*.png binary
+*.bin binary
+
 # Reference evidence and reverse-engineering harnesses are not product code.
 reference/** linguist-detectable=false
 
+# Raw reference exports are the bytes the reference host produced, CRLF
+# included. Normalizing them would edit evidence, so they stay untouched.
 reference/observations/**/raw/* -text
