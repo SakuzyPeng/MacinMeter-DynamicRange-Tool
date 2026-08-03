@@ -417,53 +417,43 @@ ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍�
 
 ### 第 2 步的长音频扫描（2026-08-03）
 
-M6 语料新增两条几何相同、可压缩性相反的 240 秒 stereo 16-bit ALAC track
-（各 2813 packets）：既有伪随机信号压缩率 99.5%，会让 ALAC 退回 uncompressed
-escape 路径；新增的整数三角波加 dither 信号压缩率 60.0%，落在无损音乐常见区间，
-迫使 codec 真正执行预测与 rice 解码。二者均由 ffmpeg 8.0.1 以 ADR-0013 固定的
-同一 bit-exact 形状编码，连续生成逐字节一致，tonal 信号为纯整数构造。
+M6 语料新增三条几何相同、各 2813 packet 的 240 秒 stereo 16-bit ALAC track：既有
+伪随机信号压缩率 99.5%，会让 ALAC 退回 uncompressed escape 路径；整数三角波加
+dither 的 tonal 信号压缩率 60.0%，落在无损音乐常见区间；varied 信号循环 8 个从
+近静音到满幅噪声的难度变体，变体数与最大 worker 数相同，因此固定的
+`index % workers` 派发会让每个 worker 在整条流上只拿同一种难度——这是该派发方式
+能遇到的最坏不均衡。三者均为纯整数构造，由 ffmpeg 8.0.1 以 ADR-0013 固定的同一
+bit-exact 形状编码，连续生成逐字节一致。
 
-worker 数是 decode allocation 而非另一个 binary，因此作为 case 参数与其余 15 个
-case 在同一次 run 内固定 seed 完全交错（161 samples）；每个 case 各自复现 corpus
-的 normalized `f64` oracle，verification 解码运行在与计时段相同的 allocation 上。
-runner 复算 harness allocation 并核对 worker 实得值，可捕获两份镜像之间的错位；
-但两者都只是 crate-private plan 的镜像，不自动检测 plan 单独改变或另一台主机的
-`available_parallelism` 收缩。
+worker 数与 reorder permit 是 decode allocation 的维度而非另一个 binary，因此作为
+case 参数与其余 15 个 case 在同一次 run 内固定 seed 完全交错（203 samples）；每个
+case 各自复现 corpus 的 normalized `f64` oracle，verification 解码运行在与计时段
+相同的 allocation 上。runner 复算 harness allocation 并核对 worker 实得值，可捕获
+两份镜像之间的错位；但两者都只是 crate-private plan 的镜像。
 
-application plan 对每个 worker 数只派生一个队列容量，因此 reorder permit 作为独立
-维度在 8 worker 上另行扫描：最小合法容量等于 worker 数、把每个 inbox 压到零容量
-rendezvous，最大值为固定产品上限；只有队列上限变化，in-flight PCM permit 仍取
-plan 派生值。
+clean source `3ef8ae3`、Apple M4 Pro / 12 逻辑核下的中位数：
 
-clean source `c1b25ea`、Apple M4 Pro / 12 逻辑核下的中位数：
+| Workers | 伪随机 99.5% | tonal 60.0%（均衡） | varied 74.4%（最坏不均） |
+| ---: | ---: | ---: | ---: |
+| 1 | 395.1 ms | 350.5 ms | 380.5 ms |
+| 2 | 1.93x | 1.93x | 1.88x |
+| 4 | 3.30x | 3.63x | 3.68x |
+| 8 | 5.95x | 5.93x | 6.26x |
 
-| Track | 1 worker | 2 | 4 | 8 |
-| --- | ---: | ---: | ---: | ---: |
-| 伪随机 99.5% | 397.8 ms | 1.93x | 3.61x | 6.08x |
-| tonal 60.0% | 354.8 ms | 1.96x | 3.65x | 5.79x |
+最坏负载不均**没有**降低加速比。对每个变体单独测得的串行解码时间给出原因：压缩后
+大小相差约 517 倍，解码时间只相差 3.7 倍，排除近静音变体后仅相差 1.43 倍——ALAC
+解码成本主要由每 packet 固定 4096 frame 的输出几何决定，而非压缩数据量。据此由
+最慢变体反推的 `8 × 89.2 / 113.7 = 6.28x` 与实测 6.26x 一致。该结论 route-specific，
+依赖 ALAC 输出几何固定这一性质，不能外推到 FLAC 或其他 codec。
 
-| Reorder permit（tonal，8 worker） | 中位数 | 相对 plan 派生 | median peak RSS |
-| --- | ---: | ---: | ---: |
-| 8（最小，rendezvous） | 75.2 ms | +22.7% | 5.7 MiB |
-| 32（plan 派生） | 61.3 ms | — | 6.6 MiB |
-| 64（产品上限） | 57.4 ms | −6.4% | 6.5 MiB |
-
-两条 track 的加速比在每个 worker 数上相差不超过 0.29x，因此该结论不依赖语料恰好
-落在 escape 路径。最小 permit 更慢且 RSS 更低，从 32 放宽到 64 只再取得 6.4%，
-说明 plan 的派生值已接近该维度的收益拐点。每条 track 的 1/2/4/8 worker 共享同一
-result fingerprint；单独扫描 permit 的 tonal 8-worker case 在最小、plan 派生与
-产品上限下也共享该 fingerprint。peak RSS 中位数 3.0 → 6.6 MiB。完整身份、span、
-环境与限制见
+tonal track 的 8-worker reorder permit 另行扫描：最小合法容量（等于 worker 数、
+把每个 inbox 压到零容量 rendezvous）77.7 ms，plan 派生的 32 为 59.1 ms，产品上限
+64 为 60.2 ms，说明 plan 派生值已在该维度收益拐点之后。peak RSS 中位数由
+2.9–3.0 MiB 升至 6.4–7.2 MiB。完整身份、span、环境与限制见
 [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
 
-最小 permit 在 240 秒、2813 packet 的流上成功完成且未返回 capacity error，peak RSS
-低于更宽的 permit；这只是单一长度、自然完成顺序下的固定 case 观察，raw record 也
-不记录 reorder occupancy 高水位，因此不能单独证明 reorder 内存不随媒体时长增长。
-确定性强制乱序 seam 是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与
-“强制最坏乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据。
-
-ADR 共同门槛要求的正确性全矩阵另由独立的、不计时的 harness
-（`examples/adr0014_allocation_matrix.rs`）在同两条 track 上各运行 12 个单元：
+ADR 共同门槛要求的正确性全矩阵由独立的、不计时的 harness
+（`examples/adr0014_allocation_matrix.rs`）在三条 track 上各运行 12 个单元：
 worker 数 1/2/4/8，各配最小合法容量、plan 派生容量与固定产品上限 64。每条 track 的
 decoded `f64`、`AnalysisResult` raw bits 与 wire-visible report 三项指纹各自唯一。
 schema v2 拒绝非 ALAC 输入，并核对 content probe 后实际选择的 engine 与 worker 数，
@@ -475,20 +465,21 @@ canonical JSON，因此记录可由文档命令逐字节重建。
 既有契约检查在产生任何 PCM 之前拦下；只在 packet worker 路径翻转单个 sample 的
 1 ULP 时，矩阵报告四个互不相同的 decoded-`f64` 指纹。
 
-非串行 plan 经 `Application` 的真实路径也已验证：测试把固定的 8-worker 宿主上限
-注入 `ConcurrencyPlan::bounded` 所使用的同一条生产派生逻辑，再由构造出的 budget
-通过 `Application::analyze_file` 分析 ALAC、WAV、FLAC 与 AIFF fixture。这样即使测试
-runner 只暴露一个 CPU，2/4/8-worker case 仍确定性地覆盖非串行路径。wire report 与
-产品 serial plan 逐字节相同；同一测试逐次核对实际选择的 engine 与 worker 数，只有
-已毕业的 ALAC route 才切换到 packet workers 并完整接收 plan 授予的 worker，其余
-route 一律保持 serial engine 和单 worker。把 route 判定改成恒 false 或错误传递 worker
-数都会使断言失败，因此静默串行回退和不完整 handoff 均不能假通过。这消除了此前
-“harness 镜像常量而非真实 plan 派生”的限制；`ExecutionBudget` 的非串行构造仍是
-`#[cfg(test)]`，公开 API 无法构造，非测试构建也保留 serial-plan debug assertion。
+reorder 的滞留界另由直接针对 commit buffer 的压力测试固定：在最紧 permit 与最深
+完成顺序下，1,000 与 100,000 个 packet 的滞留高水位完全相同；模拟 in-flight
+permit 泄漏会使长流在 index 12289 处失败而短流仍通过，因此该结论由长度对比承载，
+而非单一长度的观察。
 
-该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 逐 token 对照、
-长流与强制最坏乱序的组合覆盖，以及真实音乐素材的代表性证据；因此 ALAC packet
-workers 目前仍不得默认启用。
+非串行 plan 经 `Application` 的真实路径也已验证：`ConcurrencyPlan` 的生产派生在
+固定宿主上限下构造 budget，通过 `Application::analyze_file` 分析 ALAC、WAV、FLAC
+与 AIFF fixture，wire report 与产品 serial plan 逐字节相同；同一测试逐次核对实际
+选择的 engine 与 worker 数，只有已毕业的 ALAC route 才切换到 packet workers，
+其余 route 保持串行且恒为一个 worker。把 route 判定改成恒 false 会使该断言失败。
+`ExecutionBudget` 的非串行构造仍是 `#[cfg(test)]`，公开 API 无法构造。
+
+该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 回归对照，以及
+真实录音的立体声相关性等未被合成信号覆盖的维度；因此 ALAC packet workers 目前
+仍不得默认启用。
 
 ## 待补证据
 
