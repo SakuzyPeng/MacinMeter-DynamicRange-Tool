@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
-RUN_SCHEMA_VERSION = 1
+# 2: the run block records host occupancy in the terms the host actually has
+# rather than a `loadAverage` field Windows cannot fill.
+RUN_SCHEMA_VERSION = 2
 WORKER_SCHEMA_VERSION = 1
 DEFAULT_CORPUS = Path("target/performance-corpus/m6-performance-baseline-v1")
 DEFAULT_RESULTS = Path("target/performance-results")
@@ -532,6 +534,8 @@ WINDOWS_TH32CS_SNAPPROCESS = 0x0002
 WINDOWS_INVALID_HANDLE = -1
 # FILETIME counts 100-nanosecond intervals.
 WINDOWS_FILETIME_TICKS_PER_SECOND = 10_000_000
+# Long enough for the idle counter to move, short enough not to delay a run.
+WINDOWS_OCCUPANCY_SAMPLE_SECONDS = 1.0
 
 
 if sys.platform == "win32":
@@ -692,6 +696,48 @@ def windows_descendant_rss(root_pid: int) -> tuple[int, int]:
         finally:
             _KERNEL32.CloseHandle(wintypes.HANDLE(handle))
     return total, counted
+
+
+def filetime_ticks(value: "_FileTime") -> int:
+    return (value.dwHighDateTime << 32) | value.dwLowDateTime
+
+
+def host_occupancy() -> dict[str, object]:
+    """Describe how busy this host is, in whatever terms it actually has.
+
+    Contamination by other work is the failure mode that most easily turns a
+    sweep into a wrong conclusion, so a record has to carry a before/after
+    occupancy signal. Load average is a POSIX concept with no Windows
+    equivalent, so Windows records the fraction of wall time the CPUs spent out
+    of idle instead. The two are not comparable and are therefore reported
+    under different names rather than one field that means different things.
+    """
+    if sys.platform != "win32":
+        return {"kind": "posix_load_average", "loadAverage": list(os.getloadavg())}
+
+    def system_times() -> tuple[int, int]:
+        idle, kernel, user = _FileTime(), _FileTime(), _FileTime()
+        if not _KERNEL32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        ):
+            raise BaselineError(
+                f"GetSystemTimes failed: Win32 error {ctypes.get_last_error()}"
+            )
+        # Kernel time includes idle time, so total is kernel + user.
+        return filetime_ticks(idle), filetime_ticks(kernel) + filetime_ticks(user)
+
+    first_idle, first_total = system_times()
+    time.sleep(WINDOWS_OCCUPANCY_SAMPLE_SECONDS)
+    second_idle, second_total = system_times()
+    total = second_total - first_total
+    if total <= 0:
+        raise BaselineError("GetSystemTimes reported no elapsed CPU interval")
+    busy = 1.0 - (second_idle - first_idle) / total
+    return {
+        "kind": "windows_cpu_busy_fraction",
+        "cpuBusyFraction": max(0.0, min(1.0, busy)),
+        "sampleSeconds": WINDOWS_OCCUPANCY_SAMPLE_SECONDS,
+    }
 
 
 def native_timer_description() -> str:
@@ -1447,7 +1493,7 @@ def main() -> int:
         interval_seconds = args.sampling_interval_ms / 1000
         environment = environment_identity(root)
         run_started_at = utc_now()
-        load_average_start = list(os.getloadavg())
+        occupancy_start = host_occupancy()
 
         warmup_results: list[dict[str, object]] = []
         warmup_schedule = randomized_schedule(
@@ -1496,8 +1542,8 @@ def main() -> int:
             "run": {
                 "startedAtUtc": run_started_at,
                 "completedAtUtc": utc_now(),
-                "loadAverageStart": load_average_start,
-                "loadAverageEnd": list(os.getloadavg()),
+                "occupancyStart": occupancy_start,
+                "occupancyEnd": host_occupancy(),
             },
             "source": source,
             "suite": {
