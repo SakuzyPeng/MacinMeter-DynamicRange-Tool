@@ -687,8 +687,9 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 实现 ALAC packet worker，并在 committed fixture 上证明 1/2/4/8 worker、
   最小/最大 queue reservation 与确定性强制乱序下的 raw-bit、错误和 progress 等价；
   demux 复用 decoder slot 0，构造失败也会 join 已启动线程（仍未默认启用）；
-- [x] 补长音频 ALAC corpus 并完成 exact-fingerprint 同轮 worker-count 扫描
-  （240 s / 2813 packets，1.91x/3.56x/5.72x，fingerprint 唯一；仍未启用）；
+- [x] 补长音频 ALAC corpus 并完成 exact-fingerprint 同轮 worker-count 扫描；
+  压缩率 99.5% 与 60.0% 两条 240 s track 分别给出 1.94x/3.58x/5.65x 与
+  1.94x/3.65x/5.97x，各自 fingerprint 唯一（仍未启用）；
 - [ ] 完成 39 项 safe-master 逐 token 对照，以及同一长 corpus 在 1/2/4/8 worker、
   最小/默认/最大 queue 下的 decoded-f64、`AnalysisResult` raw bits 与 wire report
   全矩阵；

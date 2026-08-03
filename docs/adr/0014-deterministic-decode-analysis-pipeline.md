@@ -417,27 +417,34 @@ ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍�
 
 ### 第 2 步的长音频扫描（2026-08-03）
 
-M6 语料新增一条 240 秒 stereo 16-bit ALAC track（2813 packets），由 ffmpeg 8.0.1
-以 ADR-0013 固定的同一 bit-exact 形状编码，连续生成逐字节一致。worker 数是
-decode allocation 而非另一个 binary，因此作为 case 参数与其余 15 个 case 在同一次
-run 内固定 seed 完全交错；每个 case 各自复现 corpus 的 normalized `f64` oracle，
-verification 解码运行在与计时段相同的 allocation 上。runner 复算 harness allocation
-并核对 worker 实得值，因此 runner/worker 镜像错位会使整次 run 失败；两份镜像都不
-自动检测未来 application plan 单独改变，真实 `Application` 派生仍须单独毕业。
+M6 语料新增两条几何相同、可压缩性相反的 240 秒 stereo 16-bit ALAC track
+（各 2813 packets）：既有伪随机信号压缩率 99.5%，会让 ALAC 退回 uncompressed
+escape 路径；新增的整数三角波加 dither 信号压缩率 60.0%，落在无损音乐常见区间，
+迫使 codec 真正执行预测与 rice 解码。二者均由 ffmpeg 8.0.1 以 ADR-0013 固定的
+同一 bit-exact 形状编码，连续生成逐字节一致，tonal 信号为纯整数构造。
 
-clean source `3793c79`、Apple M4 Pro / 12 逻辑核下的中位数：395.4 ms（1 worker）、
-206.7 ms（1.91x）、111.1 ms（3.56x）、69.1 ms（5.72x）；median peak RSS
-3.0 → 6.3 MiB，七次样本中的最大值为 3.0 → 6.7 MiB。四个 worker 数的 result
-fingerprint 完全相同。不同 seed 的已提交独立交叉 run 给出
-1.86x / 3.50x / 5.93x 与同一 fingerprint，只作为同数量级的独立复现，不推出任意
-负载下稳定或把 5.72x 视为一般下界/上界。
-完整身份、离散度、环境与限制见
+worker 数是 decode allocation 而非另一个 binary，因此作为 case 参数与其余 15 个
+case 在同一次 run 内固定 seed 完全交错（161 samples）；每个 case 各自复现 corpus
+的 normalized `f64` oracle，verification 解码运行在与计时段相同的 allocation 上。
+runner 复算 harness allocation 并核对 worker 实得值，可捕获两份镜像之间的错位；
+但两者都只是 crate-private plan 的镜像，不自动检测 plan 单独改变或另一台主机的
+`available_parallelism` 收缩。
+
+clean source `c6ca1ac`、Apple M4 Pro / 12 逻辑核下的中位数：
+
+| Track | 1 worker | 2 | 4 | 8 |
+| --- | ---: | ---: | ---: | ---: |
+| 伪随机 99.5% | 398.1 ms | 1.94x | 3.58x | 5.65x |
+| tonal 60.0% | 352.7 ms | 1.94x | 3.65x | 5.97x |
+
+两条 track 的加速比在每个 worker 数上相差不超过 0.32x，因此该结论不依赖语料恰好
+落在 escape 路径。每条 track 内四个 worker 数的 result fingerprint 唯一；peak RSS
+中位数 3.0 → 6.5/6.7 MiB。完整身份、span、环境与限制见
 [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
 
 该扫描是一次测量，不是启用决定。默认启用仍缺队列容量维度的 A/B、39 项
-safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力测试、真实音乐
-素材代表性，以及经 `Application` 的实际启用路径；因此 ALAC packet workers
-目前仍不得默认启用。
+safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力测试，以及经
+`Application` 的实际启用路径；因此 ALAC packet workers 目前仍不得默认启用。
 
 ## 待补证据
 
