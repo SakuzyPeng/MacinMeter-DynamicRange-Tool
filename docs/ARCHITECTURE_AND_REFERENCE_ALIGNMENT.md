@@ -689,7 +689,11 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
   demux 复用 decoder slot 0，构造失败也会 join 已启动线程（仍未默认启用）；
 - [x] 补长音频 ALAC corpus 并完成 exact-fingerprint 同轮 worker-count 扫描
   （240 s / 2813 packets，1.91x/3.56x/5.72x，fingerprint 唯一；仍未启用）；
-- [ ] 补队列容量 A/B、长流内存压力与 `Application` 启用路径，再决定是否默认启用；
+- [ ] 完成 39 项 safe-master 逐 token 对照，以及同一长 corpus 在 1/2/4/8 worker、
+  最小/默认/最大 queue 下的 decoded-f64、`AnalysisResult` raw bits 与 wire report
+  全矩阵；
+- [ ] 补队列容量性能 A/B、小队列最坏乱序长流内存压力、真实音乐素材代表性与
+  `Application` 启用路径；只有 ADR-0014 全部毕业门槛通过后才决定是否默认启用；
 - [ ] 形成 FLAC ordered full-stream MD5 设计后再评估 FLAC packet worker；
 - [ ] 文件级与窗口级分别按自身毕业门槛评估，不与首个 packet 切片捆绑。
 

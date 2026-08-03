@@ -421,13 +421,16 @@ M6 语料新增一条 240 秒 stereo 16-bit ALAC track（2813 packets），由 f
 以 ADR-0013 固定的同一 bit-exact 形状编码，连续生成逐字节一致。worker 数是
 decode allocation 而非另一个 binary，因此作为 case 参数与其余 15 个 case 在同一次
 run 内固定 seed 完全交错；每个 case 各自复现 corpus 的 normalized `f64` oracle，
-verification 解码运行在与计时段相同的 allocation 上。runner 独立复算 plan 的
-allocation 派生并核对 worker 实得值，镜像漂移会使整次 run 失败。
+verification 解码运行在与计时段相同的 allocation 上。runner 复算 harness allocation
+并核对 worker 实得值，因此 runner/worker 镜像错位会使整次 run 失败；两份镜像都不
+自动检测未来 application plan 单独改变，真实 `Application` 派生仍须单独毕业。
 
 clean source `3793c79`、Apple M4 Pro / 12 逻辑核下的中位数：395.4 ms（1 worker）、
-206.7 ms（1.91x）、111.1 ms（3.56x）、69.1 ms（5.72x）；peak RSS 3.0 → 6.3 MiB。
-四个 worker 数的 result fingerprint 完全相同。不同 seed 的独立交叉 run 给出
-1.86x / 3.50x / 5.93x 与同一 fingerprint，说明加速比不依赖单次 run 的负载状态。
+206.7 ms（1.91x）、111.1 ms（3.56x）、69.1 ms（5.72x）；median peak RSS
+3.0 → 6.3 MiB，七次样本中的最大值为 3.0 → 6.7 MiB。四个 worker 数的 result
+fingerprint 完全相同。不同 seed 的已提交独立交叉 run 给出
+1.86x / 3.50x / 5.93x 与同一 fingerprint，只作为同数量级的独立复现，不推出任意
+负载下稳定或把 5.72x 视为一般下界/上界。
 完整身份、离散度、环境与限制见
 [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
 
@@ -438,11 +441,13 @@ safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力�
 
 ## 待补证据
 
-本 ADR 已接受架构方向与实施优先级，但尚未接受任何并行实现或性能声明：
+本 ADR 已接受架构方向、ALAC packet-worker 实现和上述固定身份下的性能测量，但
+尚未接受默认生产启用；剩余证据如下：
 
-- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成；仍缺队列
-  容量维度的 A/B、真实音乐素材代表性，以及经 `Application` 的实际启用路径，
-  因此 packet workers 仍不得默认启用；
+- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成；仍缺同一
+  corpus 在最小/默认/最大队列下的 decoded-f64、`AnalysisResult` raw bits 与
+  wire-visible report 全矩阵、队列容量性能 A/B、39 项 safe-master 逐 token 对照、
+  真实音乐素材代表性，以及经 `Application` 的实际启用路径；
 - ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
   测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
   验证；
@@ -450,5 +455,6 @@ safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力�
 - 文件级与窗口级仍只有准入契约，没有生产实现。
 
 第 1 步已经明确并测试了 application 共用 worker/memory hard cap、reservation 数值
-与退化规则；这些上限至今只在 serial 配置下被生产使用，多 worker 取值已有 committed
-短 fixture 的真实解码覆盖，但仍没有 source-bound 长音频与正式性能证据。
+与退化规则；这些上限至今只在 serial 配置下被生产使用。多 worker 取值已有 committed
+短 fixture 与 source-bound 长音频正式性能记录，但仍未完成上述正确性、资源和
+`Application` 集成门槛。

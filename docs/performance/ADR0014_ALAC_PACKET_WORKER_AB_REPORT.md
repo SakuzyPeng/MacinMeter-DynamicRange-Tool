@@ -2,7 +2,10 @@
 
 - 状态：Measured；packet workers 仍未默认启用
 - 日期：2026-08-03
-- 方法：ADR-0007 / `m6-performance-baseline-v1`（新增长 ALAC track）
+- 方法：ADR-0007 / 19-case ADR-0014 ALAC packet-worker sweep
+- suite：runner-recorded id `m6-scalar-baseline-v1`；本次 19-case definition
+  SHA-256 `a61d8484242e8e8634ed9acdec266913ac2b181265899658e90d91454c02bf73`
+- corpus：`m6-performance-baseline-v1`（新增长 ALAC track）
 - source：`3793c79cb2040ea4aa24dc553953cc6975df3947`（clean）
 - worker SHA-256：
   `ca5b069cc0f386e00fb3f859b71b722dfc0217761e1c9f5f0f63cee48be07262`
@@ -12,6 +15,10 @@
   [`adr0014-alac-packet-worker-sweep-v1-3793c79-aarch64-apple-darwin.json`](baselines/adr0014-alac-packet-worker-sweep-v1-3793c79-aarch64-apple-darwin.json)
 - raw record SHA-256：
   `4089d0ec1321ee73fc738df5c29205266470af39a29859e6e2b6b3c0d5bc1913`
+- supporting cross-check raw record：
+  [`adr0014-alac-packet-worker-crosscheck-v1-3793c79-aarch64-apple-darwin.json`](baselines/adr0014-alac-packet-worker-crosscheck-v1-3793c79-aarch64-apple-darwin.json)
+- supporting raw record SHA-256：
+  `d3b90a1a8c7416870847831c067f7c3e195253abb88829ccebdbafc8ac47f3f8`
 - 前置决策：
   [ADR-0014](../adr/0014-deterministic-decode-analysis-pipeline.md)
 
@@ -34,9 +41,12 @@ ADR-0007 的 `--variant`。四个 worker 数的 case 与其余 15 个 case 在�
 扫描本身就是差分，而不是四组互不相干的计时。verification 解码运行在与计时段
 **相同**的 allocation 上，不回退串行；完整 PCM hash 仍在计时区之外。
 
-runner 另行独立复算 application plan 的 allocation 派生，并核对 worker 实际获得的
-`decodeWorkers` / `decodeQueueCapacity` / `decodeMaxInFlightPcmBytes`；镜像漂移会
-使整次 run 失败，而不是产生一次配置错位的比较。
+runner 另行复算 harness allocation，并核对 worker 实际获得的 `decodeWorkers` /
+`decodeQueueCapacity` / `decodeMaxInFlightPcmBytes`；这会捕获 runner 与 worker 两份
+镜像之间的配置错位。两者都只是 crate-private application plan 的镜像，并不自动
+检测未来 plan 单独改变或另一台主机的 `available_parallelism` 收缩。本次固定主机有
+12 个逻辑核，请求的 1/2/4/8 worker 与 source `3793c79` 的 dormant plan 数值一致；
+经 `Application` 的真实派生仍是未满足的毕业门槛。
 
 ## 输入
 
@@ -54,15 +64,19 @@ layout），已验证连续两次生成产出逐字节相同的文件与 manifes
 `decode` scope，每 case warmup 1 次 + measured 7 次，单次迭代解码整条 240 秒
 track。加速比相对同一次 run 内的 1-worker case。
 
-| Workers | Median (ms) | MAD (ms) | Min / Max (ms) | Speedup | Audio s/s | Peak RSS (MiB) | RSS delta |
+| Workers | Median (ms) | MAD (ms) | Min / Max (ms) | Speedup | Audio s/s | Median peak RSS (MiB) | RSS delta |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | 395.4 | 1.77 | 392.6 / 399.2 | 1.00x | 607 | 3.0 | +0% |
 | 2 | 206.7 | 0.86 | 204.5 / 207.6 | 1.91x | 1161 | 3.9 | +29% |
 | 4 | 111.1 | 0.98 | 109.9 / 113.9 | 3.56x | 2161 | 4.7 | +58% |
 | 8 | 69.1 | 3.36 | 63.1 / 72.4 | 5.72x | 3474 | 6.3 | +113% |
 
-样本离散度为 median 的 1.7% / 1.5% / 3.6% / 13.5%。8 worker 的离散度明显更高，
-与本机在 run 期间的实际负载一致（load average 起 9.68、止 9.64，12 逻辑核）。
+样本 min–max span / median 为 1.7% / 1.5% / 3.6% / 13.5%。8 worker 的 span
+明显更高，同时本机在 run 期间保持较高负载（load average 起 9.68、止 9.64，
+12 逻辑核）。
+
+RSS 列是 7 个 measured sample 各自 process-tree peak RSS 的**中位数**；七次中的
+实际最大值分别为 3.0 / 3.9 / 5.1 / 6.7 MiB。`RSS delta` 同样按中位数计算。
 
 **四个 worker 数的 `resultFingerprintSha256` 完全相同**（唯一值
 `40f68d10cbe50bcc...`），即解码 stream 几何、帧数、块数与完整 interleaved `f64`
@@ -70,19 +84,21 @@ SHA-256 均不随 worker 数变化。
 
 ## 稳定性交叉检查
 
-同一 binary 与语料、不同 seed 的独立 run（非 canonical 记录）：
+同一 binary 与语料、不同 seed 的独立 4-case run：
 
-| Workers | Median (ms) | Speedup | 样本离散度 |
+| Workers | Median (ms) | Speedup | Min–max span / median |
 | ---: | ---: | ---: | ---: |
 | 1 | 437.8 | 1.00x | 23.1% |
 | 2 | 235.8 | 1.86x | 24.5% |
 | 4 | 125.1 | 3.50x | 24.8% |
 | 8 | 73.8 | 5.93x | 19.2% |
 
-绝对时间整体更慢、离散度更大，但**加速比在两次独立 run 之间稳定**，且
-fingerprint 与 canonical run 完全一致。这说明该环境的绝对计时受宿主负载影响，
-而加速比结论不依赖某一次 run 的负载状态；canonical run 的 5.72x 是该环境下的
-保守值，不是上界。
+该 supporting record 使用 seed `1300231`，suite definition SHA-256 为
+`3db6a171237eefeb7ee0e7a83efd30cdb4df6f07892e1e625c718062881843f3`；source、worker、
+corpus、toolchain 与主机身份均与 canonical record 相同，完整 raw samples 已随本报告
+提交。绝对时间整体更慢、离散度更大，但 fingerprint 相同，且四个配置的相对收益与
+canonical run 处于同一数量级。这是一次独立复现，不足以证明任意负载下的稳定性，
+也不把 5.72x 解释为一般下界或上界。
 
 ## 正确性
 
@@ -110,8 +126,8 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
   最小与最大 `queue_capacity` 目前只有正确性证据，没有 A/B；
 - **39 项 safe-master 逐 token 对照**：需要固定 reference 环境，本次未运行；
 - **小队列长流与最坏乱序压力测试**：需证明 queue/reorder 内存不随媒体时长增长。
-  本次记录了各 worker 数的 RSS（3.0 → 6.3 MiB），但未在最小队列 + 强制乱序下
-  施加长流压力；
+  本次记录了各 worker 数的 median peak RSS（3.0 → 6.3 MiB；七次最大值
+  3.0 → 6.7 MiB），但未在最小队列 + 强制乱序下施加长流压力；
 - **真实音乐素材的代表性**：语料信号几乎不可压缩，未覆盖典型音乐的 ALAC
   压缩特性对解码成本的影响；
 - **application 层集成**：产品 plan 恒为 serial，本扫描通过 harness 的显式

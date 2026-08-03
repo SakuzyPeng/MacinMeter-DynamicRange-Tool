@@ -1,0 +1,2038 @@
+{
+  "corpus": {
+    "committed": false,
+    "generator": {
+      "blockFrames": 4096,
+      "path": "scripts/generate-performance-corpus.py",
+      "sha256": "875e23a1bdccd936cd9538607aa684443b59042498cb50ad16b7d264178e9783"
+    },
+    "id": "m6-performance-baseline-v1",
+    "manifestSha256": "e79de11eebe19c3e8beb334dabb965d44dc80edd291069a09697d28ec9209c31",
+    "mediaFiles": 14
+  },
+  "environment": {
+    "build": {
+      "cargoBuildTarget": "",
+      "codegenUnits": 1,
+      "lto": "thin",
+      "optLevel": 3,
+      "overflowChecks": true,
+      "profile": "release",
+      "rustflags": "",
+      "strip": true
+    },
+    "hardware": {
+      "cpuBrand": "Apple M4 Pro",
+      "logicalCpu": 12,
+      "memoryBytes": 51539607552,
+      "model": "Mac16,8",
+      "physicalCpu": 12
+    },
+    "os": {
+      "machine": "arm64",
+      "release": "27.0.0",
+      "swVers": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5388g",
+      "system": "Darwin",
+      "version": "Darwin Kernel Version 27.0.0: Tue Jul 14 21:43:10 PDT 2026; root:xnu-13432.0.94.501.4~1/RELEASE_ARM64_T6041"
+    },
+    "power": {
+      "policy": "Battery Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 0\n networkoversleep     0\n sleep                1\n lessbright           0\n tcpkeepalive         1\n disksleep            10\nAC Power:\n Sleep On Power Button 1\n powermode            0\n standby              1\n ttyskeepawake        1\n hibernatemode        3\n powernap             1\n hibernatefile        /var/vm/sleepimage\n displaysleep         0\n womp                 1\n networkoversleep     0\n sleep                1\n tcpkeepalive         1\n disksleep            10",
+      "source": "AC Power"
+    },
+    "repositoryRootName": "MacinMeter-DynamicRange-Tool",
+    "runner": {
+      "path": "scripts/run-performance-baseline.py",
+      "sha256": "ecaeaa7e855c68ef4c6b1713a1011f365d6a359e55dad647f93944c3af037d73"
+    },
+    "toolchain": {
+      "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+      "python": "3.13.2",
+      "rustc": {
+        "LLVM version": "22.1.2",
+        "binary": "rustc",
+        "commit-date": "2026-05-25",
+        "commit-hash": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+        "host": "aarch64-apple-darwin",
+        "release": "1.96.0"
+      }
+    }
+  },
+  "kind": "m6_performance_baseline",
+  "measurement": {
+    "coldCacheClaim": false,
+    "decodeVerification": "full decoded f64 SHA-256 is outside the timed decode interval",
+    "nativeTimer": "Darwin /usr/bin/time -l",
+    "outliersRemoved": 0,
+    "processTreeRss": "sum of descendant RSS sampled with ps; /usr/bin/time wrapper excluded",
+    "samplingIntervalMs": 10,
+    "workerTimer": "std::time::Instant around the named workload only"
+  },
+  "run": {
+    "completedAtUtc": "2026-08-03T01:35:08.739643Z",
+    "loadAverageEnd": [
+      6.73486328125,
+      7.62939453125,
+      8.0673828125
+    ],
+    "loadAverageStart": [
+      6.05908203125,
+      7.57080078125,
+      8.0576171875
+    ],
+    "startedAtUtc": "2026-08-03T01:34:45.566284Z"
+  },
+  "samples": [
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4597541794,
+        "instructionsRetired": 27624813246,
+        "involuntaryContextSwitches": 7000,
+        "maxResidentSetBytes": 4341760,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3113344,
+        "realSeconds": 0.57,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.18,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4308992,
+        "samples": 18,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 600755041,
+      "scheduleIndex": 0,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 209656417
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4546812342,
+        "instructionsRetired": 27623762559,
+        "involuntaryContextSwitches": 6885,
+        "maxResidentSetBytes": 3932160,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2687336,
+        "realSeconds": 0.62,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.28,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3899392,
+        "samples": 19,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 649421333,
+      "scheduleIndex": 1,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 235756500
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4607133502,
+        "instructionsRetired": 27660840719,
+        "involuntaryContextSwitches": 8802,
+        "maxResidentSetBytes": 5242880,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3998056,
+        "realSeconds": 0.52,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.3,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5210112,
+        "samples": 15,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 539348500,
+      "scheduleIndex": 2,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 124241792
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4526260822,
+        "instructionsRetired": 27621654744,
+        "involuntaryContextSwitches": 6767,
+        "maxResidentSetBytes": 4096000,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2867608,
+        "realSeconds": 0.68,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.4,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4063232,
+        "samples": 19,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 691300000,
+      "scheduleIndex": 3,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 246663250
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4458772976,
+        "instructionsRetired": 27518707832,
+        "involuntaryContextSwitches": 493,
+        "maxResidentSetBytes": 3162112,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1884520,
+        "realSeconds": 1.34,
+        "swaps": 0,
+        "systemSeconds": 0.02,
+        "userSeconds": 1.32,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3047424,
+        "samples": 39,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1386077042,
+      "scheduleIndex": 4,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 500395041
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4713037607,
+        "instructionsRetired": 27658744428,
+        "involuntaryContextSwitches": 8364,
+        "maxResidentSetBytes": 7225344,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 6013336,
+        "realSeconds": 0.46,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.33,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 7176192,
+        "samples": 13,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 471325666,
+      "scheduleIndex": 5,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 72502084
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4691856510,
+        "instructionsRetired": 27640721265,
+        "involuntaryContextSwitches": 7508,
+        "maxResidentSetBytes": 7127040,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5915032,
+        "realSeconds": 0.48,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.38,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 7077888,
+        "samples": 14,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 497238292,
+      "scheduleIndex": 6,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 79752125
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4418130400,
+        "instructionsRetired": 27516805266,
+        "involuntaryContextSwitches": 463,
+        "maxResidentSetBytes": 3260416,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1982824,
+        "realSeconds": 1.26,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.24,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3145728,
+        "samples": 37,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1277279458,
+      "scheduleIndex": 7,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 459989208
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4716990446,
+        "instructionsRetired": 27651773477,
+        "involuntaryContextSwitches": 8150,
+        "maxResidentSetBytes": 7192576,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5980568,
+        "realSeconds": 0.45,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.28,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 7159808,
+        "samples": 13,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 460629625,
+      "scheduleIndex": 8,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 71130333
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4507495576,
+        "instructionsRetired": 27623594146,
+        "involuntaryContextSwitches": 6887,
+        "maxResidentSetBytes": 3948544,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2703720,
+        "realSeconds": 0.62,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.27,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3915776,
+        "samples": 16,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 654297792,
+      "scheduleIndex": 9,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 234082833
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4438077727,
+        "instructionsRetired": 27516084375,
+        "involuntaryContextSwitches": 437,
+        "maxResidentSetBytes": 3260416,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1982824,
+        "realSeconds": 1.18,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.16,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3145728,
+        "samples": 36,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1198569208,
+      "scheduleIndex": 10,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 437758916
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4443476834,
+        "instructionsRetired": 27516132777,
+        "involuntaryContextSwitches": 406,
+        "maxResidentSetBytes": 3194880,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1917288,
+        "realSeconds": 1.12,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3080192,
+        "samples": 35,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1152167708,
+      "scheduleIndex": 11,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 401333875
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4556348439,
+        "instructionsRetired": 27620115499,
+        "involuntaryContextSwitches": 6669,
+        "maxResidentSetBytes": 3997696,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2736488,
+        "realSeconds": 0.54,
+        "swaps": 0,
+        "systemSeconds": 0.03,
+        "userSeconds": 1.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3964928,
+        "samples": 17,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 562106334,
+      "scheduleIndex": 12,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 204731417
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4669255402,
+        "instructionsRetired": 27648613842,
+        "involuntaryContextSwitches": 7900,
+        "maxResidentSetBytes": 6979584,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5767576,
+        "realSeconds": 0.45,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.26,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 6930432,
+        "samples": 14,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 494248833,
+      "scheduleIndex": 13,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 73804916
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4590285548,
+        "instructionsRetired": 27661053153,
+        "involuntaryContextSwitches": 8632,
+        "maxResidentSetBytes": 5308416,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4080000,
+        "realSeconds": 0.53,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.3,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5259264,
+        "samples": 15,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 539187125,
+      "scheduleIndex": 14,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 125123666
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4570280601,
+        "instructionsRetired": 27661203325,
+        "involuntaryContextSwitches": 8661,
+        "maxResidentSetBytes": 5029888,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3801472,
+        "realSeconds": 0.57,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.41,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4980736,
+        "samples": 16,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 588923417,
+      "scheduleIndex": 15,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 134403875
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4543628513,
+        "instructionsRetired": 27623096050,
+        "involuntaryContextSwitches": 6894,
+        "maxResidentSetBytes": 4177920,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2916712,
+        "realSeconds": 0.69,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.43,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4079616,
+        "samples": 20,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 733048083,
+      "scheduleIndex": 16,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 262453042
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4604131485,
+        "instructionsRetired": 27655914205,
+        "involuntaryContextSwitches": 8382,
+        "maxResidentSetBytes": 5210112,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3965288,
+        "realSeconds": 0.57,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.44,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5177344,
+        "samples": 16,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 599672417,
+      "scheduleIndex": 17,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 140688208
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4517531405,
+        "instructionsRetired": 27622027149,
+        "involuntaryContextSwitches": 6765,
+        "maxResidentSetBytes": 3948544,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2703720,
+        "realSeconds": 0.69,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.41,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3915776,
+        "samples": 19,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 702297291,
+      "scheduleIndex": 18,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 260047292
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4637088119,
+        "instructionsRetired": 27654638969,
+        "involuntaryContextSwitches": 8227,
+        "maxResidentSetBytes": 5242880,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 4014464,
+        "realSeconds": 0.57,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.43,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 5210112,
+        "samples": 16,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 597634250,
+      "scheduleIndex": 19,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 135120459
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4727323673,
+        "instructionsRetired": 27664056516,
+        "involuntaryContextSwitches": 8753,
+        "maxResidentSetBytes": 7077888,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5865880,
+        "realSeconds": 0.51,
+        "swaps": 0,
+        "systemSeconds": 0.06,
+        "userSeconds": 1.49,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 7028736,
+        "samples": 14,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 2,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 526052292,
+      "scheduleIndex": 20,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 79122667
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4676547919,
+        "instructionsRetired": 27653258818,
+        "involuntaryContextSwitches": 8161,
+        "maxResidentSetBytes": 6963200,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5751192,
+        "realSeconds": 0.52,
+        "swaps": 0,
+        "systemSeconds": 0.06,
+        "userSeconds": 1.48,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 6897664,
+        "samples": 15,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 553624250,
+      "scheduleIndex": 21,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 85276292
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4486385143,
+        "instructionsRetired": 27516505963,
+        "involuntaryContextSwitches": 442,
+        "maxResidentSetBytes": 3162112,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1884520,
+        "realSeconds": 1.29,
+        "swaps": 0,
+        "systemSeconds": 0.02,
+        "userSeconds": 1.26,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3047424,
+        "samples": 38,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 6,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1317545583,
+      "scheduleIndex": 22,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 479121083
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4619076251,
+        "instructionsRetired": 27636578869,
+        "involuntaryContextSwitches": 7192,
+        "maxResidentSetBytes": 6963200,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5751192,
+        "realSeconds": 0.44,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.22,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 6914048,
+        "samples": 13,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 459198833,
+      "scheduleIndex": 23,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 71497875
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4440130113,
+        "instructionsRetired": 27516222610,
+        "involuntaryContextSwitches": 423,
+        "maxResidentSetBytes": 3260416,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1982824,
+        "realSeconds": 1.16,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.14,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3145728,
+        "samples": 33,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 4,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1189206625,
+      "scheduleIndex": 24,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 422976459
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4447148472,
+        "instructionsRetired": 27516913555,
+        "involuntaryContextSwitches": 494,
+        "maxResidentSetBytes": 3309568,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2031976,
+        "realSeconds": 1.12,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.09,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3194880,
+        "samples": 35,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 3,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1148568709,
+      "scheduleIndex": 25,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 399332750
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4613686837,
+        "instructionsRetired": 27651581750,
+        "involuntaryContextSwitches": 8075,
+        "maxResidentSetBytes": 4947968,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3686736,
+        "realSeconds": 0.44,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.13,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4898816,
+        "samples": 14,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 1,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 464036375,
+      "scheduleIndex": 26,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 109705334
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4574320300,
+        "instructionsRetired": 27657257175,
+        "involuntaryContextSwitches": 8309,
+        "maxResidentSetBytes": 4882432,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3637608,
+        "realSeconds": 0.46,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.15,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4849664,
+        "samples": 15,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 5,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 503416500,
+      "scheduleIndex": 27,
+      "scope": "decode",
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 110503584
+    }
+  ],
+  "schemaVersion": 1,
+  "source": {
+    "commit": "3793c79cb2040ea4aa24dc553953cc6975df3947",
+    "state": "clean"
+  },
+  "suite": {
+    "cases": [
+      {
+        "arguments": [
+          "decode",
+          "$CORPUS/stereo-s16-alac-240s.m4a",
+          "1",
+          "1"
+        ],
+        "caseId": "decode/alac-s16-240s-w1",
+        "description": "Content probe plus complete ALAC decoding on 1 decode worker(s)",
+        "scope": "decode"
+      },
+      {
+        "arguments": [
+          "decode",
+          "$CORPUS/stereo-s16-alac-240s.m4a",
+          "1",
+          "2"
+        ],
+        "caseId": "decode/alac-s16-240s-w2",
+        "description": "Content probe plus complete ALAC decoding on 2 decode worker(s)",
+        "scope": "decode"
+      },
+      {
+        "arguments": [
+          "decode",
+          "$CORPUS/stereo-s16-alac-240s.m4a",
+          "1",
+          "4"
+        ],
+        "caseId": "decode/alac-s16-240s-w4",
+        "description": "Content probe plus complete ALAC decoding on 4 decode worker(s)",
+        "scope": "decode"
+      },
+      {
+        "arguments": [
+          "decode",
+          "$CORPUS/stereo-s16-alac-240s.m4a",
+          "1",
+          "8"
+        ],
+        "caseId": "decode/alac-s16-240s-w8",
+        "description": "Content probe plus complete ALAC decoding on 8 decode worker(s)",
+        "scope": "decode"
+      }
+    ],
+    "id": "m6-scalar-baseline-v1",
+    "outlierPolicy": "retain_all",
+    "samplesPerCaseVariant": 7,
+    "schedule": "seeded_fully_interleaved",
+    "seed": 1300231,
+    "sha256": "3db6a171237eefeb7ee0e7a83efd30cdb4df6f07892e1e625c718062881843f3",
+    "warmupsPerCaseVariant": 1
+  },
+  "summary": [
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "nativeMaxResidentSetBytes": {
+        "max": 3309568.0,
+        "median": 3260416.0,
+        "medianAbsoluteDeviation": 49152.0,
+        "min": 3162112.0,
+        "p10": 3162112.0,
+        "p90": 3280076.8
+      },
+      "nativeSystemSeconds": {
+        "max": 0.02,
+        "median": 0.01,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.01,
+        "p10": 0.01,
+        "p90": 0.02
+      },
+      "nativeUserSeconds": {
+        "max": 1.32,
+        "median": 1.16,
+        "medianAbsoluteDeviation": 0.06999999999999984,
+        "min": 1.09,
+        "p10": 1.096,
+        "p90": 1.284
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 3194880.0,
+        "median": 3145728.0,
+        "medianAbsoluteDeviation": 49152.0,
+        "min": 3047424.0,
+        "p10": 3047424.0,
+        "p90": 3165388.8
+      },
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 601.0025473743387,
+          "median": 548.2469716276436,
+          "medianAbsoluteDeviation": 47.32975358904599,
+          "min": 479.62106003364653,
+          "p10": 492.3987548366172,
+          "p90": 599.2045213951744
+        },
+        "logicalItemsPerSecond": {
+          "max": 2.5041772807264118,
+          "median": 2.284362381781848,
+          "medianAbsoluteDeviation": 0.19720730662102515,
+          "min": 1.9984210834735272,
+          "p10": 2.0516614784859044,
+          "p90": 2.496685505813227
+        },
+        "millionSamplesPerSecond": {
+          "max": 57.69624454793652,
+          "median": 52.63170927625378,
+          "medianAbsoluteDeviation": 4.543656344548417,
+          "min": 46.043621763230064,
+          "p10": 47.27028046431524,
+          "p90": 57.52363405393675
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 500395041.0,
+        "median": 437758916.0,
+        "medianAbsoluteDeviation": 36425041.0,
+        "min": 399332750.0,
+        "p10": 400533425.0,
+        "p90": 487630666.20000005
+      }
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "nativeMaxResidentSetBytes": {
+        "max": 4341760.0,
+        "median": 3997696.0,
+        "medianAbsoluteDeviation": 65536.0,
+        "min": 3932160.0,
+        "p10": 3941990.4,
+        "p90": 4243456.0
+      },
+      "nativeSystemSeconds": {
+        "max": 0.04,
+        "median": 0.04,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.03,
+        "p10": 0.036000000000000004,
+        "p90": 0.04
+      },
+      "nativeUserSeconds": {
+        "max": 1.43,
+        "median": 1.28,
+        "medianAbsoluteDeviation": 0.11999999999999988,
+        "min": 1.12,
+        "p10": 1.1560000000000001,
+        "p90": 1.418
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 4308992.0,
+        "median": 3964928.0,
+        "medianAbsoluteDeviation": 65536.0,
+        "min": 3899392.0,
+        "p10": 3909222.4000000004,
+        "p90": 4171366.4000000004
+      },
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 1172.2675665357212,
+          "median": 1017.9995037252419,
+          "medianAbsoluteDeviation": 95.09045070576258,
+          "min": 914.449297943363,
+          "p10": 919.5251509890329,
+          "p90": 1155.7450545674228
+        },
+        "logicalItemsPerSecond": {
+          "max": 4.884448193898839,
+          "median": 4.241664598855174,
+          "medianAbsoluteDeviation": 0.3962102112740107,
+          "min": 3.810205408097346,
+          "p10": 3.831354795787637,
+          "p90": 4.815604394030929
+        },
+        "millionSamplesPerSecond": {
+          "max": 112.53768638742923,
+          "median": 97.72795235762322,
+          "medianAbsoluteDeviation": 9.128683267753217,
+          "min": 87.78713260256286,
+          "p10": 88.27441449494714,
+          "p90": 110.9515252384726
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 262453042.0,
+        "median": 235756500.0,
+        "medianAbsoluteDeviation": 24290792.0,
+        "min": 204731417.0,
+        "p10": 207686417.0,
+        "p90": 261009592.0
+      }
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "nativeMaxResidentSetBytes": {
+        "max": 5308416.0,
+        "median": 5210112.0,
+        "medianAbsoluteDeviation": 98304.0,
+        "min": 4882432.0,
+        "p10": 4921753.6,
+        "p90": 5269094.4
+      },
+      "nativeSystemSeconds": {
+        "max": 0.05,
+        "median": 0.05,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.04,
+        "p10": 0.04,
+        "p90": 0.05
+      },
+      "nativeUserSeconds": {
+        "max": 1.44,
+        "median": 1.3,
+        "medianAbsoluteDeviation": 0.1299999999999999,
+        "min": 1.13,
+        "p10": 1.142,
+        "p90": 1.434
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 5259264.0,
+        "median": 5177344.0,
+        "medianAbsoluteDeviation": 81920.0,
+        "min": 4849664.0,
+        "p10": 4879155.2,
+        "p90": 5229772.800000001
+      },
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 2187.6784951951377,
+          "median": 1918.1023676208465,
+          "medianAbsoluteDeviation": 141.90946703278678,
+          "min": 1705.8999002958371,
+          "p10": 1748.0757004711709,
+          "p90": 2178.196552824167
+        },
+        "logicalItemsPerSecond": {
+          "max": 9.115327063313075,
+          "median": 7.992093198420194,
+          "medianAbsoluteDeviation": 0.5912894459699451,
+          "min": 7.107916251232655,
+          "p10": 7.283648751963211,
+          "p90": 9.075818970100697
+        },
+        "millionSamplesPerSecond": {
+          "max": 210.01713553873324,
+          "median": 184.13782729160127,
+          "medianAbsoluteDeviation": 13.623308835147526,
+          "min": 163.76639042840037,
+          "p10": 167.8152672452324,
+          "p90": 209.10686907112006
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 140688208.0,
+        "median": 125123666.0,
+        "medianAbsoluteDeviation": 9996793.0,
+        "min": 109705334.0,
+        "p10": 110184284.0,
+        "p90": 137347558.6
+      }
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "nativeMaxResidentSetBytes": {
+        "max": 7225344.0,
+        "median": 7077888.0,
+        "medianAbsoluteDeviation": 114688.0,
+        "min": 6963200.0,
+        "p10": 6963200.0,
+        "p90": 7205683.2
+      },
+      "nativeSystemSeconds": {
+        "max": 0.06,
+        "median": 0.05,
+        "medianAbsoluteDeviation": 0.0,
+        "min": 0.04,
+        "p10": 0.046,
+        "p90": 0.06
+      },
+      "nativeUserSeconds": {
+        "max": 1.49,
+        "median": 1.33,
+        "medianAbsoluteDeviation": 0.07000000000000006,
+        "min": 1.22,
+        "p10": 1.244,
+        "p90": 1.484
+      },
+      "outliersRemoved": 0,
+      "processTreePeakRssBytes": {
+        "max": 7176192.0,
+        "median": 7028736.0,
+        "medianAbsoluteDeviation": 114688.0,
+        "min": 6897664.0,
+        "p10": 6907494.4,
+        "p90": 7166361.6
+      },
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "samples": 7,
+      "throughput": {
+        "audioSecondsPerSecond": {
+          "max": 3374.087957664981,
+          "median": 3251.8159088481316,
+          "medianAbsoluteDeviation": 122.27204881684929,
+          "min": 2814.3812819628693,
+          "p10": 2931.3470345612136,
+          "p90": 3363.6810550586915
+        },
+        "logicalItemsPerSecond": {
+          "max": 14.058699823604087,
+          "median": 13.549232953533881,
+          "medianAbsoluteDeviation": 0.5094668700702059,
+          "min": 11.72658867484529,
+          "p10": 12.21394597733839,
+          "p90": 14.015337729411215
+        },
+        "millionSamplesPerSecond": {
+          "max": 323.91244393583816,
+          "median": 312.1743272494206,
+          "medianAbsoluteDeviation": 11.738116686417527,
+          "min": 270.1806030684355,
+          "p10": 281.40931531787646,
+          "p90": 322.9133812856344
+        }
+      },
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": {
+        "max": 85276292.0,
+        "median": 73804916.0,
+        "medianAbsoluteDeviation": 2674583.0,
+        "min": 71130333.0,
+        "p10": 71350858.2,
+        "p90": 81961791.8
+      }
+    }
+  ],
+  "variants": {
+    "scalar": {
+      "path": "m6_baseline_worker",
+      "sha256": "ca5b069cc0f386e00fb3f859b71b722dfc0217761e1c9f5f0f63cee48be07262",
+      "sizeBytes": 1349536,
+      "sourceCommit": "3793c79cb2040ea4aa24dc553953cc6975df3947"
+    }
+  },
+  "warmups": [
+    {
+      "caseId": "decode/alac-s16-240s-w8",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 33554432,
+        "decodeQueueCapacity": 32,
+        "decodeWorkers": 8,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4746771259,
+        "instructionsRetired": 27655684534,
+        "involuntaryContextSwitches": 8140,
+        "maxResidentSetBytes": 6963200,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 5751192,
+        "realSeconds": 0.4,
+        "swaps": 0,
+        "systemSeconds": 0.05,
+        "userSeconds": 1.19,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 6914048,
+        "samples": 13,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 434184791,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 67494666
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w1",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 0,
+        "decodeQueueCapacity": 1,
+        "decodeWorkers": 1,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4461098371,
+        "instructionsRetired": 27516228808,
+        "involuntaryContextSwitches": 479,
+        "maxResidentSetBytes": 3162112,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 1884520,
+        "realSeconds": 1.12,
+        "swaps": 0,
+        "systemSeconds": 0.01,
+        "userSeconds": 1.1,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 3047424,
+        "samples": 36,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 1156104250,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 396110500
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w2",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 8388608,
+        "decodeQueueCapacity": 8,
+        "decodeWorkers": 2,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4533561467,
+        "instructionsRetired": 27622957292,
+        "involuntaryContextSwitches": 6850,
+        "maxResidentSetBytes": 4079616,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 2851200,
+        "realSeconds": 0.54,
+        "swaps": 0,
+        "systemSeconds": 0.03,
+        "userSeconds": 1.11,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4046848,
+        "samples": 17,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 548832125,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 204260833
+    },
+    {
+      "caseId": "decode/alac-s16-240s-w4",
+      "details": {
+        "blocksPerIteration": 2813,
+        "decodeMaxInFlightPcmBytes": 16777216,
+        "decodeQueueCapacity": 16,
+        "decodeWorkers": 4,
+        "path": "stereo-s16-alac-240s.m4a",
+        "pcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
+        "verificationHashOutsideTimedRegion": true
+      },
+      "nativeMetrics": {
+        "blockInputOperations": 0,
+        "blockOutputOperations": 0,
+        "cyclesElapsed": 4592076721,
+        "instructionsRetired": 27653942318,
+        "involuntaryContextSwitches": 8172,
+        "maxResidentSetBytes": 4947968,
+        "pageFaults": 0,
+        "peakMemoryFootprintBytes": 3719552,
+        "realSeconds": 0.44,
+        "swaps": 0,
+        "systemSeconds": 0.04,
+        "userSeconds": 1.12,
+        "voluntaryContextSwitches": 0
+      },
+      "processTree": {
+        "measurementWrapperExcluded": true,
+        "peakProcesses": 1,
+        "peakRssBytes": 4915200,
+        "samples": 14,
+        "samplingIntervalMs": 10.0
+      },
+      "repetition": 0,
+      "resultBytes": 186,
+      "resultFingerprintSha256": "40f68d10cbe50bcc77729aa09cab0b498cb03cd086a6825cb2a8f48b40fe3908",
+      "runnerWallNs": 453807500,
+      "variant": "scalar",
+      "work": {
+        "audioFrames": 11520000,
+        "audioSeconds": 240.0,
+        "interleavedSamples": 23040000,
+        "iterations": 1,
+        "logicalItems": 1
+      },
+      "workerElapsedNs": 109839208
+    }
+  ]
+}
