@@ -1,0 +1,131 @@
+{
+    "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+    "cells": [
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 0,
+            "queueCapacity": 1,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 1
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 4194304,
+            "queueCapacity": 4,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 1
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 4194304,
+            "queueCapacity": 64,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 1
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 8388608,
+            "queueCapacity": 2,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 2
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 8388608,
+            "queueCapacity": 8,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 2
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 8388608,
+            "queueCapacity": 64,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 2
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 16777216,
+            "queueCapacity": 4,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 4
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 16777216,
+            "queueCapacity": 16,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 4
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 16777216,
+            "queueCapacity": 64,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 4
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 33554432,
+            "queueCapacity": 8,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 8
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 33554432,
+            "queueCapacity": 32,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 8
+        },
+        {
+            "analysisResultRawBitsSha256": "721bee5d8e49a81c8a665f3ea0f161239a3cd4e8b2365d63c19374a737b552c7",
+            "decodedBlocks": 2813,
+            "decodedFrames": 11520000,
+            "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+            "maxInFlightPcmBytes": 33554432,
+            "queueCapacity": 64,
+            "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488",
+            "workers": 8
+        }
+    ],
+    "decodedFrames": 11520000,
+    "decodedPcmF64LeSha256": "d5b62bfca52ba66c53f0f902234b52c3da07af9aa50ceb0b7fed11b5d7d52d8e",
+    "kind": "adr0014_allocation_matrix",
+    "path": "stereo-s16-alac-tonal-240s.m4a",
+    "schemaVersion": 1,
+    "wireReportSha256": "237010c4db6f5c74e17f4addb229425040f0fb93cac7d2d6af7eb983f489a488"
+}

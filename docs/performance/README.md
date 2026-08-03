@@ -27,6 +27,12 @@ leaderboard or a user-facing throughput guarantee.
 - [`profiles/`](profiles/) contains source-bound Time Profiler records. The
   committed JSON retains every folded-stack count and binds each ignored raw
   trace/export by SHA-256 and size.
+- [`equivalence/`](equivalence/) contains ADR-0014 decode allocation matrices.
+  These are correctness records, not timings: every worker count crossed with
+  the minimum, plan-derived, and maximum reorder permit, each carrying the
+  decoded `f64`, `AnalysisResult` raw-bit, and wire-report fingerprints for one
+  long input. Regenerate with
+  `cargo run --release -p macinmeter --example adr0014_allocation_matrix -- PATH`.
 - [`comparisons/`](comparisons/) contains complete interleaved A/B runner
   records, including every warm-up, measured sample, variant identity, and
   cross-variant fingerprint.

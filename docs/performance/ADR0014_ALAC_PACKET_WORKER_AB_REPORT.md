@@ -130,11 +130,46 @@ interleaved `f64` SHA-256 均不随 allocation 变化。两条 track 之间 fing
 - 每条 track 内 1/2/4/8 worker 的 decode result fingerprint 与 PCM SHA-256 完全相同；
 - tonal track 的最小 / plan 派生 / 最大 reorder permit 三种配置与上述四个 worker
   数共享同一 fingerprint；
+- 两条 track 各自的 12 单元 allocation 矩阵（4 个 worker 数 × 最小 / plan 派生 /
+  最大 reorder permit）在 decoded `f64`、`AnalysisResult` raw bits 与 wire-visible
+  report 三项上各自唯一，见下节；
 - 每个 case 独立匹配 corpus 的 normalized interleaved `f64` oracle；
 - 每个 case 的 7 个 measured sample 之间 fingerprint 稳定；
 - 产品侧另有 9 个 committed ALAC fixture 在 1/2/4/8 worker、最小与最大
   `queue_capacity`、确定性强制乱序以及损坏 packet 下的 raw-bit、错误与 progress
   等价测试，见 ADR-0014 第 2 步记录。
+
+## Allocation 等价矩阵
+
+ADR-0014 的共同门槛要求同一 corpus 在各 worker 数与最小 / 默认 / 最大队列容量下
+具有相同的 decoded-`f64`、`AnalysisResult` raw bits 与 wire-visible report。该矩阵
+由独立的正确性 harness 运行，不计时：
+
+```bash
+cargo run --release -p macinmeter --example adr0014_allocation_matrix -- PATH
+```
+
+每条 track 12 个单元：worker 数 1/2/4/8，各配最小合法容量（等于 worker 数）、plan
+派生容量与固定产品上限 64。`workers = 1` 的三个单元都退化为串行引擎，这正是
+“worker 数为 1 时在解码开始前退化”的验证；其余九个单元走 packet workers。
+
+`AnalysisResult` 的指纹是遍历其 exhaustive view、按 IEEE-754 位模式累积得到的，
+不是渲染后的十进制文本，因此低于打印精度的差异不会被当作相等。
+
+| Track | 单元数 | decoded `f64` | `AnalysisResult` raw bits | wire report | 记录 |
+| --- | ---: | --- | --- | --- | --- |
+| 伪随机 99.5% | 12 | `046c476b...` | `6c0c911b...` | `036a7eae...` | [`adr0014-allocation-matrix-stereo-s16-alac-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-240s.json) |
+| tonal 60.0% | 12 | `d5b62bfc...` | `721bee5d...` | `237010c4...` | [`adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json) |
+
+两份记录的 SHA-256 分别为
+`7e1f7eb22c62683a8af4cb56bc445c5a392444fcebfe37fdb198b96c8cd806ad` 与
+`b5f230dbb9e018991453cc0c8db02a0c2037f384b3320a7cc77d3601bff5372d`；两条 track 各
+11,520,000 帧。
+
+该矩阵的检测能力经两次注入验证：把 reorder 的提交改为取任意 pending 项，会被
+commit buffer 的既有契约检查在产生任何 PCM 之前拦下；只在 packet worker 路径对
+单个 sample 翻转 1 ULP、不触发任何契约错误时，矩阵会报告四个互不相同的
+decoded-`f64` fingerprint。两次注入均已回退。
 
 ## 环境
 
@@ -164,9 +199,9 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
 覆盖真实录音的动态、立体声相关性与 packet 长度分布。
 
 tonal track、8-worker allocation 的 reorder-permit 性能敏感性 A/B 已完成，三个容量
-共享同一 decode fingerprint；但 ADR 共同门槛要求的同一 corpus、各 worker 数与
-最小/默认/最大容量下 decoded-f64、`AnalysisResult` raw bits 和 wire report 全矩阵
-仍未完成。
+共享同一 decode fingerprint；ADR 共同门槛要求的全矩阵也已在两条 track 上各完成
+12 个单元，见“Allocation 等价矩阵”。两者都通过 harness 的显式 allocation 驱动
+`codecs`，因此仍不覆盖 `Application` 的启用路径。
 
 ## 边界
 

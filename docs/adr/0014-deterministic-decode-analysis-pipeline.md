@@ -462,9 +462,18 @@ result fingerprint；单独扫描 permit 的 tonal 8-worker case 在最小、pla
 确定性强制乱序 seam 是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与
 “强制最坏乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据。
 
-该扫描是一次测量，不是启用决定。默认启用仍缺同一 corpus 在各 worker/队列容量下的
-完整正确性矩阵、39 项 safe-master 逐 token 对照、长流与强制最坏乱序的组合覆盖，
-以及经 `Application` 的实际启用路径；因此 ALAC packet workers 目前仍不得默认启用。
+ADR 共同门槛要求的正确性全矩阵另由独立的、不计时的 harness
+（`examples/adr0014_allocation_matrix.rs`）在同两条 track 上各运行 12 个单元：
+worker 数 1/2/4/8，各配最小合法容量、plan 派生容量与固定产品上限 64。每条 track 的
+decoded `f64`、`AnalysisResult` raw bits 与 wire-visible report 三项指纹各自唯一。
+`AnalysisResult` 指纹遍历其 exhaustive view 并按 IEEE-754 位模式累积，不比较渲染
+后的十进制文本。矩阵的检测能力经两次注入验证：破坏顺序提交会被 commit buffer 的
+既有契约检查在产生任何 PCM 之前拦下；只在 packet worker 路径翻转单个 sample 的
+1 ULP 时，矩阵报告四个互不相同的 decoded-`f64` 指纹。
+
+该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 逐 token 对照、
+长流与强制最坏乱序的组合覆盖，以及经 `Application` 的实际启用路径；因此 ALAC
+packet workers 目前仍不得默认启用。
 
 ## 待补证据
 
@@ -472,10 +481,11 @@ result fingerprint；单独扫描 permit 的 tonal 8-worker case 在最小、pla
 尚未接受默认生产启用；剩余证据如下：
 
 - ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成，tonal track
-  的 8-worker 最小/默认/最大队列性能 A/B 也已完成；仍缺同一 corpus 在各 worker 数、
-  最小/默认/最大队列下的 decoded-f64、`AnalysisResult` raw bits 与 wire-visible
-  report 全矩阵、39 项 safe-master 逐 token 对照、真实音乐素材代表性，以及经
-  `Application` 的实际启用路径；
+  的 8-worker 最小/默认/最大队列性能 A/B 已完成，两条 track 各 12 单元的
+  decoded-f64、`AnalysisResult` raw bits 与 wire-visible report 全矩阵也已完成；
+  仍缺 39 项 safe-master 逐 token 对照、真实音乐素材代表性，以及经 `Application`
+  的实际启用路径。全矩阵由 harness 的显式 allocation 驱动 `codecs`，其数值上限
+  与产品 plan 的关系仍只由镜像常量维持；
 - ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
   测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
   验证；
