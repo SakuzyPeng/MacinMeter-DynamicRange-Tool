@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_report_metrics_conformance_comparison",
+  "reference": {
+    "normalizationSha256": "50205960b9850addb7f18bdb5f3c2c3c59897a5a2c5efc8e408870d5a3a2ffce",
+    "rawReportSha256": "e9afbde86ccb21cae56826803da5492e37135c8594a657130b3868b42956d11c",
+    "manifestSha256": "479e535a7196487fdb67a54f0c4de681f925920453e8092bac9eeb04eec4bbf8",
+    "corpusId": "foo-dr-meter-108-complete-v2",
+    "playlist": "00-safe-master",
+    "targetVersions": {
+      "foobar2000Version": "2.25.10",
+      "drMeterVersion": "1.0.8",
+      "reportedLogDate": "2026-07-18 17:54:55"
+    }
+  },
+  "implementation": {
+    "wireOutputSha256": "45c249425dbbe8fff04606377a969c3a5231ba795df1c7f83e0fc3f7d535d622",
+    "binarySha256": "1e44a6f679eb0dd6fb163337275fb206adce7a80adde295403e5ccb176642254",
+    "wireSchemaVersion": 4,
+    "toolVersion": "0.3.0"
+  },
+  "policy": {
+    "trackDr": "exact integer token",
+    "channelDrDb": "reference two-decimal token with near-zero centi-dB correction",
+    "trackPrimaryPeakDbfs": "reference two-decimal/-inf token",
+    "trackOverallRmsDbfs": "reference two-decimal/-inf token",
+    "channelOverallRmsDbfs": "reference two-decimal/-inf token",
+    "duration": "f64(decodedFrames)/sampleRate, C llround half-away, then fixed week/day/hour/minute/second rendering",
+    "footerTrackCountAndSets": "semantic equality for track count, positive sample-rate set, and positive channel-count set",
+    "footerUnweightedDr": "comparison-only reconstruction from public f32 track drDb: sequential f64 sum and mean, narrow to f32, then truncate the non-negative value plus 0.5",
+    "numericDr0ExclusionCounterfactual": "diagnostic only: recompute the same unweighted token after excluding exactly numeric-zero public f32 track drDb values",
+    "numericToleranceDb": 0.0,
+    "fixtureSetAndOrder": "exact unique fixture stems in reference order"
+  },
+  "summary": {
+    "status": "match",
+    "trackDrMatched": 39,
+    "trackDrTotal": 39,
+    "channelDrMatched": 62,
+    "channelDrTotal": 62,
+    "overallPeakMatched": 39,
+    "overallPeakTotal": 39,
+    "overallRmsMatched": 39,
+    "overallRmsTotal": 39,
+    "channelRmsMatched": 62,
+    "channelRmsTotal": 62,
+    "durationMatched": 39,
+    "durationTotal": 39,
+    "footerConsistencyMatched": 4,
+    "footerConsistencyTotal": 4,
+    "differenceCount": 0,
+    "fixtureSetExact": true,
+    "implementationOrderMatchesReference": true
+  },
+  "footerConsistency": {
+    "scope": "normalized reference footer versus successful schema-v4 track reports; unweighted reconstruction only",
+    "reference": {
+      "trackCount": 39,
+      "sampleRates": [
+        8000,
+        44100,
+        48000
+      ],
+      "channelCounts": [
+        1,
+        2,
+        3,
+        6,
+        8
+      ],
+      "unweightedDrToken": "DR12"
+    },
+    "implementation": {
+      "trackCount": 39,
+      "sampleRates": [
+        8000,
+        44100,
+        48000
+      ],
+      "channelCounts": [
+        1,
+        2,
+        3,
+        6,
+        8
+      ],
+      "unweightedDrToken": "DR12"
+    },
+    "matches": {
+      "trackCount": true,
+      "sampleRates": true,
+      "channelCounts": true,
+      "unweightedDrToken": true
+    },
+    "numericDr0ExclusionCounterfactual": {
+      "scope": "same implementation track set, excluding only tracks whose public f32 track drDb is numeric zero",
+      "excludedNumericDr0TrackCount": 3,
+      "remainingTrackCount": 36,
+      "unweightedDrToken": "DR13",
+      "referenceMatchesAllTracksToken": true,
+      "referenceMatchesCounterfactualToken": false,
+      "distinguishesNumericDr0Inclusion": true
+    }
+  },
+  "differences": [],
+  "notCompared": [
+    {
+      "fieldClass": "internal intermediate state",
+      "reason": "not observable in the exported reference report"
+    },
+    {
+      "referenceFields": [
+        "footer.bitsPerSampleToken",
+        "footer.bitrateToken",
+        "footer.codecToken"
+      ],
+      "reason": "these host metadata renderings are outside this comparison"
+    },
+    {
+      "fieldClass": "length weighting, album grouping, and exact internal aggregation state",
+      "reason": "footer consistency reconstructs only the unweighted token from exported public f32 track DR values"
+    }
+  ]
+}

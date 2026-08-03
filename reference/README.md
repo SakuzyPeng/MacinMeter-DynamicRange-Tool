@@ -62,7 +62,13 @@ reference duration token 39/39；见
 它对 footer 只登记 track count、sample-rate set、channel-count set 和重建的
 unweighted DR token 四项一致性，以及 DR0 纳入的反事实；不把最终整数 token
 外推为精确 internal album mean、length weighting 或 host metadata parity。
-旧产物不因 successor 落地被改写。album 完整数值公式为 E1 静态证据，但其汇编
+旧产物不因 successor 落地被改写。
+
+0.3.0 在引入 ADR-0013 的 ALAC route 并按 ADR-0014 重构解码路径后重跑了同一对照，
+七类字段仍全部精确匹配、差分数为 0；见
+[`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803`](conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/record.md)。
+这 39 项输入全部是 WAV，不经过 ALAC route，因此它是既有 PCM 路径的回归基线，
+不是 packet workers 与 reference 的对照。album 完整数值公式为 E1 静态证据，但其汇编
 数据流已经确定，不以 playlist 导出作为 M1 前置条件。
 
 固定 x64 target `ff3556ad` 现另有

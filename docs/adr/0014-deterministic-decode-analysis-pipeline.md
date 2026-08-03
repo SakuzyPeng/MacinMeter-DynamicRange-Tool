@@ -489,8 +489,17 @@ permit 泄漏会使长流在 index 12289 处失败而短流仍通过，因此该
 写入 `sample_entry_rate = 1` 而非零 sentinel；两个文件的解码帧数比声明少恰好一个
 4096-frame packet。二者均按既有契约拒绝，本 ADR 只登记观察。
 
-该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 回归对照；因此
-ALAC packet workers 目前仍不得默认启用。
+39 项 safe-master 回归对照已在 clean commit `768670b` 上完成：track DR 39/39、
+channel DR 62/62、overall peak 39/39、overall RMS 39/39、channel RMS 62/62、
+duration 39/39、footer 可比较子集 4/4，差分数 0，fixture 集合与顺序完全一致。
+corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交的 manifest 具有相同的
+全部 `dataSha256`/`fileSha256` 与 safe-master 顺序。见
+[`CONF-…-macinmeter-030-adr0014-20260803`](../../reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/record.md)。
+这 39 项输入全部是 WAV，不经过 ALAC route，因此该对照证明的是 ADR-0013/0014 的
+改动没有波及既有 PCM 路径的数值，而不是 packet workers 本身与 reference 一致。
+
+该扫描是一次测量，不是启用决定。共同门槛的证据现已齐备，但默认启用本身是一个
+独立决定，尚未作出；在作出前 ALAC packet workers 仍不得默认启用。
 
 ## 待补证据
 
