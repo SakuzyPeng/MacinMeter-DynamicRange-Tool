@@ -1,53 +1,57 @@
-# ADR-0014：ALAC packet worker 同轮 worker-count 扫描
+# ADR-0014：ALAC packet worker 同轮 allocation 扫描
 
 - 状态：Measured；packet workers 仍未默认启用
 - 日期：2026-08-03
-- 方法：ADR-0007 / 23-case ADR-0014 ALAC packet-worker sweep
-- suite：runner-recorded id `m6-scalar-baseline-v1`；本次 23-case definition
-  SHA-256 `fbfbb4c3a47a8505df2d9333dfc8ad00de43cde30784732f07a85b11ea5a9c38`
+- 方法：ADR-0007 / 25-case ADR-0014 ALAC packet-worker sweep
+- suite：runner-recorded id `m6-scalar-baseline-v1`；本次 25-case definition
+  SHA-256 `9ce6ca2f4d677edece3c1b871df27a1869730cc63b2e6ef7d1302b1ff5a80ea4`
 - corpus：`m6-performance-baseline-v1`（新增两条长 ALAC track）
-- source：`c6ca1aca5a12d2c03bb68d3c30004b7fd4c0f957`（clean）
+- source：`c1b25eaa018fa5b3ce04198f10b3dd3f237a013e`（clean）
 - worker SHA-256：
-  `ca5b069cc0f386e00fb3f859b71b722dfc0217761e1c9f5f0f63cee48be07262`
+  `6717e39f8cc9fd651ebf4e006b912e491c23aafff0bfb9ae782dbd3c4888ae38`
 - corpus generator SHA-256：
   `1cb3af0af7f3e98487812460ebc6054a963d76a9255059c435e565294f68d10f`
 - corpus manifest SHA-256：
   `2a9c604cb2c37bb910aaa3781bb4dbd9131040c4163d59f398138d266dbd5b07`
 - canonical raw record：
-  [`adr0014-alac-packet-worker-sweep-v2-c6ca1ac-aarch64-apple-darwin.json`](baselines/adr0014-alac-packet-worker-sweep-v2-c6ca1ac-aarch64-apple-darwin.json)
+  [`adr0014-alac-packet-worker-sweep-v3-c1b25ea-aarch64-apple-darwin.json`](baselines/adr0014-alac-packet-worker-sweep-v3-c1b25ea-aarch64-apple-darwin.json)
 - raw record SHA-256：
+  `6f4c88462a69305f9fc9409b0dac63ab7be265403f7be41fe60fcac4fce2a26d`
+- 前置记录：v1（单 track、19-case，source `3793c79`）、其 cross-check，以及
+  v2（双 track、23-case，source `c6ca1ac`）的 raw record 均保留在 `baselines/`，
+  SHA-256 分别为
+  `4089d0ec1321ee73fc738df5c29205266470af39a29859e6e2b6b3c0d5bc1913`、
+  `d3b90a1a8c7416870847831c067f7c3e195253abb88829ccebdbafc8ac47f3f8` 与
   `3fa7dd6fe0c8e631716454ba585c495e47e6187130afce980e386f0356d02ee2`
-- 前置记录：本报告的 v1（单 track、19-case）扫描与其 cross-check raw record 仍
-  保留在 `baselines/`，身份为 source `3793c79`、raw record
-  `4089d0ec1321ee73fc738df5c29205266470af39a29859e6e2b6b3c0d5bc1913` 与
-  `d3b90a1a8c7416870847831c067f7c3e195253abb88829ccebdbafc8ac47f3f8`
 - 前置决策：
   [ADR-0014](../adr/0014-deterministic-decode-analysis-pipeline.md)
 
 ## 结论
 
 ADR-0013 稳定 ALAC route 的有界 packet workers 在 240 秒长度输入上给出明确、
-远超同轮 span 的解码加速，1/2/4/8 worker 的结果 fingerprint 在每条 track 内
-完全相同，且加速比在压缩率的两个极端之间基本一致。
+远超同轮 span 的解码加速。加速比在压缩率的两个极端之间基本一致，reorder permit
+从最小到产品上限也不改变结果：每条 track 内所有 worker 数与所有 permit 共享同一个
+结果 fingerprint。
 
 这是一次**测量**，不是启用决定。ADR-0014 的默认启用还缺若干门槛，见“未满足的
 毕业门槛”。产品 plan 目前仍恒为 serial，本报告不构成任何用户可见的性能承诺。
 
 ## 测量对象与协议
 
-worker 数是一个 decode allocation，不是另一个 binary，因此它是 case 参数而非
-ADR-0007 的 `--variant`。八个 ALAC case 与其余 15 个 case 在同一次 run 内以固定
-seed 完全交错（161 个 measured sample，warmup 独立 seed，`outliersRemoved = 0`）。
+worker 数与 reorder permit 都是 decode allocation 的维度，不是另一个 binary，
+因此它们是 case 参数而非 ADR-0007 的 `--variant`。十个 ALAC case 与其余 15 个
+case 在同一次 run 内以固定 seed 完全交错（175 个 measured sample，warmup 独立
+seed，`outliersRemoved = 0`）。
 
 每个 case 各自被要求复现 corpus 的 normalized interleaved `f64` oracle，因此这个
-扫描本身就是差分，而不是八组互不相干的计时。verification 解码运行在与计时段
+扫描本身就是差分，而不是十组互不相干的计时。verification 解码运行在与计时段
 **相同**的 allocation 上，不回退串行；完整 PCM hash 仍在计时区之外。
 
 runner 另行复算 harness allocation，并核对 worker 实际获得的 `decodeWorkers` /
 `decodeQueueCapacity` / `decodeMaxInFlightPcmBytes`；这会捕获 runner 与 worker 两份
 镜像之间的配置错位。两者都只是 crate-private application plan 的镜像，并不自动
 检测未来 plan 单独改变或另一台主机的 `available_parallelism` 收缩。本次固定主机有
-12 个逻辑核，请求的 1/2/4/8 worker 与 source `c6ca1ac` 的 dormant plan 数值一致；
+12 个逻辑核，请求的 1/2/4/8 worker 与 source `c1b25ea` 的 dormant plan 数值一致；
 经 `Application` 的真实派生仍是未满足的毕业门槛。
 
 ## 输入
@@ -76,34 +80,55 @@ track。加速比相对同一次 run、同一条 track 的 1-worker case。
 
 | Workers | Median (ms) | MAD (ms) | Span/median | Speedup | Median peak RSS (MiB) | Max peak RSS (MiB) |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 398.1 | 1.96 | 1.4% | 1.00x | 3.0 | 3.1 |
-| 2 | 205.0 | 0.99 | 1.8% | 1.94x | 3.8 | 3.9 |
-| 4 | 111.3 | 0.40 | 1.7% | 3.58x | 4.7 | 5.0 |
-| 8 | 70.5 | 2.40 | 16.0% | 5.65x | 6.7 | 7.0 |
+| 1 | 397.8 | 1.60 | 1.5% | 1.00x | 3.0 | 3.1 |
+| 2 | 206.6 | 1.11 | 2.0% | 1.93x | 3.8 | 4.0 |
+| 4 | 110.2 | 0.65 | 4.3% | 3.61x | 4.7 | 5.0 |
+| 8 | 65.4 | 2.19 | 15.6% | 6.08x | 6.6 | 7.0 |
 
 ### Tonal track（压缩率 60.0%）
 
 | Workers | Median (ms) | MAD (ms) | Span/median | Speedup | Median peak RSS (MiB) | Max peak RSS (MiB) |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 352.7 | 1.69 | 3.4% | 1.00x | 3.0 | 3.1 |
-| 2 | 182.1 | 0.91 | 6.3% | 1.94x | 3.9 | 4.3 |
-| 4 | 96.7 | 0.24 | 1.7% | 3.65x | 4.7 | 5.1 |
-| 8 | 59.1 | 2.35 | 14.6% | 5.97x | 6.5 | 6.7 |
+| 1 | 354.8 | 2.30 | 2.3% | 1.00x | 3.0 | 3.1 |
+| 2 | 180.9 | 0.76 | 1.6% | 1.96x | 3.8 | 3.9 |
+| 4 | 97.1 | 0.53 | 20.9% | 3.65x | 4.7 | 5.1 |
+| 8 | 61.3 | 2.26 | 12.6% | 5.79x | 6.6 | 7.2 |
 
-两条 track 的加速比在每个 worker 数上相差不超过 0.32x（1.94/1.94、3.58/3.65、
-5.65/5.97）。tonal track 的绝对时间整体更短，与其显著更小的压缩载荷一致。
+两条 track 的加速比在每个 worker 数上相差不超过 0.29x（1.93/1.96、3.61/3.65、
+6.08/5.79）。tonal track 的绝对时间整体更短，与其显著更小的压缩载荷一致。
 
-`resultFingerprintSha256` 在每条 track 内对四个 worker 数唯一
-（伪随机 `40f68d10cbe50bcc...`、tonal `d76ea3199589d3ff...`），即解码 stream
-几何、帧数、块数与完整 interleaved `f64` SHA-256 均不随 worker 数变化。两条
-track 之间 fingerprint 自然不同，因为信号不同。
+### Reorder permit 维度（tonal track，8 worker）
 
-8 worker 的 span 在两条 track 上都明显更高（16.0% / 14.6%），同时本机在 run 期间
-保持较高负载（load average 起 13.15、止 11.98，12 逻辑核）。
+application plan 对每个 worker 数只派生一个队列容量，因此该维度单独扫描。最小
+合法容量等于 worker 数，会把每个 worker 的 inbox 压到零容量 rendezvous；最大值是
+固定产品上限。只有队列上限变化，in-flight PCM permit 仍取 plan 的派生值。
+
+| Reorder permit | Median (ms) | MAD (ms) | Span/median | 相对默认 | Median peak RSS (MiB) | Max peak RSS (MiB) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8（最小，rendezvous） | 75.2 | 2.84 | 10.7% | +22.7% | 5.7 | 5.8 |
+| 32（plan 派生） | 61.3 | 2.26 | 12.6% | — | 6.6 | 7.2 |
+| 64（产品上限） | 57.4 | 0.75 | 13.7% | −6.4% | 6.5 | 6.8 |
+
+最小 permit 明显更慢且 RSS 更低，与它强制 rendezvous 派发一致；从 32 放宽到 64
+只再取得 6.4%，说明 plan 的派生值已接近该维度的收益拐点。
+
+**tonal track 的全部六个 case（四个 worker 数加两个额外 permit）共享同一个
+`resultFingerprintSha256`**，即结果同时独立于 worker 数与 reorder permit。
+
+`resultFingerprintSha256` 在每条 track 内唯一（伪随机 `40f68d10cbe50bcc...`、
+tonal `d76ea3199589d3ff...`），即解码 stream 几何、帧数、块数与完整 interleaved
+`f64` SHA-256 均不随 worker 数或 reorder permit 变化。两条 track 之间 fingerprint
+自然不同，因为信号不同。
+
+8 worker 的 span 在两条 track 上都明显更高（15.6% / 12.6%），tonal 的 4 worker 一次
+达到 20.9%；本机在 run 期间负载在 6.6 与 9.3 之间（12 逻辑核）。绝对计时受宿主
+负载影响，中位数与 fingerprint 结论不受影响。
 
 ## 正确性
 
 - 每条 track 内 1/2/4/8 worker 的 decode result fingerprint 与 PCM SHA-256 完全相同；
+- tonal track 的最小 / plan 派生 / 最大 reorder permit 三种配置与上述四个 worker
+  数共享同一 fingerprint；
 - 每个 case 独立匹配 corpus 的 normalized interleaved `f64` oracle；
 - 每个 case 的 7 个 measured sample 之间 fingerprint 稳定；
 - 产品侧另有 9 个 committed ALAC fixture 在 1/2/4/8 worker、最小与最大
@@ -123,18 +148,21 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
 
 本报告不足以默认启用 packet workers。ADR-0014 仍要求：
 
-- **队列容量维度的性能敏感性**：本次只覆盖 application plan 派生的默认容量。
-  最小与最大 `queue_capacity` 目前只有正确性证据，没有 A/B；
 - **39 项 safe-master 逐 token 对照**：需要固定 reference 环境，本次未运行；
-- **小队列长流与最坏乱序压力测试**：需证明 queue/reorder 内存不随媒体时长增长。
-  本次记录了两条 track 各 worker 数的 peak RSS（中位数 3.0 → 6.5/6.7 MiB，
-  七次最大值 3.1 → 6.7/7.0 MiB），但未在最小队列 + 强制乱序下施加长流压力；
+- **最坏乱序下的长流压力**：最小 permit 在 240 秒、2813 packet 的流上完成，未触发
+  任何 permit 耗尽，且 peak RSS（中位数 5.7 MiB、七次最大 5.8 MiB）低于更宽的
+  permit，因此内存不随媒体时长增长。但确定性强制乱序 seam 是 `#[cfg(test)]`，
+  不在 release worker 中，所以“长流”与“强制最坏乱序”只各自被覆盖，二者的组合
+  仍只有短 fixture 证据；
 - **application 层集成**：产品 plan 恒为 serial，本扫描通过 harness 的显式
   allocation 驱动 `codecs`，未经过 `Application` 的实际启用路径。
 
 两条 track 的对照缩小了此前“真实音乐素材代表性”的疑问：加速比在压缩率的两端
 基本一致，因此该结论不依赖语料恰好落在 escape 路径。但两者都是合成信号，没有
 覆盖真实录音的动态、立体声相关性与 packet 长度分布。
+
+reorder permit 维度已完成 A/B，且三种容量与四个 worker 数共享同一 fingerprint，
+因此该门槛不再未决。
 
 ## 边界
 

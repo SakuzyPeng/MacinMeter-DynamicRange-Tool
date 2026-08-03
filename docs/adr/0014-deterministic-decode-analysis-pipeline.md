@@ -430,21 +430,39 @@ runner 复算 harness allocation 并核对 worker 实得值，可捕获两份镜
 但两者都只是 crate-private plan 的镜像，不自动检测 plan 单独改变或另一台主机的
 `available_parallelism` 收缩。
 
-clean source `c6ca1ac`、Apple M4 Pro / 12 逻辑核下的中位数：
+application plan 对每个 worker 数只派生一个队列容量，因此 reorder permit 作为独立
+维度在 8 worker 上另行扫描：最小合法容量等于 worker 数、把每个 inbox 压到零容量
+rendezvous，最大值为固定产品上限；只有队列上限变化，in-flight PCM permit 仍取
+plan 派生值。
+
+clean source `c1b25ea`、Apple M4 Pro / 12 逻辑核下的中位数：
 
 | Track | 1 worker | 2 | 4 | 8 |
 | --- | ---: | ---: | ---: | ---: |
-| 伪随机 99.5% | 398.1 ms | 1.94x | 3.58x | 5.65x |
-| tonal 60.0% | 352.7 ms | 1.94x | 3.65x | 5.97x |
+| 伪随机 99.5% | 397.8 ms | 1.93x | 3.61x | 6.08x |
+| tonal 60.0% | 354.8 ms | 1.96x | 3.65x | 5.79x |
 
-两条 track 的加速比在每个 worker 数上相差不超过 0.32x，因此该结论不依赖语料恰好
-落在 escape 路径。每条 track 内四个 worker 数的 result fingerprint 唯一；peak RSS
-中位数 3.0 → 6.5/6.7 MiB。完整身份、span、环境与限制见
+| Reorder permit（tonal，8 worker） | 中位数 | 相对 plan 派生 | median peak RSS |
+| --- | ---: | ---: | ---: |
+| 8（最小，rendezvous） | 75.2 ms | +22.7% | 5.7 MiB |
+| 32（plan 派生） | 61.3 ms | — | 6.6 MiB |
+| 64（产品上限） | 57.4 ms | −6.4% | 6.5 MiB |
+
+两条 track 的加速比在每个 worker 数上相差不超过 0.29x，因此该结论不依赖语料恰好
+落在 escape 路径。最小 permit 更慢且 RSS 更低，从 32 放宽到 64 只再取得 6.4%，
+说明 plan 的派生值已接近该维度的收益拐点。每条 track 内所有 worker 数与所有
+permit 共享同一 result fingerprint；peak RSS 中位数 3.0 → 6.6 MiB。完整身份、
+span、环境与限制见
 [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
 
-该扫描是一次测量，不是启用决定。默认启用仍缺队列容量维度的 A/B、39 项
-safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力测试，以及经
-`Application` 的实际启用路径；因此 ALAC packet workers 目前仍不得默认启用。
+最小 permit 在 240 秒、2813 packet 的流上完成且未触发任何 permit 耗尽，peak RSS
+反而低于更宽的 permit，因此 reorder 内存不随媒体时长增长。但确定性强制乱序 seam
+是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与“强制最坏乱序”只各自被
+覆盖，二者的组合仍只有短 fixture 证据。
+
+该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 逐 token 对照、
+长流与强制最坏乱序的组合覆盖，以及经 `Application` 的实际启用路径；因此 ALAC
+packet workers 目前仍不得默认启用。
 
 ## 待补证据
 
