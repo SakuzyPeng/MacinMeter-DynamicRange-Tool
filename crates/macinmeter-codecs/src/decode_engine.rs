@@ -7,7 +7,8 @@
 
 use crate::{
     error::{BACKEND, analysis_error, decoder_creation_error, runtime_error},
-    packet::PacketOutcome,
+    flac_integrity::FlacIntegrityPlan,
+    packet::{DecodedPacket, PacketOutcome},
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, DecodeReservation, ErrorCode, PcmBlock,
@@ -120,19 +121,35 @@ pub(crate) struct PacketDecodeContext {
     path: PathBuf,
     sample_rate: u32,
     channels: ChannelCount,
+    integrity: Option<FlacIntegrityPlan>,
 }
 
 impl PacketDecodeContext {
-    pub(crate) fn new(path: &Path, sample_rate: u32, channels: ChannelCount) -> Self {
+    pub(crate) fn new(
+        path: &Path,
+        sample_rate: u32,
+        channels: ChannelCount,
+        integrity: Option<FlacIntegrityPlan>,
+    ) -> Self {
         Self {
             path: path.to_path_buf(),
             sample_rate,
             channels,
+            integrity,
         }
     }
 
     pub(crate) fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Whether the backend decoder should still run its own integrity check.
+    ///
+    /// A check the product owns is never also delegated to the decoder: for
+    /// FLAC that would hash every sample twice, and under packet workers each
+    /// decoder would only ever see its own subsequence.
+    pub(crate) const fn backend_verification(&self) -> bool {
+        self.integrity.is_none()
     }
 }
 
@@ -189,10 +206,20 @@ pub(crate) fn decode_packet(
             ));
         }
     };
+    // The signature bytes are taken from the decoder's own buffer, before the
+    // `f64` conversion, and travel with the PCM to the in-order commit point.
+    let integrity = match context.integrity {
+        Some(plan) => match plan.packet_bytes(&context.path, &decoded) {
+            Ok(bytes) => Some(bytes),
+            Err(error) => return PacketOutcome::Failed(error),
+        },
+        None => None,
+    };
+
     let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
     sample_buffer.copy_interleaved_ref(decoded);
     match PcmBlock::new(sample_buffer.samples().to_vec(), context.channels) {
-        Ok(block) => PacketOutcome::Decoded(block),
+        Ok(block) => PacketOutcome::Decoded(DecodedPacket { block, integrity }),
         Err(error) => PacketOutcome::Failed(
             error
                 .with_display_path(context.path.display().to_string())
@@ -339,11 +366,14 @@ impl AlacWorkerPool {
             "dispatched packets must fit the granted reorder permit"
         );
 
+        let decoder_options = DecoderOptions {
+            verify: context.backend_verification(),
+        };
         let mut decoders = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
             decoders.push(
                 symphonia::default::get_codecs()
-                    .make(codec_params, &DecoderOptions { verify: true })
+                    .make(codec_params, &decoder_options)
                     .map_err(|error| decoder_creation_error(context.path(), error))?,
             );
         }

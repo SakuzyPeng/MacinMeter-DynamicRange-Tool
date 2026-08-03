@@ -2754,3 +2754,169 @@ fn a_rate_sentinel_is_rejected_when_the_cookie_rate_fits_the_field() {
         "{error}"
     );
 }
+
+/// STREAMINFO's MD5 field, for a FLAC file whose first metadata block is
+/// STREAMINFO: 4 signature bytes, a 4-byte block header, then 26 bytes of
+/// STREAMINFO body before the digest.
+const FLAC_STREAMINFO_MD5: std::ops::Range<usize> = 26..42;
+
+/// Overwrite the 36-bit STREAMINFO total sample count.
+fn patch_flac_total_samples(bytes: &mut [u8], frames: u64) {
+    bytes[21] = (bytes[21] & 0xF0) | ((frames >> 32) & 0x0F) as u8;
+    bytes[22] = (frames >> 24) as u8;
+    bytes[23] = (frames >> 16) as u8;
+    bytes[24] = (frames >> 8) as u8;
+    bytes[25] = frames as u8;
+}
+
+/// Symphonia's own FLAC verdict and decoded frame count for the same bytes.
+///
+/// The product owns FLAC stream verification, so this drives the backend's
+/// built-in validator separately and reports what it concluded. It is the
+/// oracle the product verdict is compared against, not a second product path.
+fn backend_flac_verdict(bytes: &[u8]) -> (Option<bool>, u64) {
+    use symphonia::core::{
+        codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
+        meta::MetadataOptions, probe::Hint,
+    };
+
+    let media = MediaSourceStream::new(
+        Box::new(std::io::Cursor::new(bytes.to_vec())),
+        Default::default(),
+    );
+    let probed = symphonia::default::get_probe()
+        .format(
+            &Hint::new(),
+            media,
+            &FormatOptions {
+                enable_gapless: true,
+                ..FormatOptions::default()
+            },
+            &MetadataOptions::default(),
+        )
+        .expect("the FLAC bytes must probe");
+    let mut format = probed.format;
+    let codec_params = format
+        .tracks()
+        .first()
+        .expect("the FLAC bytes must carry a track")
+        .codec_params
+        .clone();
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&codec_params, &DecoderOptions { verify: true })
+        .expect("the FLAC bytes must have a decoder");
+
+    let mut frames = 0;
+    // Any demux or decode failure ends the run: this oracle reports what the
+    // backend verified over the packets it actually reached.
+    while let Ok(packet) = format.next_packet() {
+        let Ok(decoded) = decoder.decode(&packet) else {
+            break;
+        };
+        frames += decoded.frames() as u64;
+    }
+    (decoder.finalize().verify_ok, frames)
+}
+
+/// Read one FLAC stream through the product to end of stream.
+fn product_flac_outcome(bytes: &[u8]) -> Result<u64, AnalysisError> {
+    let file = TestFile::new("flac", bytes);
+    let mut opened = DecoderFactory::new().open(file.path())?;
+    let mut frames = 0;
+    loop {
+        match opened.reader.read_block()? {
+            ReadOutcome::Data(block) => frames += block.frames() as u64,
+            ReadOutcome::Eof => return Ok(frames),
+        }
+    }
+}
+
+#[test]
+fn the_product_flac_verdict_matches_the_backend_on_an_intact_and_a_tampered_signature() {
+    let intact = fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("committed FLAC fixture must exist");
+
+    let mut tampered = intact.clone();
+    tampered[FLAC_STREAMINFO_MD5.start] ^= 0x01;
+
+    for (name, bytes, backend_ok) in [
+        ("intact", intact.clone(), true),
+        ("tampered-signature", tampered, false),
+    ] {
+        let (verdict, backend_frames) = backend_flac_verdict(&bytes);
+        assert_eq!(verdict, Some(backend_ok), "{name}: backend verdict");
+
+        match (backend_ok, product_flac_outcome(&bytes)) {
+            (true, Ok(frames)) => assert_eq!(frames, backend_frames, "{name}: decoded frames"),
+            (false, Err(error)) => {
+                assert_eq!(error.code, ErrorCode::DecodeFailed, "{name}: code");
+                assert_eq!(error.stage, AnalysisStage::Decode, "{name}: stage");
+            }
+            (expected_ok, outcome) => {
+                panic!("{name}: backend said {expected_ok}, product said {outcome:?}")
+            }
+        }
+    }
+}
+
+#[test]
+fn a_flac_stream_missing_its_tail_is_caught_by_the_signature_alone() {
+    let source = fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("committed FLAC fixture must exist");
+
+    // Cut whole frames off the end, then rewrite the declared total sample
+    // count so it agrees with what survives. The end-of-stream frame check is
+    // now satisfied and only the stream signature can still notice the loss.
+    let frame_boundary = 916;
+    let mut truncated = source[..frame_boundary].to_vec();
+    let (_, surviving_frames) = backend_flac_verdict(&truncated);
+    assert!(
+        surviving_frames > 0,
+        "the truncation must leave decodable audio"
+    );
+    patch_flac_total_samples(&mut truncated, surviving_frames);
+
+    let (verdict, rechecked_frames) = backend_flac_verdict(&truncated);
+    assert_eq!(rechecked_frames, surviving_frames);
+    assert_eq!(
+        verdict,
+        Some(false),
+        "the backend oracle must also reject the shortened stream"
+    );
+
+    // Control: with the signature removed the same shortened stream reaches a
+    // clean EOF, so nothing else in the product notices the missing audio.
+    let mut unsigned = truncated.clone();
+    unsigned[FLAC_STREAMINFO_MD5].fill(0);
+    assert_eq!(
+        product_flac_outcome(&unsigned).expect("no other check catches the loss"),
+        surviving_frames
+    );
+
+    let error = product_flac_outcome(&truncated)
+        .expect_err("a stream missing audio must not reach a clean EOF");
+    assert_eq!(error.code, ErrorCode::DecodeFailed);
+    assert_eq!(error.stage, AnalysisStage::Decode);
+    assert!(
+        error
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("decoded_md5=")),
+        "the failure must name the digests it compared, got {:?}",
+        error.details
+    );
+}
+
+#[test]
+fn a_flac_stream_without_a_signature_still_decodes() {
+    let mut unsigned = fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("committed FLAC fixture must exist");
+    unsigned[FLAC_STREAMINFO_MD5].fill(0);
+
+    // A zeroed STREAMINFO digest declares that no signature was computed. The
+    // product verifies nothing, exactly as the backend does, rather than
+    // failing a stream it simply cannot check.
+    assert_eq!(backend_flac_verdict(&unsigned).0, None);
+    let frames = product_flac_outcome(&unsigned).expect("an unsigned FLAC stream still decodes");
+    assert_eq!(frames, 400);
+}

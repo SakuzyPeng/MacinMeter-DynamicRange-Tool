@@ -5,6 +5,7 @@ mod codec;
 mod container;
 mod decode_engine;
 mod error;
+mod flac_integrity;
 mod isobmff;
 mod packet;
 mod symphonia_source;

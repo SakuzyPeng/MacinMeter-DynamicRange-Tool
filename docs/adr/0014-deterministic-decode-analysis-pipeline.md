@@ -164,6 +164,10 @@ decoder 会按整条 PCM 流更新 validator，并在 `finalize()` 将结果与 
 - 在 parallel path 后再做一次完整串行解码，并把它描述为有效加速；
 - 因某个 packet 失败而跳包、补零或返回 partial report。
 
+上述“产品级全流 verifier”已于 2026-08-03 实现并接管全部 FLAC route（见实施进度
+“第 3 步之一”）。它满足的是本节的准入条件，不等于 FLAC packet workers 已毕业：
+worker pool 本身尚未实现。
+
 WAV/AIFF 的解码成本当前不是 packet 级 P0；它们仍可通过文件级 lanes 获得 batch
 吞吐。未来新增或扩张 codec route 时，不得从扩展名、FLAC/ALAC 的结论或
 Symphonia generic 支持推导 packet 独立性，必须逐 route 重新毕业。
@@ -482,6 +486,52 @@ corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交�
 该扫描是一次测量，不是启用决定。共同门槛的证据现已齐备，但默认启用本身是一个
 独立决定，尚未作出；在作出前 ALAC packet workers 仍不得默认启用。
 
+### 第 3 步之一：产品自有的有序全流 FLAC 校验（2026-08-03）
+
+§4 要求的“按原 packet 序更新的产品级全流 verifier”已落地，但只接管串行路径；
+FLAC packet workers 仍未实现，也未启用。
+
+设计基于两条已核对的 Symphonia 0.5.5 事实，而非推断：
+
+- `symphonia-bundle-flac` 的 `validate` 是私有模块，`Validator` 无法复用；
+- `FlacDecoder::decode_inner` 在把样本左移到 `i32` 满量程 **之前** 更新自身
+  validator，因此调用方拿到的 buffer 已经左移 `32 - bits_per_sample`。
+
+产品因此自行构造签名字节：按 `32 - bits_per_sample` 右移还原，逐帧交织、按声道
+补齐到整字节、小端写出。还原对任何落在声明位深内的样本是精确的；落在外面意味着
+frame header 与 STREAMINFO 的位深不一致，该流被拒绝，而不是按猜测宽度求哈希。
+哈希函数直接用 Symphonia 自己的 `symphonia::core::checksum::Md5`，所以算法是共用
+的，仅顺序与字节布局是第一方的。
+
+字节构造是逐 packet 的，可以由 worker 承担；求哈希只能顺序进行，因此固定在唯一的
+按序 commit 点。为使串行 oracle 与将来的并行路径不可能得出不同判定，FLAC 的
+verification 在**所有** route 上都由产品承担，backend 的 `verify` 对该 route 关闭。
+这不是 §4 禁止的“为吞吐关闭 verify”：全流检查没有减少，只是换了归属并变得有序。
+
+证据：
+
+- 单元向量覆盖 8/12/16/20/24/32 位与 1–3 声道，与一份独立写出的布局实现逐字节
+  比较；位深越界样本被拒绝；同样两个 packet 交换顺序得到不同 digest；
+- 与 backend 自身 `verify: true` 判定的差分：完好 fixture 双方通过，篡改
+  STREAMINFO digest 双方失败；
+- 尾部丢失场景：把流截到 frame 边界并改写声明样本数，使帧数检查被满足。此时清零
+  签名的对照可以干净地读到 EOF，即产品里没有别的检查会发现丢失的音频，只有签名
+  会——这正是该检查存在的理由；
+- 真实素材：本机 308 个 FLAC（27.9 GiB，24-bit 为主，另有 16-bit；2/6/8 声道；
+  44.1k–192k）全量分析，与改动前 `b43e6d1` 的结果逐项比较，308/308 的成败判定与
+  完整报告完全一致。其中 45 个被拒绝的文件由 `flac -t` 独立确认确为 MD5 签名不
+  匹配，两侧一致拒绝。该语料私人且不可再生，按 ADR-0007 立场不进入仓库。
+
+已测得的代价（非 ADR-0007 正式记录）：在固定的 12 文件 24-bit 子集上交错重复运行
+release CLI，本改动 10.0–10.4 s，`b43e6d1` 9.3 s，串行 FLAC 路径慢约 8%。归因实验
+（保留字节构造、停用哈希）把成本分成约 2.0 s 的 MD5 与约 0.8 s 的字节构造差额，
+后者即第一方构造相对 Symphonia 内建 validator 的实现差距。这组数字只用于判断改动
+量级与规划第 2 步，不构成优化或回归结论。
+
+它对 FLAC packet workers 的含义是可量化的：字节构造进 worker 后并行，MD5 留在
+串行侧，占该子集总时间约 20%。按 Amdahl 界，8 worker 的上限约 3.3×，明显低于 ALAC
+实测的 6.26×。这一点必须在第 2 步的正式 A/B 中直接验证，而不是沿用 ALAC 的结论。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
@@ -556,5 +606,7 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 
 ### 尚未开始
 
-- FLAC 的 ordered full-stream MD5 设计；
+- FLAC packet workers 本身：有序全流 verifier 已就位并接管串行路径，但 worker
+  pool、长 FLAC corpus 与正式 A/B 都还没有；上文推算的 3.3× Amdahl 上限是待验证的
+  预期，不是测量结果；
 - 文件级与窗口级并行的生产实现，二者目前只有准入契约。

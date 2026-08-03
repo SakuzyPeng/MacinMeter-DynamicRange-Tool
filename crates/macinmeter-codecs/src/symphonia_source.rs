@@ -12,8 +12,9 @@ use crate::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
         probe_error,
     },
+    flac_integrity::{FlacIntegrityPlan, FlacStreamVerifier},
     isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac, is_unrepresentable_rate_sentinel},
-    packet::{PacketOutcome, PacketReorderBuffer},
+    packet::{DecodedPacket, PacketOutcome, PacketReorderBuffer},
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelLayout, DecodeDiagnostics, DecodeProgress,
@@ -175,7 +176,16 @@ fn open_source_with_pool_options(
         ));
     }
 
-    let context = PacketDecodeContext::new(path, stream_spec.sample_rate.get(), channels);
+    // ADR-0014 §4: FLAC stream verification is the product's, on every route.
+    // Keeping one implementation for serial and parallel is what makes the
+    // serial oracle a valid reference for the parallel verdict.
+    let integrity_plan = FlacIntegrityPlan::for_stream(path, &codec_params)?;
+    let context = PacketDecodeContext::new(
+        path,
+        stream_spec.sample_rate.get(),
+        channels,
+        integrity_plan,
+    );
     // ADR-0014 §2/§3: packet workers are created only for a route that has
     // graduated, never from an extension or a generic codec descriptor. Every
     // other route, and any single-worker allocation, stays on the serial oracle.
@@ -193,8 +203,11 @@ fn open_source_with_pool_options(
             DecodeExecution::alac_packet_workers(reservation.workers()),
         )
     } else {
+        let decoder_options = DecoderOptions {
+            verify: context.backend_verification(),
+        };
         let decoder = symphonia::default::get_codecs()
-            .make(&codec_params, &DecoderOptions { verify: true })
+            .make(&codec_params, &decoder_options)
             .map_err(|error| decoder_creation_error(path, error))?;
         (
             PacketEngine::Serial(SerialEngine::new(context, format, decoder, track_id)),
@@ -221,6 +234,7 @@ fn open_source_with_pool_options(
         pcm: pcm.clone(),
         decoded_frames: 0,
         reorder: PacketReorderBuffer::new(reservation),
+        integrity: integrity_plan.map(FlacStreamVerifier::new),
         terminal: TerminalState::Active,
         #[cfg(test)]
         injected_read_error: None,
@@ -342,6 +356,8 @@ pub(crate) struct SymphoniaPcmSource {
     pcm: PcmStreamInfo,
     decoded_frames: u64,
     reorder: PacketReorderBuffer,
+    /// The one hasher for this stream's FLAC signature, fed only by `commit`.
+    integrity: Option<FlacStreamVerifier>,
     terminal: TerminalState,
     #[cfg(test)]
     injected_read_error: Option<AnalysisError>,
@@ -363,6 +379,16 @@ impl SymphoniaPcmSource {
         }
 
         if let Err(error) = self.engine.finish() {
+            return self.fail(error);
+        }
+
+        // The product's own verdict lands where the backend's used to, so
+        // integrity still precedes the declared frame count in error order.
+        let verified = self
+            .integrity
+            .as_ref()
+            .map_or(Ok(()), |verifier| verifier.finish(&self.path));
+        if let Err(error) = verified {
             return self.fail(error);
         }
 
@@ -455,7 +481,7 @@ impl PcmSource for SymphoniaPcmSource {
             // drain serves outcomes that were previously stalled behind it.
             if let Some(outcome) = self.reorder.take_ready() {
                 match outcome {
-                    PacketOutcome::Decoded(block) => return self.commit(block),
+                    PacketOutcome::Decoded(packet) => return self.commit(packet),
                     PacketOutcome::Empty => continue,
                     PacketOutcome::Failed(error) => return self.fail(error),
                 }
@@ -467,7 +493,7 @@ impl PcmSource for SymphoniaPcmSource {
                 Err(error) => return self.fail(error),
             };
             match self.reorder.accept(index, outcome) {
-                Ok(Some(PacketOutcome::Decoded(block))) => return self.commit(block),
+                Ok(Some(PacketOutcome::Decoded(packet))) => return self.commit(packet),
                 Ok(Some(PacketOutcome::Empty)) | Ok(None) => {}
                 Ok(Some(PacketOutcome::Failed(error))) | Err(error) => return self.fail(error),
             }
@@ -492,7 +518,8 @@ impl SymphoniaPcmSource {
     ///
     /// Progress only advances on frames that have been committed in input
     /// order, so it stays monotonic no matter which packet finished first.
-    fn commit(&mut self, block: PcmBlock) -> Result<ReadOutcome, AnalysisError> {
+    fn commit(&mut self, packet: DecodedPacket) -> Result<ReadOutcome, AnalysisError> {
+        let DecodedPacket { block, integrity } = packet;
         let new_total = self.checked_frame_total(&block)?;
         if let Some(expected) = self.pcm.expected_frames
             && new_total > expected
@@ -509,6 +536,22 @@ impl SymphoniaPcmSource {
                 None,
             ));
         }
+        // The signature only ever advances on a packet that has already been
+        // accepted here, so the digest follows input packet order exactly and a
+        // packet can never be counted twice or skipped.
+        if self.integrity.is_some() && integrity.is_none() {
+            return self.fail(analysis_error(
+                &self.path,
+                ErrorCode::Internal,
+                AnalysisStage::Internal,
+                "a committed packet carried no stream signature bytes",
+                None,
+            ));
+        }
+        if let (Some(verifier), Some(bytes)) = (self.integrity.as_mut(), integrity) {
+            verifier.commit(&bytes);
+        }
+
         self.decoded_frames = new_total;
         self.diagnostics.decoded_frames = new_total;
         Ok(ReadOutcome::Data(block))

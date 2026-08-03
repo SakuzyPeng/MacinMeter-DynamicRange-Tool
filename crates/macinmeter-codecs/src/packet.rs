@@ -14,14 +14,29 @@
 use macinmeter_domain::{AnalysisError, AnalysisStage, DecodeReservation, ErrorCode, PcmBlock};
 use std::collections::BTreeMap;
 
+/// Everything one packet contributes to the stream, produced together.
+///
+/// Integrity bytes ride with the PCM because they are per-packet work that a
+/// worker can do, while consuming them is reserved for the in-order commit
+/// point. Keeping them in one payload means a packet can never be committed
+/// for its audio but skipped for its signature.
+#[derive(Debug)]
+pub(crate) struct DecodedPacket {
+    /// Finite interleaved `f64` frames decoded from this packet.
+    pub(crate) block: PcmBlock,
+    /// Bytes this packet contributes to the FLAC stream signature, if the
+    /// stream declares one.
+    pub(crate) integrity: Option<Vec<u8>>,
+}
+
 /// The result of decoding one packet that belongs to the selected track.
 ///
 /// A failure is a first-class outcome: a worker may never signal failure with
 /// empty PCM, and a packet is never skipped.
 #[derive(Debug)]
 pub(crate) enum PacketOutcome {
-    /// Finite interleaved `f64` frames decoded from this packet.
-    Decoded(PcmBlock),
+    /// The packet decoded into frames.
+    Decoded(DecodedPacket),
     /// The packet decoded successfully but carried no frames.
     Empty,
     /// The packet failed to decode.
@@ -29,11 +44,20 @@ pub(crate) enum PacketOutcome {
 }
 
 impl PacketOutcome {
-    fn pcm_bytes(&self) -> u64 {
+    /// Bytes a stalled result holds until its turn to commit.
+    ///
+    /// Integrity bytes are retained alongside the PCM, so they are charged to
+    /// the same in-flight permit rather than growing outside it.
+    fn retained_bytes(&self) -> u64 {
         match self {
-            Self::Decoded(block) => {
-                let samples = u64::try_from(block.samples().len()).unwrap_or(u64::MAX);
-                samples.saturating_mul(size_of::<f64>() as u64)
+            Self::Decoded(packet) => {
+                let samples = u64::try_from(packet.block.samples().len()).unwrap_or(u64::MAX);
+                let pcm = samples.saturating_mul(size_of::<f64>() as u64);
+                let integrity = packet
+                    .integrity
+                    .as_ref()
+                    .map_or(0, |bytes| u64::try_from(bytes.len()).unwrap_or(u64::MAX));
+                pcm.saturating_add(integrity)
             }
             Self::Empty | Self::Failed(_) => 0,
         }
@@ -51,7 +75,7 @@ pub(crate) struct PacketReorderBuffer {
     reservation: DecodeReservation,
     next_index: u64,
     pending: BTreeMap<u64, PacketOutcome>,
-    stalled_pcm_bytes: u64,
+    stalled_retained_bytes: u64,
     terminal: bool,
     /// Results that had to wait for an earlier index.
     ///
@@ -59,7 +83,7 @@ pub(crate) struct PacketReorderBuffer {
     /// prove nothing about reordering, so tests assert this actually rose.
     #[cfg(test)]
     stalled_accepts: usize,
-    /// The most entries and stalled PCM bytes ever held at once.
+    /// The most entries and stalled bytes ever held at once.
     ///
     /// The permit bounds retention structurally, but a bound that is merely
     /// never exceeded is not the same claim as one that does not grow with the
@@ -68,7 +92,7 @@ pub(crate) struct PacketReorderBuffer {
     #[cfg(test)]
     peak_pending: usize,
     #[cfg(test)]
-    peak_stalled_pcm_bytes: u64,
+    peak_stalled_retained_bytes: u64,
 }
 
 impl PacketReorderBuffer {
@@ -77,14 +101,14 @@ impl PacketReorderBuffer {
             reservation,
             next_index: 0,
             pending: BTreeMap::new(),
-            stalled_pcm_bytes: 0,
+            stalled_retained_bytes: 0,
             terminal: false,
             #[cfg(test)]
             stalled_accepts: 0,
             #[cfg(test)]
             peak_pending: 0,
             #[cfg(test)]
-            peak_stalled_pcm_bytes: 0,
+            peak_stalled_retained_bytes: 0,
         }
     }
 
@@ -100,10 +124,10 @@ impl PacketReorderBuffer {
         self.peak_pending
     }
 
-    /// The most stalled PCM bytes ever held at once.
+    /// The most stalled retained bytes ever held at once.
     #[cfg(test)]
-    pub(crate) const fn peak_stalled_pcm_bytes(&self) -> u64 {
-        self.peak_stalled_pcm_bytes
+    pub(crate) const fn peak_stalled_retained_bytes(&self) -> u64 {
+        self.peak_stalled_retained_bytes
     }
 
     /// The next packet index the buffer will commit.
@@ -159,25 +183,25 @@ impl PacketReorderBuffer {
 
         // Only results that wait for an earlier index reach this point. A
         // serial route therefore uses neither the pending map nor its zero-byte
-        // in-flight PCM permit.
-        let bytes = outcome.pcm_bytes();
-        let stalled = self.stalled_pcm_bytes.saturating_add(bytes);
+        // in-flight permit.
+        let bytes = outcome.retained_bytes();
+        let stalled = self.stalled_retained_bytes.saturating_add(bytes);
         if stalled > self.reservation.max_in_flight_pcm_bytes() {
             return Err(self.capacity_error(
-                "reordered packet PCM exceeded the granted in-flight permit",
+                "reordered packet payload exceeded the granted in-flight permit",
                 format!(
-                    "stalled_pcm_bytes={stalled}; max_in_flight_pcm_bytes={}",
+                    "stalled_retained_bytes={stalled}; max_in_flight_pcm_bytes={}",
                     self.reservation.max_in_flight_pcm_bytes()
                 ),
             ));
         }
-        self.stalled_pcm_bytes = stalled;
+        self.stalled_retained_bytes = stalled;
 
         #[cfg(test)]
         {
             self.stalled_accepts += 1;
             self.peak_pending = self.peak_pending.max(self.pending.len() + 1);
-            self.peak_stalled_pcm_bytes = self.peak_stalled_pcm_bytes.max(stalled);
+            self.peak_stalled_retained_bytes = self.peak_stalled_retained_bytes.max(stalled);
         }
         self.pending.insert(index, outcome);
         Ok(None)
@@ -200,9 +224,9 @@ impl PacketReorderBuffer {
         if let Some(bytes) = self
             .pending
             .get(&self.next_index)
-            .map(PacketOutcome::pcm_bytes)
+            .map(PacketOutcome::retained_bytes)
         {
-            self.stalled_pcm_bytes = self.stalled_pcm_bytes.saturating_sub(bytes);
+            self.stalled_retained_bytes = self.stalled_retained_bytes.saturating_sub(bytes);
         }
         if matches!(&outcome, PacketOutcome::Failed(_)) {
             self.enter_terminal();
@@ -237,7 +261,7 @@ impl PacketReorderBuffer {
     fn enter_terminal(&mut self) {
         self.terminal = true;
         self.pending.clear();
-        self.stalled_pcm_bytes = 0;
+        self.stalled_retained_bytes = 0;
     }
 
     fn contract_error(&mut self, message: &str, details: String) -> AnalysisError {
@@ -297,8 +321,11 @@ mod tests {
         NonZeroUsize::new(value).unwrap()
     }
 
-    fn block(value: f64) -> PcmBlock {
-        PcmBlock::new(vec![value], ChannelCount::new(1).unwrap()).unwrap()
+    fn block(value: f64) -> DecodedPacket {
+        DecodedPacket {
+            block: PcmBlock::new(vec![value], ChannelCount::new(1).unwrap()).unwrap(),
+            integrity: None,
+        }
     }
 
     fn parallel_reservation() -> DecodeReservation {
@@ -307,14 +334,14 @@ mod tests {
 
     fn decoded_value(outcome: Option<PacketOutcome>) -> f64 {
         match outcome.expect("an outcome must be ready") {
-            PacketOutcome::Decoded(block) => block.samples()[0],
+            PacketOutcome::Decoded(packet) => packet.block.samples()[0],
             other => panic!("expected decoded PCM, got {other:?}"),
         }
     }
 
     fn push_decoded(committed: &mut Vec<u64>, outcome: PacketOutcome) {
         committed.push(match outcome {
-            PacketOutcome::Decoded(block) => block.samples()[0] as u64,
+            PacketOutcome::Decoded(packet) => packet.block.samples()[0] as u64,
             other => panic!("expected decoded PCM, got {other:?}"),
         });
     }
@@ -513,7 +540,7 @@ mod tests {
         buffer.finish().unwrap();
         (
             buffer.peak_pending(),
-            buffer.peak_stalled_pcm_bytes(),
+            buffer.peak_stalled_retained_bytes(),
             committed,
         )
     }
