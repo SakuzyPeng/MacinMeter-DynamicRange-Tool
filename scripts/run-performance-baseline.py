@@ -54,6 +54,10 @@ class BenchmarkCase:
 
 # Worker counts the ADR-0014 packet-worker sweep compares in one run.
 ALAC_DECODE_WORKER_COUNTS = (1, 2, 4, 8)
+# Minimum legal and fixed product maximum reorder permits, swept at the
+# widest worker count. The plan's own derivation for 8 workers is 32.
+ALAC_QUEUE_SWEEP_WORKERS = 8
+ALAC_QUEUE_CAPACITIES = (8, 64)
 # Mirrors of the crate-private application plan derivation the worker uses.
 DECODE_QUEUE_DEPTH_PER_WORKER = 4
 DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
@@ -137,6 +141,27 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
                 ),
             )
             for workers in ALAC_DECODE_WORKER_COUNTS
+        ),
+        # The plan never varies queue capacity, so sweep it separately at the
+        # widest worker count. The minimum legal capacity equals the worker
+        # count, which drives each inbox down to a zero-capacity rendezvous and
+        # is also the tightest long-stream memory case the permits allow.
+        *(
+            BenchmarkCase(
+                f"decode/alac-tonal-240s-w{ALAC_QUEUE_SWEEP_WORKERS}-q{capacity}",
+                "decode",
+                "Content probe plus complete tonal ALAC decoding on "
+                f"{ALAC_QUEUE_SWEEP_WORKERS} decode workers and a "
+                f"{capacity}-packet reorder permit",
+                (
+                    "decode",
+                    media("stereo-s16-alac-tonal-240s.m4a"),
+                    "1",
+                    str(ALAC_QUEUE_SWEEP_WORKERS),
+                    str(capacity),
+                ),
+            )
+            for capacity in ALAC_QUEUE_CAPACITIES
         ),
         BenchmarkCase(
             "application/wave-s16",
@@ -841,19 +866,24 @@ def assert_decode_allocation(case: BenchmarkCase, details: dict[str, object]) ->
     failed run rather than as a silently mistuned comparison.
     """
     requested = int(case.arguments[3]) if len(case.arguments) > 3 else 1
+    requested_queue = int(case.arguments[4]) if len(case.arguments) > 4 else None
     if details.get("decodeWorkers") != requested:
         raise BaselineError(
             f"{case.case_id} ran on {details.get('decodeWorkers')!r} decode workers, "
             f"expected {requested}"
         )
 
-    if requested == 1:
+    if requested == 1 and requested_queue is None:
         expected_queue, expected_bytes = 1, 0
     else:
         expected_queue = min(requested * DECODE_QUEUE_DEPTH_PER_WORKER, MAX_DECODE_QUEUE_CAPACITY)
         expected_bytes = min(
             requested * DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER, MAX_IN_FLIGHT_PCM_BYTES
         )
+        if requested_queue is not None:
+            # Only the queue bound is swept; the in-flight PCM permit stays on
+            # the plan's derivation so the two dimensions stay separable.
+            expected_queue = requested_queue
     if details.get("decodeQueueCapacity") != expected_queue:
         raise BaselineError(
             f"{case.case_id} decode queue capacity {details.get('decodeQueueCapacity')!r} "

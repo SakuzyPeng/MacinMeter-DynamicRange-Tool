@@ -226,6 +226,32 @@ class PerformanceBaselineTests(unittest.TestCase):
             },
         )
 
+        # An explicit queue capacity moves only the queue bound; the in-flight
+        # PCM permit must stay on the plan's derivation.
+        baseline.assert_decode_allocation(
+            baseline.BenchmarkCase(
+                "decode/alac", "decode", "decode",
+                ("decode", "/corpus/input.m4a", "1", "8", "8"),
+            ),
+            {
+                "decodeWorkers": 8,
+                "decodeQueueCapacity": 8,
+                "decodeMaxInFlightPcmBytes": 32 * 1024 * 1024,
+            },
+        )
+        with self.assertRaises(baseline.BaselineError):
+            baseline.assert_decode_allocation(
+                baseline.BenchmarkCase(
+                    "decode/alac", "decode", "decode",
+                    ("decode", "/corpus/input.m4a", "1", "8", "8"),
+                ),
+                {
+                    "decodeWorkers": 8,
+                    "decodeQueueCapacity": 32,
+                    "decodeMaxInFlightPcmBytes": 32 * 1024 * 1024,
+                },
+            )
+
         # A worker that silently fell back to the serial route, or one whose
         # derivation drifted from the plan, must fail the run.
         for details in (

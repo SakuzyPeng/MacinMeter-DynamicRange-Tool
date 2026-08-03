@@ -59,7 +59,7 @@ fn run() -> Result<Value, String> {
 fn usage() -> &'static str {
     "usage:
   m6_baseline_worker analysis CHANNELS SAMPLE_RATE FRAMES BLOCK_FRAMES
-  m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS]
+  m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS [QUEUE_CAPACITY]]
   m6_baseline_worker application PATH ITERATIONS
   m6_baseline_worker batch DIRECTORY ITERATIONS
   m6_baseline_worker discovery DIRECTORY ITERATIONS
@@ -163,18 +163,26 @@ fn deterministic_block(sample_count: usize, channels: usize) -> Vec<f64> {
 /// plan's own unit tests pin the same numbers; the two must move together, and
 /// every granted bound is written into the case details so a recorded run can
 /// be checked against the plan after the fact.
-fn decode_reservation(workers: usize) -> Result<DecodeReservation, String> {
+fn decode_reservation(
+    workers: usize,
+    queue_override: Option<usize>,
+) -> Result<DecodeReservation, String> {
     const QUEUE_DEPTH_PER_WORKER: usize = 4;
     const IN_FLIGHT_PCM_BYTES_PER_WORKER: u64 = 4 * 1024 * 1024;
 
     let workers = NonZeroUsize::new(workers).ok_or("decode workers must be greater than zero")?;
-    if workers.get() == 1 {
+    if workers.get() == 1 && queue_override.is_none() {
         return Ok(DecodeReservation::serial());
     }
-    let queue = workers
-        .get()
-        .saturating_mul(QUEUE_DEPTH_PER_WORKER)
-        .min(MAX_DECODE_QUEUE_CAPACITY);
+    // An explicit capacity sweeps the queue dimension the plan does not vary.
+    // Only the queue bound moves; the in-flight PCM permit stays on the plan's
+    // derivation so the two dimensions are not confounded.
+    let queue = queue_override.unwrap_or_else(|| {
+        workers
+            .get()
+            .saturating_mul(QUEUE_DEPTH_PER_WORKER)
+            .min(MAX_DECODE_QUEUE_CAPACITY)
+    });
     let queue_capacity =
         NonZeroUsize::new(queue).ok_or("derived decode queue capacity was empty")?;
     let in_flight = IN_FLIGHT_PCM_BYTES_PER_WORKER
@@ -184,9 +192,9 @@ fn decode_reservation(workers: usize) -> Result<DecodeReservation, String> {
 }
 
 fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
-    if arguments.len() != 2 && arguments.len() != 3 {
+    if !(2..=4).contains(&arguments.len()) {
         return Err(format!(
-            "decode expects 2 or 3 arguments, received {}\n{}",
+            "decode expects 2 to 4 arguments, received {}\n{}",
             arguments.len(),
             usage()
         ));
@@ -200,7 +208,11 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
         Some(value) => parse_number::<usize>(value, "decode workers")?,
         None => 1,
     };
-    let reservation = decode_reservation(decode_workers)?;
+    let decode_queue_capacity = match arguments.get(3) {
+        Some(value) => Some(parse_number::<usize>(value, "decode queue capacity")?),
+        None => None,
+    };
+    let reservation = decode_reservation(decode_workers, decode_queue_capacity)?;
 
     let (timed_summary, elapsed) = timed_decode_workload(&path, iterations, reservation)?;
 
