@@ -28,12 +28,13 @@ dependencies into lower layers.
 - Stable product analysis accepts at most 64 channels. Preserve broader source
   metadata types, but reject over-limit media before decoder creation and
   over-limit direct sessions before allocation.
-- The current production implementation decodes and batches serially. ADR-0014
-  removes the blanket ban on bounded window-, packet-, and file-level
-  parallelism: packet decoding is P0, with constrained ALAC first and FLAC only
-  after preserving equivalent ordered full-stream MD5 verification. Every axis
-  remains disabled until its route/axis-specific differential, failure,
-  cancellation, resource, and ADR-0007 performance gates pass.
+- ADR-0014 packet-level decoding is enabled by default for the ADR-0013 ALAC
+  route, bounded by one application-owned plan drawn from the host. All other
+  routes decode serially, and batch execution is still serial: file lanes (P1)
+  and window-level analysis (P2) remain unimplemented. FLAC packet workers stay
+  blocked until they preserve equivalent ordered full-stream MD5 verification.
+  Every further axis stays disabled until its route/axis-specific differential,
+  failure, cancellation, resource, and ADR-0007 performance gates pass.
 - WAV integer/float PCM, FLAC, AIFF integer PCM, and the ADR-0013 constrained
   MP4/M4A + ALAC matrix remain the only stable routes until another in-process
   Symphonia route satisfies ADR-0003's capability graduation contract.

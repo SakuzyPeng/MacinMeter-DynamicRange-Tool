@@ -1,7 +1,7 @@
 # ADR-0014：确定性有界并行与 packet 解码优先
 
 - 状态：Accepted
-- 实施状态：In progress（第 1–2 步已完成；三个并行轴均未启用，生产路径仍为串行）
+- 实施状态：In progress（packet 级已为 ALAC route 默认启用；文件级与窗口级未实施）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -503,9 +503,18 @@ corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交�
 
 ## 证据状态
 
-本 ADR 已接受架构方向、ALAC packet-worker 实现，以及下述固定身份下的正确性与
-性能测量。它**尚未**接受默认生产启用：产品 `ConcurrencyPlan` 仍恒为 serial，
-`ExecutionBudget` 的非串行构造是 `#[cfg(test)]`，公开 API 无法构造。
+本 ADR 已接受架构方向、ALAC packet-worker 实现、下述固定身份下的正确性与性能
+测量，以及在此基础上作出的默认启用决定。
+
+`ExecutionBudget::product()` 现在把 plan 取为固定上限与宿主并行度的较小值，
+`Default` 使用它，因此 CLI 与 Tauri 的 `Application::new()` 默认启用 packet
+workers。只有已毕业的 ADR-0013 ALAC route 会切换 engine；其余 route 与
+单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持完全串行，作为
+差分参照继续可达，不是产品默认的别名。文件级（P1）与窗口级（P2）仍未实施。
+
+启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
+`2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项
+safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相同。
 
 ### packet 级（ALAC）共同门槛：已具备
 
@@ -545,6 +554,5 @@ corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交�
 
 ### 尚未开始
 
-- 默认启用 ALAC packet workers 的决定本身；
 - FLAC 的 ordered full-stream MD5 设计；
 - 文件级与窗口级并行的生产实现，二者目前只有准入契约。

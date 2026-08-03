@@ -155,7 +155,7 @@ npm run tauri dev
 
 It calls the same `Application` façade and consumes the same wire schema as the
 CLI. Each job has its own cancellation token, while the shared application
-budget keeps top-level work bounded and serial.
+budget keeps top-level work bounded, with one active job at a time.
 
 The desktop interface supports whole-window file and directory drag-and-drop,
 multi-file and recursive directory discovery, bilingual Chinese/English UI,
@@ -257,10 +257,11 @@ macinmeter-domain
 ```
 
 Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The current product
-has one analyzer implementation, serial native decoding, and serial batch
-execution. ADR-0014 permits only bounded, deterministic internal parallelism
-after per-route/per-axis graduation; it does not restore the removed 0.1.x
-parallel decoder. Design history and deeper technical material live in:
+has one analyzer implementation and serial batch execution. Decoding is serial
+except on the ADR-0013 ALAC route, which uses bounded packet workers under one
+application-owned plan; results are identical either way. ADR-0014 permits only
+bounded, deterministic internal parallelism after per-route/per-axis
+graduation; it does not restore the removed 0.1.x parallel decoder. Design history and deeper technical material live in:
 
 - [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [architecture decision records](docs/adr/)

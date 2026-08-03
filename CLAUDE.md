@@ -27,19 +27,20 @@ domain
 
 - `domain` owns valid stream/source/report/error types.
 - `analysis` owns the only frame-streaming `AnalyzerSession`.
-- `codecs` owns content probing and the strict `PcmSource` contract. The current
-  implementation reads serially; future route-specific packet workers remain
-  private behind the same `Data / Eof / Error` boundary.
+- `codecs` owns content probing and the strict `PcmSource` contract. The
+  graduated ALAC route may decode with bounded packet workers; every other route
+  reads serially. Both stay private behind the same `Data / Eof / Error`
+  boundary and commit in input packet order.
 - The shared PCM contract is finite interleaved `f64`; do not narrow float64
   sources before analysis.
 - `macinmeter::Application` is the only public file-analysis, batch, and
   controlled-discovery façade. Its clones share the execution domain
   established in M3, with one active job and at most 64 queued FIFO
   reservations.
-- Current decoding and batch execution remain serial. ADR-0014 has accepted
-  bounded packet-, file-, and window-level parallelism as future work, with
-  packet decode as P0 and constrained ALAC as the first slice. Do not describe
-  this decision as an implemented 0.3.0 capability.
+- ADR-0014 packet-level decoding is enabled for the ADR-0013 ALAC route only.
+  Batch execution, file lanes (P1) and window-level analysis (P2) remain serial
+  and unimplemented; do not describe them as shipped. Results never depend on
+  worker count, so a report is not evidence of which engine produced it.
 - All internal concurrency axes must consume one application-owned worker and
   memory plan; nested file × packet × window pools are forbidden. FLAC packet
   workers may not graduate by disabling or weakening ordered full-stream MD5.

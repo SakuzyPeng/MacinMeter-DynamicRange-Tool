@@ -20,12 +20,26 @@ const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// packet-level decoding.
 const PRODUCTION_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
 
+/// Decode workers the product asks for before host and ceiling clamping.
+///
+/// ADR-0014 caps this in `domain`; asking for the ceiling means the granted
+/// count is whichever of the ceiling and the host's parallelism is smaller.
+const PRODUCTION_DECODE_WORKERS: NonZeroUsize =
+    match NonZeroUsize::new(macinmeter_domain::MAX_DECODE_WORKERS) {
+        Some(workers) => workers,
+        None => NonZeroUsize::MIN,
+    };
+
 /// The process-local application execution budget.
 ///
 /// The queue bound limits work admitted by adapters before it enters their
 /// blocking thread pool; it does not claim to be a byte-accurate decoder memory
 /// quota. The internal `ConcurrencyPlan` is the separate bound on the workers
-/// and memory one admitted job may spend, and it stays serial in 0.3.0.
+/// and memory one admitted job may spend.
+///
+/// [`ExecutionBudget::product`] draws that plan from the host, which is what
+/// enables the graduated ALAC packet workers. [`ExecutionBudget::serial`] keeps
+/// the fully serial plan and stays available as the differential reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExecutionBudget {
     max_queued_jobs: usize,
@@ -33,7 +47,24 @@ pub struct ExecutionBudget {
 }
 
 impl ExecutionBudget {
-    /// The product default: one active job and at most 64 queued jobs.
+    /// The product default: one active job, at most 64 queued jobs, and a
+    /// bounded internal plan drawn from the host.
+    ///
+    /// The plan only changes which engine a graduated route may select; it
+    /// never changes a result. Routes that have not graduated, and hosts that
+    /// grant a single worker, stay on the serial engine.
+    pub fn product() -> Self {
+        Self {
+            max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
+            concurrency: ConcurrencyPlan::bounded(PRODUCTION_DECODE_WORKERS),
+        }
+    }
+
+    /// One active job, at most 64 queued jobs, and a fully serial plan.
+    ///
+    /// This is the differential reference every parallel axis is graduated
+    /// against, so it stays reachable rather than becoming an alias of the
+    /// product budget.
     pub const fn serial() -> Self {
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
@@ -94,7 +125,7 @@ impl ExecutionBudget {
 
 impl Default for ExecutionBudget {
     fn default() -> Self {
-        Self::serial()
+        Self::product()
     }
 }
 
@@ -115,11 +146,6 @@ impl Application {
     }
 
     pub fn with_budget(budget: ExecutionBudget) -> Self {
-        #[cfg(not(test))]
-        debug_assert!(
-            budget.concurrency().is_serial(),
-            "0.3.0 exposes no non-serial production budget"
-        );
         Self {
             coordinator: ExecutionCoordinator::new(budget),
         }
@@ -498,11 +524,53 @@ mod tests {
     }
 
     #[test]
+    fn the_product_default_selects_packet_workers_only_for_the_alac_route() {
+        // The point of enabling the default plan is that the graduated route
+        // actually uses it. Equality alone would also hold if nothing did.
+        let granted = Application::new()
+            .budget()
+            .concurrency()
+            .total_workers()
+            .get();
+        let expectations = [
+            ("native-alac-v1/alac16-stereo-48000-multipacket.m4a", true),
+            ("native-pcm-v1/wav-pcm-s16-stereo.wav", false),
+            ("native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac", false),
+            ("native-pcm-v1/aiff-pcm-s24-stereo.aiff", false),
+        ];
+        for (name, may_parallelise) in expectations {
+            let expected = wire_bytes(&Application::with_budget(ExecutionBudget::serial()), name);
+            assert_eq!(
+                wire_bytes(&Application::new(), name),
+                expected,
+                "{name} changed under the product default"
+            );
+
+            let execution = last_execution();
+            if may_parallelise && granted > 1 {
+                assert_eq!(
+                    execution.engine(),
+                    macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers,
+                    "{name} did not use packet workers under the product default"
+                );
+                assert_eq!(execution.workers().get(), granted);
+            } else {
+                assert_eq!(
+                    execution.engine(),
+                    macinmeter_codecs::DecodeEngineKind::Serial,
+                    "{name} must not start packet workers"
+                );
+                assert_eq!(execution.workers().get(), 1);
+            }
+        }
+    }
+
+    #[test]
     fn the_application_path_reports_identically_under_a_non_serial_plan() {
         // ALAC is the only graduated packet route, so it is the only case where
         // the plan changes the engine. The others must be unaffected, which is
         // what keeps enabling the plan from leaking into unrelated routes.
-        let serial = Application::new();
+        let serial = Application::with_budget(ExecutionBudget::serial());
         for name in [
             "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
             "native-alac-v1/alac24-8ch-48000.mp4",
@@ -567,19 +635,53 @@ mod tests {
     }
 
     #[test]
-    fn the_production_job_allocation_is_serial_in_0_3_0() {
+    fn the_product_budget_draws_its_plan_from_the_host_within_the_ceiling() {
+        let host = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+        let expected = host.min(macinmeter_domain::MAX_DECODE_WORKERS);
         let application = Application::new();
-        assert!(
-            application.budget().concurrency().is_serial(),
-            "ADR-0014 authorised bounded parallelism but 0.3.0 ships none of it"
+        assert_eq!(
+            application.budget().concurrency().total_workers().get(),
+            expected,
+            "the product plan is the smaller of the host and the fixed ceiling"
         );
 
         let job = application.reserve(&CancellationToken::new()).unwrap();
         let allocation = job.allocation();
-        assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
+        assert_eq!(
+            allocation.file_lanes().get(),
+            1,
+            "file lanes are ADR-0014 P1 and remain unimplemented"
+        );
 
         let decode = allocation.decode();
-        assert!(decode.is_serial(), "packet workers are not enabled yet");
+        assert_eq!(decode.workers().get(), expected);
+        if expected == 1 {
+            assert!(
+                decode.is_serial(),
+                "a single-worker host degrades to serial"
+            );
+            assert_eq!(decode.max_in_flight_pcm_bytes(), 0);
+        } else {
+            assert_eq!(decode.queue_capacity().get(), expected * 4);
+            assert_eq!(
+                decode.max_in_flight_pcm_bytes(),
+                expected as u64 * 4 * 1024 * 1024
+            );
+        }
+    }
+
+    #[test]
+    fn an_explicit_serial_budget_stays_fully_serial() {
+        // The serial plan is the differential reference, so enabling the
+        // product default must not turn it into an alias of that default.
+        let application = Application::with_budget(ExecutionBudget::serial());
+        assert!(application.budget().concurrency().is_serial());
+        let decode = application
+            .reserve(&CancellationToken::new())
+            .unwrap()
+            .allocation()
+            .decode();
+        assert!(decode.is_serial());
         assert_eq!(decode.workers().get(), 1);
         assert_eq!(decode.queue_capacity().get(), 1);
         assert_eq!(

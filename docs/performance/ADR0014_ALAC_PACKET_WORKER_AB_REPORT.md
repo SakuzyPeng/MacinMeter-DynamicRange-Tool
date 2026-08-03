@@ -1,6 +1,6 @@
 # ADR-0014：ALAC packet worker 同轮 allocation 扫描
 
-- 状态：Measured；packet workers 仍未默认启用
+- 状态：Measured；packet workers 已于 ADR-0014 记录的启用决定后成为 ALAC route 默认
 - 日期：2026-08-03
 - 方法：ADR-0007 / 29-case ADR-0014 ALAC packet-worker sweep
 - suite：runner-recorded id `m6-scalar-baseline-v1`；本次 29-case definition
@@ -35,8 +35,8 @@ ADR-0013 稳定 ALAC route 的有界 packet workers 在 240 秒长度输入上�
 fingerprint；在单独扫描 permit 的 tonal track、8-worker allocation 上，最小、
 plan 派生与产品上限也共享该 fingerprint。
 
-这是一次**测量**，不是启用决定。ADR-0014 的默认启用还缺若干门槛，见“未满足的
-毕业门槛”。产品 plan 目前仍恒为 serial，本报告不构成任何用户可见的性能承诺。
+本报告是一次**测量**。启用决定另行记录在 ADR-0014；本报告的数字是固定
+source/binary/corpus/本机环境下的证据，不构成任何用户可见的性能承诺。
 
 ## 测量对象与协议
 
