@@ -199,9 +199,10 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
   乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据；
 - **application 层集成**：产品 plan 恒为 serial。本扫描与等价矩阵都通过 harness
   的显式 allocation 驱动 `codecs`。`Application` 的真实派生路径已另由单元测试
-  覆盖——`ConcurrencyPlan::bounded` 的 budget 经 `Application::analyze_file` 得到
-  与 serial plan 逐字节相同的 wire report，且逐次核对实际选择的 engine——但性能
-  测量本身仍未经过该路径，`ExecutionBudget` 的非串行构造也仍是 `#[cfg(test)]`。
+  覆盖——固定的 8-worker 测试宿主上限复用 `ConcurrencyPlan::bounded` 的生产派生
+  逻辑，其 budget 经 `Application::analyze_file` 得到与 serial plan 逐字节相同的
+  wire report，并逐次核对实际选择的 engine 与 worker 数——但性能测量本身仍未经过
+  该路径，`ExecutionBudget` 的非串行构造也仍是 `#[cfg(test)]`。
 
 两条 track 的对照缩小了此前“真实音乐素材代表性”的疑问：加速比在压缩率的两端
 基本一致，因此该结论不依赖语料恰好落在 escape 路径。但两者都是合成信号，没有

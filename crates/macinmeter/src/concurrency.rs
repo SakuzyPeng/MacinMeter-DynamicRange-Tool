@@ -47,11 +47,31 @@ impl ConcurrencyPlan {
         )
     )]
     pub(crate) fn bounded(requested: NonZeroUsize) -> Self {
-        let host = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-        let workers = requested.get().min(MAX_DECODE_WORKERS).min(host).max(1);
+        let host = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+        Self::bounded_for_parallelism(requested, host)
+    }
+
+    fn bounded_for_parallelism(
+        requested: NonZeroUsize,
+        available_parallelism: NonZeroUsize,
+    ) -> Self {
+        let workers = requested
+            .get()
+            .min(MAX_DECODE_WORKERS)
+            .min(available_parallelism.get());
         Self {
             total_workers: NonZeroUsize::new(workers).unwrap_or(NonZeroUsize::MIN),
         }
+    }
+
+    /// Exercise the production bound derivation against a deterministic host
+    /// ceiling instead of depending on the test runner's CPU allocation.
+    #[cfg(test)]
+    pub(crate) fn bounded_for_test(
+        requested: NonZeroUsize,
+        available_parallelism: NonZeroUsize,
+    ) -> Self {
+        Self::bounded_for_parallelism(requested, available_parallelism)
     }
 
     pub(crate) const fn total_workers(self) -> NonZeroUsize {

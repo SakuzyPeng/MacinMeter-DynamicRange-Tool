@@ -115,6 +115,11 @@ impl Application {
     }
 
     pub fn with_budget(budget: ExecutionBudget) -> Self {
+        #[cfg(not(test))]
+        debug_assert!(
+            budget.concurrency().is_serial(),
+            "0.3.0 exposes no non-serial production budget"
+        );
         Self {
             coordinator: ExecutionCoordinator::new(budget),
         }
@@ -438,11 +443,14 @@ mod tests {
         thread,
     };
 
-    /// A budget whose plan is built by the real `ConcurrencyPlan`, not by a
-    /// mirrored constant, so these tests exercise the production derivation.
+    const TEST_HOST_WORKERS: NonZeroUsize = NonZeroUsize::new(8).unwrap();
+
+    /// A budget built by the production bound derivation with a fixed host
+    /// ceiling, so non-serial coverage does not depend on the test runner.
     fn bounded_budget(requested_workers: usize) -> ExecutionBudget {
-        ExecutionBudget::serial().with_concurrency(ConcurrencyPlan::bounded(
+        ExecutionBudget::serial().with_concurrency(ConcurrencyPlan::bounded_for_test(
             NonZeroUsize::new(requested_workers).unwrap(),
+            TEST_HOST_WORKERS,
         ))
     }
 
@@ -460,17 +468,16 @@ mod tests {
             .expect("the wire envelope must serialize")
     }
 
-    fn last_engine() -> macinmeter_codecs::DecodeEngineKind {
+    fn last_execution() -> macinmeter_codecs::DecodeExecution {
         crate::application::LAST_DECODE_EXECUTION
             .with(std::cell::Cell::get)
-            .expect("an analysis must have recorded its engine")
-            .engine()
+            .expect("an analysis must have recorded its decode execution")
     }
 
     #[test]
     fn a_non_serial_plan_reaches_the_decoder_through_the_application_path() {
-        // The harness matrix mirrors the plan's derivation. This checks the
-        // real thing: what `Application` actually hands down for a bounded plan.
+        // The fixed host ceiling makes this a deterministic non-serial test of
+        // what `Application` actually hands down for a bounded plan.
         let budget = bounded_budget(8);
         let plan_workers = budget.concurrency().total_workers().get();
         let job = Application::with_budget(budget)
@@ -480,16 +487,14 @@ mod tests {
 
         assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
         let decode = allocation.decode();
+        assert_eq!(plan_workers, TEST_HOST_WORKERS.get());
         assert_eq!(decode.workers().get(), plan_workers);
-        if plan_workers == 1 {
-            assert!(decode.is_serial(), "a single-core host degrades to serial");
-        } else {
-            assert_eq!(decode.queue_capacity().get(), plan_workers * 4);
-            assert_eq!(
-                decode.max_in_flight_pcm_bytes(),
-                plan_workers as u64 * 4 * 1024 * 1024
-            );
-        }
+        assert!(!decode.is_serial());
+        assert_eq!(decode.queue_capacity().get(), plan_workers * 4);
+        assert_eq!(
+            decode.max_in_flight_pcm_bytes(),
+            plan_workers as u64 * 4 * 1024 * 1024
+        );
     }
 
     #[test]
@@ -506,15 +511,22 @@ mod tests {
             "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
         ] {
             let expected = wire_bytes(&serial, name);
+            let serial_execution = last_execution();
             assert_eq!(
-                last_engine(),
+                serial_execution.engine(),
                 macinmeter_codecs::DecodeEngineKind::Serial,
                 "{name} must use the serial engine under the product plan"
+            );
+            assert_eq!(
+                serial_execution.workers().get(),
+                1,
+                "{name} must use one worker under the product plan"
             );
 
             for requested_workers in [2, 4, 8] {
                 let budget = bounded_budget(requested_workers);
                 let granted = budget.concurrency().total_workers().get();
+                assert_eq!(granted, requested_workers);
                 let bounded = Application::with_budget(budget);
                 assert_eq!(
                     wire_bytes(&bounded, name),
@@ -522,17 +534,25 @@ mod tests {
                     "{name} changed under a {requested_workers}-worker plan"
                 );
 
-                // Only the graduated ALAC route may switch engines, and only
-                // when the host actually granted more than one worker.
-                let expected_engine = if name.starts_with("native-alac-v1/") && granted > 1 {
+                // Only the graduated ALAC route may switch engines. Other
+                // routes must keep both their serial engine and one worker.
+                let is_alac = name.starts_with("native-alac-v1/");
+                let expected_engine = if is_alac {
                     macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers
                 } else {
                     macinmeter_codecs::DecodeEngineKind::Serial
                 };
+                let expected_workers = if is_alac { granted } else { 1 };
+                let execution = last_execution();
                 assert_eq!(
-                    last_engine(),
+                    execution.engine(),
                     expected_engine,
                     "{name} selected an unexpected engine on {granted} granted workers"
+                );
+                assert_eq!(
+                    execution.workers().get(),
+                    expected_workers,
+                    "{name} used an unexpected worker count on {granted} granted workers"
                 );
             }
         }
