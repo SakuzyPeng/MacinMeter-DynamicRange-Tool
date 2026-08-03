@@ -675,6 +675,19 @@ def build_cases(sources: dict[str, bytes]) -> list[dict[str, object]]:
             "expected": {"code": "decode_failed", "stage": "decode"},
         },
         {
+            # The 16.16 sample-entry rate is only allowed to be a sentinel when
+            # the cookie rate genuinely exceeds what that field can hold. This
+            # 48 kHz track fits, so the 1.0 spelling is a real disagreement.
+            "id": "alac-rate-sentinel-one-within-range",
+            "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
+            "operation": (
+                "rewrite the AudioSampleEntry 16.16 rate to 1.0 while the cookie "
+                "rate stays representable"
+            ),
+            "bytes": patch(alac, alac_outer + 28, b"\x00\x01\x00\x00"),
+            "expected": {"code": "malformed_media", "stage": "probe"},
+        },
+        {
             "id": "alac-non-alac-sample-entry",
             "source": f"{ALAC_SOURCE_CORPUS}/{ALAC_S16}",
             "operation": "rewrite the outer sample entry type from alac to mp4a",

@@ -12,7 +12,7 @@ use crate::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
         probe_error,
     },
-    isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac},
+    isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac, is_unrepresentable_rate_sentinel},
     packet::{PacketOutcome, PacketReorderBuffer},
 };
 use macinmeter_domain::{
@@ -243,8 +243,14 @@ pub(crate) fn validate_backend_alac_metadata(
         .extra_data
         .as_deref()
         .is_some_and(|cookie| cookie == validated.magic_cookie.as_ref());
+    // The backend reads the same 16.16 AudioSampleEntry field, so when the real
+    // rate cannot be represented there it reports the same sentinel the
+    // first-party parser accepted rather than the cookie rate.
     let sample_rate_matches = codec_params.sample_rate == Some(validated.pcm.sample_rate)
-        || (validated.pcm.sample_rate > u32::from(u16::MAX) && codec_params.sample_rate == Some(0));
+        || (validated.pcm.sample_rate > u32::from(u16::MAX)
+            && codec_params
+                .sample_rate
+                .is_some_and(is_unrepresentable_rate_sentinel));
     if codec_params.codec != CODEC_TYPE_ALAC
         || !sample_rate_matches
         || codec_params.n_frames != Some(validated.declared_frames)

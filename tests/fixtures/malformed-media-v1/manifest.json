@@ -758,6 +758,18 @@
     },
     {
       "expected": {
+        "code": "malformed_media",
+        "stage": "probe"
+      },
+      "id": "alac-rate-sentinel-one-within-range",
+      "operation": "rewrite the AudioSampleEntry 16.16 rate to 1.0 while the cookie rate stays representable",
+      "path": "alac-rate-sentinel-one-within-range.m4a",
+      "sha256": "7c851aa30269b27b499a9fca4afb0c384d2783fb55b1aca19d61e9ad375fa73c",
+      "sizeBytes": 36827,
+      "source": "native-alac-v1/alac16-stereo-48000-multipacket.m4a"
+    },
+    {
+      "expected": {
         "code": "unsupported_format",
         "stage": "probe"
       },

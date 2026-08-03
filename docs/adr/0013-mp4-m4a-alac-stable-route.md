@@ -8,6 +8,9 @@
 - 前置决策：
   - [ADR-0003：M2 原生解码面与工程契约加固](0003-m2-native-decoder-contract-hardening.md)
   - [ADR-0012：WAVE_FORMAT_EXTENSIBLE 线性 PCM](0012-wave-format-extensible-linear-pcm.md)
+- 后继能力修订：
+  2026-08-03 扩大不可表示采样率 sentinel 的接受集，见下方 §2 与“后继修订”。
+  格式矩阵、错误分类与其余毕业证据不变。
 - 后继并发修订：
   [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 保留本文的稳定 ALAC
   格式矩阵与严格错误契约，但允许在独立毕业后为该 route 增加有界、顺序提交的
@@ -60,9 +63,12 @@ Symphonia backend，同时覆盖常见的无损 `.m4a` 文件。
   48-byte cookie 只接受八个已登记标准 layout tag，且 tag 的声道数必须与 cookie
   一致；产品 `ChannelLayout` 仍报告 `Unknown`。
 
-96 kHz 等超过 AudioSampleEntry 16.16 整数域的 FFmpeg 文件会把 sample-entry rate
-写为零；只有 cookie rate 大于 `u16::MAX` 时才接受这一明确 sentinel，仍必须与
-`mdhd` 和 backend metadata 交叉核验。
+AudioSampleEntry 的采样率是 16.16 定点，无法表示超过 `u16::MAX` 的速率。写入方
+因此存入 sentinel，真实速率留在 ALAC cookie 中。接受两种已观测拼写：字段为零
+（FFmpeg 的做法），以及定点值 `1.0`（`0x0001_0000`）。两者都只在 cookie rate
+确实大于 `u16::MAX` 时才接受，因此都不能掩盖真实的不一致；仍必须与 `mdhd` 和
+backend metadata 交叉核验，而 backend 读取同一字段，因此它报告的是同一 sentinel
+而非 cookie rate。
 
 ### 3. Backend 与运行时契约
 
@@ -93,7 +99,9 @@ backend、外部进程或新的一等依赖。解码前同时核验：
 新增 `native-alac-v1`，固定 FFmpeg 8.0.1 仅用于再生成。普通构建/测试消费提交字节，
 不要求 FFmpeg。每个 ALAC 文件都有携带逐位相同整数 PCM 的 WAV 孪生；矩阵覆盖
 16/24-bit、1–8 声道、44.1/48/96 kHz、多 packet、短尾帧、`.m4a`/`.mp4`、
-faststart/普通 atom 顺序及 metadata。
+faststart/普通 atom 顺序、metadata，以及两种不可表示采样率 sentinel 拼写。
+pinned encoder 只产生零拼写，因此 `1.0` 拼写由 generator 在编码后确定性改写
+sample entry 的该字段得到；cookie 与 PCM 不变，所以它仍有逐位相同的 WAV 孪生。
 
 manifest 记录生成器与 encoder 身份、归一化命令、文件 hash、box 顺序、cookie、
 sample entry、`mdhd`、`stts`、`stsz` 字段、孪生关系、来源及 interleaved-`f64`
@@ -146,6 +154,29 @@ WAV 孪生证据固定，而不是继承 backend 的全部隐式能力。
 代价：第一方 ISO BMFF parser 与 route-specific malformed 面显著增加；schema v4
 是严格消费者需要显式接受的契约变化；20/32-bit 与更多 MP4 topology 仍是已记录
 的后续工作。
+
+## 后继修订
+
+### 2026-08-03：不可表示采样率 sentinel 的第二种拼写
+
+本文最初只接受字段为零这一种 sentinel，依据是 pinned FFmpeg 8.0.1 的行为。对本机
+个人音频库的一次检查发现，314 个真实 ALAC 中有 3 个 96 kHz / 24-bit 文件把该字段
+写为 `0x0001_0000`（定点 `1.0`）。这些文件本身完好：ffmpeg 无警告解出与声明一致的
+全部帧数，而本产品因未登记该拼写将其判为 `MalformedMedia / Probe`。
+
+因此把 sentinel 接受集扩为 `{0, 1}`，边界不变：仍只在 cookie rate 大于
+`u16::MAX` 时适用。first-party parser 与 backend 交叉核验共用同一判定，因为两者
+读取的是同一个 16.16 字段。
+
+证据：`native-alac-v1` 新增 `alac24-stereo-96000-rate-sentinel-one.m4a` 及其 WAV
+孪生，与既有零拼写的 96 kHz fixture 并列；`malformed-media-v1` 新增
+`alac-rate-sentinel-one-within-range.m4a`，把 48 kHz 轨道的该字段改写为 `1.0`，
+固定它仍以 `sample_entry_rate=1; cookie_rate=48000` 判为
+`MalformedMedia / Probe`。
+
+同一次检查还记录了两个解码帧数比声明少恰好一个 4096-frame packet 的文件。ffmpeg
+对它们解出完全相同的帧数并报 `invalid samples per frame: 0`，只是把截断结果静默
+输出。本产品按既有契约判为 sticky `DecodeFailed / Decode`，不作改动。
 
 ## 实施收口
 

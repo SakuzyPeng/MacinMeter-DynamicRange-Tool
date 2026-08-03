@@ -349,6 +349,118 @@
     },
     {
       "bitsPerSample": 24,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "frames": 5003,
+      "kind": "wave_twin",
+      "normalizedInterleavedF64LeSha256": "afab5bd5141ce019be9d28d27d885de797ad0de56d913c89de461afb7f0339e7",
+      "path": "alac24-stereo-96000-rate-sentinel-one-twin.wav",
+      "sampleRate": 96000,
+      "sha256": "b11fb510c62ea583c79806e58d78dbc5aca59f018774172b0703a91009867555",
+      "twin": "alac24-stereo-96000-rate-sentinel-one.m4a"
+    },
+    {
+      "bitsPerSample": 24,
+      "channelLayout": "stereo",
+      "channelMask": "0x00000003",
+      "channels": 2,
+      "codec": "alac",
+      "compatibleVersion": 0,
+      "container": "mp4",
+      "encoderCommand": [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+bitexact",
+        "-i",
+        "<corpus>/alac24-stereo-96000-rate-sentinel-one-twin.wav",
+        "-map_metadata",
+        "-1",
+        "-vn",
+        "-c:a",
+        "alac",
+        "-compression_level",
+        "2",
+        "-flags:a",
+        "+bitexact",
+        "-channel_layout:a",
+        "stereo",
+        "-f",
+        "ipod",
+        "<output>.m4a"
+      ],
+      "faststart": false,
+      "frameLength": 4096,
+      "frames": 5003,
+      "isoBmff": {
+        "cookie": {
+          "bitDepth": 24,
+          "channelLayout": {
+            "mode": "implicit_standard_by_channel_count"
+          },
+          "channels": 2,
+          "compatibleVersion": 0,
+          "frameLength": 4096,
+          "lengthBytes": 24,
+          "sampleRate": 96000
+        },
+        "mediaHeader": {
+          "durationFrames": 5003,
+          "timescale": 96000,
+          "version": 0
+        },
+        "sampleEntry": {
+          "channels": 2,
+          "sampleRateFixed16_16": "0x00010000",
+          "type": "alac"
+        },
+        "sampleTables": {
+          "stszDefaultSampleSize": 0,
+          "stszSampleCount": 2,
+          "sttsEntryCount": 2,
+          "sttsFrameCount": 5003,
+          "sttsPacketCount": 2
+        },
+        "topLevelBoxes": [
+          {
+            "offset": 0,
+            "sizeBytes": 28,
+            "sizeEncodingBits": 32,
+            "type": "ftyp"
+          },
+          {
+            "offset": 28,
+            "sizeBytes": 8,
+            "sizeEncodingBits": 32,
+            "type": "free"
+          },
+          {
+            "offset": 36,
+            "sizeBytes": 18537,
+            "sizeEncodingBits": 32,
+            "type": "mdat"
+          },
+          {
+            "offset": 18573,
+            "sizeBytes": 698,
+            "sizeEncodingBits": 32,
+            "type": "moov"
+          }
+        ]
+      },
+      "kind": "alac",
+      "normalizedInterleavedF64LeSha256": "afab5bd5141ce019be9d28d27d885de797ad0de56d913c89de461afb7f0339e7",
+      "path": "alac24-stereo-96000-rate-sentinel-one.m4a",
+      "sampleRate": 96000,
+      "sha256": "c372ecdbee4a98711bd4a258daa2e3496f11d0d93dc0f34f2b64f13deed1599e",
+      "twin": "alac24-stereo-96000-rate-sentinel-one-twin.wav"
+    },
+    {
+      "bitsPerSample": 24,
       "channelLayout": "3.0",
       "channelMask": "0x00000007",
       "channels": 3,
@@ -1028,7 +1140,7 @@
     "externalToolsRequiredForRegeneration": true,
     "normalTestsRequireExternalTools": false,
     "path": "scripts/generate-native-alac-v1.py",
-    "sha256": "500504b1ee455b01493685b4ac8baca81cd73007d72ab0e0912661cfd7369ac3"
+    "sha256": "a072bd2fd0f1f95e8274765afab7af6237c2640b93560945d794fdece6ff4c10"
   },
   "provenance": {
     "copyrightedAudio": false,

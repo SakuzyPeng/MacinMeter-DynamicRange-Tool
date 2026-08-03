@@ -844,7 +844,7 @@ fn alac_fixture_manifest_matches_the_committed_twin_corpus() {
     let fixtures = manifest["fixtures"]
         .as_array()
         .expect("native ALAC fixture manifest must contain an array");
-    assert_eq!(fixtures.len(), 18);
+    assert_eq!(fixtures.len(), 20);
     let mut referenced_files = BTreeSet::new();
     for fixture in fixtures {
         let relative = fixture["path"].as_str().expect("fixture path");
@@ -2697,4 +2697,60 @@ fn pool_spawn_failures_join_every_thread_started_during_construction() {
             "open returned before every previously started thread was joined"
         );
     }
+}
+
+#[test]
+fn both_unrepresentable_rate_sentinels_are_accepted_for_high_sample_rates() {
+    // The AudioSampleEntry rate is 16.16 fixed point, so 96 kHz cannot be
+    // written there. ffmpeg leaves the field zero; other writers store the
+    // fixed-point value 1.0. Both spellings must reach the same PCM.
+    let manifest = alac_fixture_manifest();
+    let fixtures = manifest["fixtures"].as_array().unwrap();
+    let mut seen = BTreeSet::new();
+    for fixture in fixtures.iter().filter(|fixture| fixture["kind"] == "alac") {
+        let name = fixture["path"].as_str().unwrap();
+        let entry_rate = fixture["isoBmff"]["sampleEntry"]["sampleRateFixed16_16"]
+            .as_str()
+            .unwrap();
+        let cookie_rate = fixture["cookie"]["sampleRate"].as_u64();
+        let cookie_rate = cookie_rate
+            .or_else(|| fixture["isoBmff"]["cookie"]["sampleRate"].as_u64())
+            .unwrap();
+        if cookie_rate <= u64::from(u16::MAX) {
+            assert_ne!(
+                entry_rate, "0x00000000",
+                "{name} may not use a sentinel it does not need"
+            );
+            assert_ne!(entry_rate, "0x00010000", "{name}");
+            continue;
+        }
+        seen.insert(entry_rate.to_owned());
+        let (source, samples) = decode_all_samples(&alac_fixture_path(name));
+        assert_eq!(source.sample_rate.get() as u64, cookie_rate, "{name}");
+        let twin = fixture["twin"].as_str().unwrap();
+        let (_, expected) = decode_all_samples(&alac_fixture_path(twin));
+        assert_eq!(raw_bits(&samples), raw_bits(&expected), "{name}");
+    }
+    assert_eq!(
+        seen,
+        BTreeSet::from(["0x00000000".to_owned(), "0x00010000".to_owned()]),
+        "the corpus must cover both sentinel spellings"
+    );
+}
+
+#[test]
+fn a_rate_sentinel_is_rejected_when_the_cookie_rate_fits_the_field() {
+    let path = malformed_fixture_path("alac-rate-sentinel-one-within-range.m4a");
+    let error = expect_open_error(&path);
+    assert_eq!(error.code, ErrorCode::MalformedMedia, "{error}");
+    assert_eq!(error.stage, AnalysisStage::Probe, "{error}");
+    assert!(
+        error.message.contains("sample-rate declarations disagree"),
+        "{error}"
+    );
+    assert_eq!(
+        error.details.as_deref(),
+        Some("sample_entry_rate=1; cookie_rate=48000"),
+        "{error}"
+    );
 }

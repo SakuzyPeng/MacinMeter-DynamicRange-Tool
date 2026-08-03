@@ -756,7 +756,8 @@ fn inspect_alac_sample_entry<R: Read + Seek>(
         ));
     }
     if declared_sample_rate != config.sample_rate
-        && !(declared_sample_rate == 0 && config.sample_rate > u32::from(u16::MAX))
+        && !(is_unrepresentable_rate_sentinel(declared_sample_rate)
+            && config.sample_rate > u32::from(u16::MAX))
     {
         return Err(malformed(
             path,
@@ -768,6 +769,17 @@ fn inspect_alac_sample_entry<R: Read + Seek>(
         ));
     }
     Ok(config)
+}
+
+/// Whether an AudioSampleEntry rate is a sentinel for "see the codec config".
+///
+/// The field is 16.16 fixed point, so no rate above `u16::MAX` fits. Writers
+/// signal that and leave the real rate to the ALAC cookie. Two spellings occur
+/// in the wild: a zero field, and the fixed-point value `1.0` (`0x0001_0000`).
+/// Both are only accepted when the cookie rate genuinely exceeds the field's
+/// range, so neither can mask a real disagreement.
+pub(crate) const fn is_unrepresentable_rate_sentinel(declared_sample_rate: u32) -> bool {
+    matches!(declared_sample_rate, 0 | 1)
 }
 
 fn inspect_alac_config<R: Read + Seek>(

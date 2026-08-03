@@ -50,6 +50,13 @@ class Case:
     frames: int
     faststart: bool = False
     title: str | None = None
+    # Overwrite the AudioSampleEntry rate with this 16.16 integer part.
+    #
+    # The field cannot represent a rate above u16::MAX, so writers store a
+    # sentinel and leave the real rate to the cookie. ffmpeg writes zero; other
+    # writers store the fixed-point value 1.0. Only the zero spelling can be
+    # produced by the pinned encoder, so the 1.0 spelling is patched in.
+    rate_sentinel: int | None = None
 
 
 CASES = (
@@ -75,6 +82,17 @@ CASES = (
         "stereo",
         5_003,
         faststart=True,
+    ),
+    Case(
+        "alac24-stereo-96000-rate-sentinel-one",
+        "m4a",
+        24,
+        96_000,
+        2,
+        0x0003,
+        "stereo",
+        5_003,
+        rate_sentinel=1,
     ),
     Case("alac24-3ch-48000", "m4a", 24, 48_000, 3, 0x0007, "3.0", 521),
     Case("alac24-4ch-48000", "mp4", 24, 48_000, 4, 0x0107, "4.0", 523),
@@ -273,6 +291,42 @@ def find_box_type(data: bytes, kind: bytes) -> int:
     raise ValueError(f"missing valid {kind!r} box")
 
 
+def patch_sample_entry_rate(data: bytes, integer_part: int) -> bytes:
+    """Rewrite the AudioSampleEntry 16.16 rate to `integer_part`.0.
+
+    Only the sample entry moves; the ALAC cookie keeps the real rate, so the
+    result is a well-formed file that spells the unrepresentable-rate sentinel
+    the way the pinned encoder does not.
+    """
+    sample_entry_type, _ = find_alac_identifiers(data)
+    offset = sample_entry_type + 28
+    current = struct.unpack(">I", data[offset : offset + 4])[0]
+    if current != 0:
+        raise ValueError(
+            f"expected a zero sample-entry rate before patching, found 0x{current:08x}"
+        )
+    patched = bytearray(data)
+    patched[offset : offset + 4] = struct.pack(">I", integer_part << 16)
+    return bytes(patched)
+
+
+def find_alac_identifiers(data: bytes) -> tuple[int, int]:
+    identifiers: list[int] = []
+    search = 0
+    while True:
+        found = data.find(b"alac", search)
+        if found < 0:
+            break
+        if found >= 4:
+            size = struct.unpack(">I", data[found - 4 : found])[0]
+            if size >= 8 and found - 4 + size <= len(data):
+                identifiers.append(found)
+        search = found + 1
+    if len(identifiers) != 2:
+        raise ValueError(f"expected two ALAC box identifiers, found {len(identifiers)}")
+    return identifiers[0], identifiers[1]
+
+
 def inspect_generated_alac(data: bytes) -> dict[str, object]:
     top_level_boxes: list[dict[str, object]] = []
     position = 0
@@ -301,20 +355,7 @@ def inspect_generated_alac(data: bytes) -> dict[str, object]:
         )
         position += size
 
-    alac_types: list[int] = []
-    search = 0
-    while True:
-        found = data.find(b"alac", search)
-        if found < 0:
-            break
-        if found >= 4:
-            size = struct.unpack(">I", data[found - 4 : found])[0]
-            if size >= 8 and found - 4 + size <= len(data):
-                alac_types.append(found)
-        search = found + 1
-    if len(alac_types) != 2:
-        raise ValueError(f"expected two ALAC box identifiers, found {len(alac_types)}")
-    sample_entry_type, config_type = alac_types
+    sample_entry_type, config_type = find_alac_identifiers(data)
     config_size = struct.unpack(">I", data[config_type - 4 : config_type])[0]
     if data[config_type + 4 : config_type + 8] != b"\0\0\0\0":
         raise ValueError("generated ALAC config full-box field is nonzero")
@@ -523,6 +564,9 @@ def build_corpus(destination: Path, executable: str) -> dict[str, object]:
         wave_path.write_bytes(wave_bytes(case, values))
         command = encode_alac(executable, case, wave_path, alac_path)
         alac_bytes = alac_path.read_bytes()
+        if case.rate_sentinel is not None:
+            alac_bytes = patch_sample_entry_rate(alac_bytes, case.rate_sentinel)
+            alac_path.write_bytes(alac_bytes)
         structure = inspect_generated_alac(alac_bytes)
         cookie = structure["cookie"]
         media_header = structure["mediaHeader"]
