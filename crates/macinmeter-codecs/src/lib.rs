@@ -54,7 +54,7 @@ use macinmeter_domain::{
     AnalysisError, DecodeDiagnostics, DecodeProgress, DecodeReservation, PcmBlock, PcmStreamInfo,
     SourceInfo,
 };
-use std::path::Path;
+use std::{num::NonZeroUsize, path::Path};
 
 /// Structured decoder failure used by the PCM source contract.
 pub type DecodeError = AnalysisError;
@@ -63,6 +63,53 @@ pub type DecodeError = AnalysisError;
 pub struct OpenedAudio {
     pub source: SourceInfo,
     pub reader: Box<dyn PcmSource>,
+}
+
+/// The decoder engine that an opened source actually selected.
+///
+/// This is a hidden first-party correctness surface, not a public tuning API.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodeEngineKind {
+    Serial,
+    AlacPacketWorkers,
+}
+
+/// The actual execution selected after content probing and decoder creation.
+///
+/// A requested reservation alone cannot prove that a route used packet
+/// workers, because every route except graduated ALAC intentionally falls back
+/// to the serial engine. Correctness harnesses use this value to reject that
+/// otherwise-silent fallback.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecodeExecution {
+    engine: DecodeEngineKind,
+    workers: NonZeroUsize,
+}
+
+impl DecodeExecution {
+    pub(crate) const fn serial() -> Self {
+        Self {
+            engine: DecodeEngineKind::Serial,
+            workers: NonZeroUsize::MIN,
+        }
+    }
+
+    pub(crate) const fn alac_packet_workers(workers: NonZeroUsize) -> Self {
+        Self {
+            engine: DecodeEngineKind::AlacPacketWorkers,
+            workers,
+        }
+    }
+
+    pub const fn engine(self) -> DecodeEngineKind {
+        self.engine
+    }
+
+    pub const fn workers(self) -> NonZeroUsize {
+        self.workers
+    }
 }
 
 /// The only non-error outcomes of a synchronous PCM read.
@@ -124,5 +171,17 @@ impl DecoderFactory {
 
     pub fn open(&self, path: &Path) -> Result<OpenedAudio, AnalysisError> {
         symphonia_source::open(path, self.reservation)
+    }
+
+    /// Open a source and report the engine that content probing actually chose.
+    ///
+    /// This exists for first-party differential harnesses. Product callers use
+    /// [`DecoderFactory::open`] and do not observe or select an engine.
+    #[doc(hidden)]
+    pub fn open_with_execution(
+        &self,
+        path: &Path,
+    ) -> Result<(OpenedAudio, DecodeExecution), AnalysisError> {
+        symphonia_source::open_with_execution(path, self.reservation)
     }
 }

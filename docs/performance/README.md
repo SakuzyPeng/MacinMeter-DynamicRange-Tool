@@ -31,8 +31,10 @@ leaderboard or a user-facing throughput guarantee.
   These are correctness records, not timings: every worker count crossed with
   the minimum, plan-derived, and maximum reorder permit, each carrying the
   decoded `f64`, `AnalysisResult` raw-bit, and wire-report fingerprints for one
-  long input. Regenerate with
-  `cargo run --release -p macinmeter --example adr0014_allocation_matrix -- PATH`.
+  long ALAC input. The harness rejects other codecs, verifies the actual engine
+  selected for every cell, normalizes the wire display path, and writes the
+  canonical sorted four-space JSON itself. Regenerate an exact record with
+  `cargo run --locked --release -p macinmeter --example adr0014_allocation_matrix -- PATH > OUTPUT.json`.
 - [`comparisons/`](comparisons/) contains complete interleaved A/B runner
   records, including every warm-up, measured sample, variant identity, and
   cross-variant fingerprint.

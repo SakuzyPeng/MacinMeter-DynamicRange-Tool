@@ -6,8 +6,8 @@
 //! `AnalysisResult` raw bits, and the wire-visible report to be identical
 //! across every worker count and every reorder permit on the same input. The
 //! committed correctness fixtures are only seconds long, so this drives the
-//! same matrix over the untracked long corpus track, where reordering actually
-//! occurs.
+//! same matrix over the untracked long corpus track while verifying that every
+//! non-serial cell actually selected the ALAC packet-worker engine.
 //!
 //! This is a correctness harness, not a benchmark. It reports fingerprints, not
 //! timings, and it drives `codecs` through an explicit allocation, so it says
@@ -15,13 +15,14 @@
 
 use macinmeter::{
     AggregateResults, AlgorithmDescriptor, AnalysisReport, AnalysisResult, AnalyzerSession,
-    ChannelOutcome, ChannelResult, ExclusionReason, FiniteF32, FiniteF64, StreamSpec,
+    ChannelOutcome, ChannelResult, ExclusionReason, FiniteF32, FiniteF64, SourceCodec, StreamSpec,
     TrackReportMetrics, WireEnvelope,
 };
-use macinmeter_codecs::{DecoderFactory, ReadOutcome};
+use macinmeter_codecs::{DecodeEngineKind, DecoderFactory, ReadOutcome};
 use macinmeter_domain::{
     ChannelLayout, DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_IN_FLIGHT_PCM_BYTES,
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -41,7 +42,7 @@ const IN_FLIGHT_PCM_BYTES_PER_WORKER: u64 = 4 * 1024 * 1024;
 
 fn main() -> ExitCode {
     match run() {
-        Ok(output) => match serde_json::to_string(&output) {
+        Ok(output) => match canonical_json(&output) {
             Ok(serialized) => {
                 println!("{serialized}");
                 ExitCode::SUCCESS
@@ -121,7 +122,7 @@ fn run() -> Result<Value, String> {
 
     Ok(json!({
         "kind": "adr0014_allocation_matrix",
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "path": display_name(&path),
         "cells": cells,
         "decodedPcmF64LeSha256": pcm.iter().next(),
@@ -160,9 +161,28 @@ struct MatrixOutcome {
 }
 
 fn analyze_with(path: &Path, reservation: DecodeReservation) -> Result<MatrixOutcome, String> {
-    let mut opened = DecoderFactory::with_application_reservation(reservation)
-        .open(path)
+    let (mut opened, execution) = DecoderFactory::with_application_reservation(reservation)
+        .open_with_execution(path)
         .map_err(|error| error.to_string())?;
+    if opened.source.codec != SourceCodec::Alac {
+        return Err(format!(
+            "allocation matrix requires the graduated ALAC route, found {:?}",
+            opened.source.codec
+        ));
+    }
+    let expected_engine = if reservation.workers().get() == 1 {
+        DecodeEngineKind::Serial
+    } else {
+        DecodeEngineKind::AlacPacketWorkers
+    };
+    if execution.engine() != expected_engine || execution.workers() != reservation.workers() {
+        return Err(format!(
+            "requested {} workers but decoder selected {:?} with {} workers",
+            reservation.workers(),
+            execution.engine(),
+            execution.workers()
+        ));
+    }
     let pcm = opened.reader.stream_info().clone();
     let mut session = AnalyzerSession::new(pcm.spec.clone()).map_err(|error| error.to_string())?;
     let mut digest = Sha256::new();
@@ -187,6 +207,10 @@ fn analyze_with(path: &Path, reservation: DecodeReservation) -> Result<MatrixOut
     let analysis = session.finish().map_err(|error| error.to_string())?;
     let analysis_raw_bits = analysis_raw_bits(&analysis);
     let diagnostics = opened.reader.diagnostics().clone();
+    // SourceInfo retains the caller's display path for the product. This
+    // source-bound harness normalizes that incidental spelling so relative,
+    // absolute and parent-containing paths produce the same wire fingerprint.
+    opened.source.display_path = display_name(path);
     let report = AnalysisReport::try_new(opened.source, pcm, analysis, diagnostics)
         .map_err(|error| error.to_string())?;
     let wire = serde_json::to_string(&WireEnvelope::analysis(report))
@@ -199,6 +223,34 @@ fn analyze_with(path: &Path, reservation: DecodeReservation) -> Result<MatrixOut
         analysis_raw_bits,
         wire_report: hex(Sha256::digest(wire.as_bytes()).as_slice()),
     })
+}
+
+/// Serialize the committed record with stable key order and four-space indent.
+fn canonical_json(value: &Value) -> Result<String, String> {
+    let value = sorted_json(value);
+    let mut bytes = Vec::new();
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
+    let mut serializer = serde_json::Serializer::with_formatter(&mut bytes, formatter);
+    value
+        .serialize(&mut serializer)
+        .map_err(|error| error.to_string())?;
+    String::from_utf8(bytes).map_err(|error| error.to_string())
+}
+
+fn sorted_json(value: &Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.iter().map(sorted_json).collect()),
+        Value::Object(fields) => {
+            let mut names: Vec<_> = fields.keys().collect();
+            names.sort_unstable();
+            let mut sorted = serde_json::Map::new();
+            for name in names {
+                sorted.insert(name.clone(), sorted_json(&fields[name]));
+            }
+            Value::Object(sorted)
+        }
+        value => value.clone(),
+    }
 }
 
 /// Hash the complete result graph by IEEE-754 bit pattern.
@@ -383,4 +435,59 @@ fn display_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures")
+            .join(name)
+    }
+
+    #[test]
+    fn matrix_rejects_routes_that_cannot_start_packet_workers() {
+        let error = match analyze_with(
+            &fixture("native-pcm-v1/wav-pcm-s32-stereo.wav"),
+            DecodeReservation::serial(),
+        ) {
+            Ok(_) => panic!("a WAV source must not claim ALAC allocation equivalence"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("requires the graduated ALAC route"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn wire_fingerprint_is_independent_of_input_path_spelling() {
+        let path = fixture("native-alac-v1/alac16-stereo-48000-multipacket.m4a");
+        let canonical = path.canonicalize().unwrap();
+        let parent_spelling = path
+            .parent()
+            .unwrap()
+            .join("..")
+            .join("native-alac-v1/alac16-stereo-48000-multipacket.m4a");
+
+        let canonical = analyze_with(&canonical, DecodeReservation::serial()).unwrap();
+        let parent_spelling = analyze_with(&parent_spelling, DecodeReservation::serial()).unwrap();
+        assert_eq!(canonical.decoded_pcm, parent_spelling.decoded_pcm);
+        assert_eq!(
+            canonical.analysis_raw_bits,
+            parent_spelling.analysis_raw_bits
+        );
+        assert_eq!(canonical.wire_report, parent_spelling.wire_report);
+    }
+
+    #[test]
+    fn canonical_output_is_sorted_and_uses_four_space_indent() {
+        let value = json!({"z": 1, "a": {"d": 2, "b": 3}});
+        assert_eq!(
+            canonical_json(&value).unwrap(),
+            "{\n    \"a\": {\n        \"b\": 3,\n        \"d\": 2\n    },\n    \"z\": 1\n}"
+        );
+    }
 }

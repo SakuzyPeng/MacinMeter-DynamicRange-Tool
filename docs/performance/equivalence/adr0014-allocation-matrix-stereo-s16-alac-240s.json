@@ -8,7 +8,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 0,
             "queueCapacity": 1,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 1
         },
         {
@@ -18,7 +18,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 4194304,
             "queueCapacity": 4,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 1
         },
         {
@@ -28,7 +28,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 4194304,
             "queueCapacity": 64,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 1
         },
         {
@@ -38,7 +38,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 8388608,
             "queueCapacity": 2,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 2
         },
         {
@@ -48,7 +48,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 8388608,
             "queueCapacity": 8,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 2
         },
         {
@@ -58,7 +58,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 8388608,
             "queueCapacity": 64,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 2
         },
         {
@@ -68,7 +68,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 16777216,
             "queueCapacity": 4,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 4
         },
         {
@@ -78,7 +78,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 16777216,
             "queueCapacity": 16,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 4
         },
         {
@@ -88,7 +88,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 16777216,
             "queueCapacity": 64,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 4
         },
         {
@@ -98,7 +98,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 33554432,
             "queueCapacity": 8,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 8
         },
         {
@@ -108,7 +108,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 33554432,
             "queueCapacity": 32,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 8
         },
         {
@@ -118,7 +118,7 @@
             "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
             "maxInFlightPcmBytes": 33554432,
             "queueCapacity": 64,
-            "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144",
+            "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26",
             "workers": 8
         }
     ],
@@ -126,6 +126,6 @@
     "decodedPcmF64LeSha256": "046c476b337bc0c80a6dafa1ec15a96f941e524b1ea06bd5891eeb24593cc82c",
     "kind": "adr0014_allocation_matrix",
     "path": "stereo-s16-alac-240s.m4a",
-    "schemaVersion": 1,
-    "wireReportSha256": "036a7eae5b6a1c2fa48f6478517fdbd690f8d24d3c538627810bc4446a0c5144"
+    "schemaVersion": 2,
+    "wireReportSha256": "76be0435fcc67adcd5109cc1e7aadfc3ed9fa99082525ebed018798fb3035d26"
 }

@@ -1,6 +1,6 @@
 use crate::{
-    CapabilityStatus, DecoderFactory, NATIVE_CAPABILITY_CATALOG, PcmSource, ReadOutcome,
-    stable_discovery_extensions,
+    CapabilityStatus, DecodeEngineKind, DecoderFactory, NATIVE_CAPABILITY_CATALOG, PcmSource,
+    ReadOutcome, stable_discovery_extensions,
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, DecodeReservation,
@@ -2444,6 +2444,30 @@ fn only_the_graduated_alac_route_creates_packet_workers() {
         started, 0,
         "a route that has not graduated must never start packet workers"
     );
+}
+
+#[test]
+fn decoder_factory_reports_the_engine_selected_after_content_probe() {
+    let alac = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
+    let wav = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/native-pcm-v1/wav-pcm-s16-stereo.wav");
+
+    let (_, execution) = DecoderFactory::new().open_with_execution(&alac).unwrap();
+    assert_eq!(execution.engine(), DecodeEngineKind::Serial);
+    assert_eq!(execution.workers().get(), 1);
+
+    let reservation = worker_reservation(4);
+    let (_, execution) = DecoderFactory::with_application_reservation(reservation)
+        .open_with_execution(&wav)
+        .unwrap();
+    assert_eq!(execution.engine(), DecodeEngineKind::Serial);
+    assert_eq!(execution.workers().get(), 1);
+
+    let (_, execution) = DecoderFactory::with_application_reservation(reservation)
+        .open_with_execution(&alac)
+        .unwrap();
+    assert_eq!(execution.engine(), DecodeEngineKind::AlacPacketWorkers);
+    assert_eq!(execution.workers(), reservation.workers());
 }
 
 #[test]

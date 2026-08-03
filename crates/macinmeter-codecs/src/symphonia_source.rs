@@ -1,5 +1,5 @@
 use crate::{
-    OpenedAudio, PcmSource, ReadOutcome,
+    DecodeExecution, OpenedAudio, PcmSource, ReadOutcome,
     codec::{source_bits_per_sample, stream_spec, validate_codec},
     container::{
         ContainerPcmInfo, ContainerSignature, container_format, identify_container, inspect_aiff,
@@ -36,17 +36,25 @@ pub(crate) fn open(
     path: &Path,
     reservation: DecodeReservation,
 ) -> Result<OpenedAudio, AnalysisError> {
-    let (source, reader) = open_source(path, reservation)?;
-    Ok(OpenedAudio {
+    open_with_execution(path, reservation).map(|(opened, _)| opened)
+}
+
+pub(crate) fn open_with_execution(
+    path: &Path,
+    reservation: DecodeReservation,
+) -> Result<(OpenedAudio, DecodeExecution), AnalysisError> {
+    let (source, reader, execution) = open_source(path, reservation)?;
+    let opened = OpenedAudio {
         source,
         reader: Box::new(reader),
-    })
+    };
+    Ok((opened, execution))
 }
 
 fn open_source(
     path: &Path,
     reservation: DecodeReservation,
-) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
+) -> Result<(SourceInfo, SymphoniaPcmSource, DecodeExecution), AnalysisError> {
     open_source_with_pool_options(path, reservation, PoolOptions::default())
 }
 
@@ -54,7 +62,7 @@ fn open_source_with_pool_options(
     path: &Path,
     reservation: DecodeReservation,
     pool_options: PoolOptions,
-) -> Result<(SourceInfo, SymphoniaPcmSource), AnalysisError> {
+) -> Result<(SourceInfo, SymphoniaPcmSource, DecodeExecution), AnalysisError> {
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
     let (aiff_info, container_pcm, alac_info) = match signature {
@@ -171,20 +179,27 @@ fn open_source_with_pool_options(
     // ADR-0014 §2/§3: packet workers are created only for a route that has
     // graduated, never from an extension or a generic codec descriptor. Every
     // other route, and any single-worker allocation, stays on the serial oracle.
-    let engine = if alac_info.is_some() && reservation.workers().get() > 1 {
-        PacketEngine::AlacWorkers(AlacWorkerPool::new(
+    let (engine, execution) = if alac_info.is_some() && reservation.workers().get() > 1 {
+        let engine = AlacWorkerPool::new(
             context,
             format,
             &codec_params,
             track_id,
             reservation,
             pool_options,
-        )?)
+        )?;
+        (
+            PacketEngine::AlacWorkers(engine),
+            DecodeExecution::alac_packet_workers(reservation.workers()),
+        )
     } else {
         let decoder = symphonia::default::get_codecs()
             .make(&codec_params, &DecoderOptions { verify: true })
             .map_err(|error| decoder_creation_error(path, error))?;
-        PacketEngine::Serial(SerialEngine::new(context, format, decoder, track_id))
+        (
+            PacketEngine::Serial(SerialEngine::new(context, format, decoder, track_id)),
+            DecodeExecution::serial(),
+        )
     };
 
     let source = SourceInfo {
@@ -216,7 +231,7 @@ fn open_source_with_pool_options(
         },
     };
 
-    Ok((source, reader))
+    Ok((source, reader, execution))
 }
 
 pub(crate) fn validate_backend_alac_metadata(
@@ -501,7 +516,7 @@ impl SymphoniaPcmSource {
 /// caller happens to hold.
 #[cfg(test)]
 pub(crate) fn open_test_source(path: &Path) -> Result<SymphoniaPcmSource, AnalysisError> {
-    open_source(path, DecodeReservation::serial()).map(|(_, reader)| reader)
+    open_source(path, DecodeReservation::serial()).map(|(_, reader, _)| reader)
 }
 
 #[cfg(test)]
@@ -510,7 +525,7 @@ pub(crate) fn open_test_source_with_pool_options(
     reservation: DecodeReservation,
     options: PoolOptions,
 ) -> Result<SymphoniaPcmSource, AnalysisError> {
-    open_source_with_pool_options(path, reservation, options).map(|(_, reader)| reader)
+    open_source_with_pool_options(path, reservation, options).map(|(_, reader, _)| reader)
 }
 
 #[cfg(test)]

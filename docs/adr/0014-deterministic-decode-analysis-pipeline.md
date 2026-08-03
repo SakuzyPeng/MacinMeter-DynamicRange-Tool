@@ -466,6 +466,10 @@ ADR 共同门槛要求的正确性全矩阵另由独立的、不计时的 harnes
 （`examples/adr0014_allocation_matrix.rs`）在同两条 track 上各运行 12 个单元：
 worker 数 1/2/4/8，各配最小合法容量、plan 派生容量与固定产品上限 64。每条 track 的
 decoded `f64`、`AnalysisResult` raw bits 与 wire-visible report 三项指纹各自唯一。
+schema v2 拒绝非 ALAC 输入，并核对 content probe 后实际选择的 engine 与 worker 数，
+所以静默串行回退不能使矩阵假通过；wire report 使用 basename 作为规范化 display
+path，使同一输入的不同路径写法保持相同指纹。harness 直接输出排序、四空格缩进的
+canonical JSON，因此记录可由文档命令逐字节重建。
 `AnalysisResult` 指纹遍历其 exhaustive view 并按 IEEE-754 位模式累积，不比较渲染
 后的十进制文本。矩阵的检测能力经两次注入验证：破坏顺序提交会被 commit buffer 的
 既有契约检查在产生任何 PCM 之前拦下；只在 packet worker 路径翻转单个 sample 的

@@ -146,24 +146,30 @@ ADR-0014 的共同门槛要求同一 corpus 在各 worker 数与最小 / 默认 
 由独立的正确性 harness 运行，不计时：
 
 ```bash
-cargo run --release -p macinmeter --example adr0014_allocation_matrix -- PATH
+cargo run --locked --release -p macinmeter \
+  --example adr0014_allocation_matrix -- PATH > OUTPUT.json
 ```
 
 每条 track 12 个单元：worker 数 1/2/4/8，各配最小合法容量（等于 worker 数）、plan
 派生容量与固定产品上限 64。`workers = 1` 的三个单元都退化为串行引擎，这正是
-“worker 数为 1 时在解码开始前退化”的验证；其余九个单元走 packet workers。
+“worker 数为 1 时在解码开始前退化”的验证；其余九个单元走 packet workers。harness
+拒绝非 ALAC 输入，并逐单元核对 content probe 后实际选择的 engine 与 worker 数，因而
+全串行回退不能产生成功记录。
 
 `AnalysisResult` 的指纹是遍历其 exhaustive view、按 IEEE-754 位模式累积得到的，
 不是渲染后的十进制文本，因此低于打印精度的差异不会被当作相等。
+schema v2 在构造 wire report 前把 `SourceInfo.display_path` 规范化为记录中的 basename，
+所以同一输入的相对、绝对或含 `..` 路径写法不再改变 wire fingerprint。harness 自身
+输出排序且四空格缩进的 canonical JSON，重建命令可直接生成逐字节记录。
 
 | Track | 单元数 | decoded `f64` | `AnalysisResult` raw bits | wire report | 记录 |
 | --- | ---: | --- | --- | --- | --- |
-| 伪随机 99.5% | 12 | `046c476b...` | `6c0c911b...` | `036a7eae...` | [`adr0014-allocation-matrix-stereo-s16-alac-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-240s.json) |
-| tonal 60.0% | 12 | `d5b62bfc...` | `721bee5d...` | `237010c4...` | [`adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json) |
+| 伪随机 99.5% | 12 | `046c476b...` | `6c0c911b...` | `76be0435...` | [`adr0014-allocation-matrix-stereo-s16-alac-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-240s.json) |
+| tonal 60.0% | 12 | `d5b62bfc...` | `721bee5d...` | `91be17f9...` | [`adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json`](equivalence/adr0014-allocation-matrix-stereo-s16-alac-tonal-240s.json) |
 
 两份记录的 SHA-256 分别为
-`7e1f7eb22c62683a8af4cb56bc445c5a392444fcebfe37fdb198b96c8cd806ad` 与
-`b5f230dbb9e018991453cc0c8db02a0c2037f384b3320a7cc77d3601bff5372d`；两条 track 各
+`d483a78dfa4781be6039fe7a9e68e01daef9937ad58993d4a69867afdb4c46fd` 与
+`9d02a8b8939de529356889afe560a052f99890cdb2d0247dd808cd12cb3dfdf9`；两条 track 各
 11,520,000 帧。
 
 该矩阵的检测能力经两次注入验证：把 reorder 的提交改为取任意 pending 项，会被
