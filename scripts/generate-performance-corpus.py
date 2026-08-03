@@ -103,11 +103,14 @@ def deterministic_tonal_block(*, channels: int, bits: int = 16) -> tuple[list[in
     the ordinary range for lossless music, while staying exactly reproducible
     without any floating point.
 
-    Depths wider than 16 bits scale every amplitude by the same power of two,
-    so the signal shape and its compressibility are held fixed while only the
-    bytes each sample occupies change. That is what lets a depth sweep attribute
-    a difference to sample width rather than to a different signal. At 16 bits
-    the output is byte-identical to the original block.
+    Depths wider than 16 bits scale the tone amplitudes but hold the dither at
+    its 16-bit span, which leaves the added depth as headroom rather than as
+    noise. Scaling the dither too would put pure noise in the low bytes and
+    drive compression back toward incompressible, which is the opposite of what
+    this track is for: it exists to make decoding cheap so that a fixed
+    per-byte cost elsewhere in the pipeline becomes visible. A 24-bit master
+    carrying a 16-bit noise floor is also ordinary real material. At 16 bits the
+    output is byte-identical to the original block.
     """
     if channels < 1:
         raise CorpusError(f"unsupported tonal channel count: {channels}")
@@ -120,7 +123,7 @@ def deterministic_tonal_block(*, channels: int, bits: int = 16) -> tuple[list[in
         (period, amplitude * scale)
         for period, amplitude in ((218, 9_000), (173, 4_500), (411, 3_000), (1_021, 1_500))
     )
-    dither_span = 4_096 * scale
+    dither_span = 4_096
     values: list[int] = []
     normalized = bytearray()
     for frame in range(BLOCK_FRAMES):
