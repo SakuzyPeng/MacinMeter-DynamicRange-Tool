@@ -59,6 +59,16 @@ pub(crate) struct PacketReorderBuffer {
     /// prove nothing about reordering, so tests assert this actually rose.
     #[cfg(test)]
     stalled_accepts: usize,
+    /// The most entries and stalled PCM bytes ever held at once.
+    ///
+    /// The permit bounds retention structurally, but a bound that is merely
+    /// never exceeded is not the same claim as one that does not grow with the
+    /// stream. Recording the high-water mark lets a test compare streams of
+    /// very different lengths directly.
+    #[cfg(test)]
+    peak_pending: usize,
+    #[cfg(test)]
+    peak_stalled_pcm_bytes: u64,
 }
 
 impl PacketReorderBuffer {
@@ -71,6 +81,10 @@ impl PacketReorderBuffer {
             terminal: false,
             #[cfg(test)]
             stalled_accepts: 0,
+            #[cfg(test)]
+            peak_pending: 0,
+            #[cfg(test)]
+            peak_stalled_pcm_bytes: 0,
         }
     }
 
@@ -78,6 +92,18 @@ impl PacketReorderBuffer {
     #[cfg(test)]
     pub(crate) const fn stalled_accepts(&self) -> usize {
         self.stalled_accepts
+    }
+
+    /// The most entries ever held at once.
+    #[cfg(test)]
+    pub(crate) const fn peak_pending(&self) -> usize {
+        self.peak_pending
+    }
+
+    /// The most stalled PCM bytes ever held at once.
+    #[cfg(test)]
+    pub(crate) const fn peak_stalled_pcm_bytes(&self) -> u64 {
+        self.peak_stalled_pcm_bytes
     }
 
     /// The next packet index the buffer will commit.
@@ -150,6 +176,8 @@ impl PacketReorderBuffer {
         #[cfg(test)]
         {
             self.stalled_accepts += 1;
+            self.peak_pending = self.peak_pending.max(self.pending.len() + 1);
+            self.peak_stalled_pcm_bytes = self.peak_stalled_pcm_bytes.max(stalled);
         }
         self.pending.insert(index, outcome);
         Ok(None)
@@ -446,6 +474,79 @@ mod tests {
             .accept(2, PacketOutcome::Decoded(block(2.0)))
             .expect_err("the in-flight PCM permit is a hard bound");
         assert_eq!(error.code, ErrorCode::ResourceExhausted);
+    }
+
+    /// Drive `packets` through the tightest permit under the worst completion
+    /// order a bounded scheduler can produce, returning the retention peaks.
+    ///
+    /// The producer keeps the commit head outstanding for as long as the permit
+    /// allows and only releases it when nothing else can be accepted, which is
+    /// the deepest the buffer can ever be driven.
+    fn worst_case_retention(packets: u64, workers: usize) -> (usize, u64, u64) {
+        // The minimum legal reservation: one queued packet per worker.
+        let reservation =
+            DecodeReservation::new(nonzero(workers), nonzero(workers), 64 * 1024).unwrap();
+        let mut buffer = PacketReorderBuffer::new(reservation);
+        let mut committed = 0_u64;
+        let mut next_to_produce = 0_u64;
+
+        while committed < packets {
+            let head = next_to_produce;
+            // Withhold the head and fill every remaining slot behind it.
+            next_to_produce += 1;
+            while next_to_produce < packets && buffer.pending.len() < workers {
+                buffer
+                    .accept(next_to_produce, PacketOutcome::Decoded(block(1.0)))
+                    .unwrap_or_else(|error| panic!("index {next_to_produce}: {error}"));
+                next_to_produce += 1;
+            }
+            // Only now release the head, draining everything it was blocking.
+            buffer
+                .accept(head, PacketOutcome::Decoded(block(0.0)))
+                .unwrap_or_else(|error| panic!("head {head}: {error}"));
+            committed += 1;
+            while buffer.take_ready().is_some() {
+                committed += 1;
+            }
+        }
+
+        buffer.finish().unwrap();
+        (
+            buffer.peak_pending(),
+            buffer.peak_stalled_pcm_bytes(),
+            committed,
+        )
+    }
+
+    #[test]
+    fn worst_case_retention_does_not_grow_with_stream_length() {
+        // A permit that is merely never exceeded is a weaker claim than one
+        // that does not grow with the stream, so compare lengths two orders of
+        // magnitude apart under identical worst-case reordering.
+        for workers in [2, 4, 8] {
+            let (short_pending, short_bytes, short_committed) =
+                worst_case_retention(1_000, workers);
+            let (long_pending, long_bytes, long_committed) = worst_case_retention(100_000, workers);
+
+            assert_eq!(short_committed, 1_000);
+            assert_eq!(long_committed, 100_000);
+            assert_eq!(
+                short_pending, long_pending,
+                "{workers} workers retained more entries on the longer stream"
+            );
+            assert_eq!(
+                short_bytes, long_bytes,
+                "{workers} workers retained more PCM on the longer stream"
+            );
+            assert!(
+                long_pending <= workers,
+                "{workers} workers exceeded the granted queue permit: {long_pending}"
+            );
+            assert!(
+                long_pending > 1,
+                "{workers} workers never reordered, so this proved nothing"
+            );
+        }
     }
 
     #[test]

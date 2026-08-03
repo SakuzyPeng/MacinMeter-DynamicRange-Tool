@@ -24,6 +24,9 @@ SURROUND_FRAMES = 30 * SAMPLE_RATE
 # The packet-worker A/B needs a track long enough for scheduling to matter.
 ALAC_FRAMES = 240 * SAMPLE_RATE
 ALAC_FFMPEG_VERSION = "8.0.1"
+# Difficulty variants in the load-imbalance track. Matching the maximum
+# worker count makes the fixed dispatch pin one difficulty per worker.
+VARIED_ALAC_VARIANTS = 8
 BATCH_TRACK_FRAMES = 15 * SAMPLE_RATE
 BATCH_TRACKS = 8
 DISCOVERY_SUPPORTED_FILES = 1_024
@@ -217,6 +220,93 @@ def write_repeated_payload(
         for _ in range(full_blocks):
             output.write(block)
         output.write(block[: tail_frames * bytes_per_frame])
+
+
+def write_cycled_payload(
+    path: Path,
+    header: bytes,
+    blocks: list[bytes],
+    *,
+    frames: int,
+    channels: int,
+    bytes_per_sample: int,
+) -> None:
+    bytes_per_frame = channels * bytes_per_sample
+    expected_block_bytes = BLOCK_FRAMES * bytes_per_frame
+    for index, block in enumerate(blocks):
+        if len(block) != expected_block_bytes:
+            raise CorpusError(
+                f"{path.name} block {index} has {len(block)} bytes, "
+                f"expected {expected_block_bytes}"
+            )
+    full_blocks, tail_frames = divmod(frames, BLOCK_FRAMES)
+    with path.open("wb") as output:
+        output.write(header)
+        for index in range(full_blocks):
+            output.write(blocks[index % len(blocks)])
+        if tail_frames:
+            tail = blocks[full_blocks % len(blocks)]
+            output.write(tail[: tail_frames * bytes_per_frame])
+
+
+def normalized_cycle_sha256(
+    normalized_blocks: list[bytes],
+    *,
+    frames: int,
+    channels: int,
+) -> str:
+    bytes_per_frame = channels * 8
+    block_bytes = BLOCK_FRAMES * bytes_per_frame
+    for block in normalized_blocks:
+        if len(block) != block_bytes:
+            raise CorpusError("normalized block geometry is inconsistent")
+    full_blocks, tail_frames = divmod(frames, BLOCK_FRAMES)
+    digest = hashlib.sha256()
+    for index in range(full_blocks):
+        digest.update(normalized_blocks[index % len(normalized_blocks)])
+    if tail_frames:
+        tail = normalized_blocks[full_blocks % len(normalized_blocks)]
+        digest.update(tail[: tail_frames * bytes_per_frame])
+    return digest.hexdigest()
+
+
+def deterministic_varied_blocks(*, channels: int) -> list[tuple[list[int], bytes]]:
+    """Build a cycle of blocks whose compressed sizes differ by orders.
+
+    Both other ALAC tracks repeat one block, so every packet costs the same and
+    the fixed `index % workers` dispatch is perfectly balanced by construction.
+    Real music is not, and this cycle is the worst case that dispatch can meet:
+    with as many variants as workers, each worker draws the same difficulty for
+    the whole stream. Variant 0 is near-silent and variant 7 is loud and noisy,
+    which spans roughly three orders of magnitude in compressed packet size.
+    """
+    if channels < 1:
+        raise CorpusError(f"unsupported varied channel count: {channels}")
+
+    limit = (1 << 15) - 1
+    partials = ((218, 9_000), (173, 4_500), (411, 3_000), (1_021, 1_500))
+    blocks: list[tuple[list[int], bytes]] = []
+    for variant in range(VARIED_ALAC_VARIANTS):
+        dither_span = variant * 4_096
+        values: list[int] = []
+        normalized = bytearray()
+        for frame in range(BLOCK_FRAMES):
+            for channel in range(channels):
+                phase = frame + channel * 97
+                value = sum(
+                    _triangle(phase, period, amplitude) for period, amplitude in partials
+                )
+                value = value * variant // (VARIED_ALAC_VARIANTS - 1)
+                if dither_span:
+                    mixed = (
+                        (phase + 1) * 1_103_515_245 + (channel + 1) * 2_654_435_761
+                    ) & 0xFFFF_FFFF
+                    value += (mixed >> 9) % dither_span - dither_span // 2
+                value = max(-limit - 1, min(limit, value))
+                values.append(value)
+                normalized.extend(struct.pack("<d", value / float(1 << 15)))
+        blocks.append((values, bytes(normalized)))
+    return blocks
 
 
 def media_entry(
@@ -418,19 +508,24 @@ def write_alac_routes(root: Path) -> list[dict[str, object]]:
     return [
         write_alac_track(
             root,
-            values=pseudorandom_values,
-            normalized_block=pseudorandom_normalized,
+            blocks=[(pseudorandom_values, pseudorandom_normalized)],
             identifier="stereo-s16-alac-240s",
             filename="stereo-s16-alac-240s.m4a",
             signal="deterministic_integer_v1_seed_1",
         ),
         write_alac_track(
             root,
-            values=tonal_values,
-            normalized_block=tonal_normalized,
+            blocks=[(tonal_values, tonal_normalized)],
             identifier="stereo-s16-alac-tonal-240s",
             filename="stereo-s16-alac-tonal-240s.m4a",
             signal="deterministic_tonal_v1",
+        ),
+        write_alac_track(
+            root,
+            blocks=deterministic_varied_blocks(channels=2),
+            identifier="stereo-s16-alac-varied-240s",
+            filename="stereo-s16-alac-varied-240s.m4a",
+            signal=f"deterministic_varied_v1_{VARIED_ALAC_VARIANTS}_variants",
         ),
     ]
 
@@ -438,16 +533,15 @@ def write_alac_routes(root: Path) -> list[dict[str, object]]:
 def write_alac_track(
     root: Path,
     *,
-    values: list[int],
-    normalized_block: bytes,
+    blocks: list[tuple[list[int], bytes]],
     identifier: str,
     filename: str,
     signal: str,
 ) -> dict[str, object]:
-    normalized_sha = normalized_pcm_sha256(
-        normalized_block, frames=ALAC_FRAMES, channels=2
+    normalized_sha = normalized_cycle_sha256(
+        [normalized for _, normalized in blocks], frames=ALAC_FRAMES, channels=2
     )
-    payload = pack_integer_block(values, 16, "little")
+    payloads = [pack_integer_block(values, 16, "little") for values, _ in blocks]
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -468,7 +562,7 @@ def write_alac_track(
     path = root / filename
     with tempfile.TemporaryDirectory() as scratch:
         source = Path(scratch) / "alac-source.wav"
-        write_repeated_payload(
+        write_cycled_payload(
             source,
             wave_header(
                 frames=ALAC_FRAMES,
@@ -477,7 +571,7 @@ def write_alac_track(
                 bits=16,
                 format_tag=1,
             ),
-            payload,
+            payloads,
             frames=ALAC_FRAMES,
             channels=2,
             bytes_per_sample=2,

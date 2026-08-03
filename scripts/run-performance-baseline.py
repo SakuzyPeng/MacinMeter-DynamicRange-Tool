@@ -139,6 +139,11 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
                     "tonal",
                     "stereo-s16-alac-tonal-240s.m4a",
                 ),
+                (
+                    "alac-varied-240s",
+                    "worst-case load-imbalanced",
+                    "stereo-s16-alac-varied-240s.m4a",
+                ),
             )
             for workers in ALAC_DECODE_WORKER_COUNTS
         ),
