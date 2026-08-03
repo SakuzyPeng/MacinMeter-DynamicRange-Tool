@@ -450,29 +450,32 @@ clean source `c1b25ea`、Apple M4 Pro / 12 逻辑核下的中位数：
 
 两条 track 的加速比在每个 worker 数上相差不超过 0.29x，因此该结论不依赖语料恰好
 落在 escape 路径。最小 permit 更慢且 RSS 更低，从 32 放宽到 64 只再取得 6.4%，
-说明 plan 的派生值已接近该维度的收益拐点。每条 track 内所有 worker 数与所有
-permit 共享同一 result fingerprint；peak RSS 中位数 3.0 → 6.6 MiB。完整身份、
-span、环境与限制见
+说明 plan 的派生值已接近该维度的收益拐点。每条 track 的 1/2/4/8 worker 共享同一
+result fingerprint；单独扫描 permit 的 tonal 8-worker case 在最小、plan 派生与
+产品上限下也共享该 fingerprint。peak RSS 中位数 3.0 → 6.6 MiB。完整身份、span、
+环境与限制见
 [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
 
-最小 permit 在 240 秒、2813 packet 的流上完成且未触发任何 permit 耗尽，peak RSS
-反而低于更宽的 permit，因此 reorder 内存不随媒体时长增长。但确定性强制乱序 seam
-是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与“强制最坏乱序”只各自被
-覆盖，二者的组合仍只有短 fixture 证据。
+最小 permit 在 240 秒、2813 packet 的流上成功完成且未返回 capacity error，peak RSS
+低于更宽的 permit；这只是单一长度、自然完成顺序下的固定 case 观察，raw record 也
+不记录 reorder occupancy 高水位，因此不能单独证明 reorder 内存不随媒体时长增长。
+确定性强制乱序 seam 是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与
+“强制最坏乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据。
 
-该扫描是一次测量，不是启用决定。默认启用仍缺 39 项 safe-master 逐 token 对照、
-长流与强制最坏乱序的组合覆盖，以及经 `Application` 的实际启用路径；因此 ALAC
-packet workers 目前仍不得默认启用。
+该扫描是一次测量，不是启用决定。默认启用仍缺同一 corpus 在各 worker/队列容量下的
+完整正确性矩阵、39 项 safe-master 逐 token 对照、长流与强制最坏乱序的组合覆盖，
+以及经 `Application` 的实际启用路径；因此 ALAC packet workers 目前仍不得默认启用。
 
 ## 待补证据
 
 本 ADR 已接受架构方向、ALAC packet-worker 实现和上述固定身份下的性能测量，但
 尚未接受默认生产启用；剩余证据如下：
 
-- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成；仍缺同一
-  corpus 在最小/默认/最大队列下的 decoded-f64、`AnalysisResult` raw bits 与
-  wire-visible report 全矩阵、队列容量性能 A/B、39 项 safe-master 逐 token 对照、
-  真实音乐素材代表性，以及经 `Application` 的实际启用路径；
+- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成，tonal track
+  的 8-worker 最小/默认/最大队列性能 A/B 也已完成；仍缺同一 corpus 在各 worker 数、
+  最小/默认/最大队列下的 decoded-f64、`AnalysisResult` raw bits 与 wire-visible
+  report 全矩阵、39 项 safe-master 逐 token 对照、真实音乐素材代表性，以及经
+  `Application` 的实际启用路径；
 - ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
   测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
   验证；

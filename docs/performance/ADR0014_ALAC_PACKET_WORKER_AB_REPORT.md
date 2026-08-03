@@ -29,9 +29,9 @@
 ## 结论
 
 ADR-0013 稳定 ALAC route 的有界 packet workers 在 240 秒长度输入上给出明确、
-远超同轮 span 的解码加速。加速比在压缩率的两个极端之间基本一致，reorder permit
-从最小到产品上限也不改变结果：每条 track 内所有 worker 数与所有 permit 共享同一个
-结果 fingerprint。
+远超同轮 span 的解码加速。加速比在压缩率的两个极端之间基本一致，每条 track 的
+1/2/4/8 worker 共享同一个结果 fingerprint；在单独扫描 permit 的 tonal track、
+8-worker allocation 上，最小、plan 派生与产品上限也共享该 fingerprint。
 
 这是一次**测量**，不是启用决定。ADR-0014 的默认启用还缺若干门槛，见“未满足的
 毕业门槛”。产品 plan 目前仍恒为 serial，本报告不构成任何用户可见的性能承诺。
@@ -80,10 +80,10 @@ track。加速比相对同一次 run、同一条 track 的 1-worker case。
 
 | Workers | Median (ms) | MAD (ms) | Span/median | Speedup | Median peak RSS (MiB) | Max peak RSS (MiB) |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 397.8 | 1.60 | 1.5% | 1.00x | 3.0 | 3.1 |
-| 2 | 206.6 | 1.11 | 2.0% | 1.93x | 3.8 | 4.0 |
-| 4 | 110.2 | 0.65 | 4.3% | 3.61x | 4.7 | 5.0 |
-| 8 | 65.4 | 2.19 | 15.6% | 6.08x | 6.6 | 7.0 |
+| 1 | 397.8 | 0.53 | 1.3% | 1.00x | 3.0 | 3.1 |
+| 2 | 206.6 | 1.60 | 5.0% | 1.93x | 3.9 | 3.9 |
+| 4 | 110.2 | 0.21 | 2.3% | 3.61x | 4.7 | 5.0 |
+| 8 | 65.4 | 1.79 | 10.4% | 6.08x | 6.6 | 6.8 |
 
 ### Tonal track（压缩率 60.0%）
 
@@ -115,12 +115,13 @@ application plan 对每个 worker 数只派生一个队列容量，因此该维�
 **tonal track 的全部六个 case（四个 worker 数加两个额外 permit）共享同一个
 `resultFingerprintSha256`**，即结果同时独立于 worker 数与 reorder permit。
 
-`resultFingerprintSha256` 在每条 track 内唯一（伪随机 `40f68d10cbe50bcc...`、
-tonal `d76ea3199589d3ff...`），即解码 stream 几何、帧数、块数与完整 interleaved
-`f64` SHA-256 均不随 worker 数或 reorder permit 变化。两条 track 之间 fingerprint
+`resultFingerprintSha256` 在每条 track 的 1/2/4/8 worker case 内唯一（伪随机
+`40f68d10cbe50bcc...`、tonal `d76ea3199589d3ff...`）；tonal 的两个额外 permit case
+也保持其 fingerprint。即已运行 case 的解码 stream 几何、帧数、块数与完整
+interleaved `f64` SHA-256 均不随 allocation 变化。两条 track 之间 fingerprint
 自然不同，因为信号不同。
 
-8 worker 的 span 在两条 track 上都明显更高（15.6% / 12.6%），tonal 的 4 worker 一次
+8 worker 的 span 在两条 track 上都明显更高（10.4% / 12.6%），tonal 的 4 worker 一次
 达到 20.9%；本机在 run 期间负载在 6.6 与 9.3 之间（12 逻辑核）。绝对计时受宿主
 负载影响，中位数与 fingerprint 结论不受影响。
 
@@ -149,11 +150,12 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
 本报告不足以默认启用 packet workers。ADR-0014 仍要求：
 
 - **39 项 safe-master 逐 token 对照**：需要固定 reference 环境，本次未运行；
-- **最坏乱序下的长流压力**：最小 permit 在 240 秒、2813 packet 的流上完成，未触发
-  任何 permit 耗尽，且 peak RSS（中位数 5.7 MiB、七次最大 5.8 MiB）低于更宽的
-  permit，因此内存不随媒体时长增长。但确定性强制乱序 seam 是 `#[cfg(test)]`，
-  不在 release worker 中，所以“长流”与“强制最坏乱序”只各自被覆盖，二者的组合
-  仍只有短 fixture 证据；
+- **小队列长流与最坏乱序的组合压力**：最小 permit 在 240 秒、2813 packet 的流上
+  成功完成且未返回 capacity error，peak RSS（中位数 5.7 MiB、七次最大 5.8 MiB）
+  低于更宽的 permit。这只是单一长度、自然完成顺序下的固定 case 观察；raw record
+  不记录 reorder occupancy 高水位，不能单独证明内存不随媒体时长增长。确定性强制
+  乱序 seam 又是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与“强制最坏
+  乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据；
 - **application 层集成**：产品 plan 恒为 serial，本扫描通过 harness 的显式
   allocation 驱动 `codecs`，未经过 `Application` 的实际启用路径。
 
@@ -161,8 +163,10 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
 基本一致，因此该结论不依赖语料恰好落在 escape 路径。但两者都是合成信号，没有
 覆盖真实录音的动态、立体声相关性与 packet 长度分布。
 
-reorder permit 维度已完成 A/B，且三种容量与四个 worker 数共享同一 fingerprint，
-因此该门槛不再未决。
+tonal track、8-worker allocation 的 reorder-permit 性能敏感性 A/B 已完成，三个容量
+共享同一 decode fingerprint；但 ADR 共同门槛要求的同一 corpus、各 worker 数与
+最小/默认/最大容量下 decoded-f64、`AnalysisResult` raw bits 和 wire report 全矩阵
+仍未完成。
 
 ## 边界
 
