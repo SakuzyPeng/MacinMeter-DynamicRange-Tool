@@ -687,7 +687,9 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 实现 ALAC packet worker，并在 committed fixture 上证明 1/2/4/8 worker、
   最小/最大 queue reservation 与确定性强制乱序下的 raw-bit、错误和 progress 等价；
   demux 复用 decoder slot 0，构造失败也会 join 已启动线程（仍未默认启用）；
-- [ ] 补长音频 ALAC corpus 并完成 exact-fingerprint A/B，再决定是否默认启用；
+- [x] 补长音频 ALAC corpus 并完成 exact-fingerprint 同轮 worker-count 扫描
+  （240 s / 2813 packets，1.91x/3.56x/5.72x，fingerprint 唯一；仍未启用）；
+- [ ] 补队列容量 A/B、长流内存压力与 `Application` 启用路径，再决定是否默认启用；
 - [ ] 形成 FLAC ordered full-stream MD5 设计后再评估 FLAC packet worker；
 - [ ] 文件级与窗口级分别按自身毕业门槛评估，不与首个 packet 切片捆绑。
 

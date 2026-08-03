@@ -415,15 +415,34 @@ ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍�
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`，与串行基线
 逐字节相同。
 
-本步不建立任何性能声明。长音频 source-bound corpus 与 ADR-0007 的 1/2/4/8
-worker 交错 A/B 仍未进行，因此 ALAC packet workers 不得默认启用。
+### 第 2 步的长音频扫描（2026-08-03）
+
+M6 语料新增一条 240 秒 stereo 16-bit ALAC track（2813 packets），由 ffmpeg 8.0.1
+以 ADR-0013 固定的同一 bit-exact 形状编码，连续生成逐字节一致。worker 数是
+decode allocation 而非另一个 binary，因此作为 case 参数与其余 15 个 case 在同一次
+run 内固定 seed 完全交错；每个 case 各自复现 corpus 的 normalized `f64` oracle，
+verification 解码运行在与计时段相同的 allocation 上。runner 独立复算 plan 的
+allocation 派生并核对 worker 实得值，镜像漂移会使整次 run 失败。
+
+clean source `3793c79`、Apple M4 Pro / 12 逻辑核下的中位数：395.4 ms（1 worker）、
+206.7 ms（1.91x）、111.1 ms（3.56x）、69.1 ms（5.72x）；peak RSS 3.0 → 6.3 MiB。
+四个 worker 数的 result fingerprint 完全相同。不同 seed 的独立交叉 run 给出
+1.86x / 3.50x / 5.93x 与同一 fingerprint，说明加速比不依赖单次 run 的负载状态。
+完整身份、离散度、环境与限制见
+[`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)。
+
+该扫描是一次测量，不是启用决定。默认启用仍缺队列容量维度的 A/B、39 项
+safe-master 逐 token 对照、最小队列 + 强制乱序的长流内存压力测试、真实音乐
+素材代表性，以及经 `Application` 的实际启用路径；因此 ALAC packet workers
+目前仍不得默认启用。
 
 ## 待补证据
 
 本 ADR 已接受架构方向与实施优先级，但尚未接受任何并行实现或性能声明：
 
-- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker A/B 尚未建立，因此没有任何
-  加速比可以声明，packet workers 也不得默认启用；
+- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成；仍缺队列
+  容量维度的 A/B、真实音乐素材代表性，以及经 `Application` 的实际启用路径，
+  因此 packet workers 仍不得默认启用；
 - ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
   测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
   验证；

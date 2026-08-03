@@ -16,6 +16,10 @@ leaderboard or a user-facing throughput guarantee.
 - [`M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md`](M6_PERFORMANCE_ENGINEERING_CLOSURE_REPORT.md)
   records the refinement and scalar-to-final A/B runs and closes active M6
   optimization.
+- [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)
+  records the same-run 1/2/4/8 worker sweep over a long ALAC track. It is a
+  measurement, not an enablement decision: packet workers remain off by default
+  and the report states which graduation gates are still open.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,
