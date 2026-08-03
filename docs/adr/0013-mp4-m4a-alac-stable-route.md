@@ -63,12 +63,14 @@ Symphonia backend，同时覆盖常见的无损 `.m4a` 文件。
   48-byte cookie 只接受八个已登记标准 layout tag，且 tag 的声道数必须与 cookie
   一致；产品 `ChannelLayout` 仍报告 `Unknown`。
 
-AudioSampleEntry 的采样率是 16.16 定点，无法表示超过 `u16::MAX` 的速率。写入方
-因此存入 sentinel，真实速率留在 ALAC cookie 中。接受两种已观测拼写：字段为零
-（FFmpeg 的做法），以及定点值 `1.0`（`0x0001_0000`）。两者都只在 cookie rate
-确实大于 `u16::MAX` 时才接受，因此都不能掩盖真实的不一致；仍必须与 `mdhd` 和
-backend metadata 交叉核验，而 backend 读取同一字段，因此它报告的是同一 sentinel
-而非 cookie rate。
+AudioSampleEntry 的采样率是 16.16 定点，其整数部分只有 16 bit，因此无法表示超过
+`u16::MAX` 的速率——这是格式本身的限制，见
+[Apple `sound_sample_description_version_1` 的 sample rate 定义](https://developer.apple.com/documentation/quicktime-file-format/sound_sample_description_version_1/sample_rate)。
+写入方因此存入 sentinel，真实速率留在 ALAC cookie 中。接受集为 `{0, 1}` 两种已
+观测拼写：字段为零（FFmpeg 的做法），以及定点值 `1.0`（`0x0001_0000`）。两者都
+只在 cookie rate 确实大于 `u16::MAX` 时才接受，因此都不能掩盖真实的不一致；仍
+必须与 `mdhd` 和 backend metadata 交叉核验，而 backend 读取同一字段，因此它报告
+的是同一 sentinel 而非 cookie rate。
 
 ### 3. Backend 与运行时契约
 
@@ -76,7 +78,8 @@ workspace 只为既有 Symphonia 0.5.5 启用 `alac` 与 `isomp4` feature，不�
 backend、外部进程或新的一等依赖。解码前同时核验：
 
 - backend codec 必须为 `CODEC_TYPE_ALAC`；
-- backend sample rate 必须匹配第一方值（仅保留上述高采样率零 sentinel）；
+- backend sample rate 必须匹配第一方值（仅保留上述两种高采样率 sentinel，
+  即字段为零或定点 `1.0`）；
 - backend `n_frames` 必须等于第一方总帧数；
 - backend `extra_data` 必须逐 byte 等于首检 ALAC cookie。
 
@@ -166,7 +169,8 @@ WAV 孪生证据固定，而不是继承 backend 的全部隐式能力。
 
 因此把 sentinel 接受集扩为 `{0, 1}`，边界不变：仍只在 cookie rate 大于
 `u16::MAX` 时适用。first-party parser 与 backend 交叉核验共用同一判定，因为两者
-读取的是同一个 16.16 字段。
+读取的是同一个 16.16 字段。该字段无法表示高采样率不是对某个写入方的观察，而是
+格式定义本身，因此“需要 sentinel”这一前提不依赖具体 encoder。
 
 证据：`native-alac-v1` 新增 `alac24-stereo-96000-rate-sentinel-one.m4a` 及其 WAV
 孪生，与既有零拼写的 96 kHz fixture 并列；`malformed-media-v1` 新增

@@ -465,8 +465,10 @@ permit 泄漏会使长流在 index 12289 处失败而短流仍通过，因此该
 补充观察而非可复现证据。
 
 同一次检查还记录了两类与 packet workers 无关的 ADR-0013 边界：三个 96 kHz 文件
-写入 `sample_entry_rate = 1` 而非零 sentinel；两个文件的解码帧数比声明少恰好一个
-4096-frame packet。二者均按既有契约拒绝，本 ADR 只登记观察。
+把 16.16 sample entry 速率写为定点 `1.0` 而非当时唯一登记的零 sentinel；两个文件
+的解码帧数比声明少恰好一个 4096-frame packet。当时二者均按既有契约拒绝。前者已由
+[ADR-0013 的 2026-08-03 能力修订](0013-mp4-m4a-alac-stable-route.md)把 sentinel
+接受集扩为 `{0, 1}` 后受理；后者经核实是文件损坏，维持 sticky 拒绝。
 
 39 项 safe-master 回归对照已在 clean commit `768670b` 上完成：track DR 39/39、
 channel DR 62/62、overall peak 39/39、overall RMS 39/39、channel RMS 62/62、
