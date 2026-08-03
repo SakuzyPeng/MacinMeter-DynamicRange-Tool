@@ -75,8 +75,8 @@ corpus 由 `reference/tools/generate_foo_dr_meter_108_complete_v2.py` 在本机�
 | 对象 | 身份 |
 | --- | --- |
 | source commit | `768670b186c4c62e4fd5ff30e759e9e30cee1a94` |
-| build worktree | clean |
-| build command | `cargo build --locked --release -p macinmeter-cli` |
+| build worktree | clean detached worktree at the source commit |
+| build command | `cargo --manifest-path "$WORKTREE/Cargo.toml" build --locked --release -p macinmeter-cli` |
 | build host | macOS 27.0 arm64（Apple M4 Pro） |
 | Rust / Cargo | 1.96.0 / 1.96.0 |
 
@@ -98,44 +98,66 @@ corpus 由 `reference/tools/generate_foo_dr_meter_108_complete_v2.py` 在本机�
 
 ## 命令
 
-`$CORPUS` 是一个空的本机目录，`$PATHS` 是第 2 步产生的 39 行路径列表，`$WIRE` 是
-实现输出的落点。三者都是本机路径，不进入仓库，也不写入任何 artifact。全部命令
-退出状态为 0。
+`$WORKTREE` 是一个尚不存在的本机路径，`$CORPUS` 是一个空的本机目录，`$PATHS`
+是第 3 步产生的 39 行路径列表，`$WIRE` 与 `$COMPARISON` 分别是实现输出和差分输出
+的落点。它们均为本机路径；本记录不声称替换这些路径后 artifact 仍逐 byte 相同。
+全部命令退出状态为 0。
 
 ```bash
-# 1. 生成并自校验 corpus（各输出一行 JSON 摘要，exit 0）
-python3 reference/tools/generate_foo_dr_meter_108_complete_v2.py --output "$CORPUS"
-python3 reference/tools/generate_foo_dr_meter_108_complete_v2.py --verify "$CORPUS"
+# 1. 固定并核对被测 source worktree（各 exit 0）
+git worktree add --detach "$WORKTREE" \
+  768670b186c4c62e4fd5ff30e759e9e30cee1a94
+test "$(git -C "$WORKTREE" rev-parse HEAD)" = \
+  768670b186c4c62e4fd5ff30e759e9e30cee1a94
+test -z "$(git -C "$WORKTREE" status --porcelain)"
 
-# 2. 按 manifest 的 00-safe-master 顺序构造 39 项路径列表
-python3 - "$CORPUS" <<'ORDER'
+# 2. 生成并自校验 corpus（各输出一行 JSON 摘要，exit 0）
+python3 "$WORKTREE/reference/tools/generate_foo_dr_meter_108_complete_v2.py" \
+  --output "$CORPUS"
+python3 "$WORKTREE/reference/tools/generate_foo_dr_meter_108_complete_v2.py" \
+  --verify "$CORPUS"
+
+# 3. 按 manifest 的 00-safe-master 顺序构造 39 项路径列表（exit 0）
+python3 - "$CORPUS" > "$PATHS" <<'ORDER'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
-manifest = json.loads((root / "manifest.json").read_text())
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
 by_id = {case["id"]: case for case in manifest["cases"]}
 print("\n".join(str(root / by_id[i]["path"]) for i in manifest["playlists"]["00-safe-master"]))
 ORDER
-# 输出重定向到 $PATHS
 
-# 3. 构建并运行实现（exit 0，stdout 0 bytes，stderr 14111 bytes）
-cargo build --locked --release -p macinmeter-cli
-target/release/macinmeter batch --format json -o "$WIRE" $(cat "$PATHS")
+# 4. 构建并运行实现（各 exit 0；CLI stdout 0 bytes、stderr 14111 bytes）
+cargo --manifest-path "$WORKTREE/Cargo.toml" build \
+  --locked --release -p macinmeter-cli
+path_args=()
+while IFS= read -r path; do
+  path_args+=("$path")
+done < "$PATHS"
+"$WORKTREE/target/release/macinmeter" batch \
+  --format json \
+  --output "$WIRE" \
+  "${path_args[@]}"
 
-# 4. 比较（exit 0）
-python3 reference/tools/compare_macinmeter_report_metrics_to_foo_dr_meter.py \
+# 5. 比较（exit 0）
+python3 \
+  "$WORKTREE/reference/tools/compare_macinmeter_report_metrics_to_foo_dr_meter.py" \
   --reference \
-    reference/observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/normalized/safe-master.json \
+    "$WORKTREE/reference/observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/normalized/safe-master.json" \
   --implementation-output "$WIRE" \
-  --implementation-binary target/release/macinmeter \
-  --output \
-    reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/comparison.json
+  --implementation-binary "$WORKTREE/target/release/macinmeter" \
+  --output "$COMPARISON"
 
-# 5. comparator 单元测试（exit 0）
-python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
+# 6. comparator 单元测试（exit 0）
+python3 -m unittest discover \
+  -s "$WORKTREE/reference/tools/tests" \
+  -p 'test_*.py'
 ```
 
-第 3 步执行两次，两次输出逐 byte 相同、stderr 字节数相同。命令中的本机路径不写入
-comparison；comparison 只保存输入内容 SHA-256 与 path-free 固定身份。
+第 4 步执行两次，两次输出逐 byte 相同、stderr 字节数相同。WireEnvelope 的两处
+`displayPath` 保留了实际 `$CORPUS` 根路径；comparison 不保存路径文本，fixture
+映射也只使用文件 stem，但其 `wireOutputSha256` 对原始 WireEnvelope 字节计算。因此
+更换 corpus 根路径会改变 wire 和 comparison 的 artifact SHA-256，即使字段匹配摘要
+不变。本记录的逐 byte 重跑复用了同一路径与环境，不构成跨路径或跨机器复现声明。
 
 ## 并行状态
 

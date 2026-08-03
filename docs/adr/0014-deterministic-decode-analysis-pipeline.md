@@ -548,4 +548,3 @@ corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交�
 - 默认启用 ALAC packet workers 的决定本身；
 - FLAC 的 ordered full-stream MD5 设计；
 - 文件级与窗口级并行的生产实现，二者目前只有准入契约。
-
