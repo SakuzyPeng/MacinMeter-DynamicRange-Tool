@@ -76,7 +76,7 @@ corpus 由 `reference/tools/generate_foo_dr_meter_108_complete_v2.py` 在本机�
 | --- | --- |
 | source commit | `768670b186c4c62e4fd5ff30e759e9e30cee1a94` |
 | build worktree | clean detached worktree at the source commit |
-| build command | `cargo --manifest-path "$WORKTREE/Cargo.toml" build --locked --release -p macinmeter-cli` |
+| build command | `cargo build --manifest-path "$WORKTREE/Cargo.toml" --locked --release -p macinmeter-cli` |
 | build host | macOS 27.0 arm64（Apple M4 Pro） |
 | Rust / Cargo | 1.96.0 / 1.96.0 |
 
@@ -93,8 +93,9 @@ corpus 由 `reference/tools/generate_foo_dr_meter_108_complete_v2.py` 在本机�
 重跑逐 byte 相同；两次 CLI 均退出 0、stdout 为 0 bytes、stderr 各 14111 bytes。
 这个检查只说明同一实现、同一输入和同一本地环境的输出重复性。
 
-同一 wire 输出也由一个先前构建的、二进制 SHA-256 不同的 release CLI 产生。这说明
-本次比较的结果不依赖该二进制的具体构建产物，但不构成任何可复现构建声明。
+同一 wire 输出另由两个二进制 SHA-256 各不相同的 release CLI 产生（一次先前构建，
+一次在重放 worktree 中构建）。这说明本次比较的结果不依赖该二进制的具体构建产物，
+但不构成任何可复现构建声明。
 
 ## 命令
 
@@ -127,16 +128,18 @@ print("\n".join(str(root / by_id[i]["path"]) for i in manifest["playlists"]["00-
 ORDER
 
 # 4. 构建并运行实现（各 exit 0；CLI stdout 0 bytes、stderr 14111 bytes）
-cargo --manifest-path "$WORKTREE/Cargo.toml" build \
+cargo build --manifest-path "$WORKTREE/Cargo.toml" \
   --locked --release -p macinmeter-cli
-path_args=()
-while IFS= read -r path; do
-  path_args+=("$path")
+# The loop variable must not be named `path`: under zsh that name is tied to
+# `PATH` and assigning it destroys command lookup for the rest of the shell.
+input_args=()
+while IFS= read -r input; do
+  input_args+=("$input")
 done < "$PATHS"
 "$WORKTREE/target/release/macinmeter" batch \
   --format json \
   --output "$WIRE" \
-  "${path_args[@]}"
+  "${input_args[@]}"
 
 # 5. 比较（exit 0）
 python3 \
@@ -153,11 +156,24 @@ python3 -m unittest discover \
   -p 'test_*.py'
 ```
 
-第 4 步执行两次，两次输出逐 byte 相同、stderr 字节数相同。WireEnvelope 的两处
-`displayPath` 保留了实际 `$CORPUS` 根路径；comparison 不保存路径文本，fixture
-映射也只使用文件 stem，但其 `wireOutputSha256` 对原始 WireEnvelope 字节计算。因此
-更换 corpus 根路径会改变 wire 和 comparison 的 artifact SHA-256，即使字段匹配摘要
-不变。本记录的逐 byte 重跑复用了同一路径与环境，不构成跨路径或跨机器复现声明。
+第 4 步执行两次，两次输出逐 byte 相同、stderr 字节数相同。
+
+上述六步随后在一个新建的 detached worktree 上按原文重放，复用同一 `$CORPUS`
+路径：全部退出 0，CLI stderr 仍为 14111 bytes，WireEnvelope 的 SHA-256 与本记录
+保存的值逐 byte 相同，comparison 的 `summary` 与本记录保存的 `summary` 完全相等。
+
+两类 artifact SHA-256 会随环境变化，即使字段匹配摘要不变：
+
+- WireEnvelope 的每个 item 有两处 `displayPath`（`items[i].displayPath` 与
+  `items[i].outcome.report.source.displayPath`，共 78 处）保留实际 `$CORPUS` 根
+  路径。comparison 本身不保存路径文本，fixture 映射也只使用文件 stem，但其
+  `wireOutputSha256` 对原始 WireEnvelope 字节计算，因此更换 corpus 根路径会同时
+  改变 wire 与 comparison 的 artifact SHA-256；
+- comparison 还记录 `binarySha256`。在不同 worktree 构建的 release CLI 二进制
+  SHA-256 不同（上述重放为 `295deaaa…`，本记录为 `1e44a6f6…`），因此 comparison
+  artifact 也会不同，而两者产生的 WireEnvelope 逐 byte 相同。
+
+本记录的逐 byte 重跑复用了同一路径与环境，不构成跨路径或跨机器复现声明。
 
 ## 并行状态
 
