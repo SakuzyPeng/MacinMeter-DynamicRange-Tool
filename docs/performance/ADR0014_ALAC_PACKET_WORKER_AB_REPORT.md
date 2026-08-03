@@ -197,8 +197,11 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
   不记录 reorder occupancy 高水位，不能单独证明内存不随媒体时长增长。确定性强制
   乱序 seam 又是 `#[cfg(test)]`、不在 release worker 中，所以“长流”与“强制最坏
   乱序”只各自被覆盖，二者的组合仍只有短 fixture 证据；
-- **application 层集成**：产品 plan 恒为 serial，本扫描通过 harness 的显式
-  allocation 驱动 `codecs`，未经过 `Application` 的实际启用路径。
+- **application 层集成**：产品 plan 恒为 serial。本扫描与等价矩阵都通过 harness
+  的显式 allocation 驱动 `codecs`。`Application` 的真实派生路径已另由单元测试
+  覆盖——`ConcurrencyPlan::bounded` 的 budget 经 `Application::analyze_file` 得到
+  与 serial plan 逐字节相同的 wire report，且逐次核对实际选择的 engine——但性能
+  测量本身仍未经过该路径，`ExecutionBudget` 的非串行构造也仍是 `#[cfg(test)]`。
 
 两条 track 的对照缩小了此前“真实音乐素材代表性”的疑问：加速比在压缩率的两端
 基本一致，因此该结论不依赖语料恰好落在 escape 路径。但两者都是合成信号，没有
@@ -207,7 +210,7 @@ Apple M4 Pro / Mac16,8，12 物理核 12 逻辑核，48 GiB，macOS 27.0（Darwi
 tonal track、8-worker allocation 的 reorder-permit 性能敏感性 A/B 已完成，三个容量
 共享同一 decode fingerprint；ADR 共同门槛要求的全矩阵也已在两条 track 上各完成
 12 个单元，见“Allocation 等价矩阵”。两者都通过 harness 的显式 allocation 驱动
-`codecs`，因此仍不覆盖 `Application` 的启用路径。
+`codecs`；`Application` 的真实 plan 派生另由单元测试覆盖，但尚未承载性能测量。
 
 ## 边界
 

@@ -19,6 +19,14 @@ impl AnalyzeRequest {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The engine the most recent analysis on this thread actually selected.
+    pub(crate) static LAST_DECODE_EXECUTION:
+        std::cell::Cell<Option<macinmeter_codecs::DecodeExecution>> =
+        const { std::cell::Cell::new(None) };
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Analyzer {
     decoder_factory: DecoderFactory,
@@ -69,6 +77,16 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
+        // A differential test that silently fell back to the serial engine
+        // would pass while proving nothing, so tests record which engine the
+        // route actually selected. Production takes the plain open.
+        #[cfg(test)]
+        let opened = {
+            let (opened, execution) = self.decoder_factory.open_with_execution(&request.path)?;
+            LAST_DECODE_EXECUTION.with(|last| last.set(Some(execution)));
+            opened
+        };
+        #[cfg(not(test))]
         let opened = self.decoder_factory.open(&request.path)?;
         Self::analyze_opened(opened, item_index, control, display_path)
     }

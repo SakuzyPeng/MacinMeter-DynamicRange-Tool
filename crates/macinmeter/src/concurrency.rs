@@ -39,9 +39,12 @@ impl ConcurrencyPlan {
 
     /// A plan of at most `requested` workers, capped by the product ceiling and
     /// the host.
-    #[allow(
-        dead_code,
-        reason = "ADR-0014 keeps non-serial production plans dormant until a route graduates"
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "ADR-0014 keeps non-serial production plans dormant until a route graduates"
+        )
     )]
     pub(crate) fn bounded(requested: NonZeroUsize) -> Self {
         let host = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
@@ -55,6 +58,13 @@ impl ConcurrencyPlan {
         self.total_workers
     }
 
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "the product plan is unconditionally serial, so nothing branches on it yet"
+        )
+    )]
     pub(crate) const fn is_serial(self) -> bool {
         self.total_workers.get() == 1
     }

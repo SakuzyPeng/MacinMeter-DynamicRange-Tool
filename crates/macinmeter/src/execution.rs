@@ -73,6 +73,20 @@ impl ExecutionBudget {
         self.concurrency
     }
 
+    /// Replace the internal plan.
+    ///
+    /// ADR-0014 keeps every parallel axis off by default, so no public
+    /// constructor can reach this. It exists for the first-party differential
+    /// tests that have to drive a non-serial plan through the real
+    /// `Application` path rather than through a mirrored constant.
+    #[cfg(test)]
+    pub(crate) const fn with_concurrency(self, concurrency: ConcurrencyPlan) -> Self {
+        Self {
+            concurrency,
+            ..self
+        }
+    }
+
     fn max_admitted_jobs(self) -> usize {
         SERIAL_ACTIVE_JOBS + self.max_queued_jobs
     }
@@ -101,10 +115,6 @@ impl Application {
     }
 
     pub fn with_budget(budget: ExecutionBudget) -> Self {
-        debug_assert!(
-            budget.concurrency().is_serial(),
-            "0.3.0 exposes no non-serial production budget"
-        );
         Self {
             coordinator: ExecutionCoordinator::new(budget),
         }
@@ -427,6 +437,106 @@ mod tests {
         sync::mpsc,
         thread,
     };
+
+    /// A budget whose plan is built by the real `ConcurrencyPlan`, not by a
+    /// mirrored constant, so these tests exercise the production derivation.
+    fn bounded_budget(requested_workers: usize) -> ExecutionBudget {
+        ExecutionBudget::serial().with_concurrency(ConcurrencyPlan::bounded(
+            NonZeroUsize::new(requested_workers).unwrap(),
+        ))
+    }
+
+    fn fixture(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures")
+            .join(name)
+    }
+
+    fn wire_bytes(application: &Application, name: &str) -> Vec<u8> {
+        let report = application
+            .analyze_file(AnalyzeRequest::new(fixture(name)))
+            .unwrap_or_else(|error| panic!("{name} must analyze: {error}"));
+        serde_json::to_vec(&crate::WireEnvelope::analysis(report))
+            .expect("the wire envelope must serialize")
+    }
+
+    fn last_engine() -> macinmeter_codecs::DecodeEngineKind {
+        crate::application::LAST_DECODE_EXECUTION
+            .with(std::cell::Cell::get)
+            .expect("an analysis must have recorded its engine")
+            .engine()
+    }
+
+    #[test]
+    fn a_non_serial_plan_reaches_the_decoder_through_the_application_path() {
+        // The harness matrix mirrors the plan's derivation. This checks the
+        // real thing: what `Application` actually hands down for a bounded plan.
+        let budget = bounded_budget(8);
+        let plan_workers = budget.concurrency().total_workers().get();
+        let job = Application::with_budget(budget)
+            .reserve(&CancellationToken::new())
+            .unwrap();
+        let allocation = job.allocation();
+
+        assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
+        let decode = allocation.decode();
+        assert_eq!(decode.workers().get(), plan_workers);
+        if plan_workers == 1 {
+            assert!(decode.is_serial(), "a single-core host degrades to serial");
+        } else {
+            assert_eq!(decode.queue_capacity().get(), plan_workers * 4);
+            assert_eq!(
+                decode.max_in_flight_pcm_bytes(),
+                plan_workers as u64 * 4 * 1024 * 1024
+            );
+        }
+    }
+
+    #[test]
+    fn the_application_path_reports_identically_under_a_non_serial_plan() {
+        // ALAC is the only graduated packet route, so it is the only case where
+        // the plan changes the engine. The others must be unaffected, which is
+        // what keeps enabling the plan from leaking into unrelated routes.
+        let serial = Application::new();
+        for name in [
+            "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+            "native-alac-v1/alac24-8ch-48000.mp4",
+            "native-pcm-v1/wav-pcm-s16-stereo.wav",
+            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+            "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+        ] {
+            let expected = wire_bytes(&serial, name);
+            assert_eq!(
+                last_engine(),
+                macinmeter_codecs::DecodeEngineKind::Serial,
+                "{name} must use the serial engine under the product plan"
+            );
+
+            for requested_workers in [2, 4, 8] {
+                let budget = bounded_budget(requested_workers);
+                let granted = budget.concurrency().total_workers().get();
+                let bounded = Application::with_budget(budget);
+                assert_eq!(
+                    wire_bytes(&bounded, name),
+                    expected,
+                    "{name} changed under a {requested_workers}-worker plan"
+                );
+
+                // Only the graduated ALAC route may switch engines, and only
+                // when the host actually granted more than one worker.
+                let expected_engine = if name.starts_with("native-alac-v1/") && granted > 1 {
+                    macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers
+                } else {
+                    macinmeter_codecs::DecodeEngineKind::Serial
+                };
+                assert_eq!(
+                    last_engine(),
+                    expected_engine,
+                    "{name} selected an unexpected engine on {granted} granted workers"
+                );
+            }
+        }
+    }
 
     fn run_test_job(
         job: ApplicationJob,
