@@ -506,6 +506,8 @@ def descendant_rss(rows: dict[int, tuple[int, int]], root_pid: int) -> tuple[int
 
 
 def sample_process_tree(root_pid: int) -> tuple[int, int]:
+    if sys.platform == "win32":
+        return windows_descendant_rss(root_pid)
     completed = subprocess.run(
         ("ps", "-axo", "pid=,ppid=,rss="),
         check=True,
@@ -515,13 +517,213 @@ def sample_process_tree(root_pid: int) -> tuple[int, int]:
     return descendant_rss(parse_ps_rows(completed.stdout), root_pid)
 
 
+# Windows has no `/usr/bin/time` and its `ps` reports no RSS, so the same two
+# measurements are taken from the Win32 process APIs instead. The values are
+# read through a handle this runner opens itself and holds for the child's whole
+# lifetime, which also pins the process id against reuse.
+WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+WINDOWS_PROCESS_VM_READ = 0x0010
+WINDOWS_TH32CS_SNAPPROCESS = 0x0002
+WINDOWS_INVALID_HANDLE = -1
+# FILETIME counts 100-nanosecond intervals.
+WINDOWS_FILETIME_TICKS_PER_SECOND = 10_000_000
+
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    class _FileTime(ctypes.Structure):
+        _fields_ = [
+            ("dwLowDateTime", wintypes.DWORD),
+            ("dwHighDateTime", wintypes.DWORD),
+        ]
+
+    class _ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    class _ProcessEntry32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", ctypes.c_char * 260),
+        ]
+
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _PSAPI = ctypes.WinDLL("psapi", use_last_error=True)
+
+
+def _windows_filetime_seconds(value: "_FileTime") -> float:
+    ticks = (value.dwHighDateTime << 32) | value.dwLowDateTime
+    return ticks / WINDOWS_FILETIME_TICKS_PER_SECOND
+
+
+def windows_open_process(pid: int) -> int:
+    handle = _KERNEL32.OpenProcess(
+        WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION | WINDOWS_PROCESS_VM_READ,
+        False,
+        pid,
+    )
+    if not handle:
+        raise BaselineError(
+            f"cannot open process {pid} for measurement: "
+            f"Win32 error {ctypes.get_last_error()}"
+        )
+    return handle
+
+
+def windows_memory_counters(handle: int) -> "_ProcessMemoryCounters":
+    counters = _ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(_ProcessMemoryCounters)
+    if not _PSAPI.GetProcessMemoryInfo(
+        wintypes.HANDLE(handle), ctypes.byref(counters), counters.cb
+    ):
+        raise BaselineError(
+            f"GetProcessMemoryInfo failed: Win32 error {ctypes.get_last_error()}"
+        )
+    return counters
+
+
+def windows_process_metrics(handle: int) -> dict[str, int | float]:
+    """Read one exited child's CPU time and peak working set.
+
+    `maxResidentSetBytes` carries `PeakWorkingSetSize`, which is Windows' own
+    peak-resident measure. It is named after the POSIX field so one summary
+    shape serves every platform, and the record states which API produced it.
+    """
+    creation, exit_time, kernel, user = (
+        _FileTime(),
+        _FileTime(),
+        _FileTime(),
+        _FileTime(),
+    )
+    if not _KERNEL32.GetProcessTimes(
+        wintypes.HANDLE(handle),
+        ctypes.byref(creation),
+        ctypes.byref(exit_time),
+        ctypes.byref(kernel),
+        ctypes.byref(user),
+    ):
+        raise BaselineError(
+            f"GetProcessTimes failed: Win32 error {ctypes.get_last_error()}"
+        )
+    counters = windows_memory_counters(handle)
+    created = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+    exited = (exit_time.dwHighDateTime << 32) | exit_time.dwLowDateTime
+    if exited <= created:
+        raise BaselineError("GetProcessTimes reported no elapsed interval")
+    return {
+        "realSeconds": (exited - created) / WINDOWS_FILETIME_TICKS_PER_SECOND,
+        "userSeconds": _windows_filetime_seconds(user),
+        "systemSeconds": _windows_filetime_seconds(kernel),
+        "maxResidentSetBytes": int(counters.PeakWorkingSetSize),
+        "pageFaults": int(counters.PageFaultCount),
+    }
+
+
+def windows_descendant_rss(root_pid: int) -> tuple[int, int]:
+    snapshot = _KERNEL32.CreateToolhelp32Snapshot(WINDOWS_TH32CS_SNAPPROCESS, 0)
+    if snapshot == WINDOWS_INVALID_HANDLE:
+        raise BaselineError(
+            f"CreateToolhelp32Snapshot failed: Win32 error {ctypes.get_last_error()}"
+        )
+    try:
+        entry = _ProcessEntry32()
+        entry.dwSize = ctypes.sizeof(_ProcessEntry32)
+        parents: dict[int, int] = {}
+        if not _KERNEL32.Process32First(
+            wintypes.HANDLE(snapshot), ctypes.byref(entry)
+        ):
+            raise BaselineError("Process32First returned no entries")
+        while True:
+            parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+            if not _KERNEL32.Process32Next(
+                wintypes.HANDLE(snapshot), ctypes.byref(entry)
+            ):
+                break
+    finally:
+        _KERNEL32.CloseHandle(wintypes.HANDLE(snapshot))
+
+    descendants = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent in parents.items():
+            if parent in descendants and pid not in descendants:
+                descendants.add(pid)
+                changed = True
+
+    total = 0
+    counted = 0
+    for pid in descendants:
+        try:
+            handle = windows_open_process(pid)
+        except BaselineError:
+            # The process exited between the snapshot and this read.
+            continue
+        try:
+            total += int(windows_memory_counters(handle).WorkingSetSize)
+            counted += 1
+        except BaselineError:
+            continue
+        finally:
+            _KERNEL32.CloseHandle(wintypes.HANDLE(handle))
+    return total, counted
+
+
+def native_timer_description() -> str:
+    """Name the exact tool that produced `nativeMetrics` on this host.
+
+    Peak-resident bytes are not the same measurement on every platform, so a
+    record states which one it holds rather than leaving readers to assume.
+    """
+    if sys.platform == "darwin":
+        return "Darwin /usr/bin/time -l"
+    if sys.platform == "win32":
+        return (
+            "Win32 GetProcessTimes and GetProcessMemoryInfo on a handle held for "
+            "the child's lifetime; maxResidentSetBytes is PeakWorkingSetSize"
+        )
+    return "GNU /usr/bin/time -v"
+
+
+def process_tree_rss_description() -> str:
+    if sys.platform == "win32":
+        return (
+            "sum of descendant WorkingSetSize from a Toolhelp32 snapshot; "
+            "no measurement wrapper process exists on this platform"
+        )
+    return "sum of descendant RSS sampled with ps; /usr/bin/time wrapper excluded"
+
+
 def time_command_prefix(metrics_path: Path) -> tuple[list[str], str]:
     if sys.platform == "darwin":
         return ["/usr/bin/time", "-l", "-o", str(metrics_path)], "darwin_time_l"
     if sys.platform.startswith("linux"):
         return ["/usr/bin/time", "-v", "-o", str(metrics_path)], "gnu_time_v"
+    if sys.platform == "win32":
+        # No wrapper process: the same metrics come from the Win32 process APIs.
+        return [], "windows_process_api"
     raise BaselineError(
-        "process-tree/RSS baseline currently supports macOS and Linux only"
+        "process-tree/RSS baseline currently supports macOS, Linux and Windows only"
     )
 
 
@@ -539,6 +741,13 @@ def run_sample(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+        )
+        # Held for the child's whole lifetime so its counters stay readable
+        # after it exits and its process id cannot be reused meanwhile.
+        measurement_handle = (
+            windows_open_process(process.pid)
+            if timer_kind == "windows_process_api"
+            else None
         )
         peak_tree_rss = 0
         peak_tree_processes = 0
@@ -569,15 +778,23 @@ def run_sample(
             raise BaselineError(
                 f"{case.case_id} completed without a usable process-tree RSS sample"
             )
-        try:
-            native_text = metrics_path.read_text(encoding="utf-8")
-        except OSError as error:
-            raise BaselineError(f"cannot read native time metrics: {error}") from error
-        native = (
-            parse_darwin_time(native_text)
-            if timer_kind == "darwin_time_l"
-            else parse_gnu_time(native_text)
-        )
+        if measurement_handle is not None:
+            try:
+                native = windows_process_metrics(measurement_handle)
+            finally:
+                _KERNEL32.CloseHandle(wintypes.HANDLE(measurement_handle))
+        else:
+            try:
+                native_text = metrics_path.read_text(encoding="utf-8")
+            except OSError as error:
+                raise BaselineError(
+                    f"cannot read native time metrics: {error}"
+                ) from error
+            native = (
+                parse_darwin_time(native_text)
+                if timer_kind == "darwin_time_l"
+                else parse_gnu_time(native_text)
+            )
         return {
             "workerElapsedNs": output["workerElapsedNs"],
             "runnerWallNs": runner_wall_ns,
@@ -1299,14 +1516,8 @@ def main() -> int:
             "environment": environment,
             "measurement": {
                 "workerTimer": "std::time::Instant around the named workload only",
-                "nativeTimer": (
-                    "Darwin /usr/bin/time -l"
-                    if sys.platform == "darwin"
-                    else "GNU /usr/bin/time -v"
-                ),
-                "processTreeRss": (
-                    "sum of descendant RSS sampled with ps; /usr/bin/time wrapper excluded"
-                ),
+                "nativeTimer": native_timer_description(),
+                "processTreeRss": process_tree_rss_description(),
                 "samplingIntervalMs": args.sampling_interval_ms,
                 "decodeVerification": (
                     "full decoded f64 SHA-256 is outside the timed decode interval"
