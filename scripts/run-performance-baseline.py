@@ -113,13 +113,28 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
         # these with every other case in one run, and each independently has to
         # reproduce the corpus PCM oracle, which makes the sweep a differential
         # rather than four unrelated timings.
+        # Both tracks carry the same geometry at opposite ends of the
+        # compression range, so the sweep can state whether its result depends
+        # on how hard the codec has to work rather than assuming it does not.
         *(
             BenchmarkCase(
-                f"decode/alac-s16-240s-w{workers}",
+                f"decode/{track}-w{workers}",
                 "decode",
-                "Content probe plus complete ALAC decoding on "
+                f"Content probe plus complete {label} ALAC decoding on "
                 f"{workers} decode worker(s)",
-                ("decode", media("stereo-s16-alac-240s.m4a"), "1", str(workers)),
+                ("decode", media(filename), "1", str(workers)),
+            )
+            for track, label, filename in (
+                (
+                    "alac-s16-240s",
+                    "near-incompressible",
+                    "stereo-s16-alac-240s.m4a",
+                ),
+                (
+                    "alac-tonal-240s",
+                    "tonal",
+                    "stereo-s16-alac-tonal-240s.m4a",
+                ),
             )
             for workers in ALAC_DECODE_WORKER_COUNTS
         ),

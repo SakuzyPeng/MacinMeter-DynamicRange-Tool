@@ -82,6 +82,48 @@ def deterministic_integer_block(
     return values, bytes(normalized)
 
 
+def _triangle(phase: int, period: int, amplitude: int) -> int:
+    half = period // 2
+    position = phase % period
+    if position < half:
+        return (2 * amplitude * position) // half - amplitude
+    return amplitude - (2 * amplitude * (position - half)) // half
+
+
+def deterministic_tonal_block(*, channels: int) -> tuple[list[int], bytes]:
+    """Build a tonal, compressible 16-bit block.
+
+    The pseudo-random block compresses to roughly 99.5%, which lets ALAC fall
+    back to its uncompressed escape path, so a sweep run only on that signal
+    cannot say whether the result holds for material the codec actually has to
+    predict. Summed integer triangle waves plus a small dither land near 60%,
+    the ordinary range for lossless music, while staying exactly reproducible
+    without any floating point.
+    """
+    if channels < 1:
+        raise CorpusError(f"unsupported tonal channel count: {channels}")
+
+    limit = (1 << 15) - 1
+    partials = ((218, 9_000), (173, 4_500), (411, 3_000), (1_021, 1_500))
+    dither_span = 4_096
+    values: list[int] = []
+    normalized = bytearray()
+    for frame in range(BLOCK_FRAMES):
+        for channel in range(channels):
+            phase = frame + channel * 97
+            value = sum(
+                _triangle(phase, period, amplitude) for period, amplitude in partials
+            )
+            mixed = (
+                (phase + 1) * 1_103_515_245 + (channel + 1) * 2_654_435_761
+            ) & 0xFFFF_FFFF
+            value += (mixed >> 9) % dither_span - dither_span // 2
+            value = max(-limit - 1, min(limit, value))
+            values.append(value)
+            normalized.extend(struct.pack("<d", value / float(1 << 15)))
+    return values, bytes(normalized)
+
+
 def pack_integer_block(values: list[int], bits: int, byteorder: str) -> bytes:
     width = bits // 8
     return b"".join(
@@ -358,17 +400,52 @@ def write_stereo_routes(root: Path) -> list[dict[str, object]]:
     return entries
 
 
-def write_alac_route(root: Path) -> dict[str, object]:
-    """Write the long ALAC track the packet-worker A/B needs.
+def write_alac_routes(root: Path) -> list[dict[str, object]]:
+    """Write the long ALAC tracks the packet-worker sweep needs.
 
     ADR-0014 requires a source-bound long ALAC input before any packet-worker
     speedup may be claimed: the committed correctness fixtures are far too short
-    to expose scheduling behaviour. The intermediate WAV is not kept, since only
-    the compressed track and its normalized f64 oracle are part of the corpus.
+    to expose scheduling behaviour. Two tracks of identical length carry the
+    same geometry at opposite ends of the compression range, so the sweep can
+    say whether its result depends on how hard the codec has to work. The
+    intermediate WAVs are not kept, since only the compressed tracks and their
+    normalized f64 oracles are part of the corpus.
     """
-    values, normalized = deterministic_integer_block(channels=2, bits=16, seed=1)
+    pseudorandom_values, pseudorandom_normalized = deterministic_integer_block(
+        channels=2, bits=16, seed=1
+    )
+    tonal_values, tonal_normalized = deterministic_tonal_block(channels=2)
+    return [
+        write_alac_track(
+            root,
+            values=pseudorandom_values,
+            normalized_block=pseudorandom_normalized,
+            identifier="stereo-s16-alac-240s",
+            filename="stereo-s16-alac-240s.m4a",
+            signal="deterministic_integer_v1_seed_1",
+        ),
+        write_alac_track(
+            root,
+            values=tonal_values,
+            normalized_block=tonal_normalized,
+            identifier="stereo-s16-alac-tonal-240s",
+            filename="stereo-s16-alac-tonal-240s.m4a",
+            signal="deterministic_tonal_v1",
+        ),
+    ]
+
+
+def write_alac_track(
+    root: Path,
+    *,
+    values: list[int],
+    normalized_block: bytes,
+    identifier: str,
+    filename: str,
+    signal: str,
+) -> dict[str, object]:
     normalized_sha = normalized_pcm_sha256(
-        normalized, frames=ALAC_FRAMES, channels=2
+        normalized_block, frames=ALAC_FRAMES, channels=2
     )
     payload = pack_integer_block(values, 16, "little")
 
@@ -388,7 +465,7 @@ def write_alac_route(root: Path) -> dict[str, object]:
             f"observed: {version_line or '<no output>'}"
         )
 
-    path = root / "stereo-s16-alac-240s.m4a"
+    path = root / filename
     with tempfile.TemporaryDirectory() as scratch:
         source = Path(scratch) / "alac-source.wav"
         write_repeated_payload(
@@ -439,14 +516,14 @@ def write_alac_route(root: Path) -> dict[str, object]:
     return media_entry(
         root,
         path,
-        identifier="stereo-s16-alac-240s",
+        identifier=identifier,
         container="mp4",
         codec="alac",
         frames=ALAC_FRAMES,
         channels=2,
         bits=16,
         normalized_sha256=normalized_sha,
-        signal="deterministic_integer_v1_seed_1",
+        signal=signal,
         encoder={
             "name": "ffmpeg alac",
             "version": ALAC_FFMPEG_VERSION,
@@ -570,7 +647,7 @@ def write_discovery_tree(root: Path) -> dict[str, object]:
 def generate_into(root: Path) -> dict[str, object]:
     root.mkdir(parents=True)
     media = write_stereo_routes(root)
-    media.append(write_alac_route(root))
+    media.extend(write_alac_routes(root))
     media.append(write_surround_route(root))
     media.extend(write_batch_routes(root))
     media.sort(key=lambda entry: str(entry["id"]))
