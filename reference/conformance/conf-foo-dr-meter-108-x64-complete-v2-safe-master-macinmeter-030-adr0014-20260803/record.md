@@ -2,11 +2,19 @@
 
 ## 结论
 
+- conformance run ID：
+  `CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803`
 - 事实类别：reference-to-implementation report-metrics conformance
 - 状态：`match`
 - 参考规格：`foo-dr-meter-1.0.8-candidate-v1`
+- target ID：`TARGET-foo-dr-meter-1.0.8-foobar2000-2.25.10-x64-win10-19045`
+- experiment ID：`EXP-foo-dr-meter-108-complete-v2`
 - 参考观测：
   [`OBS-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718`](../../observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/observation.json)
+- fixture：corpus `foo-dr-meter-108-complete-v2`、playlist `00-safe-master` 的
+  39 项，按 manifest 顺序，首项 `window-minus-one-control`、末项
+  `host-decode-f64`；完整集合与顺序见
+  [manifest](../../fixtures/foo-dr-meter-108-complete-v2.manifest.json)
 - 被测实现提交：`768670b186c4c62e4fd5ff30e759e9e30cee1a94`
 - wire schema / tool version：4 / 0.3.0
 
@@ -87,6 +95,47 @@ corpus 由 `reference/tools/generate_foo_dr_meter_108_complete_v2.py` 在本机�
 
 同一 wire 输出也由一个先前构建的、二进制 SHA-256 不同的 release CLI 产生。这说明
 本次比较的结果不依赖该二进制的具体构建产物，但不构成任何可复现构建声明。
+
+## 命令
+
+`$CORPUS` 是一个空的本机目录，`$PATHS` 是第 2 步产生的 39 行路径列表，`$WIRE` 是
+实现输出的落点。三者都是本机路径，不进入仓库，也不写入任何 artifact。全部命令
+退出状态为 0。
+
+```bash
+# 1. 生成并自校验 corpus（各输出一行 JSON 摘要，exit 0）
+python3 reference/tools/generate_foo_dr_meter_108_complete_v2.py --output "$CORPUS"
+python3 reference/tools/generate_foo_dr_meter_108_complete_v2.py --verify "$CORPUS"
+
+# 2. 按 manifest 的 00-safe-master 顺序构造 39 项路径列表
+python3 - "$CORPUS" <<'ORDER'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+manifest = json.loads((root / "manifest.json").read_text())
+by_id = {case["id"]: case for case in manifest["cases"]}
+print("\n".join(str(root / by_id[i]["path"]) for i in manifest["playlists"]["00-safe-master"]))
+ORDER
+# 输出重定向到 $PATHS
+
+# 3. 构建并运行实现（exit 0，stdout 0 bytes，stderr 14111 bytes）
+cargo build --locked --release -p macinmeter-cli
+target/release/macinmeter batch --format json -o "$WIRE" $(cat "$PATHS")
+
+# 4. 比较（exit 0）
+python3 reference/tools/compare_macinmeter_report_metrics_to_foo_dr_meter.py \
+  --reference \
+    reference/observations/obs-foo-dr-meter-108-x64-complete-v2-safe-master-run1-20260718/normalized/safe-master.json \
+  --implementation-output "$WIRE" \
+  --implementation-binary target/release/macinmeter \
+  --output \
+    reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/comparison.json
+
+# 5. comparator 单元测试（exit 0）
+python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
+```
+
+第 3 步执行两次，两次输出逐 byte 相同、stderr 字节数相同。命令中的本机路径不写入
+comparison；comparison 只保存输入内容 SHA-256 与 path-free 固定身份。
 
 ## 并行状态
 

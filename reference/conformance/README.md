@@ -11,6 +11,14 @@ comparator 已建立；新的当前实现记录只有在工具源码提交、输
 
 当前记录：
 
+- [`CONF-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803`](conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/record.md)：
+  0.3.0 在引入 ADR-0013 的 ALAC route 并按 ADR-0014 重构解码路径后重跑的同一对照。
+  track DR 39/39、channel DR 62/62、overall primary peak 39/39、overall RMS
+  39/39、channel overall RMS 62/62、duration 39/39、footer 可比较子集 4/4，差分
+  为 0，fixture 集合与顺序完全一致。corpus 由既有 generator 在本机重新生成并逐
+  case 校验，与提交的 manifest 具有相同的全部 `dataSha256`/`fileSha256` 与
+  safe-master 顺序。这 39 项输入全部是 WAV，不经过 ALAC route，因此它是既有 PCM
+  路径的回归基线，不是 packet workers 与 reference 的对照。
 - [`CONF-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720`](conf-foo-dr-meter-108-x64-candidate-v1-direct-pcm-run1-20260720/record.md)：
   从 clean commit 重建 Candidate worker，以 reference-side finite interleaved
   `f64` 直接驱动 `AnalyzerSession`。4096/997 frames-per-block 两次 39 项运行

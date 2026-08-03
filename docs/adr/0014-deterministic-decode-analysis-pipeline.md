@@ -342,27 +342,6 @@ packet 级另加：
 逐字节相同（SHA-256 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`）。
 本步不建立任何性能声明，也不启用任何并行轴。
 
-## 明确非目标
-
-- 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
-- 恢复 0.1.x generic parallel decoder、`f32` PCM、坏包跳过或错误回退成功；
-- 公共 `--threads`、batch size、queue size、profile 或兼容模式；
-- 并行 container probe/demux、支持未毕业的 codec，或从扩展名猜测并行安全；
-- 禁用 FLAC checksum、弱化 sticky terminal error、允许 partial report；
-- SIMD、unsafe、第二 backend、外部解码进程或另一套 analyzer；
-- 修改固定分析算法、数值参数、报告字段、wire schema、发行边界或平台矩阵；
-- 把 elapsed time 或 RSS 变成普通 test/CI 的跨主机阈值。
-
-## 后果
-
-正面：项目不再被阶段性的“全串行”约束锁死，优化直接指向最明显的单文件压缩解码
-瓶颈；packet、文件和窗口三个轴共享同一套确定性、错误、取消与资源规则，后续不会
-靠多个互不知情的线程池叠加吞吐。
-
-代价：packet 并行同时放大 decoder state、完整性、错误优先级、重排序、取消和内存
-风险；尤其 FLAC 的流级 MD5 使“frame 可独立解码”不足以直接推出生产安全。实现与
-测试成本明显高于简单流水线，且最终收益仍须由正式长音频 A/B 决定。
-
 ### 第 2 步（2026-08-02，实现与正确性部分完成；2026-08-03 加固；未启用）
 
 ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍恒为 serial，
@@ -501,26 +480,72 @@ corpus 由既有 generator 在本机重新生成并逐 case 校验，与提交�
 该扫描是一次测量，不是启用决定。共同门槛的证据现已齐备，但默认启用本身是一个
 独立决定，尚未作出；在作出前 ALAC packet workers 仍不得默认启用。
 
-## 待补证据
+## 明确非目标
 
-本 ADR 已接受架构方向、ALAC packet-worker 实现和上述固定身份下的性能测量，但
-尚未接受默认生产启用；剩余证据如下：
+- 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
+- 恢复 0.1.x generic parallel decoder、`f32` PCM、坏包跳过或错误回退成功；
+- 公共 `--threads`、batch size、queue size、profile 或兼容模式；
+- 并行 container probe/demux、支持未毕业的 codec，或从扩展名猜测并行安全；
+- 禁用 FLAC checksum、弱化 sticky terminal error、允许 partial report；
+- SIMD、unsafe、第二 backend、外部解码进程或另一套 analyzer；
+- 修改固定分析算法、数值参数、报告字段、wire schema、发行边界或平台矩阵；
+- 把 elapsed time 或 RSS 变成普通 test/CI 的跨主机阈值。
 
-- ALAC 的长音频 source-bound corpus 与 1/2/4/8 worker 同轮扫描已完成，tonal track
-  的 8-worker 最小/默认/最大队列性能 A/B 已完成，两条 track 各 12 单元的
-  decoded-f64、`AnalysisResult` raw bits 与 wire-visible report 全矩阵也已完成；
-  非串行 plan 经 `Application` 真实路径的等价、engine 与 worker 数选择也已由固定
-  8-worker 宿主上限的单元测试覆盖；
-  仍缺 39 项 safe-master 逐 token 对照与真实音乐素材代表性。该 39 项 corpus 为
-  合成 WAV（32 个 float32、3 个 float64，以及 u8/s16/s24/s32 整数 PCM 各 1 个），
-  不经过 ALAC route，因此它是启用后的回归防护，不是 packet worker 的正确性证据；
-- ALAC packet 独立性已由当前产品 route 的 raw-bit、错误、强制乱序与最小/最大队列
-  测试在 committed fixture 上证明；但这些 fixture 都很短，独立性在长音频上仍未
+## 后果
+
+正面：项目不再被阶段性的“全串行”约束锁死，优化直接指向最明显的单文件压缩解码
+瓶颈；packet、文件和窗口三个轴共享同一套确定性、错误、取消与资源规则，后续不会
+靠多个互不知情的线程池叠加吞吐。
+
+代价：packet 并行同时放大 decoder state、完整性、错误优先级、重排序、取消和内存
+风险；尤其 FLAC 的流级 MD5 使“frame 可独立解码”不足以直接推出生产安全。实现与
+测试成本明显高于简单流水线，且最终收益仍须由正式长音频 A/B 决定。
+
+## 证据状态
+
+本 ADR 已接受架构方向、ALAC packet-worker 实现，以及下述固定身份下的正确性与
+性能测量。它**尚未**接受默认生产启用：产品 `ConcurrencyPlan` 仍恒为 serial，
+`ExecutionBudget` 的非串行构造是 `#[cfg(test)]`，公开 API 无法构造。
+
+### packet 级（ALAC）共同门槛：已具备
+
+- 长音频 source-bound corpus 三条（压缩率 99.5% / 60.0% / 74.4%，后者为静态派发
+  的最坏负载不均），1/2/4/8 worker 同轮交错扫描，加速比在三条上一致，且不均衡
+  代价由变体级解码成本测量解释并预测；
+- tonal track 8-worker 的最小 / plan 派生 / 最大 reorder permit 性能 A/B；
+- 三条 track 各 12 单元的 allocation 全矩阵（worker 数 × 三种 permit），decoded
+  `f64`、`AnalysisResult` raw bits 与 wire-visible report 三项指纹各自唯一；矩阵
+  拒绝非 ALAC 输入并核对实际选择的 engine 与 worker 数，且其检测能力经两次注入
   验证；
-- FLAC 的 ordered full-stream MD5 设计尚未形成；
-- 文件级与窗口级仍只有准入契约，没有生产实现。
+- reorder 滞留界由 1,000 与 100,000 packet 在最紧 permit 与最深完成顺序下的高
+  水位对比固定，模拟 permit 泄漏只在长流上失败；
+- 非串行 plan 经 `Application` 真实路径的 wire 等价，以及 engine 与 worker 数
+  选择，由固定 8-worker 宿主上限的单元测试覆盖，不依赖测试机核数；
+- 39 项 safe-master 回归对照在 clean commit `768670b` 上七类字段全部精确匹配、
+  差分数 0，见
+  [`CONF-…-macinmeter-030-adr0014-20260803`](../../reference/conformance/conf-foo-dr-meter-108-x64-complete-v2-safe-master-macinmeter-030-adr0014-20260803/record.md)；
+- 真实录音代表性由一次本机交叉检查补充：40 个真实 ALAC 上 480 次 allocation、
+  4.75 亿帧，三项指纹逐文件唯一。
 
-第 1 步已经明确并测试了 application 共用 worker/memory hard cap、reservation 数值
-与退化规则；这些上限至今只在 serial 配置下被生产使用。多 worker 取值已有 committed
-短 fixture 与 source-bound 长音频正式性能记录，但仍未完成上述正确性、资源和
-`Application` 集成门槛。
+### 仍然成立的限制
+
+- 该 39 项 corpus 全为合成 WAV（32 个 float32、3 个 float64，以及 u8/s16/s24/s32
+  整数 PCM 各 1 个），不经过 ALAC route，因此它是既有 PCM 路径的回归基线，不是
+  packet worker 与 reference 的对照；
+- 真实录音交叉检查的语料是私人且不可再生的，按 ADR-0007 立场不进入仓库，因此它是
+  补充观察而非可复现证据；
+- 性能 harness 与 runner 各自镜像 crate-private 的 plan 派生。两者互相核对可以
+  发现镜像间错位，但不自动检测 plan 单独改变或另一台宿主的
+  `available_parallelism` 收缩；
+- 确定性强制乱序 seam 是 `#[cfg(test)]`、不在 release worker 中，因此真实解码路径
+  上的“长流 + 强制最坏乱序”组合仍未直接运行；该组合的界由 commit buffer 的直接
+  压力测试承担；
+- 三条 corpus track 都是合成信号，未覆盖真实录音的立体声相关性；该维度只由上述
+  不可提交的交叉检查补充。
+
+### 尚未开始
+
+- 默认启用 ALAC packet workers 的决定本身；
+- FLAC 的 ordered full-stream MD5 设计；
+- 文件级与窗口级并行的生产实现，二者目前只有准入契约。
+
