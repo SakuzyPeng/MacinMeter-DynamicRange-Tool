@@ -5,6 +5,7 @@ use macinmeter::{
     CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
 };
 use macinmeter_codecs::{DecoderFactory, ReadOutcome};
+use macinmeter_domain::{DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_IN_FLIGHT_PCM_BYTES};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -13,6 +14,7 @@ use std::{
     ffi::OsString,
     fmt::Write as _,
     hint::black_box,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::ExitCode,
     time::{Duration, Instant},
@@ -57,7 +59,7 @@ fn run() -> Result<Value, String> {
 fn usage() -> &'static str {
     "usage:
   m6_baseline_worker analysis CHANNELS SAMPLE_RATE FRAMES BLOCK_FRAMES
-  m6_baseline_worker decode PATH ITERATIONS
+  m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS]
   m6_baseline_worker application PATH ITERATIONS
   m6_baseline_worker batch DIRECTORY ITERATIONS
   m6_baseline_worker discovery DIRECTORY ITERATIONS
@@ -154,16 +156,59 @@ fn deterministic_block(sample_count: usize, channels: usize) -> Vec<f64> {
     samples
 }
 
+/// Mirror of the application plan's fixed per-worker derivation.
+///
+/// `ConcurrencyPlan` is crate-private, so this harness reproduces its
+/// derivation instead of widening the product surface to benchmark it. The
+/// plan's own unit tests pin the same numbers; the two must move together, and
+/// every granted bound is written into the case details so a recorded run can
+/// be checked against the plan after the fact.
+fn decode_reservation(workers: usize) -> Result<DecodeReservation, String> {
+    const QUEUE_DEPTH_PER_WORKER: usize = 4;
+    const IN_FLIGHT_PCM_BYTES_PER_WORKER: u64 = 4 * 1024 * 1024;
+
+    let workers = NonZeroUsize::new(workers).ok_or("decode workers must be greater than zero")?;
+    if workers.get() == 1 {
+        return Ok(DecodeReservation::serial());
+    }
+    let queue = workers
+        .get()
+        .saturating_mul(QUEUE_DEPTH_PER_WORKER)
+        .min(MAX_DECODE_QUEUE_CAPACITY);
+    let queue_capacity =
+        NonZeroUsize::new(queue).ok_or("derived decode queue capacity was empty")?;
+    let in_flight = IN_FLIGHT_PCM_BYTES_PER_WORKER
+        .saturating_mul(workers.get() as u64)
+        .min(MAX_IN_FLIGHT_PCM_BYTES);
+    DecodeReservation::new(workers, queue_capacity, in_flight).map_err(|error| error.to_string())
+}
+
 fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
-    require_len(arguments, 2, "decode")?;
+    if arguments.len() != 2 && arguments.len() != 3 {
+        return Err(format!(
+            "decode expects 2 or 3 arguments, received {}\n{}",
+            arguments.len(),
+            usage()
+        ));
+    }
     let path = PathBuf::from(&arguments[0]);
     let iterations = positive_iterations(&arguments[1])?;
+    // ADR-0014 packet workers are a decode allocation, not a separate binary,
+    // so the worker count is a case argument that the runner interleaves like
+    // any other. One worker is the serial route.
+    let decode_workers = match arguments.get(2) {
+        Some(value) => parse_number::<usize>(value, "decode workers")?,
+        None => 1,
+    };
+    let reservation = decode_reservation(decode_workers)?;
 
-    let (timed_summary, elapsed) = timed_decode_workload(&path, iterations)?;
+    let (timed_summary, elapsed) = timed_decode_workload(&path, iterations, reservation)?;
 
     // Full PCM hashing is deliberately outside the measured interval. It is a
     // correctness oracle for the timed pass, not part of product decoding.
-    let verified = decode_once(&path, true)?;
+    // It runs on the same allocation, so the runner's oracle comparison is a
+    // real differential against the corpus rather than a serial re-run.
+    let verified = decode_once(&path, true, reservation)?;
     ensure_same_decode_geometry(&timed_summary, &verified)?;
     let pcm_sha256 = verified
         .pcm_sha256
@@ -189,6 +234,9 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
         json!({
             "path": display_name(&path),
             "blocksPerIteration": timed_summary.blocks,
+            "decodeWorkers": decode_workers,
+            "decodeQueueCapacity": reservation.queue_capacity().get(),
+            "decodeMaxInFlightPcmBytes": reservation.max_in_flight_pcm_bytes(),
             "pcmF64LeSha256": pcm_sha256,
             "verificationHashOutsideTimedRegion": true,
         }),
@@ -199,11 +247,12 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
 fn timed_decode_workload(
     path: &Path,
     iterations: u32,
+    reservation: DecodeReservation,
 ) -> Result<(DecodeSummary, Duration), String> {
     let started = Instant::now();
     let mut timed_summary = None;
     for _ in 0..iterations {
-        let summary = decode_once(path, false)?;
+        let summary = decode_once(path, false, reservation)?;
         if let Some(previous) = &timed_summary {
             ensure_same_decode_geometry(previous, &summary)?;
         } else {
@@ -233,8 +282,12 @@ struct DecodeSummary {
     pcm_sha256: Option<String>,
 }
 
-fn decode_once(path: &Path, hash_pcm: bool) -> Result<DecodeSummary, String> {
-    let mut opened = DecoderFactory::new()
+fn decode_once(
+    path: &Path,
+    hash_pcm: bool,
+    reservation: DecodeReservation,
+) -> Result<DecodeSummary, String> {
+    let mut opened = DecoderFactory::with_application_reservation(reservation)
         .open(path)
         .map_err(|error| error.to_string())?;
     let info = opened.reader.stream_info().clone();

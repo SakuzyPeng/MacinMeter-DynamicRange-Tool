@@ -181,12 +181,72 @@ class PerformanceBaselineTests(unittest.TestCase):
                     "audioSeconds": 2.0,
                     "logicalItems": 2,
                 },
-                "details": {"pcmF64LeSha256": "a" * 64},
+                "details": {
+                    "pcmF64LeSha256": "a" * 64,
+                    "decodeWorkers": 1,
+                    "decodeQueueCapacity": 1,
+                    "decodeMaxInFlightPcmBytes": 0,
+                },
             }
             baseline.validate_corpus_work([sample], [case], root, manifest)
-            sample["details"] = {"pcmF64LeSha256": "b" * 64}
+            sample["details"] = {
+                "pcmF64LeSha256": "b" * 64,
+                "decodeWorkers": 1,
+                "decodeQueueCapacity": 1,
+                "decodeMaxInFlightPcmBytes": 0,
+            }
             with self.assertRaises(baseline.BaselineError):
                 baseline.validate_corpus_work([sample], [case], root, manifest)
+
+    def test_decode_allocation_gate_matches_the_application_plan(self) -> None:
+        def case(workers: int | None) -> baseline.BenchmarkCase:
+            arguments = ["decode", "/corpus/input.m4a", "1"]
+            if workers is not None:
+                arguments.append(str(workers))
+            return baseline.BenchmarkCase(
+                "decode/alac", "decode", "decode", tuple(arguments)
+            )
+
+        # The plan grants a serial reservation at one worker, and four queued
+        # packets plus 4 MiB of in-flight PCM per worker above that.
+        baseline.assert_decode_allocation(
+            case(None),
+            {
+                "decodeWorkers": 1,
+                "decodeQueueCapacity": 1,
+                "decodeMaxInFlightPcmBytes": 0,
+            },
+        )
+        baseline.assert_decode_allocation(
+            case(4),
+            {
+                "decodeWorkers": 4,
+                "decodeQueueCapacity": 16,
+                "decodeMaxInFlightPcmBytes": 16 * 1024 * 1024,
+            },
+        )
+
+        # A worker that silently fell back to the serial route, or one whose
+        # derivation drifted from the plan, must fail the run.
+        for details in (
+            {
+                "decodeWorkers": 1,
+                "decodeQueueCapacity": 1,
+                "decodeMaxInFlightPcmBytes": 0,
+            },
+            {
+                "decodeWorkers": 4,
+                "decodeQueueCapacity": 8,
+                "decodeMaxInFlightPcmBytes": 16 * 1024 * 1024,
+            },
+            {
+                "decodeWorkers": 4,
+                "decodeQueueCapacity": 16,
+                "decodeMaxInFlightPcmBytes": 4 * 1024 * 1024,
+            },
+        ):
+            with self.assertRaises(baseline.BaselineError):
+                baseline.assert_decode_allocation(case(4), details)
 
     def test_variant_parser_requires_safe_name_and_executable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -21,6 +21,9 @@ BLOCK_FRAMES = 4_096
 DEFAULT_OUTPUT = Path("target/performance-corpus") / CORPUS_ID
 STEREO_FRAMES = 60 * SAMPLE_RATE
 SURROUND_FRAMES = 30 * SAMPLE_RATE
+# The packet-worker A/B needs a track long enough for scheduling to matter.
+ALAC_FRAMES = 240 * SAMPLE_RATE
+ALAC_FFMPEG_VERSION = "8.0.1"
 BATCH_TRACK_FRAMES = 15 * SAMPLE_RATE
 BATCH_TRACKS = 8
 DISCOVERY_SUPPORTED_FILES = 1_024
@@ -355,6 +358,104 @@ def write_stereo_routes(root: Path) -> list[dict[str, object]]:
     return entries
 
 
+def write_alac_route(root: Path) -> dict[str, object]:
+    """Write the long ALAC track the packet-worker A/B needs.
+
+    ADR-0014 requires a source-bound long ALAC input before any packet-worker
+    speedup may be claimed: the committed correctness fixtures are far too short
+    to expose scheduling behaviour. The intermediate WAV is not kept, since only
+    the compressed track and its normalized f64 oracle are part of the corpus.
+    """
+    values, normalized = deterministic_integer_block(channels=2, bits=16, seed=1)
+    normalized_sha = normalized_pcm_sha256(
+        normalized, frames=ALAC_FRAMES, channels=2
+    )
+    payload = pack_integer_block(values, 16, "little")
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise CorpusError("ffmpeg is required to generate the M6 ALAC corpus track")
+    version_line = subprocess.run(
+        (ffmpeg, "-version"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    version_line = version_line[0] if version_line else ""
+    if not version_line.startswith(f"ffmpeg version {ALAC_FFMPEG_VERSION}"):
+        raise CorpusError(
+            f"the M6 ALAC corpus track requires ffmpeg {ALAC_FFMPEG_VERSION}; "
+            f"observed: {version_line or '<no output>'}"
+        )
+
+    path = root / "stereo-s16-alac-240s.m4a"
+    with tempfile.TemporaryDirectory() as scratch:
+        source = Path(scratch) / "alac-source.wav"
+        write_repeated_payload(
+            source,
+            wave_header(
+                frames=ALAC_FRAMES,
+                channels=2,
+                sample_rate=SAMPLE_RATE,
+                bits=16,
+                format_tag=1,
+            ),
+            payload,
+            frames=ALAC_FRAMES,
+            channels=2,
+            bytes_per_sample=2,
+        )
+        # The same bit-exact shape ADR-0013 fixed for native-alac-v1, so the
+        # corpus track is byte-reproducible on the pinned encoder.
+        subprocess.run(
+            (
+                ffmpeg,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-fflags",
+                "+bitexact",
+                "-i",
+                str(source),
+                "-map_metadata",
+                "-1",
+                "-vn",
+                "-c:a",
+                "alac",
+                "-compression_level",
+                "2",
+                "-flags:a",
+                "+bitexact",
+                "-channel_layout:a",
+                "stereo",
+                "-f",
+                "ipod",
+                str(path),
+            ),
+            check=True,
+        )
+
+    return media_entry(
+        root,
+        path,
+        identifier="stereo-s16-alac-240s",
+        container="mp4",
+        codec="alac",
+        frames=ALAC_FRAMES,
+        channels=2,
+        bits=16,
+        normalized_sha256=normalized_sha,
+        signal="deterministic_integer_v1_seed_1",
+        encoder={
+            "name": "ffmpeg alac",
+            "version": ALAC_FFMPEG_VERSION,
+            "versionLine": version_line,
+            "compressionLevel": 2,
+        },
+    )
+
+
 def write_surround_route(root: Path) -> dict[str, object]:
     values, normalized = deterministic_integer_block(channels=6, bits=24, seed=6)
     normalized_sha = normalized_pcm_sha256(
@@ -469,6 +570,7 @@ def write_discovery_tree(root: Path) -> dict[str, object]:
 def generate_into(root: Path) -> dict[str, object]:
     root.mkdir(parents=True)
     media = write_stereo_routes(root)
+    media.append(write_alac_route(root))
     media.append(write_surround_route(root))
     media.extend(write_batch_routes(root))
     media.sort(key=lambda entry: str(entry["id"]))

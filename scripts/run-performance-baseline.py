@@ -52,6 +52,15 @@ class BenchmarkCase:
         return self.arguments[0]
 
 
+# Worker counts the ADR-0014 packet-worker sweep compares in one run.
+ALAC_DECODE_WORKER_COUNTS = (1, 2, 4, 8)
+# Mirrors of the crate-private application plan derivation the worker uses.
+DECODE_QUEUE_DEPTH_PER_WORKER = 4
+DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
+MAX_DECODE_QUEUE_CAPACITY = 64
+MAX_IN_FLIGHT_PCM_BYTES = 64 * 1024 * 1024
+
+
 def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
     def media(name: str) -> str:
         return str((corpus / name).resolve())
@@ -98,6 +107,21 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             "decode",
             "Content probe plus complete WAV IEEE float64 decoding",
             ("decode", media("stereo-f64-60s.wav"), "10"),
+        ),
+        # ADR-0014 packet workers are a decode allocation rather than a separate
+        # binary, so worker count is a case argument. The runner interleaves
+        # these with every other case in one run, and each independently has to
+        # reproduce the corpus PCM oracle, which makes the sweep a differential
+        # rather than four unrelated timings.
+        *(
+            BenchmarkCase(
+                f"decode/alac-s16-240s-w{workers}",
+                "decode",
+                "Content probe plus complete ALAC decoding on "
+                f"{workers} decode worker(s)",
+                ("decode", media("stereo-s16-alac-240s.m4a"), "1", str(workers)),
+            )
+            for workers in ALAC_DECODE_WORKER_COUNTS
         ),
         BenchmarkCase(
             "application/wave-s16",
@@ -706,6 +730,7 @@ def validate_corpus_work(
                     raise BaselineError(
                         f"{case.case_id} decoded PCM fingerprint does not match the corpus oracle"
                     )
+                assert_decode_allocation(case, details)
             else:
                 if details.get("decodedFramesPerIteration") != frames:
                     raise BaselineError(
@@ -790,6 +815,40 @@ def validate_corpus_work(
         raise BaselineError(
             "application analysis differs across containers carrying identical PCM: "
             f"{mismatched_pcm_groups}"
+        )
+
+
+def assert_decode_allocation(case: BenchmarkCase, details: dict[str, object]) -> None:
+    """Check the decode case ran on the allocation the plan would have granted.
+
+    The application concurrency plan is crate-private, so the worker mirrors its
+    derivation. Recomputing it here means a drift between the two shows up as a
+    failed run rather than as a silently mistuned comparison.
+    """
+    requested = int(case.arguments[3]) if len(case.arguments) > 3 else 1
+    if details.get("decodeWorkers") != requested:
+        raise BaselineError(
+            f"{case.case_id} ran on {details.get('decodeWorkers')!r} decode workers, "
+            f"expected {requested}"
+        )
+
+    if requested == 1:
+        expected_queue, expected_bytes = 1, 0
+    else:
+        expected_queue = min(requested * DECODE_QUEUE_DEPTH_PER_WORKER, MAX_DECODE_QUEUE_CAPACITY)
+        expected_bytes = min(
+            requested * DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER, MAX_IN_FLIGHT_PCM_BYTES
+        )
+    if details.get("decodeQueueCapacity") != expected_queue:
+        raise BaselineError(
+            f"{case.case_id} decode queue capacity {details.get('decodeQueueCapacity')!r} "
+            f"does not match the plan's derivation {expected_queue}"
+        )
+    if details.get("decodeMaxInFlightPcmBytes") != expected_bytes:
+        raise BaselineError(
+            f"{case.case_id} decode in-flight PCM permit "
+            f"{details.get('decodeMaxInFlightPcmBytes')!r} does not match the plan's "
+            f"derivation {expected_bytes}"
         )
 
 
