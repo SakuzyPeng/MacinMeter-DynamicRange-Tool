@@ -7,7 +7,7 @@
 //! across every worker count and every reorder permit on the same input. The
 //! committed correctness fixtures are only seconds long, so this drives the
 //! same matrix over the untracked long corpus track while verifying that every
-//! non-serial cell actually selected the ALAC packet-worker engine.
+//! non-serial cell actually selected that route's packet-worker engine.
 //!
 //! This is a correctness harness, not a benchmark. It reports fingerprints, not
 //! timings, and it drives `codecs` through an explicit allocation, so it says
@@ -164,16 +164,22 @@ fn analyze_with(path: &Path, reservation: DecodeReservation) -> Result<MatrixOut
     let (mut opened, execution) = DecoderFactory::with_application_reservation(reservation)
         .open_with_execution(path)
         .map_err(|error| error.to_string())?;
-    if opened.source.codec != SourceCodec::Alac {
-        return Err(format!(
-            "allocation matrix requires the graduated ALAC route, found {:?}",
-            opened.source.codec
-        ));
-    }
+    // Graduated routes are named, never inferred: a matrix run over a route
+    // that falls back to serial would report one fingerprint per cell and prove
+    // nothing about allocation.
+    let workers_engine = match opened.source.codec {
+        SourceCodec::Alac => DecodeEngineKind::AlacPacketWorkers,
+        SourceCodec::Flac => DecodeEngineKind::FlacPacketWorkers,
+        other => {
+            return Err(format!(
+                "allocation matrix requires a graduated packet route, found {other:?}"
+            ));
+        }
+    };
     let expected_engine = if reservation.workers().get() == 1 {
         DecodeEngineKind::Serial
     } else {
-        DecodeEngineKind::AlacPacketWorkers
+        workers_engine
     };
     if execution.engine() != expected_engine || execution.workers() != reservation.workers() {
         return Err(format!(
@@ -453,11 +459,11 @@ mod tests {
             &fixture("native-pcm-v1/wav-pcm-s32-stereo.wav"),
             DecodeReservation::serial(),
         ) {
-            Ok(_) => panic!("a WAV source must not claim ALAC allocation equivalence"),
+            Ok(_) => panic!("a WAV source must not claim packet allocation equivalence"),
             Err(error) => error,
         };
         assert!(
-            error.contains("requires the graduated ALAC route"),
+            error.contains("requires a graduated packet route"),
             "{error}"
         );
     }

@@ -22,7 +22,7 @@ DEFAULT_OUTPUT = Path("target/performance-corpus") / CORPUS_ID
 STEREO_FRAMES = 60 * SAMPLE_RATE
 SURROUND_FRAMES = 30 * SAMPLE_RATE
 # The packet-worker A/B needs a track long enough for scheduling to matter.
-ALAC_FRAMES = 240 * SAMPLE_RATE
+PACKET_SWEEP_FRAMES = 240 * SAMPLE_RATE
 ALAC_FFMPEG_VERSION = "8.0.1"
 # Difficulty variants in the load-imbalance track. Matching the maximum
 # worker count makes the fixed dispatch pin one difficulty per worker.
@@ -93,8 +93,8 @@ def _triangle(phase: int, period: int, amplitude: int) -> int:
     return amplitude - (2 * amplitude * (position - half)) // half
 
 
-def deterministic_tonal_block(*, channels: int) -> tuple[list[int], bytes]:
-    """Build a tonal, compressible 16-bit block.
+def deterministic_tonal_block(*, channels: int, bits: int = 16) -> tuple[list[int], bytes]:
+    """Build a tonal, compressible block.
 
     The pseudo-random block compresses to roughly 99.5%, which lets ALAC fall
     back to its uncompressed escape path, so a sweep run only on that signal
@@ -102,13 +102,25 @@ def deterministic_tonal_block(*, channels: int) -> tuple[list[int], bytes]:
     predict. Summed integer triangle waves plus a small dither land near 60%,
     the ordinary range for lossless music, while staying exactly reproducible
     without any floating point.
+
+    Depths wider than 16 bits scale every amplitude by the same power of two,
+    so the signal shape and its compressibility are held fixed while only the
+    bytes each sample occupies change. That is what lets a depth sweep attribute
+    a difference to sample width rather than to a different signal. At 16 bits
+    the output is byte-identical to the original block.
     """
     if channels < 1:
         raise CorpusError(f"unsupported tonal channel count: {channels}")
+    if bits not in (16, 24):
+        raise CorpusError(f"unsupported tonal depth: {bits}")
 
-    limit = (1 << 15) - 1
-    partials = ((218, 9_000), (173, 4_500), (411, 3_000), (1_021, 1_500))
-    dither_span = 4_096
+    scale = 1 << (bits - 16)
+    limit = (1 << (bits - 1)) - 1
+    partials = tuple(
+        (period, amplitude * scale)
+        for period, amplitude in ((218, 9_000), (173, 4_500), (411, 3_000), (1_021, 1_500))
+    )
+    dither_span = 4_096 * scale
     values: list[int] = []
     normalized = bytearray()
     for frame in range(BLOCK_FRAMES):
@@ -123,7 +135,7 @@ def deterministic_tonal_block(*, channels: int) -> tuple[list[int], bytes]:
             value += (mixed >> 9) % dither_span - dither_span // 2
             value = max(-limit - 1, min(limit, value))
             values.append(value)
-            normalized.extend(struct.pack("<d", value / float(1 << 15)))
+            normalized.extend(struct.pack("<d", value / float(1 << (bits - 1))))
     return values, bytes(normalized)
 
 
@@ -539,7 +551,7 @@ def write_alac_track(
     signal: str,
 ) -> dict[str, object]:
     normalized_sha = normalized_cycle_sha256(
-        [normalized for _, normalized in blocks], frames=ALAC_FRAMES, channels=2
+        [normalized for _, normalized in blocks], frames=PACKET_SWEEP_FRAMES, channels=2
     )
     payloads = [pack_integer_block(values, 16, "little") for values, _ in blocks]
 
@@ -565,14 +577,14 @@ def write_alac_track(
         write_cycled_payload(
             source,
             wave_header(
-                frames=ALAC_FRAMES,
+                frames=PACKET_SWEEP_FRAMES,
                 channels=2,
                 sample_rate=SAMPLE_RATE,
                 bits=16,
                 format_tag=1,
             ),
             payloads,
-            frames=ALAC_FRAMES,
+            frames=PACKET_SWEEP_FRAMES,
             channels=2,
             bytes_per_sample=2,
         )
@@ -613,7 +625,7 @@ def write_alac_track(
         identifier=identifier,
         container="mp4",
         codec="alac",
-        frames=ALAC_FRAMES,
+        frames=PACKET_SWEEP_FRAMES,
         channels=2,
         bits=16,
         normalized_sha256=normalized_sha,
@@ -623,6 +635,130 @@ def write_alac_track(
             "version": ALAC_FFMPEG_VERSION,
             "versionLine": version_line,
             "compressionLevel": 2,
+        },
+    )
+
+
+def write_flac_routes(root: Path) -> list[dict[str, object]]:
+    """Write the long FLAC tracks the packet-worker sweep needs.
+
+    FLAC differs from ALAC in the one way that decides the ceiling: the product
+    verifies its stream signature, and hashing is inherently sequential. The
+    hashed bytes scale with sample depth while decode cost scales with how hard
+    the residuals are, so three tracks separate the two. A 24-bit pair at
+    opposite ends of the compression range holds depth fixed and varies decode
+    cost; a 16-bit track repeats the incompressible signal at two thirds the
+    hashed bytes. If the sequential signature is what bounds the speedup, the
+    cheap-to-decode 24-bit track has to show it first.
+    """
+    pseudorandom24, pseudorandom24_normalized = deterministic_integer_block(
+        channels=2, bits=24, seed=24
+    )
+    tonal24, tonal24_normalized = deterministic_tonal_block(channels=2, bits=24)
+    pseudorandom16, pseudorandom16_normalized = deterministic_integer_block(
+        channels=2, bits=16, seed=1
+    )
+    return [
+        write_flac_track(
+            root,
+            block=(pseudorandom24, pseudorandom24_normalized),
+            bits=24,
+            identifier="stereo-s24-flac-240s",
+            filename="stereo-s24-flac-240s.flac",
+            signal="deterministic_integer_v1_seed_24",
+        ),
+        write_flac_track(
+            root,
+            block=(tonal24, tonal24_normalized),
+            bits=24,
+            identifier="stereo-s24-flac-tonal-240s",
+            filename="stereo-s24-flac-tonal-240s.flac",
+            signal="deterministic_tonal_v1_24bit",
+        ),
+        write_flac_track(
+            root,
+            block=(pseudorandom16, pseudorandom16_normalized),
+            bits=16,
+            identifier="stereo-s16-flac-240s",
+            filename="stereo-s16-flac-240s.flac",
+            signal="deterministic_integer_v1_seed_1",
+        ),
+    ]
+
+
+def write_flac_track(
+    root: Path,
+    *,
+    block: tuple[list[int], bytes],
+    bits: int,
+    identifier: str,
+    filename: str,
+    signal: str,
+) -> dict[str, object]:
+    values, normalized = block
+    normalized_sha = normalized_pcm_sha256(
+        normalized, frames=PACKET_SWEEP_FRAMES, channels=2
+    )
+    payload = pack_integer_block(values, bits, "little")
+
+    flac = shutil.which("flac")
+    if flac is None:
+        raise CorpusError("reference flac executable is required to generate the M6 corpus")
+    version = subprocess.run(
+        (flac, "--version"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    path = root / filename
+    with tempfile.TemporaryDirectory() as scratch:
+        source = Path(scratch) / "flac-source.wav"
+        write_repeated_payload(
+            source,
+            wave_header(
+                frames=PACKET_SWEEP_FRAMES,
+                channels=2,
+                sample_rate=SAMPLE_RATE,
+                bits=bits,
+                format_tag=1,
+            ),
+            payload,
+            frames=PACKET_SWEEP_FRAMES,
+            channels=2,
+            bytes_per_sample=bits // 8,
+        )
+        subprocess.run(
+            (
+                flac,
+                "--force",
+                "--silent",
+                "--verify",
+                "--compression-level-5",
+                "--no-padding",
+                "--no-seektable",
+                "--no-preserve-modtime",
+                f"--output-name={path}",
+                str(source),
+            ),
+            check=True,
+        )
+
+    return media_entry(
+        root,
+        path,
+        identifier=identifier,
+        container="flac",
+        codec="flac",
+        frames=PACKET_SWEEP_FRAMES,
+        channels=2,
+        bits=bits,
+        normalized_sha256=normalized_sha,
+        signal=signal,
+        encoder={
+            "name": "reference libFLAC command line",
+            "version": version,
+            "compressionLevel": 5,
         },
     )
 
@@ -742,6 +878,7 @@ def generate_into(root: Path) -> dict[str, object]:
     root.mkdir(parents=True)
     media = write_stereo_routes(root)
     media.extend(write_alac_routes(root))
+    media.extend(write_flac_routes(root))
     media.append(write_surround_route(root))
     media.extend(write_batch_routes(root))
     media.sort(key=lambda entry: str(entry["id"]))

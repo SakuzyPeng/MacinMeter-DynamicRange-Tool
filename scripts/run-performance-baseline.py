@@ -53,7 +53,7 @@ class BenchmarkCase:
 
 
 # Worker counts the ADR-0014 packet-worker sweep compares in one run.
-ALAC_DECODE_WORKER_COUNTS = (1, 2, 4, 8)
+PACKET_WORKER_COUNTS = (1, 2, 4, 8)
 # Minimum legal and fixed product maximum reorder permits, swept at the
 # widest worker count. The plan's own derivation for 8 workers is 32.
 ALAC_QUEUE_SWEEP_WORKERS = 8
@@ -145,7 +145,39 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
                     "stereo-s16-alac-varied-240s.m4a",
                 ),
             )
-            for workers in ALAC_DECODE_WORKER_COUNTS
+            for workers in PACKET_WORKER_COUNTS
+        ),
+        # FLAC's packet workers carry a cost ALAC's do not: the product hashes
+        # the stream signature at the single in-order commit point, and hashing
+        # cannot be parallelized. Depth decides how many bytes that is and
+        # compressibility decides how much decode work it is competing with, so
+        # the three tracks separate the two rather than reporting one number.
+        *(
+            BenchmarkCase(
+                f"decode/{track}-w{workers}",
+                "decode",
+                f"Content probe plus complete {label} FLAC decoding on "
+                f"{workers} decode worker(s)",
+                ("decode", media(filename), "1", str(workers)),
+            )
+            for track, label, filename in (
+                (
+                    "flac-s24-240s",
+                    "24-bit near-incompressible",
+                    "stereo-s24-flac-240s.flac",
+                ),
+                (
+                    "flac-s24-tonal-240s",
+                    "24-bit tonal",
+                    "stereo-s24-flac-tonal-240s.flac",
+                ),
+                (
+                    "flac-s16-240s",
+                    "16-bit near-incompressible",
+                    "stereo-s16-flac-240s.flac",
+                ),
+            )
+            for workers in PACKET_WORKER_COUNTS
         ),
         # The plan never varies queue capacity, so sweep it separately at the
         # widest worker count. The minimum legal capacity equals the worker

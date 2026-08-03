@@ -51,6 +51,7 @@ pub mod dev {
     }
 }
 
+use decode_engine::ParallelRoute;
 use macinmeter_domain::{
     AnalysisError, DecodeDiagnostics, DecodeProgress, DecodeReservation, PcmBlock, PcmStreamInfo,
     SourceInfo,
@@ -74,14 +75,15 @@ pub struct OpenedAudio {
 pub enum DecodeEngineKind {
     Serial,
     AlacPacketWorkers,
+    FlacPacketWorkers,
 }
 
 /// The actual execution selected after content probing and decoder creation.
 ///
 /// A requested reservation alone cannot prove that a route used packet
-/// workers, because every route except graduated ALAC intentionally falls back
-/// to the serial engine. Correctness harnesses use this value to reject that
-/// otherwise-silent fallback.
+/// workers, because every route that has not graduated intentionally falls
+/// back to the serial engine. Correctness harnesses use this value to reject
+/// that otherwise-silent fallback.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodeExecution {
@@ -97,11 +99,12 @@ impl DecodeExecution {
         }
     }
 
-    pub(crate) const fn alac_packet_workers(workers: NonZeroUsize) -> Self {
-        Self {
-            engine: DecodeEngineKind::AlacPacketWorkers,
-            workers,
-        }
+    pub(crate) const fn packet_workers(route: ParallelRoute, workers: NonZeroUsize) -> Self {
+        let engine = match route {
+            ParallelRoute::Alac => DecodeEngineKind::AlacPacketWorkers,
+            ParallelRoute::Flac => DecodeEngineKind::FlacPacketWorkers,
+        };
+        Self { engine, workers }
     }
 
     pub const fn engine(self) -> DecodeEngineKind {

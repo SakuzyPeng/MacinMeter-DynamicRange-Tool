@@ -163,6 +163,9 @@ fn decode_all_samples(path: &Path) -> (macinmeter_domain::SourceInfo, Vec<f64>) 
 /// Worker counts every ALAC parallel-equivalence test sweeps.
 const ALAC_WORKER_COUNTS: [usize; 3] = [2, 4, 8];
 
+/// Worker counts the FLAC parallel-equivalence tests sweep.
+const PACKET_WORKER_COUNTS: [usize; 3] = [2, 4, 8];
+
 /// A reservation shaped exactly like the one the application plan derives.
 fn worker_reservation(workers: usize) -> DecodeReservation {
     worker_reservation_with_queue(workers, workers * 4)
@@ -2419,16 +2422,17 @@ fn a_single_worker_reservation_stays_on_the_serial_route() {
 }
 
 #[test]
-fn only_the_graduated_alac_route_creates_packet_workers() {
+fn only_graduated_routes_create_packet_workers() {
     // ADR-0014 forbids inferring packet independence from an extension or a
-    // generic codec descriptor. Every other stable route must ignore a
-    // multi-worker reservation entirely and still produce identical PCM.
+    // generic codec descriptor. A route that has not graduated must ignore a
+    // multi-worker reservation entirely and still produce identical PCM. FLAC
+    // is deliberately absent here: it graduated alongside the product's own
+    // in-order stream verifier and has its own equivalence coverage.
     let reservation = worker_reservation(4);
     let started = started_worker_pools(|| {
         for name in [
             "native-pcm-v1/wav-pcm-s16-stereo.wav",
             "native-pcm-v1/wav-float64-stereo.wav",
-            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
             "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
         ] {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2670,12 +2674,12 @@ fn pool_spawn_failures_join_every_thread_started_during_construction() {
         (
             crate::decode_engine::PoolOptions::fail_worker_spawn(2),
             1,
-            "failed to start an ALAC decode worker",
+            "failed to start a packet decode worker on the ALAC route",
         ),
         (
             crate::decode_engine::PoolOptions::fail_demux_spawn(),
             3,
-            "failed to start the ALAC demux thread",
+            "failed to start the demux thread on the ALAC route",
         ),
     ] {
         let before = joined.with(std::cell::Cell::get);
@@ -2919,4 +2923,154 @@ fn a_flac_stream_without_a_signature_still_decodes() {
     assert_eq!(backend_flac_verdict(&unsigned).0, None);
     let frames = product_flac_outcome(&unsigned).expect("an unsigned FLAC stream still decodes");
     assert_eq!(frames, 400);
+}
+
+// ADR-0014 step 3: the FLAC packet workers. FLAC differs from ALAC in one way
+// that these tests are built around: its stream signature is order-dependent,
+// so a digest that still matches under forced reordering is direct evidence
+// that the verifier was fed in commit order rather than completion order.
+
+fn flac_fixture_bytes() -> Vec<u8> {
+    fs::read(product_fixture_path("flac-pcm-s16-stereo-multiblock.flac"))
+        .expect("committed FLAC fixture must exist")
+}
+
+#[test]
+fn flac_packet_workers_decode_bit_identically_at_every_worker_count() {
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    let (oracle_source, oracle_samples) = decode_all_samples(&path);
+    let oracle_bits = raw_bits(&oracle_samples);
+
+    let started = started_worker_pools(|| {
+        for workers in PACKET_WORKER_COUNTS {
+            let (source, samples) = decode_all_samples_with(&path, worker_reservation(workers));
+            assert_eq!(
+                raw_bits(&samples),
+                oracle_bits,
+                "FLAC decoded different raw f64 bits on {workers} workers"
+            );
+            assert_eq!(
+                source, oracle_source,
+                "FLAC reported different source metadata on {workers} workers"
+            );
+        }
+    });
+    assert_eq!(
+        started,
+        PACKET_WORKER_COUNTS.len(),
+        "every parallel case must actually have run on packet workers"
+    );
+}
+
+#[test]
+fn the_flac_route_reports_its_own_engine_and_falls_back_on_one_worker() {
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+
+    let (_, execution) = DecoderFactory::with_application_reservation(worker_reservation(4))
+        .open_with_execution(&path)
+        .expect("the FLAC fixture opens on a multi-worker reservation");
+    assert_eq!(execution.engine(), DecodeEngineKind::FlacPacketWorkers);
+    assert_eq!(execution.workers().get(), 4);
+
+    // A single-worker allocation degrades before decoding starts, exactly as
+    // every other route does.
+    let serial = DecodeReservation::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        4 * 1024 * 1024,
+    )
+    .unwrap();
+    let (_, execution) = DecoderFactory::with_application_reservation(serial)
+        .open_with_execution(&path)
+        .expect("the FLAC fixture opens on a single-worker reservation");
+    assert_eq!(execution.engine(), DecodeEngineKind::Serial);
+}
+
+#[test]
+fn the_flac_signature_survives_forced_out_of_order_completion() {
+    // The digest is a function of commit order, so publishing a later packet
+    // before packet zero would change it if the verifier were fed as results
+    // arrive. Reaching EOF is therefore the assertion: verification runs at
+    // `finish` and a mismatch is a decode error, not a silent difference.
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    let (_, oracle_samples) = decode_all_samples(&path);
+    let oracle_bits = raw_bits(&oracle_samples);
+
+    for workers in [2, 4, 8] {
+        let mut reader = crate::symphonia_source::open_test_source_with_pool_options(
+            &path,
+            worker_reservation(workers),
+            crate::decode_engine::PoolOptions::force_first_result_after_later(),
+        )
+        .unwrap();
+        let mut samples = Vec::new();
+        let outcome = loop {
+            match reader.read_block() {
+                Ok(ReadOutcome::Data(block)) => samples.extend_from_slice(block.samples()),
+                Ok(ReadOutcome::Eof) => break Ok(()),
+                Err(error) => break Err(error),
+            }
+        };
+        let stalled = reader.stalled_accepts();
+
+        outcome.unwrap_or_else(|error| {
+            panic!("{workers} workers failed to verify under forced reordering: {error}")
+        });
+        assert_eq!(
+            raw_bits(&samples),
+            oracle_bits,
+            "{workers} workers changed the PCM under forced reordering"
+        );
+        assert!(
+            stalled > 0,
+            "{workers} workers never reordered, so this proved nothing"
+        );
+    }
+}
+
+#[test]
+fn packet_workers_reject_a_tampered_flac_signature_exactly_as_the_serial_route_does() {
+    let mut tampered = flac_fixture_bytes();
+    tampered[FLAC_STREAMINFO_MD5.start] ^= 0x01;
+    let file = TestFile::new("flac", &tampered);
+
+    let serial = DecoderFactory::new()
+        .open(file.path())
+        .expect("a tampered signature must not change probing");
+    let serial_error = drain_to_error(serial);
+
+    for workers in PACKET_WORKER_COUNTS.into_iter().filter(|count| *count > 1) {
+        let opened = DecoderFactory::with_application_reservation(worker_reservation(workers))
+            .open(file.path())
+            .expect("a tampered signature must not change probing");
+        let parallel_error = drain_to_error(opened);
+        assert_eq!(
+            (
+                parallel_error.code,
+                parallel_error.stage,
+                parallel_error.message
+            ),
+            (
+                serial_error.code,
+                serial_error.stage,
+                serial_error.message.clone()
+            ),
+            "{workers} workers reported a different verdict than the serial oracle"
+        );
+        assert_eq!(
+            parallel_error.details, serial_error.details,
+            "{workers} workers computed a different digest than the serial oracle"
+        );
+    }
+}
+
+/// Read one opened source to its first error.
+fn drain_to_error(mut opened: crate::OpenedAudio) -> AnalysisError {
+    loop {
+        match opened.reader.read_block() {
+            Ok(ReadOutcome::Data(_)) => continue,
+            Ok(ReadOutcome::Eof) => panic!("the stream was expected to fail before EOF"),
+            Err(error) => return error,
+        }
+    }
 }

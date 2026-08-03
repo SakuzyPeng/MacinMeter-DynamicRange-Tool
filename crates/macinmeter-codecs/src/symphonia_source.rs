@@ -6,7 +6,8 @@ use crate::{
         inspect_wave, media_source,
     },
     decode_engine::{
-        AlacWorkerPool, EngineOutcome, PacketDecodeContext, PacketEngine, PoolOptions, SerialEngine,
+        EngineOutcome, PacketDecodeContext, PacketEngine, PacketWorkerPool, ParallelRoute,
+        PoolOptions, SerialEngine,
     },
     error::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
@@ -26,7 +27,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use symphonia::core::{
-    codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_NULL, CodecParameters, DecoderOptions},
+    codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_NULL, CodecParameters, DecoderOptions},
     formats::FormatOptions,
     io::MediaSourceStream,
     meta::MetadataOptions,
@@ -189,8 +190,24 @@ fn open_source_with_pool_options(
     // ADR-0014 §2/§3: packet workers are created only for a route that has
     // graduated, never from an extension or a generic codec descriptor. Every
     // other route, and any single-worker allocation, stays on the serial oracle.
-    let (engine, execution) = if alac_info.is_some() && reservation.workers().get() > 1 {
-        let engine = AlacWorkerPool::new(
+    //
+    // FLAC qualifies because its frames are independently coded and its stream
+    // signature is verified by the product in commit order rather than inside a
+    // decoder; see `flac_integrity`. Whether a given stream declares a
+    // signature does not change packet independence, so it does not change the
+    // route decision.
+    let parallel_route = if alac_info.is_some() {
+        Some(ParallelRoute::Alac)
+    } else if codec_params.codec == CODEC_TYPE_FLAC {
+        Some(ParallelRoute::Flac)
+    } else {
+        None
+    };
+    let (engine, execution) = if let Some(route) = parallel_route
+        && reservation.workers().get() > 1
+    {
+        let engine = PacketWorkerPool::new(
+            route,
             context,
             format,
             &codec_params,
@@ -199,8 +216,8 @@ fn open_source_with_pool_options(
             pool_options,
         )?;
         (
-            PacketEngine::AlacWorkers(engine),
-            DecodeExecution::alac_packet_workers(reservation.workers()),
+            PacketEngine::PacketWorkers(engine),
+            DecodeExecution::packet_workers(route, reservation.workers()),
         )
     } else {
         let decoder_options = DecoderOptions {

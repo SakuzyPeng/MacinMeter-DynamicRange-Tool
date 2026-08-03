@@ -523,22 +523,35 @@ mod tests {
         );
     }
 
+    /// The engine a fixture is expected to select once workers are granted.
+    ///
+    /// Graduated routes are named one by one rather than inferred, which is the
+    /// same rule the decoder itself follows.
+    fn graduated_engine(name: &str) -> Option<macinmeter_codecs::DecodeEngineKind> {
+        if name.starts_with("native-alac-v1/") {
+            Some(macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers)
+        } else if name.ends_with(".flac") {
+            Some(macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers)
+        } else {
+            None
+        }
+    }
+
     #[test]
-    fn the_product_default_selects_packet_workers_only_for_the_alac_route() {
-        // The point of enabling the default plan is that the graduated route
-        // actually uses it. Equality alone would also hold if nothing did.
+    fn the_product_default_selects_packet_workers_only_for_graduated_routes() {
+        // The point of enabling the default plan is that the graduated routes
+        // actually use it. Equality alone would also hold if nothing did.
         let granted = Application::new()
             .budget()
             .concurrency()
             .total_workers()
             .get();
-        let expectations = [
-            ("native-alac-v1/alac16-stereo-48000-multipacket.m4a", true),
-            ("native-pcm-v1/wav-pcm-s16-stereo.wav", false),
-            ("native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac", false),
-            ("native-pcm-v1/aiff-pcm-s24-stereo.aiff", false),
-        ];
-        for (name, may_parallelise) in expectations {
+        for name in [
+            "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+            "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+            "native-pcm-v1/wav-pcm-s16-stereo.wav",
+            "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+        ] {
             let expected = wire_bytes(&Application::with_budget(ExecutionBudget::serial()), name);
             assert_eq!(
                 wire_bytes(&Application::new(), name),
@@ -547,29 +560,32 @@ mod tests {
             );
 
             let execution = last_execution();
-            if may_parallelise && granted > 1 {
-                assert_eq!(
-                    execution.engine(),
-                    macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers,
-                    "{name} did not use packet workers under the product default"
-                );
-                assert_eq!(execution.workers().get(), granted);
-            } else {
-                assert_eq!(
-                    execution.engine(),
-                    macinmeter_codecs::DecodeEngineKind::Serial,
-                    "{name} must not start packet workers"
-                );
-                assert_eq!(execution.workers().get(), 1);
+            match graduated_engine(name).filter(|_| granted > 1) {
+                Some(engine) => {
+                    assert_eq!(
+                        execution.engine(),
+                        engine,
+                        "{name} did not use packet workers under the product default"
+                    );
+                    assert_eq!(execution.workers().get(), granted);
+                }
+                None => {
+                    assert_eq!(
+                        execution.engine(),
+                        macinmeter_codecs::DecodeEngineKind::Serial,
+                        "{name} must not start packet workers"
+                    );
+                    assert_eq!(execution.workers().get(), 1);
+                }
             }
         }
     }
 
     #[test]
     fn the_application_path_reports_identically_under_a_non_serial_plan() {
-        // ALAC is the only graduated packet route, so it is the only case where
-        // the plan changes the engine. The others must be unaffected, which is
-        // what keeps enabling the plan from leaking into unrelated routes.
+        // Only a graduated route may let the plan change the engine. The
+        // others must be unaffected, which is what keeps enabling the plan from
+        // leaking into routes that never graduated.
         let serial = Application::with_budget(ExecutionBudget::serial());
         for name in [
             "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
@@ -602,15 +618,15 @@ mod tests {
                     "{name} changed under a {requested_workers}-worker plan"
                 );
 
-                // Only the graduated ALAC route may switch engines. Other
-                // routes must keep both their serial engine and one worker.
-                let is_alac = name.starts_with("native-alac-v1/");
-                let expected_engine = if is_alac {
-                    macinmeter_codecs::DecodeEngineKind::AlacPacketWorkers
+                // Only a graduated route may switch engines. Every other route
+                // must keep both its serial engine and its single worker.
+                let expected_engine =
+                    graduated_engine(name).unwrap_or(macinmeter_codecs::DecodeEngineKind::Serial);
+                let expected_workers = if graduated_engine(name).is_some() {
+                    granted
                 } else {
-                    macinmeter_codecs::DecodeEngineKind::Serial
+                    1
                 };
-                let expected_workers = if is_alac { granted } else { 1 };
                 let execution = last_execution();
                 assert_eq!(
                     execution.engine(),

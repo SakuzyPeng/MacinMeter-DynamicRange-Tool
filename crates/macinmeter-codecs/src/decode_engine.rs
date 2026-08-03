@@ -241,7 +241,7 @@ pub(crate) enum PacketEngine {
     /// Demux and decode on the calling thread. This is the differential oracle.
     Serial(SerialEngine),
     /// ADR-0013 stable ALAC route only: bounded workers behind sequential demux.
-    AlacWorkers(AlacWorkerPool),
+    PacketWorkers(PacketWorkerPool),
 }
 
 impl PacketEngine {
@@ -249,7 +249,7 @@ impl PacketEngine {
     pub(crate) fn next(&mut self) -> Result<EngineOutcome, AnalysisError> {
         match self {
             Self::Serial(engine) => engine.next(),
-            Self::AlacWorkers(pool) => pool.next(),
+            Self::PacketWorkers(pool) => pool.next(),
         }
     }
 
@@ -260,7 +260,7 @@ impl PacketEngine {
     pub(crate) fn finish(&mut self) -> Result<(), AnalysisError> {
         match self {
             Self::Serial(engine) => engine.finish(),
-            Self::AlacWorkers(pool) => pool.finish(),
+            Self::PacketWorkers(pool) => pool.finish(),
         }
     }
 }
@@ -326,12 +326,42 @@ struct WorkerVerdict {
     verify_ok: Option<bool>,
 }
 
-/// Bounded ALAC packet workers behind a sequential demux thread.
+/// A route that has graduated to packet-level workers.
+///
+/// ADR-0014 §2/§3 requires the decision to name a route, never an extension or
+/// a generic codec descriptor. Adding a variant here is the deliberate act of
+/// graduating one, and each is graduated on its own evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ParallelRoute {
+    /// The ADR-0013 constrained MP4/M4A route.
+    Alac,
+    /// FLAC, whose stream signature the product verifies in commit order.
+    Flac,
+}
+
+impl ParallelRoute {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Alac => "ALAC",
+            Self::Flac => "FLAC",
+        }
+    }
+
+    const fn thread_prefix(self) -> &'static str {
+        match self {
+            Self::Alac => "macinmeter-alac",
+            Self::Flac => "macinmeter-flac",
+        }
+    }
+}
+
+/// Bounded packet workers behind a sequential demux thread.
 ///
 /// Demux, packet numbering and dispatch stay sequential; only decoding is
 /// concurrent. Every thread is owned by this pool and joined before it is
 /// dropped, so no decoding ever outlives the source that started it.
-pub(crate) struct AlacWorkerPool {
+pub(crate) struct PacketWorkerPool {
+    route: ParallelRoute,
     context: Arc<PacketDecodeContext>,
     demux: Option<JoinHandle<Result<WorkerVerdict, AnalysisError>>>,
     workers: Vec<JoinHandle<WorkerVerdict>>,
@@ -346,12 +376,13 @@ pub(crate) struct AlacWorkerPool {
     first_result_emitted: bool,
 }
 
-impl AlacWorkerPool {
+impl PacketWorkerPool {
     /// Start the pool inside an already-granted reservation.
     ///
     /// Every decoder is built here, on the calling thread, so a decoder that
     /// cannot be created fails the open rather than a worker.
     pub(crate) fn new(
+        route: ParallelRoute,
         context: PacketDecodeContext,
         format: Box<dyn FormatReader>,
         codec_params: &CodecParameters,
@@ -386,7 +417,10 @@ impl AlacWorkerPool {
                 context.path(),
                 ErrorCode::Internal,
                 AnalysisStage::Internal,
-                "an ALAC worker reservation contained no decoder slot",
+                format!(
+                    "a {} worker reservation contained no decoder slot",
+                    route.name()
+                ),
                 None,
             )
         })?;
@@ -402,20 +436,21 @@ impl AlacWorkerPool {
             #[cfg(test)]
             if _options.spawn_fault == SpawnFault::Worker(worker) {
                 let error = worker_spawn_error(
+                    route,
                     context.path(),
-                    io::Error::other("injected ALAC worker spawn failure"),
+                    io::Error::other("injected worker spawn failure"),
                 );
                 cleanup_failed_construction(inboxes, results, workers);
                 return Err(error);
             }
 
             let handle = match thread::Builder::new()
-                .name(format!("macinmeter-alac-{worker}"))
+                .name(format!("{}-{worker}", route.thread_prefix()))
                 .spawn(move || run_worker(&worker_context, decoder, &packet_rx, &result_tx))
             {
                 Ok(handle) => handle,
                 Err(error) => {
-                    let error = worker_spawn_error(context.path(), error);
+                    let error = worker_spawn_error(route, context.path(), error);
                     cleanup_failed_construction(inboxes, results, workers);
                     return Err(error);
                 }
@@ -430,8 +465,9 @@ impl AlacWorkerPool {
         #[cfg(test)]
         if _options.spawn_fault == SpawnFault::Demux {
             let error = demux_spawn_error(
+                route,
                 context.path(),
-                io::Error::other("injected ALAC demux spawn failure"),
+                io::Error::other("injected demux spawn failure"),
             );
             drop(demux_inboxes);
             cleanup_failed_construction(inboxes, results, workers);
@@ -439,7 +475,7 @@ impl AlacWorkerPool {
         }
 
         let demux = match thread::Builder::new()
-            .name("macinmeter-alac-demux".to_owned())
+            .name(format!("{}-demux", route.thread_prefix()))
             .spawn(move || {
                 run_demux(
                     &demux_context,
@@ -453,7 +489,7 @@ impl AlacWorkerPool {
             }) {
             Ok(handle) => handle,
             Err(error) => {
-                let error = demux_spawn_error(context.path(), error);
+                let error = demux_spawn_error(route, context.path(), error);
                 cleanup_failed_construction(inboxes, results, workers);
                 return Err(error);
             }
@@ -471,6 +507,7 @@ impl AlacWorkerPool {
         STARTED_WORKER_POOLS.with(|started| started.set(started.get() + 1));
 
         Ok(Self {
+            route,
             context,
             demux: Some(demux),
             workers,
@@ -580,7 +617,10 @@ impl AlacWorkerPool {
                         self.context.path(),
                         ErrorCode::Internal,
                         AnalysisStage::Internal,
-                        "an ALAC decode worker panicked",
+                        format!(
+                            "a packet decode worker on the {} route panicked",
+                            self.route.name()
+                        ),
                         None,
                     )
                 })
@@ -593,7 +633,10 @@ impl AlacWorkerPool {
                     self.context.path(),
                     ErrorCode::Internal,
                     AnalysisStage::Internal,
-                    "the ALAC demux thread panicked",
+                    format!(
+                        "the demux thread on the {} route panicked",
+                        self.route.name()
+                    ),
                     None,
                 ))
             }),
@@ -604,7 +647,7 @@ impl AlacWorkerPool {
     }
 }
 
-impl Drop for AlacWorkerPool {
+impl Drop for PacketWorkerPool {
     fn drop(&mut self) {
         let _ = self.shutdown();
     }
@@ -686,14 +729,17 @@ fn reject_worker_verdict(
     verdict: WorkerVerdict,
 ) -> Result<(), AnalysisError> {
     // ADR-0014 §4: each decoder only sees its own subset of packets, so its
-    // `finalize()` cannot stand in for a stream-level integrity signature. The
-    // ALAC route is graduated on a decoder that reports no such verdict at all.
+    // `finalize()` cannot stand in for a stream-level integrity signature. A
+    // graduated route either has no such verdict to report (ALAC) or has had it
+    // relocated to the product's own in-order verifier (FLAC); either way a
+    // worker reporting one means the route reached a worker it never graduated
+    // for.
     if let Some(verify_ok) = verdict.verify_ok {
         return Err(analysis_error(
             context.path(),
             ErrorCode::Internal,
             AnalysisStage::Internal,
-            "the ALAC route decoder reported a stream-level integrity verdict that \
+            "a packet worker decoder reported a stream-level integrity verdict that \
              worker-local finalization cannot reproduce",
             Some(format!("worker_verify_ok={verify_ok}")),
         ));
@@ -701,22 +747,28 @@ fn reject_worker_verdict(
     Ok(())
 }
 
-fn worker_spawn_error(path: &Path, error: io::Error) -> AnalysisError {
+fn worker_spawn_error(route: ParallelRoute, path: &Path, error: io::Error) -> AnalysisError {
     analysis_error(
         path,
         ErrorCode::ResourceExhausted,
         AnalysisStage::Decode,
-        "failed to start an ALAC decode worker",
+        format!(
+            "failed to start a packet decode worker on the {} route",
+            route.name()
+        ),
         Some(error.to_string()),
     )
 }
 
-fn demux_spawn_error(path: &Path, error: io::Error) -> AnalysisError {
+fn demux_spawn_error(route: ParallelRoute, path: &Path, error: io::Error) -> AnalysisError {
     analysis_error(
         path,
         ErrorCode::ResourceExhausted,
         AnalysisStage::Decode,
-        "failed to start the ALAC demux thread",
+        format!(
+            "failed to start the demux thread on the {} route",
+            route.name()
+        ),
         Some(error.to_string()),
     )
 }
