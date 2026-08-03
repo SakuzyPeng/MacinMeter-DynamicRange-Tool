@@ -310,6 +310,9 @@ def git_identity(root: Path, allow_dirty: bool) -> dict[str, str]:
     return {"commit": commit, "state": state}
 
 
+EXECUTABLE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+
+
 def build_default_worker(root: Path) -> Path:
     subprocess.run(
         (
@@ -325,7 +328,9 @@ def build_default_worker(root: Path) -> Path:
         cwd=root,
         check=True,
     )
-    worker = root / "target/release/examples/m6_baseline_worker"
+    # Cargo names the artifact after the host, so ask the host rather than
+    # assuming the POSIX spelling.
+    worker = root / "target/release/examples" / f"m6_baseline_worker{EXECUTABLE_SUFFIX}"
     if not worker.is_file() or not os.access(worker, os.X_OK):
         raise BaselineError(f"release worker was not produced at {worker}")
     return worker
