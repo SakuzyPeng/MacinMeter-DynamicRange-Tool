@@ -40,6 +40,25 @@ class PerformanceBaselineTests(unittest.TestCase):
             for workers in baseline.PACKET_WORKER_COUNTS:
                 self.assertIn(f"decode/{track}-w{workers}", case_ids)
 
+    def test_attribution_cases_are_explicit_and_pair_both_packet_routes(self) -> None:
+        default_ids = {
+            case.case_id for case in baseline.suite_cases(Path("/corpus"))
+        }
+        attribution = baseline.attribution_cases(Path("/corpus"))
+        attribution_ids = {case.case_id for case in attribution}
+        self.assertTrue(default_ids.isdisjoint(attribution_ids))
+        self.assertEqual(len(attribution), 6 * len(baseline.PACKET_WORKER_COUNTS))
+        for track in (
+            "alac-s16-240s",
+            "alac-tonal-240s",
+            "alac-varied-240s",
+            "flac-s16-240s",
+            "flac-s24-240s",
+            "flac-s24-tonal-240s",
+        ):
+            for workers in baseline.PACKET_WORKER_COUNTS:
+                self.assertIn(f"decode-phases/{track}-w{workers}", attribution_ids)
+
     def test_seeded_schedule_is_deterministic_and_balanced(self) -> None:
         cases = (
             baseline.BenchmarkCase("a", "analysis", "a", ("analysis",)),
@@ -285,6 +304,35 @@ class PerformanceBaselineTests(unittest.TestCase):
         ):
             with self.assertRaises(baseline.BaselineError):
                 baseline.assert_decode_allocation(case(4), details)
+
+    def test_decode_phase_gate_rejects_fallback_and_incomplete_accounting(self) -> None:
+        case = baseline.BenchmarkCase(
+            "decode-phases/flac-w8",
+            "attribution",
+            "phases",
+            ("decode-phases", "/corpus/input.flac", "1", "8"),
+        )
+        sample = {
+            "workerElapsedNs": 100,
+            "details": {
+                "selectedEngine": "FlacPacketWorkers",
+                "selectedTotalWorkers": 8,
+                "selectedDecoderWorkers": 7,
+                "selectedHasherWorkers": 1,
+                "openElapsedNs": 10,
+                "drainElapsedNs": 89,
+                "unattributedElapsedNs": 1,
+            },
+        }
+        baseline.assert_decode_phase_attribution(case, sample)
+
+        sample["details"]["selectedDecoderWorkers"] = 8
+        with self.assertRaises(baseline.BaselineError):
+            baseline.assert_decode_phase_attribution(case, sample)
+        sample["details"]["selectedDecoderWorkers"] = 7
+        sample["details"]["drainElapsedNs"] = 88
+        with self.assertRaises(baseline.BaselineError):
+            baseline.assert_decode_phase_attribution(case, sample)
 
     def test_variant_parser_requires_safe_name_and_executable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

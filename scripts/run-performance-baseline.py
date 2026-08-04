@@ -56,6 +56,7 @@ class BenchmarkCase:
 
 # Worker counts the ADR-0014 packet-worker sweep compares in one run.
 PACKET_WORKER_COUNTS = (1, 2, 4, 8)
+MAX_DECODE_WORKERS = 8
 # Minimum legal and fixed product maximum reorder permits, swept at the
 # widest worker count. The plan's own derivation for 8 workers is 32.
 ALAC_QUEUE_SWEEP_WORKERS = 8
@@ -283,6 +284,56 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             "Pretty JSON wire-v3 rendering with analysis outside the timed region",
             ("render-json", media("stereo-s16-60s.wav"), "50000"),
         ),
+    )
+
+
+def attribution_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
+    """Explicit phase cases that are selectable but not in the default suite."""
+
+    def media(name: str) -> str:
+        return str((corpus / name).resolve())
+
+    return tuple(
+        BenchmarkCase(
+            f"decode-phases/{track}-w{workers}",
+            "attribution",
+            f"Attribute complete {label} decode between open and drain on "
+            f"{workers} total worker permit(s)",
+            ("decode-phases", media(filename), "1", str(workers)),
+        )
+        for track, label, filename in (
+            (
+                "alac-s16-240s",
+                "near-incompressible ALAC",
+                "stereo-s16-alac-240s.m4a",
+            ),
+            (
+                "alac-tonal-240s",
+                "tonal ALAC",
+                "stereo-s16-alac-tonal-240s.m4a",
+            ),
+            (
+                "alac-varied-240s",
+                "load-imbalanced ALAC",
+                "stereo-s16-alac-varied-240s.m4a",
+            ),
+            (
+                "flac-s16-240s",
+                "16-bit near-incompressible FLAC",
+                "stereo-s16-flac-240s.flac",
+            ),
+            (
+                "flac-s24-240s",
+                "24-bit near-incompressible FLAC",
+                "stereo-s24-flac-240s.flac",
+            ),
+            (
+                "flac-s24-tonal-240s",
+                "24-bit tonal FLAC",
+                "stereo-s24-flac-tonal-240s.flac",
+            ),
+        )
+        for workers in PACKET_WORKER_COUNTS
     )
 
 
@@ -1067,7 +1118,7 @@ def validate_corpus_work(
             )
             continue
 
-        if case.mode in ("decode", "application", "render-json"):
+        if case.mode in ("decode", "decode-phases", "application", "render-json"):
             path = Path(case.arguments[1])
             try:
                 relative = path.resolve().relative_to(corpus.resolve()).as_posix()
@@ -1102,13 +1153,15 @@ def validate_corpus_work(
                 seconds=(frames / sample_rate) * iterations,
                 logical_items=iterations,
             )
-            if case.mode == "decode":
+            if case.mode in ("decode", "decode-phases"):
                 expected_pcm = entry.get("normalizedInterleavedF64LeSha256")
                 if details.get("pcmF64LeSha256") != expected_pcm:
                     raise BaselineError(
                         f"{case.case_id} decoded PCM fingerprint does not match the corpus oracle"
                     )
                 assert_decode_allocation(case, details)
+                if case.mode == "decode-phases":
+                    assert_decode_phase_attribution(case, sample)
             else:
                 if details.get("decodedFramesPerIteration") != frames:
                     raise BaselineError(
@@ -1232,6 +1285,50 @@ def assert_decode_allocation(case: BenchmarkCase, details: dict[str, object]) ->
             f"{case.case_id} decode in-flight PCM permit "
             f"{details.get('decodeMaxInFlightPcmBytes')!r} does not match the plan's "
             f"derivation {expected_bytes}"
+        )
+
+
+def assert_decode_phase_attribution(
+    case: BenchmarkCase, sample: dict[str, object]
+) -> None:
+    """Reject incomplete phase accounting and silent route fallback."""
+
+    details = sample["details"]
+    requested = int(case.arguments[3])
+    is_flac = Path(case.arguments[1]).suffix.lower() == ".flac"
+    expected_engine = (
+        "Serial"
+        if requested == 1
+        else "FlacPacketWorkers"
+        if is_flac
+        else "AlacPacketWorkers"
+    )
+    expected_hashers = int(is_flac and requested == MAX_DECODE_WORKERS)
+    expected_decoders = requested - expected_hashers
+    expected = {
+        "selectedEngine": expected_engine,
+        "selectedTotalWorkers": requested,
+        "selectedDecoderWorkers": expected_decoders,
+        "selectedHasherWorkers": expected_hashers,
+    }
+    for key, value in expected.items():
+        if details.get(key) != value:
+            raise BaselineError(
+                f"{case.case_id} attribution field {key} is {details.get(key)!r}, "
+                f"expected {value!r}"
+            )
+
+    phases = []
+    for key in ("openElapsedNs", "drainElapsedNs", "unattributedElapsedNs"):
+        value = details.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise BaselineError(
+                f"{case.case_id} attribution field {key} is not a nonnegative integer"
+            )
+        phases.append(value)
+    if sum(phases) != sample.get("workerElapsedNs"):
+        raise BaselineError(
+            f"{case.case_id} phase nanoseconds do not sum to workerElapsedNs"
         )
 
 
@@ -1472,7 +1569,8 @@ def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parent.parent
     corpus = args.corpus_dir.resolve()
-    available = suite_cases(corpus)
+    default_cases = suite_cases(corpus)
+    available = default_cases + attribution_cases(corpus)
     if args.list_cases:
         for case in available:
             print(f"{case.case_id}\t{case.scope}\t{case.description}")
@@ -1486,7 +1584,7 @@ def main() -> int:
             raise BaselineError("--sampling-interval-ms must be greater than zero")
         source = git_identity(root, args.allow_dirty)
         corpus_manifest, corpus_manifest_sha = verify_corpus(root, corpus)
-        cases = selected_cases(available, args.case)
+        cases = selected_cases(available, args.case) if args.case else default_cases
 
         variants: dict[str, Path] = {}
         variant_sources: dict[str, str] = {}

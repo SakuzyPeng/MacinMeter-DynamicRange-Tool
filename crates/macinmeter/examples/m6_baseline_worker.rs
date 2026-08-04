@@ -4,7 +4,7 @@ use macinmeter::{
     AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
     CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
 };
-use macinmeter_codecs::{DecoderFactory, ReadOutcome};
+use macinmeter_codecs::{DecodeExecution, DecoderFactory, OpenedAudio, ReadOutcome};
 use macinmeter_domain::{DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_IN_FLIGHT_PCM_BYTES};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -48,6 +48,7 @@ fn run() -> Result<Value, String> {
     match mode.as_str() {
         "analysis" => run_analysis(&remaining),
         "decode" => run_decode(&remaining),
+        "decode-phases" => run_decode_phases(&remaining),
         "application" => run_application(&remaining),
         "batch" => run_batch(&remaining),
         "discovery" => run_discovery(&remaining),
@@ -60,6 +61,7 @@ fn usage() -> &'static str {
     "usage:
   m6_baseline_worker analysis CHANNELS SAMPLE_RATE FRAMES BLOCK_FRAMES
   m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS [QUEUE_CAPACITY]]
+  m6_baseline_worker decode-phases PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker application PATH ITERATIONS
   m6_baseline_worker batch DIRECTORY ITERATIONS
   m6_baseline_worker discovery DIRECTORY ITERATIONS
@@ -255,6 +257,110 @@ fn run_decode(arguments: &[OsString]) -> Result<Value, String> {
     )
 }
 
+/// Attribute the complete product decode workload between source construction
+/// and draining without changing either path.
+///
+/// The earlier sequential-floor probe starts after backend open, whereas the
+/// formal decode workload starts before first-party container inspection,
+/// backend probe, decoder construction, and thread creation. Keeping these
+/// timers in the existing worker makes that previously omitted interval
+/// source-bound and directly comparable with the same corpus/allocation sweep.
+fn run_decode_phases(arguments: &[OsString]) -> Result<Value, String> {
+    require_len(arguments, 3, "decode-phases")?;
+    let path = PathBuf::from(&arguments[0]);
+    let iterations = positive_iterations(&arguments[1])?;
+    let decode_workers = parse_number::<usize>(&arguments[2], "decode workers")?;
+    let reservation = decode_reservation(decode_workers, None)?;
+
+    let (timed, execution, elapsed, open_elapsed, drain_elapsed) =
+        timed_decode_phase_workload(&path, iterations, reservation)?;
+
+    // The attribution pass consumes blocks without hashing so its phase
+    // boundaries stay on the product path. A second pass on the identical
+    // allocation remains outside those timers and supplies the corpus oracle.
+    let verified = decode_once(&path, true, reservation)?;
+    ensure_same_decode_geometry(&timed, &verified)?;
+    let pcm_sha256 = verified
+        .pcm_sha256
+        .ok_or_else(|| "verification decode did not produce a PCM fingerprint".to_owned())?;
+    let (fingerprint, result_bytes) = fingerprint(&json!({
+        "stream": verified.stream,
+        "frames": verified.frames,
+        "blocks": verified.blocks,
+        "pcmF64LeSha256": pcm_sha256,
+    }))?;
+    let accounted = open_elapsed.saturating_add(drain_elapsed);
+
+    workload_output(
+        "decode_phases",
+        elapsed,
+        WorkUnits::audio(timed.frames, timed.channels, timed.sample_rate, iterations)?,
+        fingerprint,
+        result_bytes,
+        json!({
+            "path": display_name(&path),
+            "blocksPerIteration": timed.blocks,
+            "decodeWorkers": decode_workers,
+            "decodeQueueCapacity": reservation.queue_capacity().get(),
+            "decodeMaxInFlightPcmBytes": reservation.max_in_flight_pcm_bytes(),
+            "selectedEngine": format!("{:?}", execution.engine()),
+            "selectedTotalWorkers": execution.workers().get(),
+            "selectedDecoderWorkers": execution.decoder_workers().get(),
+            "selectedHasherWorkers": execution.hasher_workers(),
+            "openElapsedNs": duration_ns(open_elapsed)?,
+            "drainElapsedNs": duration_ns(drain_elapsed)?,
+            "unattributedElapsedNs": duration_ns(elapsed.saturating_sub(accounted))?,
+            "phaseBoundary": "open includes first-party inspection, backend probe, decoder construction, and owned-thread start; drain begins after DecoderFactory returns",
+            "pcmF64LeSha256": pcm_sha256,
+            "verificationHashOutsideTimedRegion": true,
+        }),
+    )
+}
+
+#[inline(never)]
+fn timed_decode_phase_workload(
+    path: &Path,
+    iterations: u32,
+    reservation: DecodeReservation,
+) -> Result<(DecodeSummary, DecodeExecution, Duration, Duration, Duration), String> {
+    let started = Instant::now();
+    let mut timed_summary = None;
+    let mut selected_execution = None;
+    let mut open_elapsed = Duration::ZERO;
+    let mut drain_elapsed = Duration::ZERO;
+
+    for _ in 0..iterations {
+        let open_started = Instant::now();
+        let (opened, execution) = DecoderFactory::with_application_reservation(reservation)
+            .open_with_execution(path)
+            .map_err(|error| error.to_string())?;
+        open_elapsed = open_elapsed.saturating_add(open_started.elapsed());
+
+        let drain_started = Instant::now();
+        let summary = drain_opened(opened, false)?;
+        drain_elapsed = drain_elapsed.saturating_add(drain_started.elapsed());
+
+        if let Some(previous) = &timed_summary {
+            ensure_same_decode_geometry(previous, &summary)?;
+        } else {
+            timed_summary = Some(summary);
+        }
+        if selected_execution.is_some_and(|previous| previous != execution) {
+            return Err("decode execution topology changed between iterations".to_owned());
+        }
+        selected_execution = Some(execution);
+    }
+
+    let elapsed = started.elapsed();
+    Ok((
+        timed_summary.ok_or_else(|| "decode produced no iteration".to_owned())?,
+        selected_execution.ok_or_else(|| "decode selected no execution".to_owned())?,
+        elapsed,
+        open_elapsed,
+        drain_elapsed,
+    ))
+}
+
 #[inline(never)]
 fn timed_decode_workload(
     path: &Path,
@@ -299,9 +405,13 @@ fn decode_once(
     hash_pcm: bool,
     reservation: DecodeReservation,
 ) -> Result<DecodeSummary, String> {
-    let mut opened = DecoderFactory::with_application_reservation(reservation)
+    let opened = DecoderFactory::with_application_reservation(reservation)
         .open(path)
         .map_err(|error| error.to_string())?;
+    drain_opened(opened, hash_pcm)
+}
+
+fn drain_opened(mut opened: OpenedAudio, hash_pcm: bool) -> Result<DecodeSummary, String> {
     let info = opened.reader.stream_info().clone();
     let stream = DecodeStream {
         sample_rate: info.spec.sample_rate.get(),
@@ -630,13 +740,17 @@ fn workload_output(
     Ok(json!({
         "schemaVersion": WORKER_SCHEMA_VERSION,
         "mode": mode,
-        "workerElapsedNs": u64::try_from(elapsed.as_nanos())
-            .map_err(|_| "worker elapsed time overflowed u64 nanoseconds".to_owned())?,
+        "workerElapsedNs": duration_ns(elapsed)?,
         "work": work,
         "resultFingerprintSha256": result_fingerprint,
         "resultBytes": result_bytes,
         "details": details,
     }))
+}
+
+fn duration_ns(duration: Duration) -> Result<u64, String> {
+    u64::try_from(duration.as_nanos())
+        .map_err(|_| "worker elapsed time overflowed u64 nanoseconds".to_owned())
 }
 
 fn fingerprint<T: Serialize>(value: &T) -> Result<(String, usize), String> {
