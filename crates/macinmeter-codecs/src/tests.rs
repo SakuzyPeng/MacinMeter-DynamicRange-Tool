@@ -4,7 +4,8 @@ use crate::{
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelCount, ChannelLayout, ContainerFormat, DecodeReservation,
-    ErrorCode, MAX_ANALYSIS_CHANNELS, MAX_DECODE_QUEUE_CAPACITY, PcmBlock, SourceCodec,
+    ErrorCode, MAX_ANALYSIS_CHANNELS, MAX_DECODE_QUEUE_CAPACITY, MAX_DECODE_WORKERS, PcmBlock,
+    SourceCodec,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -2599,6 +2600,7 @@ fn dropping_a_worker_source_early_joins_every_thread() {
     // EOF or attempting a verdict on the incomplete stream.
     let flac = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
     for workers in PACKET_WORKER_COUNTS {
+        let expected_hashers = usize::from(workers == MAX_DECODE_WORKERS);
         let started_before =
             crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
         let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
@@ -2613,13 +2615,13 @@ fn dropping_a_worker_source_early_joins_every_thread() {
         assert_eq!(
             crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get)
                 - started_before,
-            1,
-            "{workers} total permits must start one hasher"
+            expected_hashers,
+            "only the measured eight-permit allocation may start a hasher"
         );
         assert_eq!(
             crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
-            1,
-            "dropping {workers}-permit FLAC must join its hasher"
+            expected_hashers,
+            "dropping {workers}-permit FLAC must join every hasher it started"
         );
     }
 }
@@ -2746,7 +2748,7 @@ fn flac_hasher_spawn_failure_precedes_packet_pool_construction() {
 
     let error = match crate::symphonia_source::open_test_source_with_pool_options(
         &path,
-        worker_reservation(4),
+        worker_reservation(MAX_DECODE_WORKERS),
         crate::decode_engine::PoolOptions::fail_hasher_spawn(),
     ) {
         Ok(_) => panic!("the injected hasher construction failure unexpectedly opened"),
@@ -2774,7 +2776,7 @@ fn flac_hasher_spawn_failure_precedes_packet_pool_construction() {
 #[test]
 fn flac_packet_pool_construction_failure_also_joins_the_started_hasher() {
     let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
-    let reservation = worker_reservation(4);
+    let reservation = worker_reservation(MAX_DECODE_WORKERS);
     let worker_joins = &crate::decode_engine::FAILED_START_JOINED_THREADS;
 
     for (options, expected_worker_joins, expected_message) in [
@@ -2785,7 +2787,7 @@ fn flac_packet_pool_construction_failure_also_joins_the_started_hasher() {
         ),
         (
             crate::decode_engine::PoolOptions::fail_demux_spawn(),
-            2,
+            6,
             "failed to start the demux thread on the FLAC route",
         ),
     ] {
@@ -2829,7 +2831,7 @@ fn flac_hasher_panic_is_sticky_and_joined_before_the_error_escapes() {
     let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
     let mut reader = crate::symphonia_source::open_test_source_with_pool_options(
         &path,
-        worker_reservation(4),
+        worker_reservation(MAX_DECODE_WORKERS),
         crate::decode_engine::PoolOptions::panic_hasher_after_first_packet(),
     )
     .expect("the injected panic occurs after open");
@@ -3121,13 +3123,13 @@ fn flac_packet_workers_decode_bit_identically_at_every_worker_count() {
     );
     assert_eq!(
         crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get) - hashers_before,
-        PACKET_WORKER_COUNTS.len(),
-        "every signed parallel case must actually have run one hasher"
+        1,
+        "only the measured eight-permit signed case must run a hasher"
     );
     assert_eq!(
         crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
-        PACKET_WORKER_COUNTS.len(),
-        "every completed signed parallel case must join its hasher at EOF"
+        1,
+        "the measured eight-permit signed case must join its hasher at EOF"
     );
 }
 
@@ -3140,7 +3142,15 @@ fn the_flac_route_reports_its_own_engine_and_falls_back_on_one_worker() {
         .expect("the FLAC fixture opens on a multi-worker reservation");
     assert_eq!(execution.engine(), DecodeEngineKind::FlacPacketWorkers);
     assert_eq!(execution.workers().get(), 4);
-    assert_eq!(execution.decoder_workers().get(), 3);
+    assert_eq!(execution.decoder_workers().get(), 4);
+    assert_eq!(execution.hasher_workers(), 0);
+
+    let (_, execution) = DecoderFactory::with_application_reservation(worker_reservation(8))
+        .open_with_execution(&path)
+        .expect("the measured FLAC allocation opens");
+    assert_eq!(execution.engine(), DecodeEngineKind::FlacPacketWorkers);
+    assert_eq!(execution.workers().get(), 8);
+    assert_eq!(execution.decoder_workers().get(), 7);
     assert_eq!(execution.hasher_workers(), 1);
 
     // A single-worker allocation degrades before decoding starts, exactly as

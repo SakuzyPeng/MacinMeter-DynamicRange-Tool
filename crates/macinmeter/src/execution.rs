@@ -568,7 +568,9 @@ mod tests {
                         "{name} did not use packet workers under the product default"
                     );
                     assert_eq!(execution.workers().get(), granted);
-                    if engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers {
+                    if engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers
+                        && granted == TEST_HOST_WORKERS.get()
+                    {
                         assert_eq!(execution.decoder_workers().get(), granted - 1);
                         assert_eq!(execution.hasher_workers(), 1);
                     } else {
@@ -649,7 +651,9 @@ mod tests {
                     expected_workers,
                     "{name} used an unexpected worker count on {granted} granted workers"
                 );
-                if expected_engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers {
+                if expected_engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers
+                    && granted == TEST_HOST_WORKERS.get()
+                {
                     assert_eq!(execution.decoder_workers().get(), granted - 1);
                     assert_eq!(execution.hasher_workers(), 1);
                 } else {

@@ -19,7 +19,8 @@ use crate::{
 };
 use macinmeter_domain::{
     AnalysisError, AnalysisStage, ChannelLayout, DecodeDiagnostics, DecodeProgress,
-    DecodeReservation, ErrorCode, PcmBlock, PcmStreamInfo, SourceInfo, StreamSpec,
+    DecodeReservation, ErrorCode, MAX_DECODE_WORKERS, PcmBlock, PcmStreamInfo, SourceInfo,
+    StreamSpec,
 };
 use std::{
     fs::File,
@@ -316,7 +317,17 @@ fn flac_parallel_execution(
 ) -> Option<ParallelExecution> {
     let max_frames = flac_max_frames_per_packet(codec_params)?;
     let samples_per_packet = max_frames.checked_mul(u64::from(channels.get()))?;
-    let hasher_workers = if integrity_plan.is_some() { 1 } else { 0 };
+    // The equal-permit Windows A/B graduated this overlap only at the fixed
+    // eight-worker product ceiling. At two and four total permits, giving up a
+    // decoder cost 46–51% and 13–31% respectively in the direct decode sweep;
+    // those unmeasured application allocations therefore retain every decoder
+    // and the inline verifier. Never extrapolate the eight-worker win downward.
+    let hasher_workers =
+        if integrity_plan.is_some() && reservation.workers().get() == MAX_DECODE_WORKERS {
+            1
+        } else {
+            0
+        };
     let decoder_workers =
         NonZeroUsize::new(reservation.workers().get().checked_sub(hasher_workers)?)?;
     let hash_bytes = match integrity_plan {
@@ -431,12 +442,12 @@ mod flac_reorder_window_tests {
         let params = signed_flac(Some(4096), 24);
         let integrity = FlacIntegrityPlan::for_stream(path, &params).unwrap();
         let packet_samples = 4096_u64 * 2;
-        let reorder_window = packet_samples * (8 + 3) * 2;
+        let reorder_window = packet_samples * (8 + 3) * MAX_DECODE_WORKERS as u64;
         let hash_window = packet_samples * 3 * ASYNC_HASH_EXTRA_PACKETS;
 
         let reorder_only = DecodeReservation::new(
-            NonZeroUsize::new(2).unwrap(),
-            NonZeroUsize::new(2).unwrap(),
+            NonZeroUsize::new(MAX_DECODE_WORKERS).unwrap(),
+            NonZeroUsize::new(MAX_DECODE_WORKERS).unwrap(),
             reorder_window,
         )
         .unwrap();
@@ -446,14 +457,14 @@ mod flac_reorder_window_tests {
         );
 
         let complete = DecodeReservation::new(
-            NonZeroUsize::new(2).unwrap(),
-            NonZeroUsize::new(2).unwrap(),
+            NonZeroUsize::new(MAX_DECODE_WORKERS).unwrap(),
+            NonZeroUsize::new(MAX_DECODE_WORKERS).unwrap(),
             reorder_window + hash_window,
         )
         .unwrap();
         let execution = flac_parallel_execution(&params, channels, integrity, complete)
             .expect("the full reorder plus hash window must fit exactly");
-        assert_eq!(execution.decode_reservation.workers().get(), 1);
+        assert_eq!(execution.decode_reservation.workers().get(), 7);
         assert_eq!(execution.hasher_workers, 1);
         assert_eq!(
             execution.decode_reservation.max_in_flight_pcm_bytes(),

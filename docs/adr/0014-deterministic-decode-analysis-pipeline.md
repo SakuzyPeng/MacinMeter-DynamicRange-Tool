@@ -596,18 +596,19 @@ verifier、字节布局、输入顺序或最终判定，只改调度：唯一 co
 已有的签名字节 `Vec` 移交给一条 source-owned hasher 线程，队列容量固定为 1，EOF
 关闭 sender、join，再由同一个 `FlacStreamVerifier` 比较一次最终 digest。
 
-它不在 decoder pool 之外新增未计量线程。对声明签名且取得总 permit `N > 1` 的 FLAC，
-一次性拆成 `N - 1` 个 decoder permit 与 1 个 hasher permit；`N == 1` 继续使用 inline
-串行 oracle。未声明签名的 FLAC 不创建 hasher，全部 `N` 个 permit 仍用于 decoder。
-隐藏的 `DecodeExecution` correctness surface 分别报告 total、decoder 和 hasher 数，
-application 测试固定 `N == (N - 1) + 1`，因此不能把额外线程静默藏在旧的 worker
-字段后面。
+它不在 decoder pool 之外新增未计量线程。对声明签名且取得已实测总 permit `N == 8`
+的 FLAC，一次性拆成 7 个 decoder permit 与 1 个 hasher permit；`N == 2/4` 的实测
+direct-decode 代价不能支持向下外推，因此这些较小 allocation 保留全部 `N` 个 decoder
+与 inline verifier，`N == 1` 继续使用串行 oracle。未声明签名的 FLAC 不创建 hasher，
+全部 `N` 个 permit 仍用于 decoder。隐藏的 `DecodeExecution` correctness surface 分别
+报告 total、decoder 和 hasher 数，application 测试固定 8 == 7 + 1 且 2/4 == 2/4 + 0，
+因此不能把额外线程静默藏在旧的 worker 字段后面。
 
-内存也从同一个 reservation 向下切分。route 启动前按 STREAMINFO 最大 block 几何为
-hasher 的“一个处理中 + 一个已排队”签名包预留字节，再把剩余 in-flight bytes 交给
-完整 reorder window；两者任一不可表示或总和超出 permit 都在启动线程前退化为串行。
-容量为 1 时，commit sender 当前持有的包是 inline 与 async 两条路径共有的 head
-payload，异步调度只额外保留上述两个包。
+8-permit route 的内存也从同一个 reservation 向下切分。启动前按 STREAMINFO 最大
+block 几何为 hasher 的“一个处理中 + 一个已排队”签名包预留字节，再把剩余 in-flight
+bytes 交给完整 reorder window；两者任一不可表示或总和超出 permit 都在启动线程前
+退化为串行。容量为 1 时，commit sender 当前持有的包是 inline 与 async 两条路径
+共有的 head payload，异步调度只额外保留上述两个包。
 
 候选的错误与终止面已经固定：hasher spawn failure 为结构化资源错误；panic/channel
 disconnect 为 sticky internal error；packet-pool 构造在 hasher 启动后失败时两侧线程
@@ -616,11 +617,14 @@ disconnect 为 sticky internal error；packet-pool 构造在 hasher 启动后失
 错误优先级。单元覆盖 inline/async digest 等价、2/4/8 总 permit raw-bit 与报告等价、
 强制乱序、篡改签名、spawn/panic、构造回滚、提前 drop、unsigned 对照与紧内存边界。
 
-是否保留该候选由新的正式 A/B 决定，而不是从顺序底线推算。baseline suite 已加入三条
+是否保留该候选由正式 A/B 决定，而不是从顺序底线推算。baseline suite 已加入三条
 240 秒 FLAC 的完整 application 案例；同轮仍跑直接 decode worker sweep，以显式观察
-少一个 decoder 的代价，并保留三条 ALAC worker sweep 作为宿主污染对照。正式记录
-必须在固定 Windows 主机上交错 baseline/candidate、保持总 permit 相同，并在 ALAC
-对照明显低于已知干净值时整轮作废。
+少一个 decoder 的代价，并保留三条 ALAC worker sweep 作为宿主污染对照。首次广义
+候选 run 在 8 permit Application 上快 15.3–36.6%，但 direct decode 在 2 permit 慢
+46–51%、4 permit 慢 13–31%，据此把生产选择收紧到唯一具有端到端正收益证据的
+8-permit allocation。最终记录仍须在固定 Windows 主机上对收紧后的 source commit
+交错 baseline/candidate、保持总 permit 相同，并在 ALAC 对照明显低于已知干净值时
+整轮作废。
 
 ## 明确非目标
 
