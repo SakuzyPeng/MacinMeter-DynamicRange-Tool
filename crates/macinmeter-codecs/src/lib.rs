@@ -88,7 +88,10 @@ pub enum DecodeEngineKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodeExecution {
     engine: DecodeEngineKind,
+    /// Total application-owned internal worker permits spent by this source.
     workers: NonZeroUsize,
+    decoder_workers: NonZeroUsize,
+    hasher_workers: usize,
 }
 
 impl DecodeExecution {
@@ -96,15 +99,27 @@ impl DecodeExecution {
         Self {
             engine: DecodeEngineKind::Serial,
             workers: NonZeroUsize::MIN,
+            decoder_workers: NonZeroUsize::MIN,
+            hasher_workers: 0,
         }
     }
 
-    pub(crate) const fn packet_workers(route: ParallelRoute, workers: NonZeroUsize) -> Self {
+    pub(crate) const fn packet_workers(
+        route: ParallelRoute,
+        workers: NonZeroUsize,
+        decoder_workers: NonZeroUsize,
+        hasher_workers: usize,
+    ) -> Self {
         let engine = match route {
             ParallelRoute::Alac => DecodeEngineKind::AlacPacketWorkers,
             ParallelRoute::Flac => DecodeEngineKind::FlacPacketWorkers,
         };
-        Self { engine, workers }
+        Self {
+            engine,
+            workers,
+            decoder_workers,
+            hasher_workers,
+        }
     }
 
     pub const fn engine(self) -> DecodeEngineKind {
@@ -113,6 +128,18 @@ impl DecodeExecution {
 
     pub const fn workers(self) -> NonZeroUsize {
         self.workers
+    }
+
+    /// Decoder permits actually spent after route-specific subdivision.
+    #[doc(hidden)]
+    pub const fn decoder_workers(self) -> NonZeroUsize {
+        self.decoder_workers
+    }
+
+    /// Ordered-hasher permits actually spent after route-specific subdivision.
+    #[doc(hidden)]
+    pub const fn hasher_workers(self) -> usize {
+        self.hasher_workers
     }
 }
 

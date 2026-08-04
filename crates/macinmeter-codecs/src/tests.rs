@@ -2459,6 +2459,8 @@ fn decoder_factory_reports_the_engine_selected_after_content_probe() {
     let (_, execution) = DecoderFactory::new().open_with_execution(&alac).unwrap();
     assert_eq!(execution.engine(), DecodeEngineKind::Serial);
     assert_eq!(execution.workers().get(), 1);
+    assert_eq!(execution.decoder_workers().get(), 1);
+    assert_eq!(execution.hasher_workers(), 0);
 
     let reservation = worker_reservation(4);
     let (_, execution) = DecoderFactory::with_application_reservation(reservation)
@@ -2466,12 +2468,16 @@ fn decoder_factory_reports_the_engine_selected_after_content_probe() {
         .unwrap();
     assert_eq!(execution.engine(), DecodeEngineKind::Serial);
     assert_eq!(execution.workers().get(), 1);
+    assert_eq!(execution.decoder_workers().get(), 1);
+    assert_eq!(execution.hasher_workers(), 0);
 
     let (_, execution) = DecoderFactory::with_application_reservation(reservation)
         .open_with_execution(&alac)
         .unwrap();
     assert_eq!(execution.engine(), DecodeEngineKind::AlacPacketWorkers);
     assert_eq!(execution.workers(), reservation.workers());
+    assert_eq!(execution.decoder_workers(), reservation.workers());
+    assert_eq!(execution.hasher_workers(), 0);
 }
 
 #[test]
@@ -2587,6 +2593,35 @@ fn dropping_a_worker_source_early_joins_every_thread() {
         ));
         drop(opened);
     }
+
+    // A controlled application cancellation drops the reader between blocks,
+    // so signed FLAC must also join its dedicated hasher without waiting for
+    // EOF or attempting a verdict on the incomplete stream.
+    let flac = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    for workers in PACKET_WORKER_COUNTS {
+        let started_before =
+            crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let mut opened = DecoderFactory::with_application_reservation(worker_reservation(workers))
+            .open(&flac)
+            .unwrap();
+        assert!(matches!(
+            opened.reader.read_block().unwrap(),
+            ReadOutcome::Data(_)
+        ));
+        drop(opened);
+        assert_eq!(
+            crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get)
+                - started_before,
+            1,
+            "{workers} total permits must start one hasher"
+        );
+        assert_eq!(
+            crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
+            1,
+            "dropping {workers}-permit FLAC must join its hasher"
+        );
+    }
 }
 
 #[test]
@@ -2701,6 +2736,128 @@ fn pool_spawn_failures_join_every_thread_started_during_construction() {
             "open returned before every previously started thread was joined"
         );
     }
+}
+
+#[test]
+fn flac_hasher_spawn_failure_precedes_packet_pool_construction() {
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    let pools_before = crate::decode_engine::STARTED_WORKER_POOLS.with(std::cell::Cell::get);
+    let hashers_before = crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+
+    let error = match crate::symphonia_source::open_test_source_with_pool_options(
+        &path,
+        worker_reservation(4),
+        crate::decode_engine::PoolOptions::fail_hasher_spawn(),
+    ) {
+        Ok(_) => panic!("the injected hasher construction failure unexpectedly opened"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.code, ErrorCode::ResourceExhausted);
+    assert_eq!(error.stage, AnalysisStage::Decode);
+    assert_eq!(
+        error.message,
+        "failed to start the FLAC stream signature hasher"
+    );
+    assert_eq!(
+        crate::decode_engine::STARTED_WORKER_POOLS.with(std::cell::Cell::get),
+        pools_before,
+        "no decoder thread may start after the hasher allocation fails"
+    );
+    assert_eq!(
+        crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get),
+        hashers_before,
+        "an injected spawn failure must not report an owned hasher"
+    );
+}
+
+#[test]
+fn flac_packet_pool_construction_failure_also_joins_the_started_hasher() {
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    let reservation = worker_reservation(4);
+    let worker_joins = &crate::decode_engine::FAILED_START_JOINED_THREADS;
+
+    for (options, expected_worker_joins, expected_message) in [
+        (
+            crate::decode_engine::PoolOptions::fail_worker_spawn(2),
+            1,
+            "failed to start a packet decode worker on the FLAC route",
+        ),
+        (
+            crate::decode_engine::PoolOptions::fail_demux_spawn(),
+            2,
+            "failed to start the demux thread on the FLAC route",
+        ),
+    ] {
+        let workers_before = worker_joins.with(std::cell::Cell::get);
+        let hashers_before =
+            crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let error = match crate::symphonia_source::open_test_source_with_pool_options(
+            &path,
+            reservation,
+            options,
+        ) {
+            Ok(_) => panic!("the injected packet-pool failure unexpectedly opened"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Decode);
+        assert_eq!(error.message, expected_message);
+        assert_eq!(
+            worker_joins.with(std::cell::Cell::get) - workers_before,
+            expected_worker_joins
+        );
+        assert_eq!(
+            crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get)
+                - hashers_before,
+            1
+        );
+        assert_eq!(
+            crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
+            1,
+            "a failed FLAC open must not detach the already-started hasher"
+        );
+    }
+}
+
+#[test]
+fn flac_hasher_panic_is_sticky_and_joined_before_the_error_escapes() {
+    let path = product_fixture_path("flac-pcm-s16-stereo-multiblock.flac");
+    let started_before = crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+    let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
+    let mut reader = crate::symphonia_source::open_test_source_with_pool_options(
+        &path,
+        worker_reservation(4),
+        crate::decode_engine::PoolOptions::panic_hasher_after_first_packet(),
+    )
+    .expect("the injected panic occurs after open");
+
+    let error = loop {
+        match reader.read_block() {
+            Ok(ReadOutcome::Data(_)) => continue,
+            Ok(ReadOutcome::Eof) => panic!("a panicked hasher must not publish EOF"),
+            Err(error) => break error,
+        }
+    };
+    let terminal_progress = reader.progress();
+    assert_eq!(error.code, ErrorCode::Internal);
+    assert_eq!(error.stage, AnalysisStage::Internal);
+    assert_eq!(error.message, "the FLAC stream signature hasher panicked");
+    for _ in 0..2 {
+        assert_eq!(reader.read_block().unwrap_err(), error);
+        assert_eq!(reader.progress(), terminal_progress);
+    }
+    assert_eq!(
+        crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get) - started_before,
+        1
+    );
+    assert_eq!(
+        crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
+        1,
+        "the panic must be joined before it becomes sticky terminal state"
+    );
 }
 
 #[test]
@@ -2941,6 +3098,8 @@ fn flac_packet_workers_decode_bit_identically_at_every_worker_count() {
     let (oracle_source, oracle_samples) = decode_all_samples(&path);
     let oracle_bits = raw_bits(&oracle_samples);
 
+    let hashers_before = crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+    let joined_before = crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
     let started = started_worker_pools(|| {
         for workers in PACKET_WORKER_COUNTS {
             let (source, samples) = decode_all_samples_with(&path, worker_reservation(workers));
@@ -2960,6 +3119,16 @@ fn flac_packet_workers_decode_bit_identically_at_every_worker_count() {
         PACKET_WORKER_COUNTS.len(),
         "every parallel case must actually have run on packet workers"
     );
+    assert_eq!(
+        crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get) - hashers_before,
+        PACKET_WORKER_COUNTS.len(),
+        "every signed parallel case must actually have run one hasher"
+    );
+    assert_eq!(
+        crate::flac_integrity::JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
+        PACKET_WORKER_COUNTS.len(),
+        "every completed signed parallel case must join its hasher at EOF"
+    );
 }
 
 #[test]
@@ -2971,6 +3140,8 @@ fn the_flac_route_reports_its_own_engine_and_falls_back_on_one_worker() {
         .expect("the FLAC fixture opens on a multi-worker reservation");
     assert_eq!(execution.engine(), DecodeEngineKind::FlacPacketWorkers);
     assert_eq!(execution.workers().get(), 4);
+    assert_eq!(execution.decoder_workers().get(), 3);
+    assert_eq!(execution.hasher_workers(), 1);
 
     // A single-worker allocation degrades before decoding starts, exactly as
     // every other route does.
@@ -2984,6 +3155,31 @@ fn the_flac_route_reports_its_own_engine_and_falls_back_on_one_worker() {
         .open_with_execution(&path)
         .expect("the FLAC fixture opens on a single-worker reservation");
     assert_eq!(execution.engine(), DecodeEngineKind::Serial);
+    assert_eq!(execution.workers().get(), 1);
+    assert_eq!(execution.decoder_workers().get(), 1);
+    assert_eq!(execution.hasher_workers(), 0);
+}
+
+#[test]
+fn unsigned_flac_spends_every_permit_on_decoding_and_starts_no_hasher() {
+    let mut unsigned = flac_fixture_bytes();
+    unsigned[FLAC_STREAMINFO_MD5].fill(0);
+    let file = TestFile::new("flac", &unsigned);
+    let reservation = worker_reservation(4);
+    let hashers_before = crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+
+    let (_, execution) = DecoderFactory::with_application_reservation(reservation)
+        .open_with_execution(file.path())
+        .expect("unsigned FLAC still qualifies for packet decoding");
+    assert_eq!(execution.engine(), DecodeEngineKind::FlacPacketWorkers);
+    assert_eq!(execution.workers().get(), 4);
+    assert_eq!(execution.decoder_workers().get(), 4);
+    assert_eq!(execution.hasher_workers(), 0);
+    assert_eq!(
+        crate::flac_integrity::STARTED_ASYNC_HASHERS.with(std::cell::Cell::get),
+        hashers_before,
+        "a stream without a declared signature must not spend a hasher permit"
+    );
 }
 
 #[test]

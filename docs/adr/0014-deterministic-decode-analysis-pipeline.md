@@ -588,6 +588,40 @@ reservation 下各连续 20 次成功，PCM 与结果指纹均与串行 oracle �
 哈希。历史原始记录的 500 ns 空哈希字节与 SHA-256 保持不变，只在正式报告中纠正其
 实际对应的 `aeb7022` 实现和派生解释。
 
+### 第 3 步之三：commit/analysis overlap 的专用 FLAC hasher 候选（2026-08-04）
+
+第 3 步之二把签名哈希留在调用线程的 commit 点，因此 `read_block()` 只有完成该包的
+MD5 后才把 PCM 交给 analyzer；哈希与分析严格串行。新的 source-bound 候选不改
+verifier、字节布局、输入顺序或最终判定，只改调度：唯一 commit sender 按输入序把
+已有的签名字节 `Vec` 移交给一条 source-owned hasher 线程，队列容量固定为 1，EOF
+关闭 sender、join，再由同一个 `FlacStreamVerifier` 比较一次最终 digest。
+
+它不在 decoder pool 之外新增未计量线程。对声明签名且取得总 permit `N > 1` 的 FLAC，
+一次性拆成 `N - 1` 个 decoder permit 与 1 个 hasher permit；`N == 1` 继续使用 inline
+串行 oracle。未声明签名的 FLAC 不创建 hasher，全部 `N` 个 permit 仍用于 decoder。
+隐藏的 `DecodeExecution` correctness surface 分别报告 total、decoder 和 hasher 数，
+application 测试固定 `N == (N - 1) + 1`，因此不能把额外线程静默藏在旧的 worker
+字段后面。
+
+内存也从同一个 reservation 向下切分。route 启动前按 STREAMINFO 最大 block 几何为
+hasher 的“一个处理中 + 一个已排队”签名包预留字节，再把剩余 in-flight bytes 交给
+完整 reorder window；两者任一不可表示或总和超出 permit 都在启动线程前退化为串行。
+容量为 1 时，commit sender 当前持有的包是 inline 与 async 两条路径共有的 head
+payload，异步调度只额外保留上述两个包。
+
+候选的错误与终止面已经固定：hasher spawn failure 为结构化资源错误；panic/channel
+disconnect 为 sticky internal error；packet-pool 构造在 hasher 启动后失败时两侧线程
+全部 join；提前 drop/应用取消关闭队列并 join，但不对不完整流请求 digest verdict；
+正常 EOF 仍保持“reorder 完整 → decoder pool verdict → 全流 MD5 → 声明帧数”的既有
+错误优先级。单元覆盖 inline/async digest 等价、2/4/8 总 permit raw-bit 与报告等价、
+强制乱序、篡改签名、spawn/panic、构造回滚、提前 drop、unsigned 对照与紧内存边界。
+
+是否保留该候选由新的正式 A/B 决定，而不是从顺序底线推算。baseline suite 已加入三条
+240 秒 FLAC 的完整 application 案例；同轮仍跑直接 decode worker sweep，以显式观察
+少一个 decoder 的代价，并保留三条 ALAC worker sweep 作为宿主污染对照。正式记录
+必须在固定 Windows 主机上交错 baseline/candidate、保持总 permit 相同，并在 ALAC
+对照明显低于已知干净值时整轮作废。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；

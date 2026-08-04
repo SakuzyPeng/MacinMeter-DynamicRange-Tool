@@ -568,6 +568,13 @@ mod tests {
                         "{name} did not use packet workers under the product default"
                     );
                     assert_eq!(execution.workers().get(), granted);
+                    if engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers {
+                        assert_eq!(execution.decoder_workers().get(), granted - 1);
+                        assert_eq!(execution.hasher_workers(), 1);
+                    } else {
+                        assert_eq!(execution.decoder_workers().get(), granted);
+                        assert_eq!(execution.hasher_workers(), 0);
+                    }
                 }
                 None => {
                     assert_eq!(
@@ -576,6 +583,8 @@ mod tests {
                         "{name} must not start packet workers"
                     );
                     assert_eq!(execution.workers().get(), 1);
+                    assert_eq!(execution.decoder_workers().get(), 1);
+                    assert_eq!(execution.hasher_workers(), 0);
                 }
             }
         }
@@ -606,6 +615,8 @@ mod tests {
                 1,
                 "{name} must use one worker under the product plan"
             );
+            assert_eq!(serial_execution.decoder_workers().get(), 1);
+            assert_eq!(serial_execution.hasher_workers(), 0);
 
             for requested_workers in [2, 4, 8] {
                 let budget = bounded_budget(requested_workers);
@@ -638,6 +649,13 @@ mod tests {
                     expected_workers,
                     "{name} used an unexpected worker count on {granted} granted workers"
                 );
+                if expected_engine == macinmeter_codecs::DecodeEngineKind::FlacPacketWorkers {
+                    assert_eq!(execution.decoder_workers().get(), granted - 1);
+                    assert_eq!(execution.hasher_workers(), 1);
+                } else {
+                    assert_eq!(execution.decoder_workers().get(), expected_workers);
+                    assert_eq!(execution.hasher_workers(), 0);
+                }
             }
         }
     }

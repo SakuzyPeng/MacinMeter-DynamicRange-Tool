@@ -7,7 +7,7 @@
 
 use crate::{
     error::{BACKEND, analysis_error, decoder_creation_error, runtime_error},
-    flac_integrity::FlacIntegrityPlan,
+    flac_integrity::{FlacIntegrityPlan, HasherOptions},
     packet::{DecodedPacket, PacketOutcome},
 };
 use macinmeter_domain::{
@@ -58,13 +58,14 @@ enum SpawnFault {
     Demux,
 }
 
-/// Internal options for one worker pool.
+/// Internal options for one source's owned threads.
 ///
 /// Production always uses the default. Tests pass instance-owned injection
 /// state instead of mutating process-global scheduling knobs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PoolOptions {
     _private: (),
+    hasher: HasherOptions,
     #[cfg(test)]
     force_first_result_after_later: bool,
     #[cfg(test)]
@@ -92,6 +93,26 @@ impl PoolOptions {
             spawn_fault: SpawnFault::Demux,
             ..Self::default()
         }
+    }
+
+    pub(crate) fn fail_hasher_spawn() -> Self {
+        Self {
+            hasher: HasherOptions::fail_spawn(),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn panic_hasher_after_first_packet() -> Self {
+        Self {
+            hasher: HasherOptions::panic_after_first_packet(),
+            ..Self::default()
+        }
+    }
+}
+
+impl PoolOptions {
+    pub(crate) const fn hasher(&self) -> HasherOptions {
+        self.hasher
     }
 }
 

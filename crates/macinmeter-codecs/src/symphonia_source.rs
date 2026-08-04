@@ -13,7 +13,7 @@ use crate::{
         BACKEND, analysis_error, decoder_creation_error, file_open_error, io_analysis_error,
         probe_error,
     },
-    flac_integrity::{FlacIntegrityPlan, FlacStreamVerifier},
+    flac_integrity::{ASYNC_HASH_EXTRA_PACKETS, FlacIntegrityPlan, FlacVerification},
     isobmff::{IsoBmffAlacInfo, inspect_isobmff_alac, is_unrepresentable_rate_sentinel},
     packet::{DecodedPacket, PacketOutcome, PacketReorderBuffer},
 };
@@ -24,6 +24,7 @@ use macinmeter_domain::{
 use std::{
     fs::File,
     io::{Seek, SeekFrom},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
 };
 use symphonia::core::{
@@ -197,30 +198,51 @@ fn open_source_with_pool_options(
     // the granted reorder memory in the worst case. A stream that cannot prove
     // that bound degrades before decoding starts instead of failing depending
     // on which packet happens to complete first.
-    let parallel_route = if alac_info.is_some() {
-        Some(ParallelRoute::Alac)
-    } else if codec_params.codec == CODEC_TYPE_FLAC
-        && flac_reorder_window_fits(&codec_params, channels, integrity_plan, reservation)
-    {
-        Some(ParallelRoute::Flac)
+    let parallel = if reservation.workers().get() <= 1 {
+        None
+    } else if alac_info.is_some() {
+        Some(ParallelExecution {
+            route: ParallelRoute::Alac,
+            decode_reservation: reservation,
+            hasher_workers: 0,
+        })
+    } else if codec_params.codec == CODEC_TYPE_FLAC {
+        flac_parallel_execution(&codec_params, channels, integrity_plan, reservation)
     } else {
         None
     };
-    let (engine, execution) = if let Some(route) = parallel_route
-        && reservation.workers().get() > 1
-    {
+
+    // A signed FLAC parallel route spends exactly one of the source's worker
+    // permits on the same ordered verifier used by the serial oracle. Start it
+    // before decoder workers so an injected or real spawn failure cannot leave
+    // a partially constructed packet pool behind.
+    let integrity = match integrity_plan {
+        Some(plan) if parallel.is_some_and(|execution| execution.hasher_workers == 1) => {
+            Some(FlacVerification::spawn(path, plan, pool_options.hasher())?)
+        }
+        Some(plan) => Some(FlacVerification::inline(plan)),
+        None => None,
+    };
+
+    let (engine, execution, reorder_reservation) = if let Some(parallel) = parallel {
         let engine = PacketWorkerPool::new(
-            route,
+            parallel.route,
             context,
             format,
             &codec_params,
             track_id,
-            reservation,
+            parallel.decode_reservation,
             pool_options,
         )?;
         (
             PacketEngine::PacketWorkers(engine),
-            DecodeExecution::packet_workers(route, reservation.workers()),
+            DecodeExecution::packet_workers(
+                parallel.route,
+                reservation.workers(),
+                parallel.decode_reservation.workers(),
+                parallel.hasher_workers,
+            ),
+            parallel.decode_reservation,
         )
     } else {
         let decoder_options = DecoderOptions {
@@ -232,6 +254,7 @@ fn open_source_with_pool_options(
         (
             PacketEngine::Serial(SerialEngine::new(context, format, decoder, track_id)),
             DecodeExecution::serial(),
+            DecodeReservation::serial(),
         )
     };
 
@@ -253,8 +276,8 @@ fn open_source_with_pool_options(
         engine,
         pcm: pcm.clone(),
         decoded_frames: 0,
-        reorder: PacketReorderBuffer::new(reservation),
-        integrity: integrity_plan.map(FlacStreamVerifier::new),
+        reorder: PacketReorderBuffer::new(reorder_reservation),
+        integrity,
         terminal: TerminalState::Active,
         #[cfg(test)]
         injected_read_error: None,
@@ -268,34 +291,59 @@ fn open_source_with_pool_options(
     Ok((source, reader, execution))
 }
 
-/// Whether every FLAC packet the probed stream permits can be retained inside
-/// the application-owned reorder reservation.
+#[derive(Debug, Clone, Copy)]
+struct ParallelExecution {
+    route: ParallelRoute,
+    decode_reservation: DecodeReservation,
+    hasher_workers: usize,
+}
+
+/// Subdivide one FLAC allocation without widening any application-owned bound.
 ///
 /// The pending map accepts up to `queue_capacity` later results while an
 /// earlier packet is outstanding. Each such result owns interleaved `f64` PCM
 /// and, for a signed stream, its ordered-integrity bytes. STREAMINFO's maximum
-/// block length is immutable after probing and enforced by the decoder, so it
-/// is the only media geometry used here; it may shrink concurrency but can
-/// never enlarge the reservation. Missing or overflowing geometry is not a
-/// decode failure: the stable serial oracle remains valid and bounded.
-fn flac_reorder_window_fits(
+/// block length also bounds the hasher's one in-progress and one queued
+/// signature buffer. Signed streams spend one total worker permit on that
+/// hasher and hand the decoder/reorder path the remaining workers and bytes.
+/// Missing or overflowing geometry degrades to the stable serial oracle before
+/// any thread is created.
+fn flac_parallel_execution(
     codec_params: &CodecParameters,
     channels: macinmeter_domain::ChannelCount,
     integrity_plan: Option<FlacIntegrityPlan>,
     reservation: DecodeReservation,
-) -> bool {
-    let Some(max_frames) = flac_max_frames_per_packet(codec_params) else {
-        return false;
+) -> Option<ParallelExecution> {
+    let max_frames = flac_max_frames_per_packet(codec_params)?;
+    let samples_per_packet = max_frames.checked_mul(u64::from(channels.get()))?;
+    let hasher_workers = if integrity_plan.is_some() { 1 } else { 0 };
+    let decoder_workers =
+        NonZeroUsize::new(reservation.workers().get().checked_sub(hasher_workers)?)?;
+    let hash_bytes = match integrity_plan {
+        Some(plan) => samples_per_packet
+            .checked_mul(plan.retained_bytes_per_sample())
+            .and_then(|bytes| bytes.checked_mul(ASYNC_HASH_EXTRA_PACKETS))?,
+        None => 0,
     };
+    let reorder_bytes = reservation
+        .max_in_flight_pcm_bytes()
+        .checked_sub(hash_bytes)?;
+    let decode_reservation =
+        DecodeReservation::new(decoder_workers, reservation.queue_capacity(), reorder_bytes)
+            .ok()?;
     let retained_bytes_per_sample = (size_of::<f64>() as u64)
         .saturating_add(integrity_plan.map_or(0, FlacIntegrityPlan::retained_bytes_per_sample));
-    max_frames
-        .checked_mul(u64::from(channels.get()))
-        .and_then(|samples| samples.checked_mul(retained_bytes_per_sample))
+    samples_per_packet
+        .checked_mul(retained_bytes_per_sample)
         .and_then(|packet_bytes| {
-            packet_bytes.checked_mul(reservation.queue_capacity().get() as u64)
+            packet_bytes.checked_mul(decode_reservation.queue_capacity().get() as u64)
         })
-        .is_some_and(|window_bytes| window_bytes <= reservation.max_in_flight_pcm_bytes())
+        .filter(|window_bytes| *window_bytes <= reorder_bytes)?;
+    Some(ParallelExecution {
+        route: ParallelRoute::Flac,
+        decode_reservation,
+        hasher_workers,
+    })
 }
 
 /// Read the maximum FLAC block length used by the decoder.
@@ -350,12 +398,16 @@ mod flac_reorder_window_tests {
 
         let conventional = signed_flac(Some(4096), 24);
         let conventional_integrity = FlacIntegrityPlan::for_stream(path, &conventional).unwrap();
-        assert!(flac_reorder_window_fits(
-            &conventional,
-            channels,
-            conventional_integrity,
-            granted,
-        ));
+        let execution =
+            flac_parallel_execution(&conventional, channels, conventional_integrity, granted)
+                .expect("conventional signed FLAC must fit");
+        assert_eq!(execution.decode_reservation.workers().get(), 7);
+        assert_eq!(execution.hasher_workers, 1);
+        assert!(
+            execution.decode_reservation.max_in_flight_pcm_bytes()
+                < granted.max_in_flight_pcm_bytes(),
+            "the hasher window must be removed from the reorder permit"
+        );
 
         // 65,535 frames × 8 channels retain 5,767,080 bytes per signed
         // packet. The reservation cannot cover its full pending window, so
@@ -365,21 +417,48 @@ mod flac_reorder_window_tests {
         stream_info[2..4].copy_from_slice(&u16::MAX.to_be_bytes());
         large.extra_data = Some(stream_info.into_boxed_slice());
         let large_integrity = FlacIntegrityPlan::for_stream(path, &large).unwrap();
-        assert!(!flac_reorder_window_fits(
-            &large,
-            channels,
-            large_integrity,
-            granted,
-        ));
+        assert!(flac_parallel_execution(&large, channels, large_integrity, granted,).is_none());
 
         let unknown = signed_flac(None, 24);
         let unknown_integrity = FlacIntegrityPlan::for_stream(path, &unknown).unwrap();
-        assert!(!flac_reorder_window_fits(
-            &unknown,
-            channels,
-            unknown_integrity,
-            granted,
-        ));
+        assert!(flac_parallel_execution(&unknown, channels, unknown_integrity, granted,).is_none());
+    }
+
+    #[test]
+    fn async_hash_buffers_are_reserved_beyond_the_reorder_window() {
+        let path = Path::new("tight-signed.flac");
+        let channels = ChannelCount::new(2).unwrap();
+        let params = signed_flac(Some(4096), 24);
+        let integrity = FlacIntegrityPlan::for_stream(path, &params).unwrap();
+        let packet_samples = 4096_u64 * 2;
+        let reorder_window = packet_samples * (8 + 3) * 2;
+        let hash_window = packet_samples * 3 * ASYNC_HASH_EXTRA_PACKETS;
+
+        let reorder_only = DecodeReservation::new(
+            NonZeroUsize::new(2).unwrap(),
+            NonZeroUsize::new(2).unwrap(),
+            reorder_window,
+        )
+        .unwrap();
+        assert!(
+            flac_parallel_execution(&params, channels, integrity, reorder_only).is_none(),
+            "a permit that covers only reordered payloads must not hide hash buffers"
+        );
+
+        let complete = DecodeReservation::new(
+            NonZeroUsize::new(2).unwrap(),
+            NonZeroUsize::new(2).unwrap(),
+            reorder_window + hash_window,
+        )
+        .unwrap();
+        let execution = flac_parallel_execution(&params, channels, integrity, complete)
+            .expect("the full reorder plus hash window must fit exactly");
+        assert_eq!(execution.decode_reservation.workers().get(), 1);
+        assert_eq!(execution.hasher_workers, 1);
+        assert_eq!(
+            execution.decode_reservation.max_in_flight_pcm_bytes(),
+            reorder_window
+        );
     }
 }
 
@@ -492,7 +571,7 @@ pub(crate) struct SymphoniaPcmSource {
     decoded_frames: u64,
     reorder: PacketReorderBuffer,
     /// The one hasher for this stream's FLAC signature, fed only by `commit`.
-    integrity: Option<FlacStreamVerifier>,
+    integrity: Option<FlacVerification>,
     terminal: TerminalState,
     #[cfg(test)]
     injected_read_error: Option<AnalysisError>,
@@ -521,7 +600,7 @@ impl SymphoniaPcmSource {
         // integrity still precedes the declared frame count in error order.
         let verified = self
             .integrity
-            .as_ref()
+            .as_mut()
             .map_or(Ok(()), |verifier| verifier.finish(&self.path));
         if let Err(error) = verified {
             return self.fail(error);
@@ -683,8 +762,10 @@ impl SymphoniaPcmSource {
                 None,
             ));
         }
-        if let (Some(verifier), Some(bytes)) = (self.integrity.as_mut(), integrity) {
-            verifier.commit(&bytes);
+        if let (Some(verifier), Some(bytes)) = (self.integrity.as_mut(), integrity)
+            && let Err(error) = verifier.commit(bytes)
+        {
+            return self.fail(error);
         }
 
         self.decoded_frames = new_total;

@@ -17,13 +17,79 @@
 
 use crate::error::analysis_error;
 use macinmeter_domain::{AnalysisError, AnalysisStage, ErrorCode};
-use std::path::Path;
+use std::{
+    io,
+    path::{Path, PathBuf},
+    sync::mpsc::{Receiver, SyncSender, sync_channel},
+    thread::{self, JoinHandle},
+};
 use symphonia::core::{
     audio::{AudioBufferRef, Signal},
     checksum::Md5,
     codecs::{CODEC_TYPE_FLAC, CodecParameters, VerificationCheck},
     io::Monitor,
 };
+
+/// One packet may wait behind the packet the hasher is currently consuming.
+///
+/// The queue is deliberately tiny: its purpose is to let analysis overlap the
+/// ordered digest, not to turn signature bytes into another unbounded reorder
+/// buffer. Route selection reserves the queue plus the in-progress packet from
+/// the same application-owned in-flight memory grant.
+pub(crate) const ASYNC_HASH_QUEUE_CAPACITY: usize = 1;
+
+/// Extra maximum-sized signature packets retained by asynchronous hashing.
+///
+/// The commit head already owns its current signature buffer on both the
+/// inline and asynchronous routes. Offloading adds at most one buffer in the
+/// hasher and `ASYNC_HASH_QUEUE_CAPACITY` buffers accepted behind it.
+pub(crate) const ASYNC_HASH_EXTRA_PACKETS: u64 = ASYNC_HASH_QUEUE_CAPACITY as u64 + 1;
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum HasherFault {
+    #[default]
+    None,
+    Spawn,
+    PanicAfterFirstPacket,
+}
+
+/// Instance-owned construction options for the ordered FLAC hasher.
+///
+/// Production always uses the default. Tests inject failures without mutable
+/// process-global state or timing races.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct HasherOptions {
+    _private: (),
+    #[cfg(test)]
+    fault: HasherFault,
+}
+
+#[cfg(test)]
+impl HasherOptions {
+    pub(crate) const fn fail_spawn() -> Self {
+        Self {
+            _private: (),
+            fault: HasherFault::Spawn,
+        }
+    }
+
+    pub(crate) const fn panic_after_first_packet() -> Self {
+        Self {
+            _private: (),
+            fault: HasherFault::PanicAfterFirstPacket,
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Async hashers started and joined on this test's source-owning thread.
+    pub(crate) static STARTED_ASYNC_HASHERS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+    pub(crate) static JOINED_ASYNC_HASHERS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
 
 /// The immutable per-stream parameters of the FLAC signature.
 ///
@@ -212,6 +278,191 @@ impl FlacStreamVerifier {
     }
 }
 
+/// Scheduling around the one unchanged ordered FLAC verifier.
+///
+/// The inline form remains the serial oracle. The asynchronous form moves the
+/// same verifier to one owned thread and transfers committed byte buffers in
+/// order through a bounded channel. It never introduces another digest state
+/// or a selectable product profile.
+pub(crate) enum FlacVerification {
+    Inline(FlacStreamVerifier),
+    Async(AsyncFlacStreamVerifier),
+}
+
+impl FlacVerification {
+    pub(crate) fn inline(plan: FlacIntegrityPlan) -> Self {
+        Self::Inline(FlacStreamVerifier::new(plan))
+    }
+
+    pub(crate) fn spawn(
+        path: &Path,
+        plan: FlacIntegrityPlan,
+        options: HasherOptions,
+    ) -> Result<Self, AnalysisError> {
+        AsyncFlacStreamVerifier::spawn(path, plan, options).map(Self::Async)
+    }
+
+    /// Transfer one input-order packet to the unchanged verifier.
+    pub(crate) fn commit(&mut self, bytes: Vec<u8>) -> Result<(), AnalysisError> {
+        match self {
+            Self::Inline(verifier) => {
+                verifier.commit(&bytes);
+                Ok(())
+            }
+            Self::Async(verifier) => verifier.commit(bytes),
+        }
+    }
+
+    /// Join asynchronous work, then compare the one final digest.
+    pub(crate) fn finish(&mut self, path: &Path) -> Result<(), AnalysisError> {
+        match self {
+            Self::Inline(verifier) => verifier.finish(path),
+            Self::Async(verifier) => verifier.finish(),
+        }
+    }
+}
+
+/// One bounded, source-owned thread feeding [`FlacStreamVerifier`].
+pub(crate) struct AsyncFlacStreamVerifier {
+    path: PathBuf,
+    sender: Option<SyncSender<Vec<u8>>>,
+    worker: Option<JoinHandle<FlacStreamVerifier>>,
+}
+
+impl AsyncFlacStreamVerifier {
+    fn spawn(
+        path: &Path,
+        plan: FlacIntegrityPlan,
+        options: HasherOptions,
+    ) -> Result<Self, AnalysisError> {
+        let (sender, receiver) = sync_channel(ASYNC_HASH_QUEUE_CAPACITY);
+
+        #[cfg(test)]
+        if options.fault == HasherFault::Spawn {
+            return Err(hasher_spawn_error(
+                path,
+                io::Error::other("injected FLAC hasher spawn failure"),
+            ));
+        }
+
+        let worker = thread::Builder::new()
+            .name("macinmeter-flac-hasher".to_owned())
+            .spawn(move || run_hasher(plan, &receiver, options))
+            .map_err(|error| hasher_spawn_error(path, error))?;
+
+        #[cfg(test)]
+        STARTED_ASYNC_HASHERS.with(|started| started.set(started.get() + 1));
+
+        Ok(Self {
+            path: path.to_path_buf(),
+            sender: Some(sender),
+            worker: Some(worker),
+        })
+    }
+
+    fn commit(&mut self, bytes: Vec<u8>) -> Result<(), AnalysisError> {
+        let sent = self
+            .sender
+            .as_ref()
+            .ok_or_else(|| hasher_stopped_error(&self.path))?
+            .send(bytes);
+        if sent.is_ok() {
+            return Ok(());
+        }
+
+        // A production hasher only exits after every sender is closed, so a
+        // disconnected live sender means the worker failed. Join immediately
+        // to preserve the panic's structured identity and leave no thread for
+        // a sticky terminal source to retain.
+        match self.close_and_join() {
+            Err(error) => Err(error),
+            Ok(_) => Err(hasher_stopped_error(&self.path)),
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), AnalysisError> {
+        let verifier = self.close_and_join()?;
+        verifier.finish(&self.path)
+    }
+
+    fn close_and_join(&mut self) -> Result<FlacStreamVerifier, AnalysisError> {
+        self.sender = None;
+        let worker = self
+            .worker
+            .take()
+            .ok_or_else(|| hasher_stopped_error(&self.path))?;
+        let joined = worker.join();
+
+        #[cfg(test)]
+        JOINED_ASYNC_HASHERS.with(|count| count.set(count.get() + 1));
+
+        joined.map_err(|_| hasher_panic_error(&self.path))
+    }
+}
+
+impl Drop for AsyncFlacStreamVerifier {
+    fn drop(&mut self) {
+        if self.worker.is_some() {
+            // Closing the sender bounds shutdown to the packet currently being
+            // hashed plus the one queued packet. A dropped source never asks
+            // an incomplete stream for an integrity verdict.
+            let _ = self.close_and_join();
+        }
+    }
+}
+
+fn run_hasher(
+    plan: FlacIntegrityPlan,
+    receiver: &Receiver<Vec<u8>>,
+    _options: HasherOptions,
+) -> FlacStreamVerifier {
+    let mut verifier = FlacStreamVerifier::new(plan);
+    #[cfg(test)]
+    let mut packets = 0_u64;
+    while let Ok(bytes) = receiver.recv() {
+        verifier.commit(&bytes);
+        #[cfg(test)]
+        {
+            packets += 1;
+
+            if _options.fault == HasherFault::PanicAfterFirstPacket && packets == 1 {
+                panic!("injected FLAC hasher panic");
+            }
+        }
+    }
+    verifier
+}
+
+fn hasher_spawn_error(path: &Path, error: io::Error) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::ResourceExhausted,
+        AnalysisStage::Decode,
+        "failed to start the FLAC stream signature hasher",
+        Some(error.to_string()),
+    )
+}
+
+fn hasher_panic_error(path: &Path) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::Internal,
+        AnalysisStage::Internal,
+        "the FLAC stream signature hasher panicked",
+        None,
+    )
+}
+
+fn hasher_stopped_error(path: &Path) -> AnalysisError {
+    analysis_error(
+        path,
+        ErrorCode::Internal,
+        AnalysisStage::Internal,
+        "the FLAC stream signature hasher stopped before end of stream",
+        None,
+    )
+}
+
 fn hex(digest: &[u8; 16]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -343,5 +594,45 @@ mod tests {
         // This is the whole reason verification cannot live inside a worker:
         // the same packets in a different order are a different stream.
         assert_ne!(forward.state.md5(), reversed.state.md5());
+    }
+
+    #[test]
+    fn asynchronous_scheduling_reuses_the_inline_digest_and_joins_at_finish() {
+        let path = Path::new("ordered.flac");
+        let packets = [
+            reference_bytes(&[vec![1, 2, 3, 4]], 16),
+            reference_bytes(&[vec![5, 6, 7, 8]], 16),
+            reference_bytes(&[vec![-8, -7, -6, -5]], 16),
+        ];
+        let mut oracle = FlacStreamVerifier::new(plan(16));
+        for packet in &packets {
+            oracle.commit(packet);
+        }
+        let exact = FlacIntegrityPlan {
+            expected: oracle.state.md5(),
+            bits_per_sample: 16,
+        };
+
+        let started_before = STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let joined_before = JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
+        let mut verifier = FlacVerification::spawn(path, exact, HasherOptions::default())
+            .expect("the owned hasher thread must start");
+        for packet in packets {
+            verifier
+                .commit(packet)
+                .expect("ordered transfer must remain connected");
+        }
+        verifier
+            .finish(path)
+            .expect("the asynchronous digest must equal the inline oracle");
+
+        assert_eq!(
+            STARTED_ASYNC_HASHERS.with(std::cell::Cell::get) - started_before,
+            1
+        );
+        assert_eq!(
+            JOINED_ASYNC_HASHERS.with(std::cell::Cell::get) - joined_before,
+            1
+        );
     }
 }
