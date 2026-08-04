@@ -291,7 +291,7 @@ fn run_decode_phases(arguments: &[OsString]) -> Result<Value, String> {
     }))?;
     let accounted = open_elapsed.saturating_add(drain_elapsed);
 
-    workload_output(
+    let mut output = workload_output(
         "decode_phases",
         elapsed,
         WorkUnits::audio(timed.frames, timed.channels, timed.sample_rate, iterations)?,
@@ -307,14 +307,23 @@ fn run_decode_phases(arguments: &[OsString]) -> Result<Value, String> {
             "selectedTotalWorkers": execution.workers().get(),
             "selectedDecoderWorkers": execution.decoder_workers().get(),
             "selectedHasherWorkers": execution.hasher_workers(),
-            "openElapsedNs": duration_ns(open_elapsed)?,
-            "drainElapsedNs": duration_ns(drain_elapsed)?,
-            "unattributedElapsedNs": duration_ns(elapsed.saturating_sub(accounted))?,
             "phaseBoundary": "open includes first-party inspection, backend probe, decoder construction, and owned-thread start; drain begins after DecoderFactory returns",
             "pcmF64LeSha256": pcm_sha256,
             "verificationHashOutsideTimedRegion": true,
         }),
-    )
+    )?;
+    output
+        .as_object_mut()
+        .ok_or_else(|| "worker output was not a JSON object".to_owned())?
+        .insert(
+            "measurements".to_owned(),
+            json!({
+                "openElapsedNs": duration_ns(open_elapsed)?,
+                "drainElapsedNs": duration_ns(drain_elapsed)?,
+                "unattributedElapsedNs": duration_ns(elapsed.saturating_sub(accounted))?,
+            }),
+        );
+    Ok(output)
 }
 
 #[inline(never)]

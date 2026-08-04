@@ -489,6 +489,9 @@ def parse_worker_output(raw: bytes, expected_mode: str) -> dict[str, Any]:
     audio_seconds = work.get("audioSeconds")
     if not isinstance(audio_seconds, (int, float)) or audio_seconds < 0:
         raise BaselineError("worker audioSeconds is invalid")
+    measurements = value.get("measurements", {})
+    if not isinstance(measurements, dict):
+        raise BaselineError("worker measurements are not a JSON object")
     return value
 
 
@@ -945,6 +948,7 @@ def run_sample(
             "resultFingerprintSha256": output["resultFingerprintSha256"],
             "resultBytes": output["resultBytes"],
             "details": output["details"],
+            "measurements": output.get("measurements", {}),
         }
 
 
@@ -1049,22 +1053,38 @@ def summarize_samples(samples: Sequence[dict[str, Any]]) -> list[dict[str, Any]]
         details = {canonical_json_bytes(sample["details"]) for sample in group}
         if len(fingerprints) != 1 or len(work_shapes) != 1 or len(details) != 1:
             raise BaselineError(f"{case_id}/{variant} output changed across samples")
-        summaries.append(
-            {
-                "caseId": case_id,
-                "variant": variant,
-                "samples": len(group),
-                "workerElapsedNs": distribution(worker_ns),
-                "processTreePeakRssBytes": distribution(tree_rss),
-                "nativeMaxResidentSetBytes": distribution(native_rss),
-                "nativeUserSeconds": distribution(user_seconds),
-                "nativeSystemSeconds": distribution(system_seconds),
-                "throughput": throughput,
-                "work": work,
-                "resultFingerprintSha256": next(iter(fingerprints)),
-                "outliersRemoved": 0,
+        summary = {
+            "caseId": case_id,
+            "variant": variant,
+            "samples": len(group),
+            "workerElapsedNs": distribution(worker_ns),
+            "processTreePeakRssBytes": distribution(tree_rss),
+            "nativeMaxResidentSetBytes": distribution(native_rss),
+            "nativeUserSeconds": distribution(user_seconds),
+            "nativeSystemSeconds": distribution(system_seconds),
+            "throughput": throughput,
+            "work": work,
+            "resultFingerprintSha256": next(iter(fingerprints)),
+            "outliersRemoved": 0,
+        }
+        measurement_keys = {
+            key for sample in group for key in sample.get("measurements", {})
+        }
+        if measurement_keys:
+            if any(
+                set(sample.get("measurements", {})) != measurement_keys
+                for sample in group
+            ):
+                raise BaselineError(
+                    f"{case_id}/{variant} measurement fields changed across samples"
+                )
+            summary["measurements"] = {
+                key: distribution(
+                    [float(sample["measurements"][key]) for sample in group]
+                )
+                for key in sorted(measurement_keys)
             }
-        )
+        summaries.append(summary)
     return summaries
 
 
@@ -1294,6 +1314,9 @@ def assert_decode_phase_attribution(
     """Reject incomplete phase accounting and silent route fallback."""
 
     details = sample["details"]
+    measurements = sample.get("measurements")
+    if not isinstance(measurements, dict):
+        raise BaselineError(f"{case.case_id} has no phase measurement object")
     requested = int(case.arguments[3])
     is_flac = Path(case.arguments[1]).suffix.lower() == ".flac"
     expected_engine = (
@@ -1320,7 +1343,7 @@ def assert_decode_phase_attribution(
 
     phases = []
     for key in ("openElapsedNs", "drainElapsedNs", "unattributedElapsedNs"):
-        value = details.get(key)
+        value = measurements.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise BaselineError(
                 f"{case.case_id} attribution field {key} is not a nonnegative integer"

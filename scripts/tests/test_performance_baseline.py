@@ -136,6 +136,12 @@ class PerformanceBaselineTests(unittest.TestCase):
             baseline.parse_worker_output(
                 json.dumps(invalid).encode("utf-8"), "analysis"
             )
+        invalid = dict(valid)
+        invalid["measurements"] = []
+        with self.assertRaises(baseline.BaselineError):
+            baseline.parse_worker_output(
+                json.dumps(invalid).encode("utf-8"), "analysis"
+            )
 
     def test_distribution_retains_exact_sample_extent(self) -> None:
         result = baseline.distribution([1.0, 2.0, 100.0])
@@ -167,6 +173,32 @@ class PerformanceBaselineTests(unittest.TestCase):
 
         with self.assertRaises(baseline.BaselineError):
             baseline.summarize_samples([sample("a" * 64), sample("b" * 64)])
+
+    def test_summary_distributes_variable_measurements(self) -> None:
+        def sample(elapsed: int) -> dict[str, object]:
+            return {
+                "caseId": "decode-phases/a",
+                "variant": "scalar",
+                "workerElapsedNs": elapsed,
+                "processTree": {"peakRssBytes": 200},
+                "nativeMetrics": {
+                    "maxResidentSetBytes": 210,
+                    "userSeconds": 0.1,
+                    "systemSeconds": 0.0,
+                },
+                "work": {
+                    "audioSeconds": 1.0,
+                    "interleavedSamples": 2,
+                    "logicalItems": 1,
+                },
+                "details": {"selectedEngine": "Serial"},
+                "measurements": {"openElapsedNs": elapsed // 10},
+                "resultFingerprintSha256": "a" * 64,
+            }
+
+        summary = baseline.summarize_samples([sample(100), sample(200)])[0]
+        self.assertEqual(summary["measurements"]["openElapsedNs"]["min"], 10.0)
+        self.assertEqual(summary["measurements"]["openElapsedNs"]["max"], 20.0)
 
     def test_cross_variant_gate_requires_identical_fingerprint(self) -> None:
         samples = [
@@ -319,6 +351,8 @@ class PerformanceBaselineTests(unittest.TestCase):
                 "selectedTotalWorkers": 8,
                 "selectedDecoderWorkers": 7,
                 "selectedHasherWorkers": 1,
+            },
+            "measurements": {
                 "openElapsedNs": 10,
                 "drainElapsedNs": 89,
                 "unattributedElapsedNs": 1,
@@ -330,7 +364,7 @@ class PerformanceBaselineTests(unittest.TestCase):
         with self.assertRaises(baseline.BaselineError):
             baseline.assert_decode_phase_attribution(case, sample)
         sample["details"]["selectedDecoderWorkers"] = 7
-        sample["details"]["drainElapsedNs"] = 88
+        sample["measurements"]["drainElapsedNs"] = 88
         with self.assertRaises(baseline.BaselineError):
             baseline.assert_decode_phase_attribution(case, sample)
 
