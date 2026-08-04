@@ -254,6 +254,37 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
                 ),
             )
         ),
+        # The explicit ALAC worker sweep passes its own worker count and so
+        # never observes the allocation the product actually grants. Only the
+        # application path takes the host-derived plan, which is what changed
+        # when the ALAC route graduated. These cases use the same three tracks
+        # as that sweep so route selection, not the input, is the difference.
+        *(
+            BenchmarkCase(
+                f"application/{track}",
+                "application",
+                f"Application reservation, complete {label} ALAC decoding, "
+                "analysis, and report construction",
+                ("application", media(filename), "1"),
+            )
+            for track, label, filename in (
+                (
+                    "alac-s16-240s",
+                    "near-incompressible",
+                    "stereo-s16-alac-240s.m4a",
+                ),
+                (
+                    "alac-tonal-240s",
+                    "tonal",
+                    "stereo-s16-alac-tonal-240s.m4a",
+                ),
+                (
+                    "alac-varied-240s",
+                    "worst-case load-imbalanced",
+                    "stereo-s16-alac-varied-240s.m4a",
+                ),
+            )
+        ),
         BenchmarkCase(
             "application/wave-f64",
             "application",
