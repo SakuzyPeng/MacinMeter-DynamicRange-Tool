@@ -27,10 +27,11 @@ use std::{
     time::Instant,
 };
 use symphonia::core::{
+    checksum::Md5,
     codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
     errors::Error as SymphoniaError,
     formats::{FormatOptions, FormatReader},
-    io::MediaSourceStream,
+    io::{MediaSourceStream, Monitor},
     meta::MetadataOptions,
     probe::Hint,
 };
@@ -87,16 +88,63 @@ fn decoder(track: &Track) -> Box<dyn Decoder> {
         .unwrap_or_else(|error| fail(&format!("cannot create decoder: {error}")))
 }
 
+/// Geometry of the bytes a FLAC stream signature covers.
+///
+/// Reported separately because hashing them is the other sequential step the
+/// pool performs, and unlike decoding it cannot be moved into a worker.
+struct SignatureGeometry {
+    bytes: u64,
+}
+
+fn signature_geometry(path: &Path, frames: u64) -> Option<SignatureGeometry> {
+    let track = open(path);
+    let codec_params = track
+        .format
+        .tracks()
+        .iter()
+        .find(|candidate| candidate.id == track.track_id)
+        .map(|candidate| candidate.codec_params.clone())?;
+    let bits = codec_params.bits_per_sample?;
+    let channels = codec_params.channels?.count() as u64;
+    Some(SignatureGeometry {
+        bytes: frames * channels * u64::from(bits.div_ceil(8)),
+    })
+}
+
+/// Time hashing `bytes` with the same MD5 the product uses.
+///
+/// MD5 throughput does not depend on the data, so a buffer of zeroes measures
+/// the same cost the real signature bytes would.
+fn hash_cost(bytes: u64) -> u128 {
+    const CHUNK: usize = 64 * 1024;
+    let chunk = vec![0_u8; CHUNK];
+    let started = Instant::now();
+    let mut state = Md5::default();
+    let mut remaining = bytes;
+    while remaining > 0 {
+        let take = remaining.min(CHUNK as u64) as usize;
+        state.process_buf_bytes(&chunk[..take]);
+        remaining -= take as u64;
+    }
+    // Consume the digest so the loop cannot be optimized away.
+    if state.md5() == [0xff; 16] {
+        eprintln!("improbable digest");
+    }
+    started.elapsed().as_nanos()
+}
+
 /// Pull every packet of the selected track, optionally decoding each one.
 ///
-/// Returns elapsed nanoseconds, packet count and total compressed bytes.
-fn drain(path: &Path, decode: bool) -> (u128, u64, u64) {
+/// Returns elapsed nanoseconds, packet count, total compressed bytes and
+/// decoded frames.
+fn drain(path: &Path, decode: bool) -> (u128, u64, u64, u64) {
     let mut track = open(path);
     let mut decoder = decode.then(|| decoder(&track));
 
     let started = Instant::now();
     let mut packets = 0_u64;
     let mut compressed_bytes = 0_u64;
+    let mut frames = 0_u64;
     loop {
         let packet = match track.format.next_packet() {
             Ok(packet) => packet,
@@ -113,12 +161,18 @@ fn drain(path: &Path, decode: bool) -> (u128, u64, u64) {
         packets += 1;
         compressed_bytes += packet.data.len() as u64;
         if let Some(decoder) = decoder.as_mut() {
-            decoder
+            let decoded = decoder
                 .decode(&packet)
                 .unwrap_or_else(|error| fail(&format!("decode failed: {error}")));
+            frames += decoded.frames() as u64;
         }
     }
-    (started.elapsed().as_nanos(), packets, compressed_bytes)
+    (
+        started.elapsed().as_nanos(),
+        packets,
+        compressed_bytes,
+        frames,
+    )
 }
 
 fn median(mut values: Vec<u128>) -> u128 {
@@ -137,16 +191,22 @@ fn main() {
         None => fail("usage: demux_cost_probe <media-path>"),
     };
 
-    let (_, packets, compressed_bytes) = drain(&path, false);
+    let (_, packets, compressed_bytes, frames) = drain(&path, true);
+    let signature = signature_geometry(&path, frames);
+    let signature_bytes = signature.map_or(0, |geometry| geometry.bytes);
+
     let mut demux_only = Vec::with_capacity(PASSES);
     let mut demux_and_decode = Vec::with_capacity(PASSES);
+    let mut hash_only = Vec::with_capacity(PASSES);
     for _ in 0..PASSES {
         demux_only.push(drain(&path, false).0);
         demux_and_decode.push(drain(&path, true).0);
+        hash_only.push(hash_cost(signature_bytes));
     }
 
     let demux_ns = median(demux_only);
     let total_ns = median(demux_and_decode);
+    let hash_ns = median(hash_only);
     println!(
         "{}",
         json!({
@@ -159,6 +219,12 @@ fn main() {
             // demux work, so subtracting removes it exactly.
             "decodeOnlyNs": total_ns.saturating_sub(demux_ns),
             "demuxShareOfSerialDecode": (demux_ns as f64) / (total_ns as f64),
+            "decodedFrames": frames,
+            "signatureBytes": signature_bytes,
+            "signatureHashNs": hash_ns,
+            // What stays sequential once every worker is busy: demux plus the
+            // one hash. Decoding and f64 conversion are not in this sum.
+            "sequentialFloorNs": demux_ns + hash_ns,
             "passes": PASSES,
         })
     );
