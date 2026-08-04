@@ -26,10 +26,12 @@ use std::{
     time::Instant,
 };
 use symphonia::core::{
-    audio::SampleBuffer,
+    audio::{AudioBuffer, AudioBufferRef, Signal},
     codecs::{CodecParameters, Decoder, DecoderOptions},
+    conv::IntoSample,
     errors::Error as SymphoniaError,
     formats::{FormatReader, Packet},
+    sample::Sample,
 };
 
 /// Maximum packets a worker may hold in its own inbox, beyond the one it is
@@ -267,21 +269,6 @@ fn decode_packet_inner<const MEASURE: bool>(
         );
     }
 
-    let duration = match u64::try_from(decoded.capacity()) {
-        Ok(duration) => duration,
-        Err(_) => {
-            return (
-                PacketOutcome::Failed(analysis_error(
-                    &context.path,
-                    ErrorCode::ResourceExhausted,
-                    AnalysisStage::Decode,
-                    "decoded audio buffer is too large",
-                    None,
-                )),
-                timing,
-            );
-        }
-    };
     // The signature bytes are taken from the decoder's own buffer, before the
     // `f64` conversion, and travel with the PCM to the in-order commit point.
     let integrity_started = MEASURE.then(Instant::now);
@@ -298,9 +285,19 @@ fn decode_packet_inner<const MEASURE: bool>(
     timing.integrity_conversion_ns = measured_ns(integrity_started);
 
     let pcm_started = MEASURE.then(Instant::now);
-    let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
-    sample_buffer.copy_interleaved_ref(decoded);
-    let outcome = match PcmBlock::new(sample_buffer.samples().to_vec(), context.channels) {
+    let Some(samples) = interleaved_f64(decoded) else {
+        return (
+            PacketOutcome::Failed(analysis_error(
+                &context.path,
+                ErrorCode::ResourceExhausted,
+                AnalysisStage::Decode,
+                "decoded audio buffer is too large",
+                None,
+            )),
+            timing,
+        );
+    };
+    let outcome = match PcmBlock::new(samples, context.channels) {
         Ok(block) => PacketOutcome::Decoded(DecodedPacket { block, integrity }),
         Err(error) => PacketOutcome::Failed(
             error
@@ -310,6 +307,137 @@ fn decode_packet_inner<const MEASURE: bool>(
     };
     timing.pcm_conversion_ns = measured_ns(pcm_started);
     (outcome, timing)
+}
+
+/// Convert one backend buffer directly into the `Vec<f64>` the domain block
+/// owns.
+///
+/// Symphonia's `SampleBuffer` first allocates and fills a boxed buffer; the old
+/// call site then allocated a second `Vec` and copied every converted sample
+/// into it. This uses the same `IntoSample<f64>` implementations and identical
+/// channel/interleave order, but the final domain allocation is the only one.
+fn interleaved_f64(decoded: AudioBufferRef<'_>) -> Option<Vec<f64>> {
+    match decoded {
+        AudioBufferRef::U8(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::U16(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::U24(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::U32(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::S8(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::S16(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::S24(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::S32(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::F32(buffer) => interleaved_f64_typed(&buffer),
+        AudioBufferRef::F64(buffer) => interleaved_f64_typed(&buffer),
+    }
+}
+
+fn interleaved_f64_typed<F>(decoded: &AudioBuffer<F>) -> Option<Vec<f64>>
+where
+    F: Sample + IntoSample<f64>,
+{
+    let channels = decoded.spec().channels.count();
+    let sample_count = decoded.frames().checked_mul(channels)?;
+    let mut samples = vec![0.0; sample_count];
+    for channel in 0..channels {
+        for (destination, source) in samples[channel..]
+            .iter_mut()
+            .step_by(channels)
+            .zip(decoded.chan(channel))
+        {
+            *destination = (*source).into_sample();
+        }
+    }
+    Some(samples)
+}
+
+#[cfg(test)]
+mod conversion_tests {
+    use super::*;
+    use symphonia::core::{
+        audio::{AsAudioBufferRef, Channels, SampleBuffer, SignalSpec},
+        sample::{i24, u24},
+    };
+
+    fn assert_matches_sample_buffer<F>(left: &[F], right: &[F])
+    where
+        F: Sample + IntoSample<f64> + std::fmt::Debug,
+        AudioBuffer<F>: AsAudioBufferRef,
+    {
+        assert_eq!(left.len(), right.len());
+        let frames = left.len();
+        let spec = SignalSpec::new(48_000, Channels::FRONT_LEFT | Channels::FRONT_RIGHT);
+        let mut decoded = AudioBuffer::<F>::new(frames as u64, spec);
+        decoded.render_reserved(Some(frames));
+        decoded.chan_mut(0).copy_from_slice(left);
+        decoded.chan_mut(1).copy_from_slice(right);
+
+        let mut reference = SampleBuffer::<f64>::new(decoded.capacity() as u64, spec);
+        reference.copy_interleaved_typed(&decoded);
+        let expected = reference
+            .samples()
+            .iter()
+            .map(|sample| sample.to_bits())
+            .collect::<Vec<_>>();
+        let actual = interleaved_f64(decoded.as_audio_buffer_ref())
+            .expect("the small test buffer must fit")
+            .into_iter()
+            .map(f64::to_bits)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual, expected,
+            "conversion changed for {left:?}/{right:?}"
+        );
+    }
+
+    #[test]
+    fn direct_conversion_matches_sample_buffer_for_every_backend_format() {
+        assert_matches_sample_buffer(&[0_u8, 127, 255], &[1, 128, 254]);
+        assert_matches_sample_buffer(&[0_u16, 32_767, 65_535], &[1, 32_768, 65_534]);
+        assert_matches_sample_buffer(
+            &[u24(0), u24(0x7f_ffff), u24(0xff_ffff)],
+            &[u24(1), u24(0x80_0000), u24(0xff_fffe)],
+        );
+        assert_matches_sample_buffer(
+            &[0_u32, 0x7fff_ffff, u32::MAX],
+            &[1, 0x8000_0000, u32::MAX - 1],
+        );
+        assert_matches_sample_buffer(&[i8::MIN, -1, i8::MAX], &[i8::MIN + 1, 0, i8::MAX - 1]);
+        assert_matches_sample_buffer(&[i16::MIN, -1, i16::MAX], &[i16::MIN + 1, 0, i16::MAX - 1]);
+        assert_matches_sample_buffer(
+            &[i24(-0x80_0000), i24(-1), i24(0x7f_ffff)],
+            &[i24(-0x7f_ffff), i24(0), i24(0x7f_fffe)],
+        );
+        assert_matches_sample_buffer(&[i32::MIN, -1, i32::MAX], &[i32::MIN + 1, 0, i32::MAX - 1]);
+        assert_matches_sample_buffer(&[-1.0_f32, -0.0, 1.0], &[-0.5, 0.0, 0.5]);
+        assert_matches_sample_buffer(
+            &[-1.0_f64, -0.0, f64::from_bits(0x3fd5_5555_5555_5555)],
+            &[-0.5, 0.0, f64::from_bits(0x3fe5_5555_5555_5555)],
+        );
+    }
+
+    #[test]
+    fn source_f64_samples_keep_their_bits_and_interleave_order() {
+        let left = [-0.0, f64::from_bits(0x3fd5_5555_5555_5555)];
+        let right = [f64::MIN_POSITIVE, -1.0];
+        let spec = SignalSpec::new(96_000, Channels::FRONT_LEFT | Channels::FRONT_RIGHT);
+        let mut decoded = AudioBuffer::<f64>::new(2, spec);
+        decoded.render_reserved(Some(2));
+        decoded.chan_mut(0).copy_from_slice(&left);
+        decoded.chan_mut(1).copy_from_slice(&right);
+
+        let actual = interleaved_f64(decoded.as_audio_buffer_ref())
+            .expect("the small test buffer must fit")
+            .into_iter()
+            .map(f64::to_bits)
+            .collect::<Vec<_>>();
+        let expected = [left[0], right[0], left[1], right[1]]
+            .into_iter()
+            .map(f64::to_bits)
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
+    }
 }
 
 fn measured_ns(started: Option<Instant>) -> u64 {
