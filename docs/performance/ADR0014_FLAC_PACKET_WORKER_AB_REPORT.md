@@ -8,7 +8,9 @@
 - suite：runner-recorded id `m6-scalar-baseline-v1`；本次 41-case definition
   SHA-256 `3443af71e37e42e35432be231d9dc927de9cb10a4eae4f57e1f8b5f0e165516d`
 - corpus：`m6-performance-baseline-v1`（新增三条长 FLAC track）
-- source：`d43fca2c4ad9c4d7b5dcfa27be77de5991d120b8`（clean）
+- worker sweep source：`d43fca2c4ad9c4d7b5dcfa27be77de5991d120b8`（clean）
+- 顺序底线探针实现：`aeb70222a3ef04d1c5f192e74cda1d9ad5ab4a9f`；原始字段的
+  缺失签名表示法把该记录唯一绑定到此版本，见下方说明
 - worker SHA-256：
   `f69c7ff3de4862555a0e4687be9fa6e885218d0a235a57ffaf4f1206398fff33`
 - runner SHA-256：
@@ -22,7 +24,7 @@
 - raw record SHA-256：
   `0b3b23a718ec5d5dac9d49edbcde455582ba7bfa935e5f47257d066bf1ea0b75`
 - 顺序底线探针记录：
-  [`adr0014-sequential-floor-v1-d43fca2-x86_64-pc-windows-msvc.json`](probes/adr0014-sequential-floor-v1-d43fca2-x86_64-pc-windows-msvc.json)
+  [`adr0014-sequential-floor-v1-aeb7022-x86_64-pc-windows-msvc.json`](probes/adr0014-sequential-floor-v1-aeb7022-x86_64-pc-windows-msvc.json)
 - 探针记录 SHA-256：
   `be8d32be342e7054a8346de24c06f88e12286f0316d23e9f55c088b0233d3fcb`
 - 前置决策：
@@ -40,6 +42,13 @@ FLAC 的加速比明显低于同一次 run 内的 ALAC（4.07–4.31x），且�
 底线中哈希是较大的一半（64.3–95.5 ms），demux 较小（45.6–62.5 ms）。
 
 本报告是一次**测量**。它不建立跨主机可比性，也不构成任何用户可见的性能承诺。
+
+原探针文件名曾错误标为 `d43fca2`。但其中 ALAC 的
+`signatureBytes: 0`、`signatureHashNs: 500` 和把 500 ns 空缓冲区哈希计入
+`sequentialFloorNs` 的形状，只可能来自其前一版 `aeb7022`；`d43fca2` 已把这两个
+字段改为 `null` 并不再计入空哈希。本次保留原始 JSON 字节与 SHA-256，只把文件名、
+来源和解释纠正为实际实现。两个版本对 FLAC 的计时路径完全相同；ALAC 表格按“无
+签名”语义使用 `demuxOnlyNs`，扣除的 500 ns 小于表中 0.1 ms 的显示精度。
 
 ## 为什么记录在 Windows 主机上
 
@@ -157,8 +166,9 @@ cargo run --locked --release -p macinmeter-codecs \
 2. **FLAC 的顺序 demux 约为 ALAC 的两倍**：压缩体积相近（42.8 与 43.7 MiB）、
    packet 数相同（2813）时为 45.6 与 23.3 ms。FLAC demux 需解析帧头并对压缩
    字节计算 CRC-16，MP4 只做 sample table 查表。这一项真实但次要。
-3. **ALAC 没有签名哈希**，其底线仅为 demux。探针对 ALAC 报告 `null` 而非零字节，
-   因为“该格式没有流签名”与“该 track 缺少某个字段”不是同一个陈述。
+3. **ALAC 没有签名哈希**，其底线仅为 demux。原始 `aeb7022` 记录仍以零字节和一次
+   500 ns 空缓冲区哈希表示缺失；表格已按无签名语义排除它。`d43fca2` 之后的探针
+   输出 `null`，因为“该格式没有流签名”与“签名覆盖零字节”不是同一个陈述。
 
 ## Amdahl 反推的“串行占比”是上界，不是测量值
 
@@ -173,9 +183,9 @@ cargo run --locked --release -p macinmeter-codecs \
 
 反过来，实测底线换算出的 Amdahl 上限对 ALAC 也是**高估**的：2.8% 的底线对应
 6.67x，实测只有 4.07x；其 Amdahl 反推串行占比反而高达 13.8%，是实测底线的近五倍。
-本次固定主机为 8 物理核 / 16 逻辑核，而 8-worker 配置下
-demux 线程、8 个解码线程与 commit 线程同时活跃。超出底线的那部分限制没有被本
-记录测量，不作归因。
+本次固定主机为 8 物理核 / 16 逻辑核，而 8-worker 配置下，携带 decoder slot 0 的
+demux 线程、其余 7 个 decoder worker 与调用线程上的 commit 同时活跃。超出底线的
+那部分限制没有被本记录测量，不作归因。
 
 因此本记录只主张：**顺序底线是加速比的上界，并且它解释了 FLAC 与 ALAC 之间以及
 FLAC 各位深之间的差距**；不主张它是唯一的限制项。
@@ -208,4 +218,6 @@ FLAC 各位深之间的差距**；不主张它是唯一的限制项。
 - 跨主机可比性——其中的 FLAC 数字只与同一次 run 内的 ALAC 数字比较；
 - 顺序底线之外限制因素的归因；
 - 任何用户可见的吞吐承诺，或把 elapsed time / RSS 变成 CI 阈值的依据；
+- 对任意 FLAC block/声道几何都启用 packet workers；本次 stereo、4096-frame
+  block 输入落在固定 reorder permit 内，超出 permit 的流在解码前确定性退化为串行；
 - `Application` 路径的派生——本记录驱动的是 `codecs` 的显式 allocation。

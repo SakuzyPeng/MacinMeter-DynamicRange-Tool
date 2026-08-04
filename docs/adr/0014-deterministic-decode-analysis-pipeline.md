@@ -1,8 +1,8 @@
 # ADR-0014：确定性有界并行与 packet 解码优先
 
 - 状态：Accepted
-- 实施状态：In progress（packet 级已为 ALAC 与 FLAC route 默认启用；文件级与
-  窗口级未实施）
+- 实施状态：In progress（packet 级已为 ALAC 与资源几何落在 permit 内的 FLAC
+  route 默认启用；文件级与窗口级未实施）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -127,8 +127,8 @@ ADR-0007。后续一次调度替换只记录 +0.4%，明确处于测量误差内
   descriptor 猜测“packet 独立”的公共工厂；
 - 乱序完成可以发生，但 finite `f64` PCM、frame count、完整性状态与错误只按输入
   packet 序提交；`PcmSource::read_block` 的公共 `Data / Eof / Error` 契约不变；
-- worker 数为 1 或输入不足时可以在开始解码前退化为串行；生产路径不得在并行错误
-  后重跑串行并把失败隐藏成成功。
+- worker 数为 1、输入不足或最坏重排内存无法落在 reservation 内时，可以在开始
+  解码前退化为串行；生产路径不得在并行错误后重跑串行并把失败隐藏成成功。
 
 ### 3. ALAC 是第一个 packet 并行切片
 
@@ -569,6 +569,25 @@ ALAC track 充当污染对照，在受污染的 run 中掉了约 20%，该 run �
 决定，FLAC 则因产品预算此前已非串行，在被加入 route 判定的那一刻即成为默认，正式
 A/B 在其后才产生。事后证据支持该默认，因此不回退，但顺序不是本 ADR 所设的顺序。
 
+2026-08-04 的资源边界复核发现，最初的 route 判定没有把 FLAC 可变 block 几何纳入
+启动条件。合法的 8 声道 / 24-bit / 65,535-frame block 在 plan 派生的 4 MiB/worker
+permit 下，单个待提交 packet 会同时持有 4 MiB `f64` PCM 与约 1.5 MiB 签名字节；
+自然调度可在积累若干较晚 packet 后触发 `ResourceExhausted`，从而使同一文件的成败
+依赖完成顺序。这违反了本 ADR 的结果不随调度变化契约。
+
+现有实现因此在创建 pool **之前**，从已解析 STREAMINFO 取最大 block size，并按
+`max_block × channels × (8-byte f64 + signature width) × queue_capacity` 计算完整最坏
+重排窗口。只有该值可表示且不超过 reservation 的 in-flight bytes 时，FLAC 才进入
+packet workers；否则直接使用既有串行 oracle。该检查只向下收缩并发，不从媒体声明
+扩大 application plan，也不是在并行失败后的重跑。单元回归固定 8 声道 / 24-bit /
+65,535-frame 的拒绝和常规 4096-frame 的准入；原复现文件在 4/8-worker-shaped
+reservation 下各连续 20 次成功，PCM 与结果指纹均与串行 oracle 相同。
+
+同次复核还把顺序底线探针的签名几何收紧为“FLAC 且实际声明
+`VerificationCheck::Md5`”：未签名 FLAC 与没有流签名的 ALAC 都不再虚构一次空缓冲
+哈希。历史原始记录的 500 ns 空哈希字节与 SHA-256 保持不变，只在正式报告中纠正其
+实际对应的 `aeb7022` 实现和派生解释。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
@@ -598,9 +617,11 @@ A/B 在其后才产生。事后证据支持该默认，因此不回退，但顺�
 
 `ExecutionBudget::product()` 现在把 plan 取为固定上限与宿主并行度的较小值，
 `Default` 使用它，因此 CLI 与 Tauri 的 `Application::new()` 默认启用 packet
-workers。只有已毕业的 route 会切换 engine——目前是 ADR-0013 的 ALAC route 与
-FLAC；其余 route 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持完全串行，作为
-差分参照继续可达，不是产品默认的别名。文件级（P1）与窗口级（P2）仍未实施。
+workers。只有已毕业且资源几何可证明落在 permit 内的 route 会切换 engine——目前
+是 ADR-0013 的 ALAC route，以及最坏重排窗口适配 reservation 的 FLAC；其余 route、
+超出 permit 的 FLAC 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持
+完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）与窗口级（P2）
+仍未实施。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项
@@ -622,6 +643,9 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
   据此作废了一次受负载污染的 run；
 - 强制最坏乱序下签名仍然通过（签名顺序相关，因此这直接证明 verifier 按 commit
   序喂入），篡改签名时 2/4/8 worker 与串行 oracle 给出逐字节相同的 digest 与错误。
+- FLAC route 在 pool 创建前把最大 block、声道、`f64` PCM、可选签名字节与完整
+  reorder queue 一次性纳入 permit；常规多声道几何继续并行，超界或不可表示几何
+  确定性串行退化，不再由完成顺序决定是否在运行期耗尽 permit。
 
 正式记录见
 [`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)。

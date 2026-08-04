@@ -28,7 +28,10 @@ use std::{
 };
 use symphonia::core::{
     checksum::Md5,
-    codecs::{CODEC_TYPE_FLAC, CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    codecs::{
+        CODEC_TYPE_FLAC, CODEC_TYPE_NULL, CodecParameters, Decoder, DecoderOptions,
+        VerificationCheck,
+    },
     errors::Error as SymphoniaError,
     formats::{FormatOptions, FormatReader},
     io::{MediaSourceStream, Monitor},
@@ -105,10 +108,23 @@ fn signature_geometry(path: &Path, frames: u64) -> Option<SignatureGeometry> {
         .iter()
         .find(|candidate| candidate.id == track.track_id)
         .map(|candidate| candidate.codec_params.clone())?;
-    // Only FLAC carries a stream signature. Gating on the codec keeps a track
-    // that merely omits a field from being reported as "nothing to hash",
-    // which would look identical to a codec that genuinely hashes nothing.
-    if codec_params.codec != CODEC_TYPE_FLAC {
+    signature_geometry_for_params(&codec_params, frames)
+}
+
+fn signature_geometry_for_params(
+    codec_params: &CodecParameters,
+    frames: u64,
+) -> Option<SignatureGeometry> {
+    // Only a FLAC stream that declares an MD5 has one ordered product-level
+    // hash in the packet route. An all-zero STREAMINFO MD5 is reported by
+    // Symphonia as no verification check; its worker-local backend validation
+    // is not part of this probe's sequential commit floor.
+    if codec_params.codec != CODEC_TYPE_FLAC
+        || !matches!(
+            codec_params.verification_check,
+            Some(VerificationCheck::Md5(_))
+        )
+    {
         return None;
     }
     let bits = codec_params
@@ -121,6 +137,36 @@ fn signature_geometry(path: &Path, frames: u64) -> Option<SignatureGeometry> {
     Some(SignatureGeometry {
         bytes: frames * channels * u64::from(bits.div_ceil(8)),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use symphonia::core::{
+        audio::Channels,
+        codecs::{CODEC_TYPE_ALAC, VerificationCheck},
+    };
+
+    fn params(codec: symphonia::core::codecs::CodecType, signed: bool) -> CodecParameters {
+        let mut params = CodecParameters::new();
+        params.codec = codec;
+        params.bits_per_sample = Some(24);
+        params.channels = Some(Channels::FRONT_LEFT | Channels::FRONT_RIGHT);
+        if signed {
+            params.verification_check = Some(VerificationCheck::Md5([0x5a; 16]));
+        }
+        params
+    }
+
+    #[test]
+    fn only_a_declared_flac_md5_contributes_to_the_sequential_floor() {
+        let geometry = signature_geometry_for_params(&params(CODEC_TYPE_FLAC, true), 100)
+            .expect("a declared FLAC MD5 is hashed at ordered commit");
+        assert_eq!(geometry.bytes, 600);
+
+        assert!(signature_geometry_for_params(&params(CODEC_TYPE_FLAC, false), 100).is_none());
+        assert!(signature_geometry_for_params(&params(CODEC_TYPE_ALAC, false), 100).is_none());
+    }
 }
 
 /// Time hashing `bytes` with the same MD5 the product uses.

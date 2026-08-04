@@ -193,12 +193,15 @@ fn open_source_with_pool_options(
     //
     // FLAC qualifies because its frames are independently coded and its stream
     // signature is verified by the product in commit order rather than inside a
-    // decoder; see `flac_integrity`. Whether a given stream declares a
-    // signature does not change packet independence, so it does not change the
-    // route decision.
+    // decoder; see `flac_integrity`. Its variable block geometry must also fit
+    // the granted reorder memory in the worst case. A stream that cannot prove
+    // that bound degrades before decoding starts instead of failing depending
+    // on which packet happens to complete first.
     let parallel_route = if alac_info.is_some() {
         Some(ParallelRoute::Alac)
-    } else if codec_params.codec == CODEC_TYPE_FLAC {
+    } else if codec_params.codec == CODEC_TYPE_FLAC
+        && flac_reorder_window_fits(&codec_params, channels, integrity_plan, reservation)
+    {
         Some(ParallelRoute::Flac)
     } else {
         None
@@ -263,6 +266,121 @@ fn open_source_with_pool_options(
     };
 
     Ok((source, reader, execution))
+}
+
+/// Whether every FLAC packet the probed stream permits can be retained inside
+/// the application-owned reorder reservation.
+///
+/// The pending map accepts up to `queue_capacity` later results while an
+/// earlier packet is outstanding. Each such result owns interleaved `f64` PCM
+/// and, for a signed stream, its ordered-integrity bytes. STREAMINFO's maximum
+/// block length is immutable after probing and enforced by the decoder, so it
+/// is the only media geometry used here; it may shrink concurrency but can
+/// never enlarge the reservation. Missing or overflowing geometry is not a
+/// decode failure: the stable serial oracle remains valid and bounded.
+fn flac_reorder_window_fits(
+    codec_params: &CodecParameters,
+    channels: macinmeter_domain::ChannelCount,
+    integrity_plan: Option<FlacIntegrityPlan>,
+    reservation: DecodeReservation,
+) -> bool {
+    let Some(max_frames) = flac_max_frames_per_packet(codec_params) else {
+        return false;
+    };
+    let retained_bytes_per_sample = (size_of::<f64>() as u64)
+        .saturating_add(integrity_plan.map_or(0, FlacIntegrityPlan::retained_bytes_per_sample));
+    max_frames
+        .checked_mul(u64::from(channels.get()))
+        .and_then(|samples| samples.checked_mul(retained_bytes_per_sample))
+        .and_then(|packet_bytes| {
+            packet_bytes.checked_mul(reservation.queue_capacity().get() as u64)
+        })
+        .is_some_and(|window_bytes| window_bytes <= reservation.max_in_flight_pcm_bytes())
+}
+
+/// Read the maximum FLAC block length used by the decoder.
+///
+/// Symphonia 0.5.5's native FLAC demuxer attaches the parsed 34-byte
+/// STREAMINFO body to `extra_data` but only its decoder-local parameter clone
+/// publishes `max_frames_per_packet`. Reading the same big-endian field here
+/// makes the pre-decode resource decision from the exact bytes that decoder
+/// later enforces. The explicit parameter remains first for synthetic tests
+/// and any backend version that publishes it at probe time.
+fn flac_max_frames_per_packet(codec_params: &CodecParameters) -> Option<u64> {
+    codec_params
+        .max_frames_per_packet
+        .filter(|frames| *frames > 0)
+        .or_else(|| {
+            let stream_info = codec_params.extra_data.as_deref()?;
+            let bytes: [u8; 2] = stream_info.get(2..4)?.try_into().ok()?;
+            Some(u64::from(u16::from_be_bytes(bytes))).filter(|frames| *frames > 0)
+        })
+}
+
+#[cfg(test)]
+mod flac_reorder_window_tests {
+    use super::*;
+    use macinmeter_domain::ChannelCount;
+    use std::num::NonZeroUsize;
+    use symphonia::core::codecs::VerificationCheck;
+
+    fn reservation(workers: usize) -> DecodeReservation {
+        DecodeReservation::new(
+            NonZeroUsize::new(workers).unwrap(),
+            NonZeroUsize::new(workers * 4).unwrap(),
+            workers as u64 * 4 * 1024 * 1024,
+        )
+        .unwrap()
+    }
+
+    fn signed_flac(max_frames: Option<u64>, bits_per_sample: u32) -> CodecParameters {
+        let mut params = CodecParameters::new();
+        params.codec = CODEC_TYPE_FLAC;
+        params.max_frames_per_packet = max_frames;
+        params.bits_per_sample = Some(bits_per_sample);
+        params.verification_check = Some(VerificationCheck::Md5([0x5a; 16]));
+        params
+    }
+
+    #[test]
+    fn large_multichannel_blocks_degrade_before_exceeding_reorder_memory() {
+        let path = Path::new("large-multichannel.flac");
+        let channels = ChannelCount::new(8).unwrap();
+        let granted = reservation(8);
+
+        let conventional = signed_flac(Some(4096), 24);
+        let conventional_integrity = FlacIntegrityPlan::for_stream(path, &conventional).unwrap();
+        assert!(flac_reorder_window_fits(
+            &conventional,
+            channels,
+            conventional_integrity,
+            granted,
+        ));
+
+        // 65,535 frames × 8 channels retain 5,767,080 bytes per signed
+        // packet. The reservation cannot cover its full pending window, so
+        // starting workers would make success depend on completion order.
+        let mut large = signed_flac(None, 24);
+        let mut stream_info = vec![0_u8; 34];
+        stream_info[2..4].copy_from_slice(&u16::MAX.to_be_bytes());
+        large.extra_data = Some(stream_info.into_boxed_slice());
+        let large_integrity = FlacIntegrityPlan::for_stream(path, &large).unwrap();
+        assert!(!flac_reorder_window_fits(
+            &large,
+            channels,
+            large_integrity,
+            granted,
+        ));
+
+        let unknown = signed_flac(None, 24);
+        let unknown_integrity = FlacIntegrityPlan::for_stream(path, &unknown).unwrap();
+        assert!(!flac_reorder_window_fits(
+            &unknown,
+            channels,
+            unknown_integrity,
+            granted,
+        ));
+    }
 }
 
 pub(crate) fn validate_backend_alac_metadata(

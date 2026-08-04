@@ -84,6 +84,15 @@ impl FlacIntegrityPlan {
         self.bits_per_sample.div_ceil(8) as usize
     }
 
+    /// Bytes retained beside each decoded `f64` sample until ordered commit.
+    ///
+    /// Route selection uses this before starting workers, so a FLAC signature
+    /// buffer cannot make otherwise-valid media overflow the granted reorder
+    /// memory at runtime.
+    pub(crate) const fn retained_bytes_per_sample(self) -> u64 {
+        self.bytes_per_sample() as u64
+    }
+
     /// How far Symphonia left-shifted the decoded samples.
     const fn normalization_shift(self) -> u32 {
         32 - self.bits_per_sample
