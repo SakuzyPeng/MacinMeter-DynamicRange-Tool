@@ -220,6 +220,39 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             "Application reservation, FLAC decoding, analysis, and report construction",
             ("application", media("stereo-s16-60s.flac"), "3"),
         ),
+        # The short application case keeps the broad baseline affordable, but
+        # it is too small to decide whether moving FLAC's ordered signature
+        # hash off the commit/analysis thread earns back one decoder permit.
+        # These long cases use the same inputs as the explicit worker sweep and
+        # therefore isolate depth and compressibility while timing the complete
+        # decode-analysis-report path. Baseline and candidate binaries receive
+        # the same host-derived application allocation in an interleaved run.
+        *(
+            BenchmarkCase(
+                f"application/{track}",
+                "application",
+                f"Application reservation, complete {label} FLAC decoding, "
+                "analysis, and report construction",
+                ("application", media(filename), "1"),
+            )
+            for track, label, filename in (
+                (
+                    "flac-s24-240s",
+                    "24-bit near-incompressible",
+                    "stereo-s24-flac-240s.flac",
+                ),
+                (
+                    "flac-s24-tonal-240s",
+                    "24-bit tonal",
+                    "stereo-s24-flac-tonal-240s.flac",
+                ),
+                (
+                    "flac-s16-240s",
+                    "16-bit near-incompressible",
+                    "stereo-s16-flac-240s.flac",
+                ),
+            )
+        ),
         BenchmarkCase(
             "application/wave-f64",
             "application",

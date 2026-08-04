@@ -28,6 +28,18 @@ corpus = load_script("generate_performance_corpus", "generate-performance-corpus
 
 
 class PerformanceBaselineTests(unittest.TestCase):
+    def test_suite_pairs_long_flac_decode_and_application_cases(self) -> None:
+        cases = baseline.suite_cases(Path("/corpus"))
+        case_ids = {case.case_id for case in cases}
+        for track in (
+            "flac-s24-240s",
+            "flac-s24-tonal-240s",
+            "flac-s16-240s",
+        ):
+            self.assertIn(f"application/{track}", case_ids)
+            for workers in baseline.PACKET_WORKER_COUNTS:
+                self.assertIn(f"decode/{track}-w{workers}", case_ids)
+
     def test_seeded_schedule_is_deterministic_and_balanced(self) -> None:
         cases = (
             baseline.BenchmarkCase("a", "analysis", "a", ("analysis",)),
