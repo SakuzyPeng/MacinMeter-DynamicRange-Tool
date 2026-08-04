@@ -11,6 +11,12 @@ use std::{
 const ALAC_FRAME_LENGTH: u32 = 4096;
 const ALAC_MIN_CHANNELS: u8 = 1;
 const ALAC_MAX_CHANNELS: u8 = 8;
+/// Validate variable `stsz` entries in bounded sequential reads.
+///
+/// A valid table may describe many packets, so its declared length must never
+/// become one unbounded allocation. 16,384 entries keep the scratch buffer at
+/// 64 KiB while avoiding one seek/read syscall for every four-byte entry.
+const STSZ_VALIDATION_CHUNK_ENTRIES: u32 = 16 * 1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct IsoBmffAlacInfo {
@@ -1023,15 +1029,25 @@ fn inspect_sample_sizes<R: Read + Seek>(
         ));
     }
     if fixed_size == 0 {
-        for index in 0..sample_count {
-            let size = read_u32(reader, path, stsz.data_start + 12 + u64::from(index) * 4)?;
-            if size == 0 {
-                return Err(malformed(
-                    path,
-                    "ISO BMFF compressed sample size must be nonzero",
-                    Some(format!("sample_index={index}")),
-                ));
+        let scratch_entries = sample_count.min(STSZ_VALIDATION_CHUNK_ENTRIES);
+        let mut scratch = vec![0_u8; scratch_entries as usize * size_of::<u32>()];
+        let mut first_index = 0_u32;
+        while first_index < sample_count {
+            let entries = (sample_count - first_index).min(STSZ_VALIDATION_CHUNK_ENTRIES);
+            let byte_len = entries as usize * size_of::<u32>();
+            let offset = stsz.data_start + 12 + u64::from(first_index) * 4;
+            read_exact_at(reader, path, offset, &mut scratch[..byte_len])?;
+            for (entry, bytes) in scratch[..byte_len].chunks_exact(4).enumerate() {
+                if be_u32(bytes) == 0 {
+                    let index = first_index + entry as u32;
+                    return Err(malformed(
+                        path,
+                        "ISO BMFF compressed sample size must be nonzero",
+                        Some(format!("sample_index={index}")),
+                    ));
+                }
             }
+            first_index += entries;
         }
     }
     Ok(sample_count)
@@ -1252,4 +1268,74 @@ fn resource_limit(path: &Path, message: impl Into<String>) -> AnalysisError {
         message,
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    struct CountingCursor {
+        inner: Cursor<Vec<u8>>,
+        reads: usize,
+    }
+
+    impl Read for CountingCursor {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            self.reads += 1;
+            self.inner.read(bytes)
+        }
+    }
+
+    impl Seek for CountingCursor {
+        fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+            self.inner.seek(position)
+        }
+    }
+
+    fn variable_stsz(sample_count: u32, zero_index: Option<u32>) -> CountingCursor {
+        let mut bytes = Vec::with_capacity(12 + sample_count as usize * 4);
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        bytes.extend_from_slice(&sample_count.to_be_bytes());
+        for index in 0..sample_count {
+            let size = u32::from(Some(index) != zero_index);
+            bytes.extend_from_slice(&size.to_be_bytes());
+        }
+        CountingCursor {
+            inner: Cursor::new(bytes),
+            reads: 0,
+        }
+    }
+
+    fn header(reader: &CountingCursor) -> BoxHeader {
+        BoxHeader {
+            kind: *b"stsz",
+            data_start: 0,
+            end: reader.inner.get_ref().len() as u64,
+        }
+    }
+
+    #[test]
+    fn variable_sample_sizes_are_validated_in_bounded_sequential_chunks() {
+        let sample_count = STSZ_VALIDATION_CHUNK_ENTRIES + 1;
+        let mut reader = variable_stsz(sample_count, None);
+        let stsz = header(&reader);
+        assert_eq!(
+            inspect_sample_sizes(&mut reader, Path::new("chunked.m4a"), stsz).unwrap(),
+            sample_count
+        );
+        assert_eq!(reader.reads, 5, "three header reads plus two table chunks");
+    }
+
+    #[test]
+    fn chunked_sample_size_validation_preserves_the_exact_failing_index() {
+        let zero_index = STSZ_VALIDATION_CHUNK_ENTRIES;
+        let mut reader = variable_stsz(zero_index + 1, Some(zero_index));
+        let stsz = header(&reader);
+        let error = inspect_sample_sizes(&mut reader, Path::new("zero.m4a"), stsz).unwrap_err();
+        assert_eq!(error.code, ErrorCode::MalformedMedia);
+        assert_eq!(error.stage, AnalysisStage::Probe);
+        assert_eq!(error.details.as_deref(), Some("sample_index=16384"));
+    }
 }
