@@ -26,6 +26,11 @@ leaderboard or a user-facing throughput guarantee.
   control. It also records the direct measurement of what stays sequential on
   that route, and why the serial fraction implied by a speedup ratio is an upper
   bound rather than a measurement of it.
+- [`ADR0014_FLAC_HASHER_AB_REPORT.md`](ADR0014_FLAC_HASHER_AB_REPORT.md)
+  records the two source-bound A/B runs that moved FLAC stream hashing off the
+  commit/analysis thread. The first run rejects allocating a hasher at two and
+  four total permits; the second accepts the bounded 7-decoder + 1-hasher split
+  only at the measured eight-permit product allocation.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,

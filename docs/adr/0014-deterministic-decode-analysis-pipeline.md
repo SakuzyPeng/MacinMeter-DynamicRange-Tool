@@ -622,9 +622,12 @@ disconnect 为 sticky internal error；packet-pool 构造在 hasher 启动后失
 少一个 decoder 的代价，并保留三条 ALAC worker sweep 作为宿主污染对照。首次广义
 候选 run 在 8 permit Application 上快 15.3–36.6%，但 direct decode 在 2 permit 慢
 46–51%、4 permit 慢 13–31%，据此把生产选择收紧到唯一具有端到端正收益证据的
-8-permit allocation。最终记录仍须在固定 Windows 主机上对收紧后的 source commit
-交错 baseline/candidate、保持总 permit 相同，并在 ALAC 对照明显低于已知干净值时
-整轮作废。
+8-permit allocation。固定 Windows 主机上的最终 gated run 保持总 permit 相同；四条
+Application case 快 15.0–39.4%，2/4 permit direct decode 回到 -1.46% 至 +2.00% 的
+同路径波动范围，8 permit direct decode 仍有 1.7–10.6% 的 decoder 交换代价。两轮
+ALAC 污染对照均接近已知干净值，392 个最终样本的跨变体 fingerprint 全部一致，因而
+接受上述仅限 8 permit 的生产选择。正式记录见
+[`ADR0014_FLAC_HASHER_AB_REPORT.md`](../performance/ADR0014_FLAC_HASHER_AB_REPORT.md)。
 
 ## 明确非目标
 
@@ -684,9 +687,15 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 - FLAC route 在 pool 创建前把最大 block、声道、`f64` PCM、可选签名字节与完整
   reorder queue 一次性纳入 permit；常规多声道几何继续并行，超界或不可表示几何
   确定性串行退化，不再由完成顺序决定是否在运行期耗尽 permit。
+- 声明签名且总 allocation 为 8 permit 时，route 从同一 plan 拆出 1 个有界 hasher
+  permit，把 MD5 与分析重叠；2/4 permit 的广义候选因直接 decode 明确回退而被拒绝，
+  最终 source-bound A/B 在完整 Application 上快 15.0–39.4%，且不改变任何结果或
+  PCM fingerprint。
 
 正式记录见
-[`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)。
+[`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)
+与
+[`ADR0014_FLAC_HASHER_AB_REPORT.md`](../performance/ADR0014_FLAC_HASHER_AB_REPORT.md)。
 
 ### packet 级（ALAC）共同门槛：已具备
 
