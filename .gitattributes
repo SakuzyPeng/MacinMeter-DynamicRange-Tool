@@ -20,6 +20,22 @@
 # Reference evidence and reverse-engineering harnesses are not product code.
 reference/** linguist-detectable=false
 
+# Committed measurement and reference artifacts are evidence, and the records
+# that cite them quote their SHA-256 as identity. A tool that produced one on
+# Windows writes CRLF; normalizing that would leave the record naming a digest
+# no committed file has. Evidence is therefore stored exactly as produced. This
+# is the opposite treatment from the source above, and deliberately so: source
+# bytes must not depend on the checkout host, artifact bytes must not depend on
+# anything at all.
+docs/performance/baselines/*.json -text
+docs/performance/comparisons/*.json -text
+docs/performance/equivalence/*.json -text
+docs/performance/probes/*.json -text
+docs/performance/profiles/*.json -text
+reference/conformance/**/*.json -text
+reference/fixtures/*.manifest.json -text
+reference/observations/**/*.json -text
+
 # Raw reference exports are the bytes the reference host produced, CRLF
 # included. Normalizing them would edit evidence, so they stay untouched.
 reference/observations/**/raw/* -text
