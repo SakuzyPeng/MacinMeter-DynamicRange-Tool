@@ -20,6 +20,12 @@ leaderboard or a user-facing throughput guarantee.
   records the same-run 1/2/4/8 worker sweep over a long ALAC track. It is a
   measurement, not an enablement decision: packet workers remain off by default
   and the report states which graduation gates are still open.
+- [`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)
+  records the same-run 1/2/4/8 worker sweep over three long FLAC tracks on a
+  Windows x86_64 host, with the ALAC tracks of the same run as an in-suite
+  control. It also records the direct measurement of what stays sequential on
+  that route, and why the serial fraction implied by a speedup ratio is an upper
+  bound rather than a measurement of it.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,
@@ -35,6 +41,12 @@ leaderboard or a user-facing throughput guarantee.
   selected for every cell, normalizes the wire display path, and writes the
   canonical sorted four-space JSON itself. Regenerate an exact record with
   `cargo run --locked --release -p macinmeter --example adr0014_allocation_matrix -- PATH > OUTPUT.json`.
+- [`probes/`](probes/) contains sequential-floor probe records: the sequential
+  demux cost of a track measured with no decoding at all, and the cost of
+  hashing a stream signature of that track's exact size. These bound a packet
+  route's speedup from the parallel structure rather than from a timing ratio.
+  Regenerate one with `cargo run --locked --release -p macinmeter-codecs
+  --example demux_cost_probe -- PATH`.
 - [`comparisons/`](comparisons/) contains complete interleaved A/B runner
   records, including every warm-up, measured sample, variant identity, and
   cross-variant fingerprint.
@@ -47,11 +59,16 @@ one run on the same machine.
 
 Accepted
 [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) makes
-route-specific packet decode the first future parallel candidate, followed by
-file- and window-level work. It does not turn the historical M6 records into a
-parallelism claim: every candidate needs a new source-bound record under the
-same ADR-0007 protocol, and the current production implementation remains
-serial until graduation.
+route-specific packet decode the first parallel candidate, followed by file- and
+window-level work. It does not turn the historical M6 records into a parallelism
+claim: every candidate needs a new source-bound record under the same ADR-0007
+protocol, and a route stays serial until it graduates on its own evidence. The
+ALAC and FLAC routes have graduated; file- and window-level work have not.
+
+Records are bound to one host. A speedup measured on one machine says nothing
+about another, so a report compares only figures from within its own run — which
+is why both packet-route reports carry the other route's tracks as an in-suite
+control.
 
 Generated media remain under ignored `target/performance-corpus`; only their
 deterministic generator and manifest identity enter a record. Large Xcode trace

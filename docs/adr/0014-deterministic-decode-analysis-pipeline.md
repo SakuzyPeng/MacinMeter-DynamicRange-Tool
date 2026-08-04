@@ -1,7 +1,8 @@
 # ADR-0014：确定性有界并行与 packet 解码优先
 
 - 状态：Accepted
-- 实施状态：In progress（packet 级已为 ALAC route 默认启用；文件级与窗口级未实施）
+- 实施状态：In progress（packet 级已为 ALAC 与 FLAC route 默认启用；文件级与
+  窗口级未实施）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -88,7 +89,7 @@ ADR-0007。后续一次调度替换只记录 +0.4%，明确处于测量误差内
 
 | 优先级 | 并行轴 | 主要目标 | 当前决定 |
 | --- | --- | --- | --- |
-| P0 | packet 级解码 | 单个 FLAC/ALAC 文件的解码延迟 | 立即允许按 route 实施；首个切片为 ALAC，FLAC 必须先解决全流 MD5 |
+| P0 | packet 级解码 | 单个 FLAC/ALAC 文件的解码延迟 | 已实施：ALAC 先毕业，FLAC 在解决全流 MD5 后毕业 |
 | P1 | 文件级 | batch/album 总吞吐 | 允许在同一 `ApplicationJob` 内实施有界 file lanes |
 | P2 | 窗口级分析 | analyzer 吞吐 | 允许实施，但在压缩解码瓶颈之后 |
 
@@ -165,8 +166,8 @@ decoder 会按整条 PCM 流更新 validator，并在 `finalize()` 将结果与 
 - 因某个 packet 失败而跳包、补零或返回 partial report。
 
 上述“产品级全流 verifier”已于 2026-08-03 实现并接管全部 FLAC route（见实施进度
-“第 3 步之一”）。它满足的是本节的准入条件，不等于 FLAC packet workers 已毕业：
-worker pool 本身尚未实现。
+“第 3 步之一”），FLAC packet workers 随后在同日毕业（“第 3 步之二”）。保住全流
+签名的代价已被量化：它落在顺序侧，是 FLAC 顺序底线中较大的一半。
 
 WAV/AIFF 的解码成本当前不是 packet 级 P0；它们仍可通过文件级 lanes 获得 batch
 吞吐。未来新增或扩张 codec route 时，不得从扩展名、FLAC/ALAC 的结论或
@@ -528,9 +529,45 @@ release CLI，本改动 10.0–10.4 s，`b43e6d1` 9.3 s，串行 FLAC 路径慢�
 后者即第一方构造相对 Symphonia 内建 validator 的实现差距。这组数字只用于判断改动
 量级与规划第 2 步，不构成优化或回归结论。
 
-它对 FLAC packet workers 的含义是可量化的：字节构造进 worker 后并行，MD5 留在
-串行侧，占该子集总时间约 20%。按 Amdahl 界，8 worker 的上限约 3.3×，明显低于 ALAC
-实测的 6.26×。这一点必须在第 2 步的正式 A/B 中直接验证，而不是沿用 ALAC 的结论。
+当时据此推算 8 worker 上限约 3.3×。该推算的**方向**成立（FLAC 的顺序侧确实比
+ALAC 重得多），但推理过程不成立：它把“顺序哈希占比”当成可从整体耗时比例推得的
+量，并预期解码越便宜的轨道越先触顶。第 3 步之二的直接测量给出相反的排序；正确的
+量化形态见该节与其正式记录。此处保留原文以记录推算被推翻的经过。
+
+### 第 3 步之二：FLAC packet workers（2026-08-03）
+
+worker pool 原本就与 route 无关，只有名字带 ALAC，因此是泛化而非新写一套：一个
+按具名 `ParallelRoute` 参数化的 `PacketWorkerPool`，使毕业仍然是一个显式动作，
+而不是从扩展名或 codec descriptor 推导出来的结果。
+
+FLAC 的测试围绕它与 ALAC 唯一的关键差异构建：签名是顺序相关的，因此在强制最坏
+乱序下 digest 仍然匹配，就直接证明 verifier 是按 commit 序而非完成序喂入的；篡改
+签名时 2/4/8 worker 与串行 oracle 给出逐字节相同的 digest 与错误。
+
+corpus 与 suite 新增三条 240 秒 FLAC track。位深决定顺序哈希覆盖多少字节，可压缩性
+决定它与多少解码工作竞争，因此用一组 24-bit 对照加一条 16-bit track 把两者分开，
+而不是报告单一数字。
+
+正式记录见
+[`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)。
+其固定主机是 Windows x86_64，因为 macOS 主机在窗口内持续负载 11–15；同 suite 的
+ALAC track 充当污染对照，在受污染的 run 中掉了约 20%，该 run 已整体作废。
+
+三点结论进入本 ADR：
+
+- FLAC 8 worker 加速比 16-bit 4.13x、24-bit 2.77–3.42x，同轮 ALAC 为 4.07–4.31x；
+  每条 track 的 1/2/4/8 worker 共享同一 fingerprint；
+- FLAC 的**顺序底线**（顺序 demux 加产品自有的流签名哈希）经独立探针直接测得，
+  占其串行解码时间的 22.5–28.9%，ALAC 只有 1.7–2.8%。这是 §4 所预见的代价的量化
+  形态：把全流校验保留下来是有价格的，价格在顺序侧；
+- 由 1-worker 与 8-worker 比值反解 Amdahl 得到的“串行占比”是**上界**，不是顺序段的
+  测量值——它把内存带宽、分配器争抢与通道交接一并计入。本记录中两条哈希工作量
+  相同的 24-bit track，反推串行差 55.3 ms 而实测底线只差 14.6 ms。后续任何轴的
+  归因都不得使用反推值代替直接测量。
+
+启用时序上有一处与本 ADR 不一致，如实记录：ALAC 的默认启用是门槛齐备后单独作出的
+决定，FLAC 则因产品预算此前已非串行，在被加入 route 判定的那一刻即成为默认，正式
+A/B 在其后才产生。事后证据支持该默认，因此不回退，但顺序不是本 ADR 所设的顺序。
 
 ## 明确非目标
 
@@ -555,18 +592,39 @@ release CLI，本改动 10.0–10.4 s，`b43e6d1` 9.3 s，串行 FLAC 路径慢�
 
 ## 证据状态
 
-本 ADR 已接受架构方向、ALAC packet-worker 实现、下述固定身份下的正确性与性能
-测量，以及在此基础上作出的默认启用决定。
+本 ADR 已接受架构方向、ALAC 与 FLAC 两条 packet-worker route 的实现、下述固定
+身份下的正确性与性能测量，以及在此基础上的默认启用。ALAC 的启用是门槛齐备后
+单独作出的决定；FLAC 的启用时序与之不同，见“第 3 步之二”。
 
 `ExecutionBudget::product()` 现在把 plan 取为固定上限与宿主并行度的较小值，
 `Default` 使用它，因此 CLI 与 Tauri 的 `Application::new()` 默认启用 packet
-workers。只有已毕业的 ADR-0013 ALAC route 会切换 engine；其余 route 与
-单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持完全串行，作为
+workers。只有已毕业的 route 会切换 engine——目前是 ADR-0013 的 ALAC route 与
+FLAC；其余 route 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持完全串行，作为
 差分参照继续可达，不是产品默认的别名。文件级（P1）与窗口级（P2）仍未实施。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项
 safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相同。
+
+### packet 级（FLAC）共同门槛：已具备
+
+- 产品自有的按序全流签名 verifier 接管全部 FLAC route，单元向量覆盖 8/12/16/20/
+  24/32 位与 1–3 声道，位深越界样本被拒绝，与 backend 自身判定的差分在完好与
+  篡改两侧一致；尾部丢失场景由“清零签名的对照可以干净读到 EOF”反证只有签名会
+  发现；
+- 真实素材 308 个 FLAC（27.9 GiB）在改动前后成败判定与完整报告 308/308 一致，
+  45 个拒绝项由 `flac -t` 独立确认；
+- 长音频 source-bound corpus 三条（24-bit 90.2% / 24-bit 59.5% / 16-bit 97.5%），
+  1/2/4/8 worker 同轮交错扫描，每条 track 四个 worker 数共享同一 fingerprint；
+- 16-bit FLAC track 与由同一信号编码的 ALAC track 共享 `resultFingerprintSha256`，
+  构成两条独立 route 之间的交叉核对；
+- 顺序底线由独立探针直接测量，而非从加速比反推；同轮 ALAC track 充当污染对照，
+  据此作废了一次受负载污染的 run；
+- 强制最坏乱序下签名仍然通过（签名顺序相关，因此这直接证明 verifier 按 commit
+  序喂入），篡改签名时 2/4/8 worker 与串行 oracle 给出逐字节相同的 digest 与错误。
+
+正式记录见
+[`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](../performance/ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)。
 
 ### packet 级（ALAC）共同门槛：已具备
 
@@ -606,7 +664,7 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 
 ### 尚未开始
 
-- FLAC packet workers 本身：有序全流 verifier 已就位并接管串行路径，但 worker
-  pool、长 FLAC corpus 与正式 A/B 都还没有；上文推算的 3.3× Amdahl 上限是待验证的
-  预期，不是测量结果；
-- 文件级与窗口级并行的生产实现，二者目前只有准入契约。
+- 文件级与窗口级并行的生产实现，二者目前只有准入契约；
+- FLAC 顺序底线之外的限制因素：实测底线换算的 Amdahl 上限对 ALAC 高估明显
+  （2.8% 底线对应 6.67x，实测 4.07x），说明该固定主机上还有底线之外的限制项。
+  它没有被测量，也没有被归因。
