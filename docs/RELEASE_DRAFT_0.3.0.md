@@ -16,11 +16,14 @@ Highlights:
   cookie, sample entry, media timing, sample tables, backend codec identity,
   sample rate, and exact decoded frame count;
 - adds `.m4a` and `.mp4` to capability-driven directory discovery;
-- retains the currently serial in-process Symphonia implementation, finite
-  interleaved `f64`, the single `Application` façade, and the fixed analysis
-  rules; the future bounded concurrency accepted by
-  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) is not an
-  implemented 0.3.0 release feature;
+- adds bounded packet-level decoding for the ALAC route and for FLAC streams
+  whose packet geometry fits the granted reservation, under the single
+  application-owned worker and memory plan accepted by
+  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md); a report and
+  its decoded PCM are identical whatever worker count a host grants, and
+  file-level and window-level parallelism remain unimplemented;
+- retains the in-process Symphonia implementation, finite interleaved `f64`,
+  the single `Application` façade, and the fixed analysis rules;
 - upgrades the shared CLI/Tauri `WireEnvelope` to schema v4 for the new
   `mp4` container and `alac` codec identifiers.
 
@@ -46,10 +49,12 @@ MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路�
 - 在创建 decoder 前首检 ISO BMFF，并交叉核对 ALAC cookie、sample entry、媒体
   时序、sample tables、backend codec 身份、采样率和最终精确解码帧数；
 - capability 驱动的目录发现新增 `.m4a` 与 `.mp4`；
-- 保持当前串行的进程内 Symphonia 实现、有限交错 `f64`、唯一 `Application`
-  façade 和固定分析规则；
-  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) 接受的后续有界并发
-  尚不是 0.3.0 已实现功能；
+- 在 [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) 接受的唯一
+  application 自有 worker 与内存计划下，为 ALAC route 以及 packet 几何能落入已授予
+  reservation 的 FLAC 流启用有界 packet 级解码；无论宿主授予多少 worker，报告与
+  解码 PCM 完全相同；文件级与窗口级并行仍未实现；
+- 保持进程内 Symphonia 实现、有限交错 `f64`、唯一 `Application` façade 和固定
+  分析规则；
 - 共享 CLI/Tauri `WireEnvelope` 因新增 `mp4` container 与 `alac` codec 标识升级
   到 schema v4。
 
