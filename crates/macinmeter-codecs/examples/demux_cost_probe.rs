@@ -28,7 +28,7 @@ use std::{
 };
 use symphonia::core::{
     checksum::Md5,
-    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    codecs::{CODEC_TYPE_FLAC, CODEC_TYPE_NULL, Decoder, DecoderOptions},
     errors::Error as SymphoniaError,
     formats::{FormatOptions, FormatReader},
     io::{MediaSourceStream, Monitor},
@@ -92,6 +92,7 @@ fn decoder(track: &Track) -> Box<dyn Decoder> {
 ///
 /// Reported separately because hashing them is the other sequential step the
 /// pool performs, and unlike decoding it cannot be moved into a worker.
+#[derive(Clone, Copy)]
 struct SignatureGeometry {
     bytes: u64,
 }
@@ -104,8 +105,19 @@ fn signature_geometry(path: &Path, frames: u64) -> Option<SignatureGeometry> {
         .iter()
         .find(|candidate| candidate.id == track.track_id)
         .map(|candidate| candidate.codec_params.clone())?;
-    let bits = codec_params.bits_per_sample?;
-    let channels = codec_params.channels?.count() as u64;
+    // Only FLAC carries a stream signature. Gating on the codec keeps a track
+    // that merely omits a field from being reported as "nothing to hash",
+    // which would look identical to a codec that genuinely hashes nothing.
+    if codec_params.codec != CODEC_TYPE_FLAC {
+        return None;
+    }
+    let bits = codec_params
+        .bits_per_sample
+        .unwrap_or_else(|| fail("FLAC track declares no bit depth"));
+    let channels = codec_params
+        .channels
+        .unwrap_or_else(|| fail("FLAC track declares no channels"))
+        .count() as u64;
     Some(SignatureGeometry {
         bytes: frames * channels * u64::from(bits.div_ceil(8)),
     })
@@ -192,6 +204,8 @@ fn main() {
     };
 
     let (_, packets, compressed_bytes, frames) = drain(&path, true);
+    // `None` means this codec has no stream signature at all, which is not the
+    // same statement as "its signature covers zero bytes".
     let signature = signature_geometry(&path, frames);
     let signature_bytes = signature.map_or(0, |geometry| geometry.bytes);
 
@@ -220,11 +234,12 @@ fn main() {
             "decodeOnlyNs": total_ns.saturating_sub(demux_ns),
             "demuxShareOfSerialDecode": (demux_ns as f64) / (total_ns as f64),
             "decodedFrames": frames,
-            "signatureBytes": signature_bytes,
-            "signatureHashNs": hash_ns,
+            "signatureBytes": signature.map(|geometry| geometry.bytes),
+            "signatureHashNs": signature.map(|_| hash_ns),
             // What stays sequential once every worker is busy: demux plus the
-            // one hash. Decoding and f64 conversion are not in this sum.
-            "sequentialFloorNs": demux_ns + hash_ns,
+            // one hash, where there is one. Decoding and f64 conversion are
+            // not in this sum, and neither is any scheduling imperfection.
+            "sequentialFloorNs": demux_ns + signature.map_or(0, |_| hash_ns),
             "passes": PASSES,
         })
     );
