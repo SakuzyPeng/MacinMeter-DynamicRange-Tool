@@ -18,8 +18,9 @@ leaderboard or a user-facing throughput guarantee.
   optimization.
 - [`ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md`](ADR0014_ALAC_PACKET_WORKER_AB_REPORT.md)
   records the same-run 1/2/4/8 worker sweep over a long ALAC track. It is a
-  measurement, not an enablement decision: packet workers remain off by default
-  and the report states which graduation gates are still open.
+  measurement, not the later enablement decision: the report preserves which
+  graduation gates were still open when that run was recorded; current product
+  status is fixed by ADR-0014.
 - [`ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md`](ADR0014_FLAC_PACKET_WORKER_AB_REPORT.md)
   records the same-run 1/2/4/8 worker sweep over three long FLAC tracks on a
   Windows x86_64 host, with the ALAC tracks of the same run as an in-suite
@@ -31,6 +32,11 @@ leaderboard or a user-facing throughput guarantee.
   commit/analysis thread. The first run rejects allocating a hasher at two and
   four total permits; the second accepts the bounded 7-decoder + 1-hasher split
   only at the measured eight-permit product allocation.
+- [`ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md`](ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md)
+  directly attributes the scaling gap above the previously measured sequential
+  floor. It records source-owned open, decoder, conversion, queue/caller and
+  hasher phases, then accepts chunked ALAC sample-table validation and direct
+  construction of the final PCM buffer through interleaved Windows A/B runs.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,
@@ -46,12 +52,13 @@ leaderboard or a user-facing throughput guarantee.
   selected for every cell, normalizes the wire display path, and writes the
   canonical sorted four-space JSON itself. Regenerate an exact record with
   `cargo run --locked --release -p macinmeter --example adr0014_allocation_matrix -- PATH > OUTPUT.json`.
-- [`probes/`](probes/) contains sequential-floor probe records: the sequential
-  demux cost of a track measured with no decoding at all, and the cost of
-  hashing a stream signature of that track's exact size. These bound a packet
-  route's speedup from the parallel structure rather than from a timing ratio.
-  Regenerate one with `cargo run --locked --release -p macinmeter-codecs
-  --example demux_cost_probe -- PATH`.
+- [`probes/`](probes/) contains both sequential-floor records and explicit
+  source-owned pipeline attribution records. The former measure sequential
+  demux with no decoding and the cost of hashing an exact-size stream signature;
+  regenerate one with `cargo run --locked --release -p macinmeter-codecs
+  --example demux_cost_probe -- PATH`. The latter require the non-default
+  `performance-probes` feature and bind each source/thread phase to the ordinary
+  decode controls in the same suite.
 - [`comparisons/`](comparisons/) contains complete interleaved A/B runner
   records, including every warm-up, measured sample, variant identity, and
   cross-variant fingerprint.

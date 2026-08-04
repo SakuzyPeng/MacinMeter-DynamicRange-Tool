@@ -190,6 +190,12 @@ demux 线程、其余 7 个 decoder worker 与调用线程上的 commit 同时�
 因此本记录只主张：**顺序底线是加速比的上界，并且它解释了 FLAC 与 ALAC 之间以及
 FLAC 各位深之间的差距**；不主张它是唯一的限制项。
 
+后续状态（2026-08-04）：
+[`ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md`](ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md)
+已经用 source-owned open/decoder/conversion/queue/caller/hasher 探针测量并归因底线之上的
+限制。本节的“不作归因”和末尾范围只描述 `d43fca2` 这份先前记录自身，不再是当前
+ADR 的开放证据项。
+
 ## 一次被作废的归因尝试
 
 曾尝试用数据而非代码隔离哈希：把 STREAMINFO 的 MD5 字段清零，使产品跳过校验，

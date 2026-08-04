@@ -588,7 +588,7 @@ reservation 下各连续 20 次成功，PCM 与结果指纹均与串行 oracle �
 哈希。历史原始记录的 500 ns 空哈希字节与 SHA-256 保持不变，只在正式报告中纠正其
 实际对应的 `aeb7022` 实现和派生解释。
 
-### 第 3 步之三：commit/analysis overlap 的专用 FLAC hasher 候选（2026-08-04）
+### 第 3 步之三：commit/analysis overlap 的专用 FLAC hasher（2026-08-04，已接受）
 
 第 3 步之二把签名哈希留在调用线程的 commit 点，因此 `read_block()` 只有完成该包的
 MD5 后才把 PCM 交给 analyzer；哈希与分析严格串行。新的 source-bound 候选不改
@@ -628,6 +628,48 @@ Application case 快 15.0–39.4%，2/4 permit direct decode 回到 -1.46% 至 +
 ALAC 污染对照均接近已知干净值，392 个最终样本的跨变体 fingerprint 全部一致，因而
 接受上述仅限 8 permit 的生产选择。正式记录见
 [`ADR0014_FLAC_HASHER_AB_REPORT.md`](../performance/ADR0014_FLAC_HASHER_AB_REPORT.md)。
+
+### 第 3 步之四：顺序底线之上的 pipeline 归因（2026-08-04，已完成）
+
+第 3 步之二的正式记录只直接测量了顺序 demux 与 FLAC hash；它明确留下一个开放项：
+ALAC 的 2.8% 实测底线换算为 6.67x Amdahl 上限，而同轮实际只有 4.07x，底线之上的
+限制尚未测量。该项现由非默认 `performance-probes` feature 和 `decode-pipeline`
+runner mode 完成 source-owned 归因。默认 production build 不含这些计时点。
+
+固定 Windows 主机上的 48-case 内部记录同时保留普通 decode 对照，并测量 open、
+demux/dispatch、每个 decoder slot 的 backend/integrity/PCM、result hand-off、调用线程
+wait/commit、reorder 高水位与 FLAC hasher。深探针相对普通 decode 的中位数差为
+-3.54% 到 +3.06%，没有系统性 probe penalty；完整 PCM SHA-256 在观察区外计算，
+runner 对 topology、packet 数、permit 与 oracle fail closed。
+
+归因得到四项：
+
+- 旧底线漏掉 ALAC 26–28 ms 的 ISO BMFF 打开检查；到 w8 它已占完整 elapsed 的
+  13.5–15.6%；
+- 相同 packet 集合的 decoder aggregate active work 在 w8 膨胀 1.34–1.57x；其中
+  backend 为 1.14–1.42x，PCM conversion 为 1.59–2.07x；
+- varied ALAC 的最慢 slot 比平均多约 29 ms / 1.26x，demux dispatch wait 为
+  65.3 ms，另外两条 ALAC 只有 5.4–6.1 ms；
+- caller result wait、ordered commit 与 FLAC hasher hand-off 都有具名 owner 和直接
+  计时；这些 interval 会与 worker 重叠，不再被误写成可相加的“串行比例”。
+
+检查第一方实现后接受两项不改变拓扑的优化。`stsz` 从每 entry 一次 4-byte seek/read
+改成最大 64 KiB 的顺序 chunk，使 container inspection 降到 0.79–0.81 ms，三条 ALAC
+w8 端到端快 11.6–13.3%。PCM conversion 原先先填一个 `SampleBuffer<f64>`，再
+`to_vec()` 复制成 domain buffer；现直接用相同 `IntoSample<f64>` 与交错顺序填最终
+`Vec<f64>`。十种 backend sample format 与旧路径逐 sample 位模式一致，另有 source
+f64 不收窄测试。
+
+第二项的 504-sample broad A/B 中，PCM phase 下降 35–62%；FLAC 的 12 个普通 case
+快 8.2–19.7%，ALAC w1 快 7.8–8.8%。宽轮 varied w4/w8 的两个
+小负值小于 MAD，独立 21-sample 确认给出 6.0% / 1.7% 正收益。36/36 case 跨变体
+fingerprint 相同，median process-tree peak RSS 变化范围为 -4.47% 到 +0.71%。同轮
+ALAC 1→8 污染对照为 4.35–4.43x，没有低于既有干净值。
+
+正式解释、全部 phase 表与五份原始记录见
+[`ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md`](../performance/ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md)。
+以前的“没有被测量，也没有被归因”据此关闭；backend 的微架构膨胀、varied 静态映射
+不均与 hand-off 是**已经测量但尚未继续优化**的边界，不是仍然未知的顺序底线。
 
 ## 明确非目标
 
@@ -717,6 +759,17 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 - 真实录音代表性由一次本机交叉检查补充：40 个真实 ALAC 上 480 次 allocation、
   4.75 亿帧，三项指纹逐文件唯一。
 
+### packet pipeline 底线之上归因：已具备
+
+- source-owned probe 已分别测量 open、demux/dispatch、decoder backend/integrity/
+  PCM、caller/reorder 与 FLAC hasher；深探针有同轮普通 decode 对照并在观察区外核对
+  完整 PCM oracle；
+- ALAC 打开检查与重复 PCM allocation 两项已优化并通过 source-bound A/B；backend
+  aggregate inflation、varied 静态映射不均、queue/hasher hand-off 已被直接定位而
+  未被误算成顺序比例；
+- 正式记录见
+  [`ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md`](../performance/ADR0014_PACKET_PIPELINE_ATTRIBUTION_REPORT.md)。
+
 ### 仍然成立的限制
 
 - 该 39 项 corpus 全为合成 WAV（32 个 float32、3 个 float64，以及 u8/s16/s24/s32
@@ -733,9 +786,15 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 - 三条 corpus track 都是合成信号，未覆盖真实录音的立体声相关性；该维度只由上述
   不可提交的交叉检查补充。
 
+### 已归因、尚未继续优化
+
+- decoder backend aggregate work 在 w8 比 w1 高 1.14–1.42x。成本已经定位到 backend
+  owner，但现有 wall-time probe 不区分 CPU frequency、cache 与内部 memory traffic；
+- varied ALAC 的固定 packet-to-slot mapping 产生约 29 ms 最慢-slot penalty 与
+  65.3 ms dispatch wait。动态领取会改变确定性、失败和资源面，须作为独立候选毕业；
+- caller/reorder 与容量 1 FLAC hasher hand-off 仍有重叠等待；后续只能用 owner 内直接
+  测量选择候选，不能从 Amdahl 比值反推成单一“串行占比”。
+
 ### 尚未开始
 
-- 文件级与窗口级并行的生产实现，二者目前只有准入契约；
-- FLAC 顺序底线之外的限制因素：实测底线换算的 Amdahl 上限对 ALAC 高估明显
-  （2.8% 底线对应 6.67x，实测 4.07x），说明该固定主机上还有底线之外的限制项。
-  它没有被测量，也没有被归因。
+- 文件级与窗口级并行的生产实现，二者目前只有准入契约。
