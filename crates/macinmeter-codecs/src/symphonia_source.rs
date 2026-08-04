@@ -1,3 +1,5 @@
+#[cfg(feature = "performance-probes")]
+use crate::performance_probe::PacketPipelineProbe;
 use crate::{
     DecodeExecution, OpenedAudio, PcmSource, ReadOutcome,
     codec::{source_bits_per_sample, stream_spec, validate_codec},
@@ -28,6 +30,8 @@ use std::{
     num::NonZeroUsize,
     path::{Path, PathBuf},
 };
+#[cfg(feature = "performance-probes")]
+use std::{sync::Arc, time::Instant};
 use symphonia::core::{
     codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_NULL, CodecParameters, DecoderOptions},
     formats::FormatOptions,
@@ -55,6 +59,21 @@ pub(crate) fn open_with_execution(
     Ok((opened, execution))
 }
 
+#[cfg(feature = "performance-probes")]
+pub(crate) fn open_with_performance_probe(
+    path: &Path,
+    reservation: DecodeReservation,
+) -> Result<(OpenedAudio, DecodeExecution, Arc<PacketPipelineProbe>), AnalysisError> {
+    let probe = Arc::new(PacketPipelineProbe::default());
+    let options = PoolOptions::with_probe(Arc::clone(&probe));
+    let (source, reader, execution) = open_source_with_pool_options(path, reservation, options)?;
+    let opened = OpenedAudio {
+        source,
+        reader: Box::new(reader),
+    };
+    Ok((opened, execution, probe))
+}
+
 fn open_source(
     path: &Path,
     reservation: DecodeReservation,
@@ -67,8 +86,18 @@ fn open_source_with_pool_options(
     reservation: DecodeReservation,
     pool_options: PoolOptions,
 ) -> Result<(SourceInfo, SymphoniaPcmSource, DecodeExecution), AnalysisError> {
+    #[cfg(feature = "performance-probes")]
+    let probe = pool_options.probe().cloned();
+    #[cfg(feature = "performance-probes")]
+    let phase_started = Instant::now();
     let mut file = File::open(path).map_err(|error| file_open_error(path, error))?;
     let signature = identify_container(&mut file, path)?;
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = probe.as_ref() {
+        probe.add_file_identify(phase_started);
+    }
+    #[cfg(feature = "performance-probes")]
+    let phase_started = Instant::now();
     let (aiff_info, container_pcm, alac_info) = match signature {
         ContainerSignature::Aiff => {
             let info = inspect_aiff(&mut file, path)?;
@@ -84,6 +113,12 @@ fn open_source_with_pool_options(
             (None, Some((info.pcm, info.declared_frames)), Some(info))
         }
     };
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = probe.as_ref() {
+        probe.add_container_inspection(phase_started);
+    }
+    #[cfg(feature = "performance-probes")]
+    let phase_started = Instant::now();
     file.seek(SeekFrom::Start(0))
         .map_err(|error| io_analysis_error(path, AnalysisStage::Probe, error))?;
 
@@ -100,6 +135,12 @@ fn open_source_with_pool_options(
             &MetadataOptions::default(),
         )
         .map_err(|error| probe_error(path, error))?;
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = probe.as_ref() {
+        probe.add_backend_probe(phase_started);
+    }
+    #[cfg(feature = "performance-probes")]
+    let phase_started = Instant::now();
 
     let format = probed.format;
     let mut audio_tracks = format
@@ -189,6 +230,14 @@ fn open_source_with_pool_options(
         channels,
         integrity_plan,
     );
+    #[cfg(feature = "performance-probes")]
+    let context = {
+        let mut context = context;
+        if let Some(probe) = probe.as_ref() {
+            context.attach_probe(Arc::clone(probe));
+        }
+        context
+    };
     // ADR-0014 §2/§3: packet workers are created only for a route that has
     // graduated, never from an extension or a generic codec descriptor. Every
     // other route, and any single-worker allocation, stays on the serial oracle.
@@ -219,7 +268,13 @@ fn open_source_with_pool_options(
     // a partially constructed packet pool behind.
     let integrity = match integrity_plan {
         Some(plan) if parallel.is_some_and(|execution| execution.hasher_workers == 1) => {
-            Some(FlacVerification::spawn(path, plan, pool_options.hasher())?)
+            Some(FlacVerification::spawn(
+                path,
+                plan,
+                pool_options.hasher(),
+                #[cfg(feature = "performance-probes")]
+                probe.clone(),
+            )?)
         }
         Some(plan) => Some(FlacVerification::inline(plan)),
         None => None,
@@ -246,6 +301,10 @@ fn open_source_with_pool_options(
             parallel.decode_reservation,
         )
     } else {
+        #[cfg(feature = "performance-probes")]
+        if let Some(probe) = probe.as_ref() {
+            probe.set_decoder_workers(1);
+        }
         let decoder_options = DecoderOptions {
             verify: context.backend_verification(),
         };
@@ -280,6 +339,8 @@ fn open_source_with_pool_options(
         reorder: PacketReorderBuffer::new(reorder_reservation),
         integrity,
         terminal: TerminalState::Active,
+        #[cfg(feature = "performance-probes")]
+        probe: probe.clone(),
         #[cfg(test)]
         injected_read_error: None,
         diagnostics: DecodeDiagnostics {
@@ -288,6 +349,11 @@ fn open_source_with_pool_options(
             warnings: Vec::new(),
         },
     };
+
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = probe.as_ref() {
+        probe.add_route_setup(phase_started);
+    }
 
     Ok((source, reader, execution))
 }
@@ -584,6 +650,8 @@ pub(crate) struct SymphoniaPcmSource {
     /// The one hasher for this stream's FLAC signature, fed only by `commit`.
     integrity: Option<FlacVerification>,
     terminal: TerminalState,
+    #[cfg(feature = "performance-probes")]
+    probe: Option<Arc<PacketPipelineProbe>>,
     #[cfg(test)]
     injected_read_error: Option<AnalysisError>,
     diagnostics: DecodeDiagnostics,
@@ -663,6 +731,28 @@ impl SymphoniaPcmSource {
         }
     }
 
+    fn finish_observed(&mut self) -> Result<ReadOutcome, AnalysisError> {
+        #[cfg(feature = "performance-probes")]
+        let started = Instant::now();
+        let result = self.finish();
+        #[cfg(feature = "performance-probes")]
+        if let Some(probe) = self.probe.as_ref() {
+            probe.add_caller_finish(started);
+        }
+        result
+    }
+
+    fn commit_observed(&mut self, packet: DecodedPacket) -> Result<ReadOutcome, AnalysisError> {
+        #[cfg(feature = "performance-probes")]
+        let started = Instant::now();
+        let result = self.commit(packet);
+        #[cfg(feature = "performance-probes")]
+        if let Some(probe) = self.probe.as_ref() {
+            probe.add_caller_commit(started);
+        }
+        result
+    }
+
     #[cfg(test)]
     pub(crate) fn inject_error_on_next_read(&mut self, error: AnalysisError) {
         assert!(
@@ -706,7 +796,7 @@ impl PcmSource for SymphoniaPcmSource {
             // drain serves outcomes that were previously stalled behind it.
             if let Some(outcome) = self.reorder.take_ready() {
                 match outcome {
-                    PacketOutcome::Decoded(packet) => return self.commit(packet),
+                    PacketOutcome::Decoded(packet) => return self.commit_observed(packet),
                     PacketOutcome::Empty => continue,
                     PacketOutcome::Failed(error) => return self.fail(error),
                 }
@@ -714,11 +804,21 @@ impl PcmSource for SymphoniaPcmSource {
 
             let (index, outcome) = match self.engine.next() {
                 Ok(EngineOutcome::Indexed { index, outcome }) => (index, outcome),
-                Ok(EngineOutcome::Exhausted) => return self.finish(),
+                Ok(EngineOutcome::Exhausted) => return self.finish_observed(),
                 Err(error) => return self.fail(error),
             };
-            match self.reorder.accept(index, outcome) {
-                Ok(Some(PacketOutcome::Decoded(packet))) => return self.commit(packet),
+            #[cfg(feature = "performance-probes")]
+            let stalled = index != self.reorder.next_index();
+            let accepted = self.reorder.accept(index, outcome);
+            #[cfg(feature = "performance-probes")]
+            if let Some(probe) = self.probe.as_ref() {
+                let (packets, bytes) = self.reorder.pending_geometry();
+                probe.observe_reorder(stalled, packets, bytes);
+            }
+            match accepted {
+                Ok(Some(PacketOutcome::Decoded(packet))) => {
+                    return self.commit_observed(packet);
+                }
                 Ok(Some(PacketOutcome::Empty)) | Ok(None) => {}
                 Ok(Some(PacketOutcome::Failed(error))) | Err(error) => return self.fail(error),
             }

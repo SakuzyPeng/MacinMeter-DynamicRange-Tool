@@ -59,6 +59,22 @@ class PerformanceBaselineTests(unittest.TestCase):
             for workers in baseline.PACKET_WORKER_COUNTS:
                 self.assertIn(f"decode-phases/{track}-w{workers}", attribution_ids)
 
+        pipeline = baseline.pipeline_attribution_cases(Path("/corpus"))
+        pipeline_ids = {case.case_id for case in pipeline}
+        self.assertTrue(default_ids.isdisjoint(pipeline_ids))
+        self.assertTrue(attribution_ids.isdisjoint(pipeline_ids))
+        self.assertEqual(len(pipeline), 6 * len(baseline.PACKET_WORKER_COUNTS))
+        for track in (
+            "alac-s16-240s",
+            "alac-tonal-240s",
+            "alac-varied-240s",
+            "flac-s16-240s",
+            "flac-s24-240s",
+            "flac-s24-tonal-240s",
+        ):
+            for workers in baseline.PACKET_WORKER_COUNTS:
+                self.assertIn(f"decode-pipeline/{track}-w{workers}", pipeline_ids)
+
     def test_seeded_schedule_is_deterministic_and_balanced(self) -> None:
         cases = (
             baseline.BenchmarkCase("a", "analysis", "a", ("analysis",)),
@@ -363,6 +379,71 @@ class PerformanceBaselineTests(unittest.TestCase):
         sample["details"]["selectedDecoderWorkers"] = 8
         with self.assertRaises(baseline.BaselineError):
             baseline.assert_decode_phase_attribution(case, sample)
+
+    def test_decode_pipeline_gate_closes_thread_and_caller_accounting(self) -> None:
+        case = baseline.BenchmarkCase(
+            "decode-pipeline/alac-w2",
+            "attribution",
+            "pipeline",
+            ("decode-pipeline", "/corpus/input.m4a", "1", "2"),
+        )
+        details = {
+            "blocksPerIteration": 4,
+            "decodeQueueCapacity": 8,
+            "decodeMaxInFlightPcmBytes": 8 * 1024 * 1024,
+            "selectedEngine": "AlacPacketWorkers",
+            "selectedTotalWorkers": 2,
+            "selectedDecoderWorkers": 2,
+            "selectedHasherWorkers": 0,
+            "probeDecoderWorkers": 2,
+        }
+        measurements = {
+            "openElapsedNs": 10,
+            "drainElapsedNs": 89,
+            "unattributedElapsedNs": 1,
+            "fileIdentifyNs": 1,
+            "containerInspectionNs": 2,
+            "backendProbeNs": 3,
+            "routeSetupNs": 3,
+            "openUnattributedNs": 1,
+            "callerResultWaitNs": 70,
+            "callerCommitNs": 5,
+            "callerFinishNs": 4,
+            "callerOtherNs": 10,
+            "demuxPacketReadNs": 2,
+            "demuxDispatchWaitNs": 1,
+            "reorderStalls": 1,
+            "peakReorderPackets": 1,
+            "peakReorderBytes": 8,
+            "hasherPackets": 0,
+            "hasherReceiveWaitNs": 0,
+            "hasherActiveNs": 0,
+            "hasherSendWaitNs": 0,
+            "hasherLifetimeNs": 0,
+        }
+        for slot in range(2):
+            prefix = f"worker{slot}"
+            measurements.update(
+                {
+                    f"{prefix}Packets": 2,
+                    f"{prefix}BackendDecodeNs": 20,
+                    f"{prefix}IntegrityConversionNs": 0,
+                    f"{prefix}PcmConversionNs": 5,
+                    f"{prefix}InboxWaitNs": 3,
+                    f"{prefix}ResultSendWaitNs": 1,
+                    f"{prefix}LifetimeNs": 80,
+                }
+            )
+        sample = {
+            "workerElapsedNs": 100,
+            "details": details,
+            "measurements": measurements,
+        }
+        baseline.assert_decode_pipeline_attribution(case, sample)
+
+        measurements["worker1Packets"] = 1
+        with self.assertRaises(baseline.BaselineError):
+            baseline.assert_decode_pipeline_attribution(case, sample)
         sample["details"]["selectedDecoderWorkers"] = 7
         sample["measurements"]["drainElapsedNs"] = 88
         with self.assertRaises(baseline.BaselineError):

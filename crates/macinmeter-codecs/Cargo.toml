@@ -10,6 +10,9 @@ repository.workspace = true
 [features]
 # Hidden dev-only seam for local fuzz runners; never enabled by the product.
 malformed-dev = []
+# Hidden source-owned timing seam for local ADR-0014 attribution. It is absent
+# from ordinary product builds and does not select a production execution mode.
+performance-probes = []
 
 [dependencies]
 macinmeter-domain = { path = "../macinmeter-domain" }

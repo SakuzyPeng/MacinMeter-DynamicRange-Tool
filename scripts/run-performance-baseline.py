@@ -337,6 +337,56 @@ def attribution_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
     )
 
 
+def pipeline_attribution_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
+    """Explicit source-owned pipeline probes, absent from the default suite."""
+
+    def media(name: str) -> str:
+        return str((corpus / name).resolve())
+
+    return tuple(
+        BenchmarkCase(
+            f"decode-pipeline/{track}-w{workers}",
+            "attribution",
+            f"Attribute {label} decode across caller, demux, decoder slots, "
+            f"conversion and ordered hashing on {workers} total permit(s)",
+            ("decode-pipeline", media(filename), "1", str(workers)),
+        )
+        for track, label, filename in (
+            (
+                "alac-s16-240s",
+                "near-incompressible ALAC",
+                "stereo-s16-alac-240s.m4a",
+            ),
+            (
+                "alac-tonal-240s",
+                "tonal ALAC",
+                "stereo-s16-alac-tonal-240s.m4a",
+            ),
+            (
+                "alac-varied-240s",
+                "load-imbalanced ALAC",
+                "stereo-s16-alac-varied-240s.m4a",
+            ),
+            (
+                "flac-s16-240s",
+                "16-bit near-incompressible FLAC",
+                "stereo-s16-flac-240s.flac",
+            ),
+            (
+                "flac-s24-240s",
+                "24-bit near-incompressible FLAC",
+                "stereo-s24-flac-240s.flac",
+            ),
+            (
+                "flac-s24-tonal-240s",
+                "24-bit tonal FLAC",
+                "stereo-s24-flac-tonal-240s.flac",
+            ),
+        )
+        for workers in PACKET_WORKER_COUNTS
+    )
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -399,9 +449,8 @@ def git_identity(root: Path, allow_dirty: bool) -> dict[str, str]:
 EXECUTABLE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 
-def build_default_worker(root: Path) -> Path:
-    subprocess.run(
-        (
+def build_default_worker(root: Path, performance_probes: bool = False) -> Path:
+    command = [
             "cargo",
             "build",
             "--locked",
@@ -410,7 +459,11 @@ def build_default_worker(root: Path) -> Path:
             "macinmeter",
             "--example",
             "m6_baseline_worker",
-        ),
+    ]
+    if performance_probes:
+        command.extend(("--features", "performance-probes"))
+    subprocess.run(
+        command,
         cwd=root,
         check=True,
     )
@@ -1138,7 +1191,13 @@ def validate_corpus_work(
             )
             continue
 
-        if case.mode in ("decode", "decode-phases", "application", "render-json"):
+        if case.mode in (
+            "decode",
+            "decode-phases",
+            "decode-pipeline",
+            "application",
+            "render-json",
+        ):
             path = Path(case.arguments[1])
             try:
                 relative = path.resolve().relative_to(corpus.resolve()).as_posix()
@@ -1173,7 +1232,7 @@ def validate_corpus_work(
                 seconds=(frames / sample_rate) * iterations,
                 logical_items=iterations,
             )
-            if case.mode in ("decode", "decode-phases"):
+            if case.mode in ("decode", "decode-phases", "decode-pipeline"):
                 expected_pcm = entry.get("normalizedInterleavedF64LeSha256")
                 if details.get("pcmF64LeSha256") != expected_pcm:
                     raise BaselineError(
@@ -1182,6 +1241,8 @@ def validate_corpus_work(
                 assert_decode_allocation(case, details)
                 if case.mode == "decode-phases":
                     assert_decode_phase_attribution(case, sample)
+                elif case.mode == "decode-pipeline":
+                    assert_decode_pipeline_attribution(case, sample)
             else:
                 if details.get("decodedFramesPerIteration") != frames:
                     raise BaselineError(
@@ -1352,6 +1413,115 @@ def assert_decode_phase_attribution(
     if sum(phases) != sample.get("workerElapsedNs"):
         raise BaselineError(
             f"{case.case_id} phase nanoseconds do not sum to workerElapsedNs"
+        )
+
+
+def assert_decode_pipeline_attribution(
+    case: BenchmarkCase, sample: dict[str, object]
+) -> None:
+    """Reject incomplete thread accounting, fallback, or bound drift."""
+
+    assert_decode_phase_attribution(case, sample)
+    details = sample["details"]
+    measurements = sample["measurements"]
+    decoder_workers = details.get("selectedDecoderWorkers")
+    if details.get("probeDecoderWorkers") != decoder_workers:
+        raise BaselineError(
+            f"{case.case_id} probe saw {details.get('probeDecoderWorkers')!r} "
+            f"decoder workers, expected {decoder_workers!r}"
+        )
+    if not isinstance(decoder_workers, int) or isinstance(decoder_workers, bool):
+        raise BaselineError(f"{case.case_id} decoder worker count is invalid")
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in measurements.values()
+    ):
+        raise BaselineError(f"{case.case_id} has an invalid pipeline measurement")
+
+    open_keys = (
+        "fileIdentifyNs",
+        "containerInspectionNs",
+        "backendProbeNs",
+        "routeSetupNs",
+        "openUnattributedNs",
+    )
+    if sum(measurements.get(key, -1) for key in open_keys) != measurements.get(
+        "openElapsedNs"
+    ):
+        raise BaselineError(f"{case.case_id} open phase accounting is incomplete")
+    caller_keys = (
+        "callerResultWaitNs",
+        "callerCommitNs",
+        "callerFinishNs",
+        "callerOtherNs",
+    )
+    required_global = {
+        "openElapsedNs",
+        "drainElapsedNs",
+        "unattributedElapsedNs",
+        "demuxPacketReadNs",
+        "demuxDispatchWaitNs",
+        "reorderStalls",
+        "peakReorderPackets",
+        "peakReorderBytes",
+        "hasherPackets",
+        "hasherReceiveWaitNs",
+        "hasherActiveNs",
+        "hasherSendWaitNs",
+        "hasherLifetimeNs",
+        *open_keys,
+        *caller_keys,
+    }
+    missing_global = sorted(required_global - measurements.keys())
+    if missing_global:
+        raise BaselineError(
+            f"{case.case_id} is missing pipeline measurements: {missing_global}"
+        )
+    if sum(measurements.get(key, -1) for key in caller_keys) != measurements.get(
+        "drainElapsedNs"
+    ):
+        raise BaselineError(f"{case.case_id} caller phase accounting is incomplete")
+
+    expected_packets = details.get("blocksPerIteration")
+    packet_counts = []
+    for slot in range(decoder_workers):
+        prefix = f"worker{slot}"
+        required = (
+            f"{prefix}Packets",
+            f"{prefix}BackendDecodeNs",
+            f"{prefix}IntegrityConversionNs",
+            f"{prefix}PcmConversionNs",
+            f"{prefix}InboxWaitNs",
+            f"{prefix}ResultSendWaitNs",
+            f"{prefix}LifetimeNs",
+        )
+        if any(key not in measurements for key in required):
+            raise BaselineError(
+                f"{case.case_id} has incomplete measurements for decoder slot {slot}"
+            )
+        packet_counts.append(measurements[f"{prefix}Packets"])
+    if sum(packet_counts) != expected_packets or any(count <= 0 for count in packet_counts):
+        raise BaselineError(
+            f"{case.case_id} attributed {sum(packet_counts)} packets across workers, "
+            f"expected {expected_packets!r}"
+        )
+    if any(key.startswith(f"worker{decoder_workers}") for key in measurements):
+        raise BaselineError(f"{case.case_id} reported an unallocated decoder slot")
+
+    queue_capacity = details.get("decodeQueueCapacity")
+    max_bytes = details.get("decodeMaxInFlightPcmBytes")
+    if measurements.get("peakReorderPackets", 0) > queue_capacity:
+        raise BaselineError(f"{case.case_id} exceeded its reorder packet permit")
+    if measurements.get("peakReorderBytes", 0) > max_bytes:
+        raise BaselineError(f"{case.case_id} exceeded its reorder byte permit")
+
+    expected_hasher_packets = (
+        expected_packets if details.get("selectedHasherWorkers") == 1 else 0
+    )
+    if measurements.get("hasherPackets") != expected_hasher_packets:
+        raise BaselineError(
+            f"{case.case_id} attributed {measurements.get('hasherPackets')!r} hash "
+            f"packets, expected {expected_hasher_packets!r}"
         )
 
 
@@ -1593,7 +1763,11 @@ def main() -> int:
     root = Path(__file__).resolve().parent.parent
     corpus = args.corpus_dir.resolve()
     default_cases = suite_cases(corpus)
-    available = default_cases + attribution_cases(corpus)
+    available = (
+        default_cases
+        + attribution_cases(corpus)
+        + pipeline_attribution_cases(corpus)
+    )
     if args.list_cases:
         for case in available:
             print(f"{case.case_id}\t{case.scope}\t{case.description}")
@@ -1630,7 +1804,12 @@ def main() -> int:
         else:
             if args.variant_source:
                 raise BaselineError("--variant-source requires an explicit --variant")
-            variants["scalar"] = build_default_worker(root)
+            variants["scalar"] = build_default_worker(
+                root,
+                performance_probes=any(
+                    case.mode == "decode-pipeline" for case in cases
+                ),
+            )
             variant_sources["scalar"] = source["commit"]
 
         variant_identity = {

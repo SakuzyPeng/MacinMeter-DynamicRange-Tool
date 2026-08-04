@@ -8,10 +8,17 @@ mod error;
 mod flac_integrity;
 mod isobmff;
 mod packet;
+#[cfg(feature = "performance-probes")]
+mod performance_probe;
 mod symphonia_source;
 
 pub use capability::{
     CapabilityStatus, NATIVE_CAPABILITY_CATALOG, NativeRouteCapability, stable_discovery_extensions,
+};
+#[cfg(feature = "performance-probes")]
+#[doc(hidden)]
+pub use performance_probe::{
+    PacketPipelineProbe, PacketPipelineProbeSnapshot, PacketWorkerProbeSnapshot,
 };
 
 #[cfg(test)]
@@ -214,5 +221,26 @@ impl DecoderFactory {
         path: &Path,
     ) -> Result<(OpenedAudio, DecodeExecution), AnalysisError> {
         symphonia_source::open_with_execution(path, self.reservation)
+    }
+
+    /// Open a source with the source-owned ADR-0014 timing collector attached.
+    ///
+    /// This entry only exists in explicit `performance-probes` builds. The
+    /// collector observes the engine selected by the existing reservation; it
+    /// cannot enable packet workers or change any production bound.
+    #[cfg(feature = "performance-probes")]
+    #[doc(hidden)]
+    pub fn open_with_performance_probe(
+        &self,
+        path: &Path,
+    ) -> Result<
+        (
+            OpenedAudio,
+            DecodeExecution,
+            std::sync::Arc<PacketPipelineProbe>,
+        ),
+        AnalysisError,
+    > {
+        symphonia_source::open_with_performance_probe(path, self.reservation)
     }
 }

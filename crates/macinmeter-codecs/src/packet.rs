@@ -131,9 +131,14 @@ impl PacketReorderBuffer {
     }
 
     /// The next packet index the buffer will commit.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "performance-probes"))]
     pub(crate) const fn next_index(&self) -> u64 {
         self.next_index
+    }
+
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn pending_geometry(&self) -> (usize, u64) {
+        (self.pending.len(), self.stalled_retained_bytes)
     }
 
     /// Accept one completed packet result.

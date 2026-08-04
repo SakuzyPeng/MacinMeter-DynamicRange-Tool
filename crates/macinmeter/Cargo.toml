@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Forward the codecs-only ADR-0014 attribution seam to the M6 worker example.
+# Ordinary library, CLI and GUI builds never enable it.
+performance-probes = ["macinmeter-codecs/performance-probes"]
+
 [dependencies]
 macinmeter-analysis = { path = "../macinmeter-analysis" }
 macinmeter-codecs = { path = "../macinmeter-codecs" }

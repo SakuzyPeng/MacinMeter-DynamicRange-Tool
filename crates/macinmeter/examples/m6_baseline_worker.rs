@@ -4,6 +4,8 @@ use macinmeter::{
     AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
     CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
 };
+#[cfg(feature = "performance-probes")]
+use macinmeter_codecs::PacketPipelineProbeSnapshot;
 use macinmeter_codecs::{DecodeExecution, DecoderFactory, OpenedAudio, ReadOutcome};
 use macinmeter_domain::{DecodeReservation, MAX_DECODE_QUEUE_CAPACITY, MAX_IN_FLIGHT_PCM_BYTES};
 use serde::Serialize;
@@ -49,6 +51,8 @@ fn run() -> Result<Value, String> {
         "analysis" => run_analysis(&remaining),
         "decode" => run_decode(&remaining),
         "decode-phases" => run_decode_phases(&remaining),
+        #[cfg(feature = "performance-probes")]
+        "decode-pipeline" => run_decode_pipeline(&remaining),
         "application" => run_application(&remaining),
         "batch" => run_batch(&remaining),
         "discovery" => run_discovery(&remaining),
@@ -62,6 +66,7 @@ fn usage() -> &'static str {
   m6_baseline_worker analysis CHANNELS SAMPLE_RATE FRAMES BLOCK_FRAMES
   m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS [QUEUE_CAPACITY]]
   m6_baseline_worker decode-phases PATH ITERATIONS DECODE_WORKERS
+  m6_baseline_worker decode-pipeline PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker application PATH ITERATIONS
   m6_baseline_worker batch DIRECTORY ITERATIONS
   m6_baseline_worker discovery DIRECTORY ITERATIONS
@@ -368,6 +373,163 @@ fn timed_decode_phase_workload(
         open_elapsed,
         drain_elapsed,
     ))
+}
+
+/// Attribute the caller critical path and every source-owned thread inside one
+/// complete decode. This mode only exists in an explicit performance-probe
+/// build; the same reservation still chooses the product engine and bounds.
+#[cfg(feature = "performance-probes")]
+fn run_decode_pipeline(arguments: &[OsString]) -> Result<Value, String> {
+    require_len(arguments, 3, "decode-pipeline")?;
+    let path = PathBuf::from(&arguments[0]);
+    let iterations = positive_iterations(&arguments[1])?;
+    if iterations != 1 {
+        return Err("decode-pipeline requires exactly one source iteration".to_owned());
+    }
+    let decode_workers = parse_number::<usize>(&arguments[2], "decode workers")?;
+    let reservation = decode_reservation(decode_workers, None)?;
+
+    let started = Instant::now();
+    let open_started = Instant::now();
+    let (opened, execution, probe) = DecoderFactory::with_application_reservation(reservation)
+        .open_with_performance_probe(&path)
+        .map_err(|error| error.to_string())?;
+    let open_elapsed = open_started.elapsed();
+    let drain_started = Instant::now();
+    let timed = drain_opened(opened, false)?;
+    let drain_elapsed = drain_started.elapsed();
+    let elapsed = started.elapsed();
+    let snapshot = probe.snapshot();
+
+    // Keep the full PCM oracle outside the observed source. Hashing blocks on
+    // the caller between reads would back-pressure the result queue and change
+    // the pipeline this mode is meant to measure.
+    let verified = decode_once(&path, true, reservation)?;
+    ensure_same_decode_geometry(&timed, &verified)?;
+    let pcm_sha256 = verified
+        .pcm_sha256
+        .ok_or_else(|| "verification decode did not produce a PCM fingerprint".to_owned())?;
+    let (fingerprint, result_bytes) = fingerprint(&json!({
+        "stream": verified.stream,
+        "frames": verified.frames,
+        "blocks": verified.blocks,
+        "pcmF64LeSha256": pcm_sha256,
+    }))?;
+
+    let mut output = workload_output(
+        "decode_pipeline",
+        elapsed,
+        WorkUnits::audio(timed.frames, timed.channels, timed.sample_rate, iterations)?,
+        fingerprint,
+        result_bytes,
+        json!({
+            "path": display_name(&path),
+            "blocksPerIteration": timed.blocks,
+            "decodeWorkers": decode_workers,
+            "decodeQueueCapacity": reservation.queue_capacity().get(),
+            "decodeMaxInFlightPcmBytes": reservation.max_in_flight_pcm_bytes(),
+            "selectedEngine": format!("{:?}", execution.engine()),
+            "selectedTotalWorkers": execution.workers().get(),
+            "selectedDecoderWorkers": execution.decoder_workers().get(),
+            "selectedHasherWorkers": execution.hasher_workers(),
+            "probeDecoderWorkers": snapshot.decoder_workers,
+            "probeBoundary": "per-packet timings are source-owned wall intervals; worker totals overlap each other and are not an additive partition of caller elapsed time",
+            "pcmF64LeSha256": pcm_sha256,
+            "verificationHashOutsideTimedRegion": true,
+        }),
+    )?;
+    output
+        .as_object_mut()
+        .ok_or_else(|| "worker output was not a JSON object".to_owned())?
+        .insert(
+            "measurements".to_owned(),
+            pipeline_measurements(snapshot, elapsed, open_elapsed, drain_elapsed)?,
+        );
+    Ok(output)
+}
+
+#[cfg(feature = "performance-probes")]
+fn pipeline_measurements(
+    snapshot: PacketPipelineProbeSnapshot,
+    elapsed: Duration,
+    open_elapsed: Duration,
+    drain_elapsed: Duration,
+) -> Result<Value, String> {
+    let mut values = serde_json::Map::new();
+    let mut insert = |key: &str, value: u64| {
+        values.insert(key.to_owned(), Value::from(value));
+    };
+    let elapsed_ns = duration_ns(elapsed)?;
+    let open_ns = duration_ns(open_elapsed)?;
+    let drain_ns = duration_ns(drain_elapsed)?;
+    insert("openElapsedNs", open_ns);
+    insert("drainElapsedNs", drain_ns);
+    insert(
+        "unattributedElapsedNs",
+        elapsed_ns.saturating_sub(open_ns.saturating_add(drain_ns)),
+    );
+    insert("fileIdentifyNs", snapshot.file_identify_ns);
+    insert("containerInspectionNs", snapshot.container_inspection_ns);
+    insert("backendProbeNs", snapshot.backend_probe_ns);
+    insert("routeSetupNs", snapshot.route_setup_ns);
+    insert(
+        "openUnattributedNs",
+        open_ns.saturating_sub(
+            snapshot
+                .file_identify_ns
+                .saturating_add(snapshot.container_inspection_ns)
+                .saturating_add(snapshot.backend_probe_ns)
+                .saturating_add(snapshot.route_setup_ns),
+        ),
+    );
+    insert("demuxPacketReadNs", snapshot.demux_packet_read_ns);
+    insert("demuxDispatchWaitNs", snapshot.demux_dispatch_wait_ns);
+    insert("callerResultWaitNs", snapshot.caller_result_wait_ns);
+    insert("callerCommitNs", snapshot.caller_commit_ns);
+    insert("callerFinishNs", snapshot.caller_finish_ns);
+    insert(
+        "callerOtherNs",
+        drain_ns.saturating_sub(
+            snapshot
+                .caller_result_wait_ns
+                .saturating_add(snapshot.caller_commit_ns)
+                .saturating_add(snapshot.caller_finish_ns),
+        ),
+    );
+    insert("reorderStalls", snapshot.reorder_stalls);
+    insert(
+        "peakReorderPackets",
+        u64::try_from(snapshot.peak_reorder_packets).unwrap_or(u64::MAX),
+    );
+    insert("peakReorderBytes", snapshot.peak_reorder_bytes);
+    insert("hasherPackets", snapshot.hasher_packets);
+    insert("hasherReceiveWaitNs", snapshot.hasher_receive_wait_ns);
+    insert("hasherActiveNs", snapshot.hasher_active_ns);
+    insert("hasherSendWaitNs", snapshot.hasher_send_wait_ns);
+    insert("hasherLifetimeNs", snapshot.hasher_lifetime_ns);
+    for worker in snapshot.workers {
+        let prefix = format!("worker{}", worker.slot);
+        insert(&format!("{prefix}Packets"), worker.packets);
+        insert(
+            &format!("{prefix}BackendDecodeNs"),
+            worker.backend_decode_ns,
+        );
+        insert(
+            &format!("{prefix}IntegrityConversionNs"),
+            worker.integrity_conversion_ns,
+        );
+        insert(
+            &format!("{prefix}PcmConversionNs"),
+            worker.pcm_conversion_ns,
+        );
+        insert(&format!("{prefix}InboxWaitNs"), worker.inbox_wait_ns);
+        insert(
+            &format!("{prefix}ResultSendWaitNs"),
+            worker.result_send_wait_ns,
+        );
+        insert(&format!("{prefix}LifetimeNs"), worker.lifetime_ns);
+    }
+    Ok(Value::Object(values))
 }
 
 #[inline(never)]

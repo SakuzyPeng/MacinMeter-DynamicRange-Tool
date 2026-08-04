@@ -5,6 +5,8 @@
 //! conversion cannot drift between them. Only the scheduling around it differs,
 //! and both hand their results to the same in-order commit buffer.
 
+#[cfg(feature = "performance-probes")]
+use crate::performance_probe::{PacketPipelineProbe, WorkerProbeTotals, elapsed_ns};
 use crate::{
     error::{BACKEND, analysis_error, decoder_creation_error, runtime_error},
     flac_integrity::{FlacIntegrityPlan, HasherOptions},
@@ -21,6 +23,7 @@ use std::{
         mpsc::{Receiver, SyncSender, sync_channel},
     },
     thread::{self, JoinHandle},
+    time::Instant,
 };
 use symphonia::core::{
     audio::SampleBuffer,
@@ -66,6 +69,8 @@ enum SpawnFault {
 pub(crate) struct PoolOptions {
     _private: (),
     hasher: HasherOptions,
+    #[cfg(feature = "performance-probes")]
+    probe: Option<Arc<PacketPipelineProbe>>,
     #[cfg(test)]
     force_first_result_after_later: bool,
     #[cfg(test)]
@@ -114,6 +119,19 @@ impl PoolOptions {
     pub(crate) const fn hasher(&self) -> HasherOptions {
         self.hasher
     }
+
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn with_probe(probe: Arc<PacketPipelineProbe>) -> Self {
+        Self {
+            probe: Some(probe),
+            ..Self::default()
+        }
+    }
+
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn probe(&self) -> Option<&Arc<PacketPipelineProbe>> {
+        self.probe.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -143,6 +161,8 @@ pub(crate) struct PacketDecodeContext {
     sample_rate: u32,
     channels: ChannelCount,
     integrity: Option<FlacIntegrityPlan>,
+    #[cfg(feature = "performance-probes")]
+    probe: Option<Arc<PacketPipelineProbe>>,
 }
 
 impl PacketDecodeContext {
@@ -157,7 +177,14 @@ impl PacketDecodeContext {
             sample_rate,
             channels,
             integrity,
+            #[cfg(feature = "performance-probes")]
+            probe: None,
         }
+    }
+
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn attach_probe(&mut self, probe: Arc<PacketPipelineProbe>) {
+        self.probe = Some(probe);
     }
 
     pub(crate) fn path(&self) -> &Path {
@@ -184,18 +211,40 @@ pub(crate) fn decode_packet(
     decoder: &mut dyn Decoder,
     packet: &Packet,
 ) -> PacketOutcome {
+    decode_packet_inner::<false>(context, decoder, packet).0
+}
+
+#[derive(Debug, Default)]
+struct PacketDecodeTiming {
+    backend_decode_ns: u64,
+    integrity_conversion_ns: u64,
+    pcm_conversion_ns: u64,
+}
+
+fn decode_packet_inner<const MEASURE: bool>(
+    context: &PacketDecodeContext,
+    decoder: &mut dyn Decoder,
+    packet: &Packet,
+) -> (PacketOutcome, PacketDecodeTiming) {
+    let mut timing = PacketDecodeTiming::default();
+    let backend_started = MEASURE.then(Instant::now);
     let decoded = match decoder.decode(packet) {
         Ok(decoded) => decoded,
         Err(error) => {
-            return PacketOutcome::Failed(runtime_error(
-                &context.path,
-                "failed to decode an audio packet",
-                error,
-            ));
+            timing.backend_decode_ns = measured_ns(backend_started);
+            return (
+                PacketOutcome::Failed(runtime_error(
+                    &context.path,
+                    "failed to decode an audio packet",
+                    error,
+                )),
+                timing,
+            );
         }
     };
+    timing.backend_decode_ns = measured_ns(backend_started);
     if decoded.frames() == 0 {
-        return PacketOutcome::Empty;
+        return (PacketOutcome::Empty, timing);
     }
 
     let decoded_rate = decoded.spec().rate;
@@ -206,47 +255,91 @@ pub(crate) fn decode_packet(
             context.sample_rate,
             context.channels.get(),
         );
-        return PacketOutcome::Failed(analysis_error(
-            &context.path,
-            ErrorCode::DecodeFailed,
-            AnalysisStage::Decode,
-            "PCM stream parameters changed after opening",
-            Some(details),
-        ));
+        return (
+            PacketOutcome::Failed(analysis_error(
+                &context.path,
+                ErrorCode::DecodeFailed,
+                AnalysisStage::Decode,
+                "PCM stream parameters changed after opening",
+                Some(details),
+            )),
+            timing,
+        );
     }
 
     let duration = match u64::try_from(decoded.capacity()) {
         Ok(duration) => duration,
         Err(_) => {
-            return PacketOutcome::Failed(analysis_error(
-                &context.path,
-                ErrorCode::ResourceExhausted,
-                AnalysisStage::Decode,
-                "decoded audio buffer is too large",
-                None,
-            ));
+            return (
+                PacketOutcome::Failed(analysis_error(
+                    &context.path,
+                    ErrorCode::ResourceExhausted,
+                    AnalysisStage::Decode,
+                    "decoded audio buffer is too large",
+                    None,
+                )),
+                timing,
+            );
         }
     };
     // The signature bytes are taken from the decoder's own buffer, before the
     // `f64` conversion, and travel with the PCM to the in-order commit point.
+    let integrity_started = MEASURE.then(Instant::now);
     let integrity = match context.integrity {
         Some(plan) => match plan.packet_bytes(&context.path, &decoded) {
             Ok(bytes) => Some(bytes),
-            Err(error) => return PacketOutcome::Failed(error),
+            Err(error) => {
+                timing.integrity_conversion_ns = measured_ns(integrity_started);
+                return (PacketOutcome::Failed(error), timing);
+            }
         },
         None => None,
     };
+    timing.integrity_conversion_ns = measured_ns(integrity_started);
 
+    let pcm_started = MEASURE.then(Instant::now);
     let mut sample_buffer = SampleBuffer::<f64>::new(duration, *decoded.spec());
     sample_buffer.copy_interleaved_ref(decoded);
-    match PcmBlock::new(sample_buffer.samples().to_vec(), context.channels) {
+    let outcome = match PcmBlock::new(sample_buffer.samples().to_vec(), context.channels) {
         Ok(block) => PacketOutcome::Decoded(DecodedPacket { block, integrity }),
         Err(error) => PacketOutcome::Failed(
             error
                 .with_display_path(context.path.display().to_string())
                 .with_backend(BACKEND),
         ),
+    };
+    timing.pcm_conversion_ns = measured_ns(pcm_started);
+    (outcome, timing)
+}
+
+fn measured_ns(started: Option<Instant>) -> u64 {
+    started.map_or(0, |started| {
+        u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX)
+    })
+}
+
+#[cfg(feature = "performance-probes")]
+fn decode_packet_observed(
+    context: &PacketDecodeContext,
+    decoder: &mut dyn Decoder,
+    packet: &Packet,
+    totals: &mut WorkerProbeTotals,
+) -> PacketOutcome {
+    if context.probe.is_none() {
+        return decode_packet(context, decoder, packet);
     }
+    let (outcome, timing) = decode_packet_inner::<true>(context, decoder, packet);
+    totals.packets += 1;
+    totals.backend_decode_ns = totals
+        .backend_decode_ns
+        .saturating_add(timing.backend_decode_ns);
+    totals.integrity_conversion_ns = totals
+        .integrity_conversion_ns
+        .saturating_add(timing.integrity_conversion_ns);
+    totals.pcm_conversion_ns = totals
+        .pcm_conversion_ns
+        .saturating_add(timing.pcm_conversion_ns);
+    outcome
 }
 
 /// What an engine produced for one turn.
@@ -293,6 +386,12 @@ pub(crate) struct SerialEngine {
     decoder: Box<dyn Decoder>,
     track_id: u32,
     next_index: u64,
+    #[cfg(feature = "performance-probes")]
+    probe_totals: WorkerProbeTotals,
+    #[cfg(feature = "performance-probes")]
+    probe_lifetime_started: Instant,
+    #[cfg(feature = "performance-probes")]
+    probe_published: bool,
 }
 
 impl SerialEngine {
@@ -308,11 +407,24 @@ impl SerialEngine {
             decoder,
             track_id,
             next_index: 0,
+            #[cfg(feature = "performance-probes")]
+            probe_totals: WorkerProbeTotals::default(),
+            #[cfg(feature = "performance-probes")]
+            probe_lifetime_started: Instant::now(),
+            #[cfg(feature = "performance-probes")]
+            probe_published: false,
         }
     }
 
     fn next(&mut self) -> Result<EngineOutcome, AnalysisError> {
-        let packet = match next_track_packet(&mut self.format, self.track_id) {
+        #[cfg(feature = "performance-probes")]
+        let demux_started = Instant::now();
+        let demux_step = next_track_packet(&mut self.format, self.track_id);
+        #[cfg(feature = "performance-probes")]
+        if let Some(probe) = self.context.probe.as_ref() {
+            probe.add_demux_packet_read(demux_started);
+        }
+        let packet = match demux_step {
             DemuxStep::Packet(packet) => packet,
             DemuxStep::Exhausted => return Ok(EngineOutcome::Exhausted),
             DemuxStep::Failed(error) => {
@@ -327,12 +439,35 @@ impl SerialEngine {
         // Packets are numbered at demux time, before any decode work.
         let index = self.next_index;
         self.next_index += 1;
+        #[cfg(feature = "performance-probes")]
+        let outcome = decode_packet_observed(
+            &self.context,
+            self.decoder.as_mut(),
+            &packet,
+            &mut self.probe_totals,
+        );
+        #[cfg(not(feature = "performance-probes"))]
         let outcome = decode_packet(&self.context, self.decoder.as_mut(), &packet);
         Ok(EngineOutcome::Indexed { index, outcome })
     }
 
     fn finish(&mut self) -> Result<(), AnalysisError> {
-        verify_verdict(&self.context, self.decoder.finalize().verify_ok)
+        let verdict = verify_verdict(&self.context, self.decoder.finalize().verify_ok);
+        #[cfg(feature = "performance-probes")]
+        self.publish_probe();
+        verdict
+    }
+
+    #[cfg(feature = "performance-probes")]
+    fn publish_probe(&mut self) {
+        if self.probe_published {
+            return;
+        }
+        self.probe_published = true;
+        self.probe_totals.lifetime_ns = elapsed_ns(self.probe_lifetime_started);
+        if let Some(probe) = self.context.probe.as_ref() {
+            probe.record_worker(0, &self.probe_totals);
+        }
     }
 }
 
@@ -412,6 +547,10 @@ impl PacketWorkerPool {
         _options: PoolOptions,
     ) -> Result<Self, AnalysisError> {
         let worker_count = reservation.workers().get();
+        #[cfg(feature = "performance-probes")]
+        if let Some(probe) = context.probe.as_ref() {
+            probe.set_decoder_workers(worker_count);
+        }
         let dispatch_depth = dispatch_depth(reservation);
         debug_assert!(
             worker_count.saturating_mul(dispatch_depth + 1) <= reservation.queue_capacity().get(),
@@ -467,7 +606,7 @@ impl PacketWorkerPool {
 
             let handle = match thread::Builder::new()
                 .name(format!("{}-{worker}", route.thread_prefix()))
-                .spawn(move || run_worker(&worker_context, decoder, &packet_rx, &result_tx))
+                .spawn(move || run_worker(worker, &worker_context, decoder, &packet_rx, &result_tx))
             {
                 Ok(handle) => handle,
                 Err(error) => {
@@ -557,7 +696,14 @@ impl PacketWorkerPool {
         let Some(results) = self.results.as_ref() else {
             return EngineOutcome::Exhausted;
         };
-        match results.recv() {
+        #[cfg(feature = "performance-probes")]
+        let wait_started = self.context.probe.as_ref().map(|_| Instant::now());
+        let received = results.recv();
+        #[cfg(feature = "performance-probes")]
+        if let (Some(probe), Some(started)) = (self.context.probe.as_ref(), wait_started) {
+            probe.add_caller_result_wait(started);
+        }
+        match received {
             Ok((index, outcome)) => EngineOutcome::Indexed { index, outcome },
             // Every worker dropped its sender, so every dispatched packet has
             // already been reported.
@@ -675,21 +821,55 @@ impl Drop for PacketWorkerPool {
 }
 
 fn run_worker(
+    _slot: usize,
     context: &PacketDecodeContext,
     mut decoder: Box<dyn Decoder>,
     packets: &Receiver<IndexedPacket>,
     results: &SyncSender<(u64, PacketOutcome)>,
 ) -> WorkerVerdict {
-    while let Ok(indexed) = packets.recv() {
+    #[cfg(feature = "performance-probes")]
+    let lifetime_started = context.probe.as_ref().map(|_| Instant::now());
+    #[cfg(feature = "performance-probes")]
+    let mut totals = WorkerProbeTotals::default();
+    loop {
+        #[cfg(feature = "performance-probes")]
+        let wait_started = context.probe.as_ref().map(|_| Instant::now());
+        let received = packets.recv();
+        #[cfg(feature = "performance-probes")]
+        if let Some(started) = wait_started {
+            totals.inbox_wait_ns = totals.inbox_wait_ns.saturating_add(elapsed_ns(started));
+        }
+        let Ok(indexed) = received else {
+            break;
+        };
+        #[cfg(feature = "performance-probes")]
+        let outcome =
+            decode_packet_observed(context, decoder.as_mut(), &indexed.packet, &mut totals);
+        #[cfg(not(feature = "performance-probes"))]
         let outcome = decode_packet(context, decoder.as_mut(), &indexed.packet);
-        if results.send((indexed.index, outcome)).is_err() {
+        #[cfg(feature = "performance-probes")]
+        let send_started = context.probe.as_ref().map(|_| Instant::now());
+        let sent = results.send((indexed.index, outcome));
+        #[cfg(feature = "performance-probes")]
+        if let Some(started) = send_started {
+            totals.result_send_wait_ns = totals
+                .result_send_wait_ns
+                .saturating_add(elapsed_ns(started));
+        }
+        if sent.is_err() {
             // The reader is gone; stop rather than decode into a closed channel.
             break;
         }
     }
-    WorkerVerdict {
+    let verdict = WorkerVerdict {
         verify_ok: decoder.finalize().verify_ok,
+    };
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = context.probe.as_ref() {
+        totals.lifetime_ns = lifetime_started.map_or(0, elapsed_ns);
+        probe.record_worker(_slot, &totals);
     }
+    verdict
 }
 
 fn run_demux(
@@ -701,17 +881,28 @@ fn run_demux(
     inboxes: &[SyncSender<IndexedPacket>],
     results: &SyncSender<(u64, PacketOutcome)>,
 ) -> Result<WorkerVerdict, AnalysisError> {
+    #[cfg(feature = "performance-probes")]
+    let lifetime_started = context.probe.as_ref().map(|_| Instant::now());
+    #[cfg(feature = "performance-probes")]
+    let mut totals = WorkerProbeTotals::default();
     let mut next_index = 0_u64;
-    loop {
-        let packet = match next_track_packet(&mut format, track_id) {
+    let result = loop {
+        #[cfg(feature = "performance-probes")]
+        let demux_started = context.probe.as_ref().map(|_| Instant::now());
+        let demux_step = next_track_packet(&mut format, track_id);
+        #[cfg(feature = "performance-probes")]
+        if let (Some(probe), Some(started)) = (context.probe.as_ref(), demux_started) {
+            probe.add_demux_packet_read(started);
+        }
+        let packet = match demux_step {
             DemuxStep::Packet(packet) => packet,
             DemuxStep::Exhausted => {
-                return Ok(WorkerVerdict {
+                break Ok(WorkerVerdict {
                     verify_ok: decoder.finalize().verify_ok,
                 });
             }
             DemuxStep::Failed(error) => {
-                return Err(runtime_error(
+                break Err(runtime_error(
                     context.path(),
                     "failed to read an audio packet",
                     error,
@@ -726,23 +917,48 @@ fn run_demux(
         // demux, so the reservation's N permits create exactly N threads.
         let worker = (index % worker_count as u64) as usize;
         if worker == 0 {
+            #[cfg(feature = "performance-probes")]
+            let outcome = decode_packet_observed(context, decoder.as_mut(), &packet, &mut totals);
+            #[cfg(not(feature = "performance-probes"))]
             let outcome = decode_packet(context, decoder.as_mut(), &packet);
-            if results.send((index, outcome)).is_err() {
-                return Ok(WorkerVerdict {
+            #[cfg(feature = "performance-probes")]
+            let send_started = context.probe.as_ref().map(|_| Instant::now());
+            let sent = results.send((index, outcome));
+            #[cfg(feature = "performance-probes")]
+            if let Some(started) = send_started {
+                totals.result_send_wait_ns = totals
+                    .result_send_wait_ns
+                    .saturating_add(elapsed_ns(started));
+            }
+            if sent.is_err() {
+                break Ok(WorkerVerdict {
                     verify_ok: decoder.finalize().verify_ok,
                 });
             }
         } else {
             let inbox = &inboxes[worker - 1];
-            if inbox.send(IndexedPacket { index, packet }).is_err() {
+            #[cfg(feature = "performance-probes")]
+            let send_started = context.probe.as_ref().map(|_| Instant::now());
+            let sent = inbox.send(IndexedPacket { index, packet });
+            #[cfg(feature = "performance-probes")]
+            if let (Some(probe), Some(started)) = (context.probe.as_ref(), send_started) {
+                probe.add_demux_dispatch_wait(started);
+            }
+            if sent.is_err() {
                 // A worker stopped, so the reader is already shutting down or
                 // its panic will be reported by the owning join handle.
-                return Ok(WorkerVerdict {
+                break Ok(WorkerVerdict {
                     verify_ok: decoder.finalize().verify_ok,
                 });
             }
         }
+    };
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = context.probe.as_ref() {
+        totals.lifetime_ns = lifetime_started.map_or(0, elapsed_ns);
+        probe.record_worker(0, &totals);
     }
+    result
 }
 
 fn reject_worker_verdict(

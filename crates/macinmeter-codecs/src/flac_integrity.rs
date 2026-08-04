@@ -16,6 +16,8 @@
 //! ours.
 
 use crate::error::analysis_error;
+#[cfg(feature = "performance-probes")]
+use crate::performance_probe::{PacketPipelineProbe, elapsed_ns};
 use macinmeter_domain::{AnalysisError, AnalysisStage, ErrorCode};
 use std::{
     io,
@@ -23,6 +25,8 @@ use std::{
     sync::mpsc::{Receiver, SyncSender, sync_channel},
     thread::{self, JoinHandle},
 };
+#[cfg(feature = "performance-probes")]
+use std::{sync::Arc, time::Instant};
 use symphonia::core::{
     audio::{AudioBufferRef, Signal},
     checksum::Md5,
@@ -298,8 +302,16 @@ impl FlacVerification {
         path: &Path,
         plan: FlacIntegrityPlan,
         options: HasherOptions,
+        #[cfg(feature = "performance-probes")] probe: Option<Arc<PacketPipelineProbe>>,
     ) -> Result<Self, AnalysisError> {
-        AsyncFlacStreamVerifier::spawn(path, plan, options).map(Self::Async)
+        AsyncFlacStreamVerifier::spawn(
+            path,
+            plan,
+            options,
+            #[cfg(feature = "performance-probes")]
+            probe,
+        )
+        .map(Self::Async)
     }
 
     /// Transfer one input-order packet to the unchanged verifier.
@@ -327,6 +339,8 @@ pub(crate) struct AsyncFlacStreamVerifier {
     path: PathBuf,
     sender: Option<SyncSender<Vec<u8>>>,
     worker: Option<JoinHandle<FlacStreamVerifier>>,
+    #[cfg(feature = "performance-probes")]
+    probe: Option<Arc<PacketPipelineProbe>>,
 }
 
 impl AsyncFlacStreamVerifier {
@@ -334,6 +348,7 @@ impl AsyncFlacStreamVerifier {
         path: &Path,
         plan: FlacIntegrityPlan,
         options: HasherOptions,
+        #[cfg(feature = "performance-probes")] probe: Option<Arc<PacketPipelineProbe>>,
     ) -> Result<Self, AnalysisError> {
         let (sender, receiver) = sync_channel(ASYNC_HASH_QUEUE_CAPACITY);
 
@@ -345,9 +360,19 @@ impl AsyncFlacStreamVerifier {
             ));
         }
 
+        #[cfg(feature = "performance-probes")]
+        let worker_probe = probe.clone();
         let worker = thread::Builder::new()
             .name("macinmeter-flac-hasher".to_owned())
-            .spawn(move || run_hasher(plan, &receiver, options))
+            .spawn(move || {
+                run_hasher(
+                    plan,
+                    &receiver,
+                    options,
+                    #[cfg(feature = "performance-probes")]
+                    worker_probe,
+                )
+            })
             .map_err(|error| hasher_spawn_error(path, error))?;
 
         #[cfg(test)]
@@ -357,15 +382,23 @@ impl AsyncFlacStreamVerifier {
             path: path.to_path_buf(),
             sender: Some(sender),
             worker: Some(worker),
+            #[cfg(feature = "performance-probes")]
+            probe,
         })
     }
 
     fn commit(&mut self, bytes: Vec<u8>) -> Result<(), AnalysisError> {
-        let sent = self
+        let sender = self
             .sender
             .as_ref()
-            .ok_or_else(|| hasher_stopped_error(&self.path))?
-            .send(bytes);
+            .ok_or_else(|| hasher_stopped_error(&self.path))?;
+        #[cfg(feature = "performance-probes")]
+        let send_started = self.probe.as_ref().map(|_| Instant::now());
+        let sent = sender.send(bytes);
+        #[cfg(feature = "performance-probes")]
+        if let (Some(probe), Some(started)) = (self.probe.as_ref(), send_started) {
+            probe.add_hasher_send_wait(started);
+        }
         if sent.is_ok() {
             return Ok(());
         }
@@ -415,12 +448,38 @@ fn run_hasher(
     plan: FlacIntegrityPlan,
     receiver: &Receiver<Vec<u8>>,
     _options: HasherOptions,
+    #[cfg(feature = "performance-probes")] probe: Option<Arc<PacketPipelineProbe>>,
 ) -> FlacStreamVerifier {
+    #[cfg(feature = "performance-probes")]
+    let lifetime_started = probe.as_ref().map(|_| Instant::now());
+    #[cfg(feature = "performance-probes")]
+    let mut receive_wait_ns = 0_u64;
+    #[cfg(feature = "performance-probes")]
+    let mut active_ns = 0_u64;
+    #[cfg(feature = "performance-probes")]
+    let mut observed_packets = 0_u64;
     let mut verifier = FlacStreamVerifier::new(plan);
     #[cfg(test)]
     let mut packets = 0_u64;
-    while let Ok(bytes) = receiver.recv() {
+    loop {
+        #[cfg(feature = "performance-probes")]
+        let wait_started = probe.as_ref().map(|_| Instant::now());
+        let received = receiver.recv();
+        #[cfg(feature = "performance-probes")]
+        if let Some(started) = wait_started {
+            receive_wait_ns = receive_wait_ns.saturating_add(elapsed_ns(started));
+        }
+        let Ok(bytes) = received else {
+            break;
+        };
+        #[cfg(feature = "performance-probes")]
+        let active_started = probe.as_ref().map(|_| Instant::now());
         verifier.commit(&bytes);
+        #[cfg(feature = "performance-probes")]
+        if let Some(started) = active_started {
+            active_ns = active_ns.saturating_add(elapsed_ns(started));
+            observed_packets += 1;
+        }
         #[cfg(test)]
         {
             packets += 1;
@@ -429,6 +488,15 @@ fn run_hasher(
                 panic!("injected FLAC hasher panic");
             }
         }
+    }
+    #[cfg(feature = "performance-probes")]
+    if let Some(probe) = probe.as_ref() {
+        probe.record_hasher(
+            observed_packets,
+            receive_wait_ns,
+            active_ns,
+            lifetime_started.map_or(0, elapsed_ns),
+        );
     }
     verifier
 }
@@ -615,8 +683,14 @@ mod tests {
 
         let started_before = STARTED_ASYNC_HASHERS.with(std::cell::Cell::get);
         let joined_before = JOINED_ASYNC_HASHERS.with(std::cell::Cell::get);
-        let mut verifier = FlacVerification::spawn(path, exact, HasherOptions::default())
-            .expect("the owned hasher thread must start");
+        let mut verifier = FlacVerification::spawn(
+            path,
+            exact,
+            HasherOptions::default(),
+            #[cfg(feature = "performance-probes")]
+            None,
+        )
+        .expect("the owned hasher thread must start");
         for packet in packets {
             verifier
                 .commit(packet)
