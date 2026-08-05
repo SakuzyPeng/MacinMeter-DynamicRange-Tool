@@ -2,7 +2,8 @@
 
 use macinmeter::{
     AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
-    CancellationToken, ChannelLayout, ExecutionControl, NoopProgressSink, StreamSpec, WireEnvelope,
+    CancellationToken, ChannelLayout, ExecutionBudget, ExecutionControl, NoopProgressSink,
+    StreamSpec, WireEnvelope,
 };
 #[cfg(feature = "performance-probes")]
 use macinmeter_codecs::PacketPipelineProbeSnapshot;
@@ -68,7 +69,7 @@ fn usage() -> &'static str {
   m6_baseline_worker decode-phases PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker decode-pipeline PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker application PATH ITERATIONS
-  m6_baseline_worker batch DIRECTORY ITERATIONS
+  m6_baseline_worker batch DIRECTORY ITERATIONS [FILE_LANES]
   m6_baseline_worker discovery DIRECTORY ITERATIONS
   m6_baseline_worker render-json PATH ITERATIONS"
 }
@@ -688,10 +689,40 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
 }
 
 fn run_batch(arguments: &[OsString]) -> Result<Value, String> {
-    require_len(arguments, 2, "batch")?;
+    if arguments.len() != 2 && arguments.len() != 3 {
+        return Err(format!(
+            "batch expects 2 or 3 argument(s), received {}\n{}",
+            arguments.len(),
+            usage()
+        ));
+    }
     let directory = PathBuf::from(&arguments[0]);
     let iterations = positive_iterations(&arguments[1])?;
-    let application = Application::new();
+    // ADR-0014 P1 is unmeasured, so the product asks for one lane. The sweep
+    // needs the other widths in the same binary, and the plan still clamps the
+    // request and narrows each lane's decoder to pay for it.
+    let file_lanes = match arguments.get(2) {
+        Some(value) => parse_number::<usize>(value, "file lanes")?,
+        None => 1,
+    };
+    let file_lanes = NonZeroUsize::new(file_lanes)
+        .ok_or_else(|| "file lanes must be greater than zero".to_owned())?;
+    // Requesting lanes is a measurement surface, not a product one, so it is
+    // reachable only in the same explicit probe build as the pipeline probes. A
+    // default build accepts the argument's product value and nothing else,
+    // rather than silently ignoring a width it cannot honour.
+    #[cfg(feature = "performance-probes")]
+    let budget = ExecutionBudget::product().with_file_lanes(file_lanes);
+    #[cfg(not(feature = "performance-probes"))]
+    let budget = {
+        if file_lanes.get() != 1 {
+            return Err(
+                "file lanes require a worker built with the performance-probes feature".to_owned(),
+            );
+        }
+        ExecutionBudget::product()
+    };
+    let application = Application::with_budget(budget);
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
     let control = ExecutionControl::new(&cancellation, &progress);
@@ -757,7 +788,7 @@ fn run_batch(arguments: &[OsString]) -> Result<Value, String> {
         json!({
             "directory": display_name(&directory),
             "filesPerIteration": report.summary.total,
-            "serialApplicationBudget": true,
+            "requestedFileLanes": file_lanes.get(),
         }),
     )
 }

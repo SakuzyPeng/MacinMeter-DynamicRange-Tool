@@ -61,6 +61,10 @@ MAX_DECODE_WORKERS = 8
 # widest worker count. The plan's own derivation for 8 workers is 32.
 ALAC_QUEUE_SWEEP_WORKERS = 8
 ALAC_QUEUE_CAPACITIES = (8, 64)
+# ADR-0014 P1 lane widths. One lane is the product request and the serial
+# reference; the wider widths spend the same plan, so each one narrows the
+# per-lane decoder that pays for it.
+FILE_LANE_COUNTS = (1, 2, 4, 8)
 # Mirrors of the crate-private application plan derivation the worker uses.
 DECODE_QUEUE_DEPTH_PER_WORKER = 4
 DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
@@ -380,6 +384,27 @@ def attribution_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             ),
         )
         for workers in PACKET_WORKER_COUNTS
+    )
+
+
+def file_lane_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
+    """ADR-0014 P1 lane widths, selectable but absent from the default suite.
+
+    Lanes and per-lane decode workers come out of one plan, so a width is not a
+    free dimension: four lanes means two decode workers each. The mixed batch is
+    the only input that can price that trade, since it holds packet-parallel and
+    serial routes side by side. The product asks for one lane until this sweep
+    and a formal A/B say otherwise, so these stay out of the default suite.
+    """
+    directory = str((corpus / "batch-mixed").resolve())
+    return tuple(
+        BenchmarkCase(
+            f"batch-lanes/12-mixed-l{lanes}",
+            "batch",
+            f"Mixed-route batch over {lanes} file lane(s) from one shared plan",
+            ("batch", directory, "1", str(lanes)),
+        )
+        for lanes in FILE_LANE_COUNTS
     )
 
 
@@ -1821,6 +1846,7 @@ def main() -> int:
         default_cases
         + attribution_cases(corpus)
         + pipeline_attribution_cases(corpus)
+        + file_lane_cases(corpus)
     )
     if args.list_cases:
         for case in available:
@@ -1861,7 +1887,8 @@ def main() -> int:
             variants["scalar"] = build_default_worker(
                 root,
                 performance_probes=any(
-                    case.mode == "decode-pipeline" for case in cases
+                    case.mode == "decode-pipeline" or case.case_id.startswith("batch-lanes/")
+                    for case in cases
                 ),
             )
             variant_sources["scalar"] = source["commit"]

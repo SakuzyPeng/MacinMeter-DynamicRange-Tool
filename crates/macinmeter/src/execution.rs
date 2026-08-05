@@ -44,6 +44,7 @@ const PRODUCTION_DECODE_WORKERS: NonZeroUsize =
 pub struct ExecutionBudget {
     max_queued_jobs: usize,
     concurrency: ConcurrencyPlan,
+    file_lanes: NonZeroUsize,
 }
 
 impl ExecutionBudget {
@@ -57,6 +58,7 @@ impl ExecutionBudget {
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
             concurrency: ConcurrencyPlan::bounded(PRODUCTION_DECODE_WORKERS),
+            file_lanes: PRODUCTION_FILE_LANES,
         }
     }
 
@@ -69,6 +71,7 @@ impl ExecutionBudget {
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
             concurrency: ConcurrencyPlan::serial(),
+            file_lanes: PRODUCTION_FILE_LANES,
         }
     }
 
@@ -88,6 +91,7 @@ impl ExecutionBudget {
         Ok(Self {
             max_queued_jobs,
             concurrency: ConcurrencyPlan::serial(),
+            file_lanes: PRODUCTION_FILE_LANES,
         })
     }
 
@@ -102,6 +106,23 @@ impl ExecutionBudget {
     /// The internal worker and memory plan one active job draws from.
     pub(crate) const fn concurrency(self) -> ConcurrencyPlan {
         self.concurrency
+    }
+
+    /// File lanes one admitted batch may request from that plan.
+    pub(crate) const fn file_lanes(self) -> NonZeroUsize {
+        self.file_lanes
+    }
+
+    /// Request a batch lane width.
+    ///
+    /// ADR-0014 P1 is unmeasured, so the product asks for one lane and no
+    /// public constructor can reach this. The lane count is a measurement
+    /// input, not a tuning knob: exposing it under the same non-default feature
+    /// as the pipeline probes keeps it out of the product surface, and the plan
+    /// still clamps the request and narrows each lane's decoder to pay for it.
+    #[cfg(any(test, feature = "performance-probes"))]
+    pub const fn with_file_lanes(self, file_lanes: NonZeroUsize) -> Self {
+        Self { file_lanes, ..self }
     }
 
     /// Replace the internal plan.
@@ -313,7 +334,7 @@ impl ExecutionCoordinator {
             .inner
             .budget
             .concurrency()
-            .allocate(PRODUCTION_FILE_LANES)?;
+            .allocate(self.inner.budget.file_lanes())?;
 
         let mut state = self.inner.lock_state()?;
         if cancellation.is_cancelled() {
