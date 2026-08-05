@@ -396,13 +396,17 @@ def file_lane_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
     serial routes side by side. The product asks for one lane until this sweep
     and a formal A/B say otherwise, so these stay out of the default suite.
     """
-    directory = str((corpus / "batch-mixed").resolve())
     return tuple(
         BenchmarkCase(
-            f"batch-lanes/12-mixed-l{lanes}",
+            f"batch-lanes/12-{composition}-l{lanes}",
             "batch",
-            f"Mixed-route batch over {lanes} file lane(s) from one shared plan",
-            ("batch", directory, "1", str(lanes)),
+            f"{label} batch over {lanes} file lane(s) from one shared plan",
+            ("batch", str((corpus / directory).resolve()), "1", str(lanes)),
+        )
+        for composition, directory, label in (
+            ("mixed", "batch-mixed", "Mixed-route"),
+            ("wave", "batch-pure-wave", "WAV-only"),
+            ("flac", "batch-pure-flac", "FLAC-only"),
         )
         for lanes in FILE_LANE_COUNTS
     )

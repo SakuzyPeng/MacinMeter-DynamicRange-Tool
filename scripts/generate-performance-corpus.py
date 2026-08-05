@@ -43,21 +43,55 @@ BATCH_TRACKS = 8
 # packet-parallel route sits beside one that decodes serially, which is the
 # condition under which the shared worker and memory plan has to arbitrate.
 #
-# `kind` selects the writer; `seconds` is audio length; `signal` picks decode
-# cost, since a compressed item's work depends on how hard its residuals are.
-MIXED_BATCH_TRACKS = (
-    ("flac", 60, 16, "pseudorandom"),
-    ("wave", 5, 16, "pseudorandom"),
-    ("alac", 45, 16, "tonal"),
-    ("wave", 5, 16, "tonal"),
-    ("flac", 30, 24, "pseudorandom"),
-    ("alac", 10, 16, "pseudorandom"),
-    ("wave6", 15, 24, "pseudorandom"),
-    ("flac", 20, 16, "tonal"),
-    ("wave", 30, 16, "pseudorandom"),
-    ("alac", 20, 16, "pseudorandom"),
-    ("flac", 10, 24, "tonal"),
-    ("wave", 15, 24, "pseudorandom"),
+# `seconds` is audio length; `signal` picks decode cost, since a compressed
+# item's work depends on how hard its residuals are.
+#
+# The geometry is shared by every batch directory below so that route
+# composition is the only difference between them. Item durations, channel
+# counts, depths and sample values are identical across directories, and each
+# pseudorandom item takes a seed from its index, so twin items in two
+# directories carry the same audio. Without that, a lane-width comparison would
+# be reading duration differences as route differences.
+BATCH_TRACK_GEOMETRY = (
+    (60, 16, 2, "pseudorandom"),
+    (5, 16, 2, "pseudorandom"),
+    (45, 16, 2, "tonal"),
+    (5, 16, 2, "tonal"),
+    (30, 24, 2, "pseudorandom"),
+    (10, 16, 2, "pseudorandom"),
+    (15, 24, 6, "pseudorandom"),
+    (20, 16, 2, "tonal"),
+    (30, 16, 2, "pseudorandom"),
+    (20, 16, 2, "pseudorandom"),
+    (10, 24, 2, "tonal"),
+    (15, 24, 2, "pseudorandom"),
+)
+# ALAC is written at 16 bits, so it takes only the items the geometry declares
+# at that depth. The single-route directories exist to test whether the best
+# lane width moves with route composition: if it does, no fixed lane count can
+# be correct, and the scheduler has to read the batch instead of a constant.
+MIXED_BATCH_ROUTES = (
+    "flac",
+    "wave",
+    "alac",
+    "wave",
+    "flac",
+    "alac",
+    "wave",
+    "flac",
+    "wave",
+    "alac",
+    "flac",
+    "wave",
+)
+# The single-route directories are named `batch-pure-*` rather than
+# `batch-wave`: the original eight-WAV directory already registers identifiers
+# of the form `batch-wave-track-NN`, and a `batch-wave-NN` sibling would make
+# any identifier prefix match select both directories at once.
+BATCH_DIRECTORIES = (
+    ("batch-mixed", MIXED_BATCH_ROUTES),
+    ("batch-pure-wave", ("wave",) * len(BATCH_TRACK_GEOMETRY)),
+    ("batch-pure-flac", ("flac",) * len(BATCH_TRACK_GEOMETRY)),
 )
 DISCOVERY_SUPPORTED_FILES = 1_024
 DISCOVERY_IGNORED_FILES = 256
@@ -729,9 +763,10 @@ def write_flac_track(
     filename: str,
     signal: str,
     frames: int = PACKET_SWEEP_FRAMES,
+    channels: int = 2,
 ) -> dict[str, object]:
     values, normalized = block
-    normalized_sha = normalized_pcm_sha256(normalized, frames=frames, channels=2)
+    normalized_sha = normalized_pcm_sha256(normalized, frames=frames, channels=channels)
     payload = pack_integer_block(values, bits, "little")
 
     flac = shutil.which("flac")
@@ -751,31 +786,35 @@ def write_flac_track(
             source,
             wave_header(
                 frames=frames,
-                channels=2,
+                channels=channels,
                 sample_rate=SAMPLE_RATE,
                 bits=bits,
                 format_tag=1,
             ),
             payload,
             frames=frames,
-            channels=2,
+            channels=channels,
             bytes_per_sample=bits // 8,
         )
-        subprocess.run(
-            (
-                flac,
-                "--force",
-                "--silent",
-                "--verify",
-                "--compression-level-5",
-                "--no-padding",
-                "--no-seektable",
-                "--no-preserve-modtime",
-                f"--output-name={path}",
-                str(source),
-            ),
-            check=True,
-        )
+        command = [
+            flac,
+            "--force",
+            "--silent",
+            "--verify",
+            "--compression-level-5",
+            "--no-padding",
+            "--no-seektable",
+            "--no-preserve-modtime",
+        ]
+        if channels > 2:
+            # The intermediate WAVE is a classic 16-byte `fmt `, and the encoder
+            # refuses to infer channel meanings from one above two channels.
+            # The corpus does not depend on those meanings, and declining to
+            # assign them leaves the two-channel invocation byte-identical.
+            command.append("--channel-map=none")
+        command.append(f"--output-name={path}")
+        command.append(str(source))
+        subprocess.run(tuple(command), check=True)
 
     return media_entry(
         root,
@@ -784,7 +823,7 @@ def write_flac_track(
         container="flac",
         codec="flac",
         frames=frames,
-        channels=2,
+        channels=channels,
         bits=bits,
         normalized_sha256=normalized_sha,
         signal=signal,
@@ -875,7 +914,7 @@ def write_batch_routes(root: Path) -> list[dict[str, object]]:
     return entries
 
 
-def mixed_batch_block(
+def batch_lane_block(
     *, signal: str, channels: int, bits: int, index: int
 ) -> tuple[list[int], bytes, str]:
     """One block plus the signal name recorded for it.
@@ -894,79 +933,93 @@ def mixed_batch_block(
     return values, normalized, f"deterministic_integer_v1_seed_{seed}"
 
 
-def write_mixed_batch_routes(root: Path) -> list[dict[str, object]]:
-    """Write the ADR-0014 §7 mixed batch directory.
+def write_batch_lane_routes(root: Path) -> list[dict[str, object]]:
+    """Write the ADR-0014 §7 batch directories.
+
+    Every directory carries the same geometry and the same audio, so the only
+    thing that differs between them is which route each item takes. That is the
+    variable under test: if the best lane width moves between the mixed and the
+    single-route directories, no fixed lane count can be right and the split has
+    to read the batch instead of a constant.
 
     Items keep a zero-padded ordinal so discovery order is stable and an item
     index in a `BatchResult` names one file regardless of which lane produced
     it. The extension already states the route, so the name does not repeat it.
     """
-    directory = root / "batch-mixed"
-    directory.mkdir()
     entries: list[dict[str, object]] = []
-    for index, (kind, seconds, bits, signal) in enumerate(MIXED_BATCH_TRACKS):
-        frames = seconds * SAMPLE_RATE
-        channels = 6 if kind == "wave6" else 2
-        values, normalized, signal_name = mixed_batch_block(
-            signal=signal, channels=channels, bits=bits, index=index
-        )
-        identifier = f"batch-mixed-{index:02d}"
-        if kind == "flac":
-            entries.append(
-                write_flac_track(
-                    root,
-                    block=(values, normalized),
-                    bits=bits,
-                    identifier=identifier,
-                    filename=f"batch-mixed/track-{index:02d}.flac",
-                    signal=signal_name,
-                    frames=frames,
-                )
+    for name, routes in BATCH_DIRECTORIES:
+        directory = root / name
+        directory.mkdir()
+        for index, ((seconds, bits, channels, signal), kind) in enumerate(
+            zip(BATCH_TRACK_GEOMETRY, routes, strict=True)
+        ):
+            frames = seconds * SAMPLE_RATE
+            values, normalized, signal_name = batch_lane_block(
+                signal=signal, channels=channels, bits=bits, index=index
             )
-            continue
-        if kind == "alac":
-            entries.append(
-                write_alac_track(
-                    root,
-                    blocks=[(values, normalized)],
-                    identifier=identifier,
-                    filename=f"batch-mixed/track-{index:02d}.m4a",
-                    signal=signal_name,
-                    frames=frames,
+            identifier = f"{name}-{index:02d}"
+            if kind == "flac":
+                entries.append(
+                    write_flac_track(
+                        root,
+                        block=(values, normalized),
+                        bits=bits,
+                        identifier=identifier,
+                        filename=f"{name}/track-{index:02d}.flac",
+                        signal=signal_name,
+                        frames=frames,
+                        channels=channels,
+                    )
                 )
-            )
-            continue
-        path = directory / f"track-{index:02d}.wav"
-        write_repeated_payload(
-            path,
-            wave_header(
-                frames=frames,
-                channels=channels,
-                sample_rate=SAMPLE_RATE,
-                bits=bits,
-                format_tag=1,
-            ),
-            pack_integer_block(values, bits, "little"),
-            frames=frames,
-            channels=channels,
-            bytes_per_sample=bits // 8,
-        )
-        entries.append(
-            media_entry(
-                root,
+                continue
+            if kind == "alac":
+                if bits != 16 or channels != 2:
+                    raise CorpusError(
+                        f"{identifier} requests ALAC at {bits}-bit {channels}ch, "
+                        "which this corpus writer does not produce"
+                    )
+                entries.append(
+                    write_alac_track(
+                        root,
+                        blocks=[(values, normalized)],
+                        identifier=identifier,
+                        filename=f"{name}/track-{index:02d}.m4a",
+                        signal=signal_name,
+                        frames=frames,
+                    )
+                )
+                continue
+            path = directory / f"track-{index:02d}.wav"
+            write_repeated_payload(
                 path,
-                identifier=identifier,
-                container="wave",
-                codec="pcm_integer",
+                wave_header(
+                    frames=frames,
+                    channels=channels,
+                    sample_rate=SAMPLE_RATE,
+                    bits=bits,
+                    format_tag=1,
+                ),
+                pack_integer_block(values, bits, "little"),
                 frames=frames,
                 channels=channels,
-                bits=bits,
-                normalized_sha256=normalized_pcm_sha256(
-                    normalized, frames=frames, channels=channels
-                ),
-                signal=signal_name,
+                bytes_per_sample=bits // 8,
             )
-        )
+            entries.append(
+                media_entry(
+                    root,
+                    path,
+                    identifier=identifier,
+                    container="wave",
+                    codec="pcm_integer",
+                    frames=frames,
+                    channels=channels,
+                    bits=bits,
+                    normalized_sha256=normalized_pcm_sha256(
+                        normalized, frames=frames, channels=channels
+                    ),
+                    signal=signal_name,
+                )
+            )
     return entries
 
 
@@ -1009,7 +1062,7 @@ def generate_into(root: Path) -> dict[str, object]:
     media.extend(write_flac_routes(root))
     media.append(write_surround_route(root))
     media.extend(write_batch_routes(root))
-    media.extend(write_mixed_batch_routes(root))
+    media.extend(write_batch_lane_routes(root))
     media.sort(key=lambda entry: str(entry["id"]))
     discovery = write_discovery_tree(root)
     manifest: dict[str, object] = {
