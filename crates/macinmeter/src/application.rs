@@ -5,7 +5,7 @@ use macinmeter_analysis::AnalyzerSession;
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
 use macinmeter_domain::{DecodeReservation, PcmBlock, PcmStreamInfo};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::mpsc::sync_channel, thread};
+use std::{io, path::PathBuf, sync::mpsc::sync_channel, thread};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +37,7 @@ pub(crate) struct Analyzer {
     decoder_factory: DecoderFactory,
     /// The same grant the factory decodes inside. Overlap is charged against
     /// it, so this is a copy of one plan rather than a second budget.
+    #[cfg(feature = "performance-probes")]
     reservation: DecodeReservation,
 }
 
@@ -45,6 +46,7 @@ impl Analyzer {
     pub(crate) const fn new(decode: DecodeReservation) -> Self {
         Self {
             decoder_factory: DecoderFactory::with_application_reservation(decode),
+            #[cfg(feature = "performance-probes")]
             reservation: decode,
         }
     }
@@ -86,28 +88,33 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
-        // Production reads the selected engine too, because the permits a route
-        // did not spend are exactly what decode/analysis overlap may use. A
-        // requested reservation alone cannot tell them apart: every route that
-        // has not graduated falls back to the serial engine.
+        // Measurement builds read the selected engine too, because the permits
+        // a route did not spend are exactly what decode/analysis overlap may
+        // use. A requested reservation alone cannot tell them apart: every
+        // route that has not graduated falls back to the serial engine.
         let (opened, execution) = self.decoder_factory.open_with_execution(&request.path)?;
         #[cfg(test)]
         LAST_DECODE_EXECUTION.with(|last| last.set(Some(execution)));
-        let spare_permits = self
-            .reservation
-            .workers()
-            .get()
-            .saturating_sub(execution.workers().get());
-        Self::analyze_opened(
-            opened,
-            OverlapBudget {
-                spare_permits,
-                max_in_flight_pcm_bytes: self.reservation.max_in_flight_pcm_bytes(),
-            },
-            item_index,
-            control,
-            display_path,
-        )
+        // The candidate remains a non-default measurement path until its
+        // ADR-0007 A/B and the rest of its graduation gates pass. Ordinary
+        // library, CLI and GUI builds therefore receive no overlap budget.
+        #[cfg(feature = "performance-probes")]
+        let overlap = OverlapBudget {
+            spare_permits: self
+                .reservation
+                .workers()
+                .get()
+                .saturating_sub(execution.workers().get()),
+            max_in_flight_pcm_bytes: self.reservation.max_in_flight_pcm_bytes(),
+            max_pcm_block_bytes: execution.max_pcm_block_bytes(),
+            inject_spawn_failure: false,
+        };
+        #[cfg(not(feature = "performance-probes"))]
+        let overlap = {
+            let _ = execution;
+            OverlapBudget::default()
+        };
+        Self::analyze_opened(opened, overlap, item_index, control, display_path)
     }
 
     pub(crate) fn analyze_opened(
@@ -117,6 +124,8 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
+        #[cfg(test)]
+        LAST_ANALYSIS_OVERLAP.with(|last| last.set(false));
         let pcm = opened.reader.stream_info().clone();
         let mut session = AnalyzerSession::new(pcm.spec.clone())?;
 
@@ -126,27 +135,35 @@ impl Analyzer {
         // thread exists, exactly as an over-wide FLAC reorder window does.
         ensure_not_cancelled(control)?;
         let first = read_checked(&mut opened, &pcm, display_path)?;
-        emit_decode_progress(&opened, item_index, control, display_path);
 
         let analysis = match first {
-            None => session.finish()?,
+            None => {
+                // Preserve the serial boundary: EOF progress is observable and
+                // may itself request cancellation, which must win before a
+                // zero-frame report is finalized.
+                emit_decode_progress(&opened, item_index, control, display_path);
+                ensure_not_cancelled(control)?;
+                session.finish()?
+            }
             Some(block) if budget.admits(&block) => {
-                #[cfg(test)]
-                LAST_ANALYSIS_OVERLAP.with(|last| last.set(true));
+                // The first block establishes the same public commit boundary
+                // as the serial path. Overlap begins with the next decode, so
+                // analysis failures still precede this block's progress event.
+                session.push_interleaved(block.samples())?;
+                emit_decode_progress(&opened, item_index, control, display_path);
+                ensure_not_cancelled(control)?;
                 analyze_overlapped(
                     session,
-                    block,
                     &mut opened,
-                    &pcm,
                     item_index,
                     control,
                     display_path,
+                    budget,
                 )?
             }
             Some(block) => {
-                #[cfg(test)]
-                LAST_ANALYSIS_OVERLAP.with(|last| last.set(false));
                 session.push_interleaved(block.samples())?;
+                emit_decode_progress(&opened, item_index, control, display_path);
                 analyze_serially(
                     session,
                     &mut opened,
@@ -177,6 +194,12 @@ impl Analyzer {
 pub(crate) struct OverlapBudget {
     spare_permits: usize,
     max_in_flight_pcm_bytes: u64,
+    /// Probe-time upper bound for one decoded block. `None` means the route
+    /// cannot prove safe retention and must stay serial.
+    max_pcm_block_bytes: Option<u64>,
+    /// Instance-owned deterministic fault injection; production always leaves
+    /// it false.
+    inject_spawn_failure: bool,
 }
 
 impl OverlapBudget {
@@ -184,16 +207,24 @@ impl OverlapBudget {
     ///
     /// Overlap retains two blocks beyond the one a serial run already holds:
     /// one handed off and one being pushed while the caller decodes the next.
-    /// Block geometry is fixed per stream on every route that reaches here, so
-    /// the first block prices the whole stream; a route that ever varied it
-    /// would only make this admission conservative, never over-committed,
-    /// because the queue never holds more than a single block.
+    /// The decoder proves a worst-case block bound during probe. Pricing that
+    /// bound rather than the first observed block keeps valid variable-block
+    /// streams from making retention depend on their first packet geometry.
     fn admits(self, block: &PcmBlock) -> bool {
-        let retained = (block.samples().len() as u64)
-            .saturating_mul(size_of::<f64>() as u64)
-            .saturating_mul(2);
-        self.spare_permits >= 1 && retained <= self.max_in_flight_pcm_bytes
+        let first_bytes = (block.samples().len() as u64).saturating_mul(size_of::<f64>() as u64);
+        let Some(max_block_bytes) = self.max_pcm_block_bytes else {
+            return false;
+        };
+        let retained = max_block_bytes.saturating_mul(2);
+        self.spare_permits >= 1
+            && first_bytes <= max_block_bytes
+            && retained <= self.max_in_flight_pcm_bytes
     }
+}
+
+enum AnalysisInput {
+    Block(PcmBlock),
+    Finish,
 }
 
 /// Drive decode and analysis on separate threads, committing in read order.
@@ -203,35 +234,63 @@ impl OverlapBudget {
 /// result cannot depend on the overlap.
 fn analyze_overlapped(
     mut session: AnalyzerSession,
-    first: PcmBlock,
     opened: &mut OpenedAudio,
-    pcm: &PcmStreamInfo,
     item_index: usize,
     control: &ExecutionControl<'_>,
     display_path: &str,
+    budget: OverlapBudget,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     // One queued block. A deeper queue would buy no overlap for two stages and
     // would retain PCM the plan has not priced.
-    let (blocks, incoming) = sync_channel::<PcmBlock>(1);
+    let (blocks, incoming) = sync_channel::<AnalysisInput>(1);
 
     thread::scope(|scope| {
-        let analyst = scope.spawn(move || -> Result<_, AnalysisError> {
-            session.push_interleaved(first.samples())?;
-            while let Ok(block) = incoming.recv() {
-                session.push_interleaved(block.samples())?;
+        let operation = move || -> Result<Option<_>, AnalysisError> {
+            loop {
+                match incoming.recv() {
+                    Ok(AnalysisInput::Block(block)) => {
+                        session.push_interleaved(block.samples())?;
+                    }
+                    Ok(AnalysisInput::Finish) => {
+                        // This is the serial pre-finish cancellation boundary,
+                        // after every accepted block has reached the analyzer.
+                        ensure_not_cancelled(control)?;
+                        return session.finish().map(Some);
+                    }
+                    // Decode failure and cancellation deliberately disconnect
+                    // without sending Finish. Do not finalize a partial prefix.
+                    Err(_) => return Ok(None),
+                }
             }
-            session.finish()
-        });
+        };
+        let builder = thread::Builder::new().name("macinmeter-analysis".to_owned());
+        let spawned = if budget.inject_spawn_failure {
+            Err(io::Error::other(
+                "injected overlapped analysis spawn failure",
+            ))
+        } else {
+            builder.spawn_scoped(scope, operation)
+        };
+        let analyst = spawned.map_err(|error| analyst_spawn_error(display_path, error))?;
+        #[cfg(test)]
+        LAST_ANALYSIS_OVERLAP.with(|last| last.set(true));
+        let pcm = opened.reader.stream_info().clone();
 
         let decoded = (|| -> Result<(), AnalysisError> {
             loop {
                 ensure_not_cancelled(control)?;
-                let Some(block) = read_checked(opened, pcm, display_path)? else {
+                let Some(block) = read_checked(opened, &pcm, display_path)? else {
                     emit_decode_progress(opened, item_index, control, display_path);
+                    // A progress observer can cancel at EOF. The analysis
+                    // thread performs the authoritative pre-finish check after
+                    // all preceding blocks, so send the explicit terminator.
+                    if blocks.send(AnalysisInput::Finish).is_err() {
+                        return Ok(());
+                    }
                     return Ok(());
                 };
                 emit_decode_progress(opened, item_index, control, display_path);
-                if blocks.send(block).is_err() {
+                if blocks.send(AnalysisInput::Block(block)).is_err() {
                     // The analyzer stopped early, so it holds the failure that
                     // decides this stream. Stop feeding it and let the join
                     // below report that error rather than a disconnect.
@@ -251,10 +310,17 @@ fn analyze_overlapped(
         // An analysis failure is always the earlier one. The analyzer only sees
         // blocks decode already produced, so a failure at block J means decode
         // got at least to J, and any decode failure is at a later block.
-        let analysed = analysed?;
-        decoded?;
-        ensure_not_cancelled(control)?;
-        Ok(analysed)
+        match analysed {
+            Err(error) => Err(error),
+            Ok(Some(analysis)) => {
+                decoded?;
+                Ok(analysis)
+            }
+            Ok(None) => match decoded {
+                Err(error) => Err(error),
+                Ok(()) => Err(analysis_channel_error(display_path)),
+            },
+        }
     })
 }
 
@@ -335,6 +401,26 @@ fn analyst_panic_error(display_path: &str) -> AnalysisError {
     .with_display_path(display_path)
 }
 
+fn analyst_spawn_error(display_path: &str, error: io::Error) -> AnalysisError {
+    AnalysisError::new(
+        ErrorCode::ResourceExhausted,
+        AnalysisStage::Analysis,
+        "failed to start the overlapped analysis thread",
+    )
+    .with_display_path(display_path)
+    .with_details(error.to_string())
+    .recoverable(true)
+}
+
+fn analysis_channel_error(display_path: &str) -> AnalysisError {
+    AnalysisError::new(
+        ErrorCode::Internal,
+        AnalysisStage::Analysis,
+        "the overlapped analysis channel disconnected without a terminal outcome",
+    )
+    .with_display_path(display_path)
+}
+
 fn ensure_not_cancelled(control: &ExecutionControl<'_>) -> Result<(), AnalysisError> {
     if control.cancellation.is_cancelled() {
         Err(AnalysisError::cancelled())
@@ -354,7 +440,10 @@ mod tests {
     use macinmeter_codecs::PcmSource;
     use std::{
         collections::VecDeque,
-        sync::{Arc, Mutex},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     struct FakeSource {
@@ -364,6 +453,7 @@ mod tests {
         eof: bool,
         diagnostics: DecodeDiagnostics,
         terminal_diagnostic_frames: Option<u64>,
+        terminal_error: Option<AnalysisError>,
     }
 
     impl PcmSource for FakeSource {
@@ -376,6 +466,10 @@ mod tests {
                 self.decoded_frames += u64::try_from(block.frames()).unwrap();
                 self.diagnostics.decoded_frames = self.decoded_frames;
                 return Ok(ReadOutcome::Data(block));
+            }
+
+            if let Some(error) = self.terminal_error.as_ref() {
+                return Err(error.clone());
             }
 
             self.eof = true;
@@ -408,6 +502,37 @@ mod tests {
         blocks: Vec<PcmBlock>,
         terminal_diagnostic_frames: Option<u64>,
     ) -> OpenedAudio {
+        opened_audio_with_terminal(
+            source_channels,
+            stream_channels,
+            blocks,
+            terminal_diagnostic_frames,
+            None,
+        )
+    }
+
+    fn opened_audio_with_terminal_error(
+        source_channels: ChannelCount,
+        stream_channels: ChannelCount,
+        blocks: Vec<PcmBlock>,
+        terminal_error: AnalysisError,
+    ) -> OpenedAudio {
+        opened_audio_with_terminal(
+            source_channels,
+            stream_channels,
+            blocks,
+            None,
+            Some(terminal_error),
+        )
+    }
+
+    fn opened_audio_with_terminal(
+        source_channels: ChannelCount,
+        stream_channels: ChannelCount,
+        blocks: Vec<PcmBlock>,
+        terminal_diagnostic_frames: Option<u64>,
+        terminal_error: Option<AnalysisError>,
+    ) -> OpenedAudio {
         let stream_info = PcmStreamInfo {
             spec: StreamSpec::new(48_000, stream_channels.get(), ChannelLayout::Unknown).unwrap(),
             expected_frames: None,
@@ -433,6 +558,7 @@ mod tests {
                     warnings: Vec::new(),
                 },
                 terminal_diagnostic_frames,
+                terminal_error,
             }),
         }
     }
@@ -546,6 +672,8 @@ mod tests {
         OverlapBudget {
             spare_permits: 1,
             max_in_flight_pcm_bytes: 4 * 1024 * 1024,
+            max_pcm_block_bytes: Some(256 * size_of::<f64>() as u64),
+            inject_spawn_failure: false,
         }
     }
 
@@ -619,13 +747,17 @@ mod tests {
     #[test]
     fn overlap_stays_serial_when_retention_exceeds_the_granted_budget() {
         let channels = ChannelCount::new(2).unwrap();
-        let block = PcmBlock::new(vec![0.5; 256], channels).unwrap();
+        let block = PcmBlock::new(vec![0.5; 64], channels).unwrap();
+        let max_block_bytes = 256 * size_of::<f64>() as u64;
 
         assert!(
             !OverlapBudget {
                 spare_permits: 1,
-                // One byte short of the two blocks overlap would retain.
-                max_in_flight_pcm_bytes: 256 * 8 * 2 - 1,
+                // One byte short of two worst-case blocks, even though the
+                // observed first block is much smaller.
+                max_in_flight_pcm_bytes: max_block_bytes * 2 - 1,
+                max_pcm_block_bytes: Some(max_block_bytes),
+                ..OverlapBudget::default()
             }
             .admits(&block),
             "a stream that cannot prove its retention must stay serial"
@@ -633,7 +765,9 @@ mod tests {
         assert!(
             OverlapBudget {
                 spare_permits: 1,
-                max_in_flight_pcm_bytes: 256 * 8 * 2,
+                max_in_flight_pcm_bytes: max_block_bytes * 2,
+                max_pcm_block_bytes: Some(max_block_bytes),
+                ..OverlapBudget::default()
             }
             .admits(&block)
         );
@@ -641,9 +775,20 @@ mod tests {
             !OverlapBudget {
                 spare_permits: 0,
                 max_in_flight_pcm_bytes: u64::MAX,
+                max_pcm_block_bytes: Some(max_block_bytes),
+                ..OverlapBudget::default()
             }
             .admits(&block),
             "a route that spent every permit leaves nothing for an overlap thread"
+        );
+        assert!(
+            !OverlapBudget {
+                spare_permits: 1,
+                max_in_flight_pcm_bytes: u64::MAX,
+                ..OverlapBudget::default()
+            }
+            .admits(&block),
+            "a route without a probe-time block bound must stay serial"
         );
     }
 
@@ -677,12 +822,104 @@ mod tests {
     }
 
     #[test]
+    fn a_decode_failure_does_not_finalize_or_mask_itself_with_a_partial_prefix() {
+        let channels = ChannelCount::new(1).unwrap();
+        let terminal_error = AnalysisError::new(
+            ErrorCode::DecodeFailed,
+            AnalysisStage::Decode,
+            "injected later decode failure",
+        );
+        let block = || PcmBlock::new(vec![1.0e100], channels).unwrap();
+
+        // The accepted prefix fails only at finish when its report values are
+        // narrowed. A serial decode failure arrives before finish and must
+        // therefore remain the result of the overlapped path too.
+        let mut prefix = AnalyzerSession::new(
+            StreamSpec::new(48_000, channels.get(), ChannelLayout::Unknown).unwrap(),
+        )
+        .unwrap();
+        prefix.push_interleaved(block().samples()).unwrap();
+        assert_eq!(prefix.finish().unwrap_err().stage, AnalysisStage::Analysis);
+
+        let serial_error = Analyzer::analyze_opened(
+            opened_audio_with_terminal_error(
+                channels,
+                channels,
+                vec![block()],
+                terminal_error.clone(),
+            ),
+            OverlapBudget::default(),
+            0,
+            &ExecutionControl::new(&CancellationToken::new(), &NoopProgressSink),
+            "decode-error.fake",
+        )
+        .expect_err("the serial oracle must report the decoder failure");
+        let overlapped_error = Analyzer::analyze_opened(
+            opened_audio_with_terminal_error(channels, channels, vec![block()], terminal_error),
+            overlapping(),
+            0,
+            &ExecutionControl::new(&CancellationToken::new(), &NoopProgressSink),
+            "decode-error.fake",
+        )
+        .expect_err("disconnect must not finalize a partial analysis prefix");
+
+        assert_eq!(overlapped_error.code, ErrorCode::DecodeFailed);
+        assert_eq!(overlapped_error.stage, AnalysisStage::Decode);
+        assert_eq!(overlapped_error.message, serial_error.message);
+    }
+
+    #[test]
+    fn analysis_thread_spawn_failure_is_structured() {
+        let channels = ChannelCount::new(1).unwrap();
+        let mut budget = overlapping();
+        budget.inject_spawn_failure = true;
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+
+        let error = Analyzer::analyze_opened(
+            opened_audio(
+                channels,
+                channels,
+                vec![PcmBlock::new(vec![0.25], channels).unwrap()],
+            ),
+            budget,
+            0,
+            &ExecutionControl::new(&cancellation, &progress),
+            "spawn.fake",
+        )
+        .expect_err("thread construction failure must not unwind the application");
+
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Analysis);
+        assert_eq!(error.display_path.as_deref(), Some("spawn.fake"));
+        assert!(error.recoverable);
+        assert!(
+            !LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get),
+            "a failed spawn must not claim that overlap actually ran"
+        );
+        assert!(
+            error
+                .details
+                .as_deref()
+                .is_some_and(|details| details.contains("injected"))
+        );
+    }
+
+    #[test]
     fn a_cancelled_overlap_joins_its_analysis_thread_and_reports_no_report() {
         let channels = ChannelCount::new(2).unwrap();
         let opened = opened_audio(channels, channels, varied_blocks(channels));
         let cancellation = CancellationToken::new();
-        cancellation.cancel();
-        let progress = NoopProgressSink;
+        let token_for_progress = cancellation.clone();
+        let progress_events = Arc::new(AtomicUsize::new(0));
+        let events_for_progress = Arc::clone(&progress_events);
+        let progress = move |event| {
+            if matches!(event, AnalysisEvent::DecodeProgress { .. })
+                && events_for_progress.fetch_add(1, Ordering::Relaxed) == 1
+            {
+                token_for_progress.cancel();
+            }
+        };
 
         let error = Analyzer::analyze_opened(
             opened,
@@ -692,6 +929,40 @@ mod tests {
             "cancel.fake",
         )
         .expect_err("a cancelled overlap must not produce a partial report");
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(
+            progress_events.load(Ordering::Relaxed) >= 2,
+            "cancellation must happen after the overlap thread starts"
+        );
+        assert!(
+            LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get),
+            "cancellation coverage must actually start the overlap path"
+        );
+    }
+
+    #[test]
+    fn cancellation_at_zero_frame_eof_prevents_a_report() {
+        let channels = ChannelCount::new(1).unwrap();
+        let cancellation = CancellationToken::new();
+        let token_for_progress = cancellation.clone();
+        let progress = move |event| {
+            if matches!(
+                event,
+                AnalysisEvent::DecodeProgress { progress, .. } if progress.is_eof()
+            ) {
+                token_for_progress.cancel();
+            }
+        };
+
+        let error = Analyzer::analyze_opened(
+            opened_audio(channels, channels, Vec::new()),
+            overlapping(),
+            0,
+            &ExecutionControl::new(&cancellation, &progress),
+            "empty.fake",
+        )
+        .expect_err("EOF cancellation must win before an empty report is finalized");
 
         assert_eq!(error.code, ErrorCode::Cancelled);
     }

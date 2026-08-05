@@ -22,6 +22,7 @@ const STSZ_VALIDATION_CHUNK_ENTRIES: u32 = 16 * 1024;
 pub(crate) struct IsoBmffAlacInfo {
     pub(crate) declared_frames: u64,
     pub(crate) pcm: ContainerPcmInfo,
+    pub(crate) max_frames_per_packet: u64,
     pub(crate) magic_cookie: Box<[u8]>,
 }
 
@@ -514,6 +515,7 @@ fn inspect_media<R: Read + Seek>(
             bits_per_sample: u32::from(config.bit_depth),
             source_codec: SourceCodec::Alac,
         },
+        max_frames_per_packet: u64::from(ALAC_FRAME_LENGTH),
         magic_cookie: config.magic_cookie,
     })
 }

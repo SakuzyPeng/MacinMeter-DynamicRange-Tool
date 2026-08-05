@@ -219,6 +219,7 @@ fn open_source_with_pool_options(
             None,
         ));
     }
+    let max_pcm_block_bytes = maximum_pcm_block_bytes(&codec_params, alac_info.as_ref(), channels);
 
     // ADR-0014 §4: FLAC stream verification is the product's, on every route.
     // Keeping one implementation for serial and parallel is what makes the
@@ -317,6 +318,7 @@ fn open_source_with_pool_options(
             DecodeReservation::serial(),
         )
     };
+    let execution = execution.with_max_pcm_block_bytes(max_pcm_block_bytes);
 
     let source = SourceInfo {
         display_path: path.display().to_string(),
@@ -440,6 +442,30 @@ fn flac_max_frames_per_packet(codec_params: &CodecParameters) -> Option<u64> {
             let bytes: [u8; 2] = stream_info.get(2..4)?.try_into().ok()?;
             Some(u64::from(u16::from_be_bytes(bytes))).filter(|frames| *frames > 0)
         })
+}
+
+/// Price the largest decoded block before any upper-layer retention starts.
+///
+/// RIFF/AIFF and ALAC publish their packet ceiling directly. Symphonia does
+/// not publish FLAC's STREAMINFO maximum on every probe path, so FLAC reuses
+/// the same validated field extraction as its reorder-window admission.
+fn maximum_pcm_block_bytes(
+    codec_params: &CodecParameters,
+    alac_info: Option<&IsoBmffAlacInfo>,
+    channels: macinmeter_domain::ChannelCount,
+) -> Option<u64> {
+    let max_frames = if let Some(info) = alac_info {
+        Some(info.max_frames_per_packet)
+    } else if codec_params.codec == CODEC_TYPE_FLAC {
+        flac_max_frames_per_packet(codec_params)
+    } else {
+        codec_params
+            .max_frames_per_packet
+            .filter(|frames| *frames > 0)
+    }?;
+    max_frames
+        .checked_mul(u64::from(channels.get()))
+        .and_then(|samples| samples.checked_mul(size_of::<f64>() as u64))
 }
 
 #[cfg(test)]

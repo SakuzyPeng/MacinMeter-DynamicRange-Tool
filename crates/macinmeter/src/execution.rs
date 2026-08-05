@@ -521,6 +521,34 @@ mod tests {
             .expect("an analysis must have recorded its decode execution")
     }
 
+    fn last_analysis_overlapped() -> bool {
+        crate::application::LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "performance-probes"))]
+    #[test]
+    fn ordinary_builds_keep_decode_analysis_overlap_disabled() {
+        let application = Application::with_budget(bounded_budget(8));
+        wire_bytes(&application, "native-pcm-v1/wav-pcm-s16-stereo.wav");
+
+        assert!(
+            !last_analysis_overlapped(),
+            "the ungraduated candidate must not enter the ordinary product build"
+        );
+    }
+
+    #[cfg(feature = "performance-probes")]
+    #[test]
+    fn performance_probe_builds_can_measure_decode_analysis_overlap() {
+        let application = Application::with_budget(bounded_budget(8));
+        wire_bytes(&application, "native-pcm-v1/wav-pcm-s16-stereo.wav");
+
+        assert!(
+            last_analysis_overlapped(),
+            "the non-default measurement build must reach the candidate"
+        );
+    }
+
     #[test]
     fn a_non_serial_plan_reaches_the_decoder_through_the_application_path() {
         // The fixed host ceiling makes this a deterministic non-serial test of

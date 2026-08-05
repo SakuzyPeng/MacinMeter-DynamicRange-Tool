@@ -99,6 +99,12 @@ pub struct DecodeExecution {
     workers: NonZeroUsize,
     decoder_workers: NonZeroUsize,
     hasher_workers: usize,
+    /// A probe-time upper bound for one decoded interleaved `f64` block.
+    ///
+    /// Consumers that retain PCM outside the decoder need this bound rather
+    /// than inferring the whole stream from the first block, because valid
+    /// routes such as FLAC may vary their block length.
+    max_pcm_block_bytes: Option<u64>,
 }
 
 impl DecodeExecution {
@@ -108,6 +114,7 @@ impl DecodeExecution {
             workers: NonZeroUsize::MIN,
             decoder_workers: NonZeroUsize::MIN,
             hasher_workers: 0,
+            max_pcm_block_bytes: None,
         }
     }
 
@@ -126,7 +133,16 @@ impl DecodeExecution {
             workers,
             decoder_workers,
             hasher_workers,
+            max_pcm_block_bytes: None,
         }
+    }
+
+    pub(crate) const fn with_max_pcm_block_bytes(
+        mut self,
+        max_pcm_block_bytes: Option<u64>,
+    ) -> Self {
+        self.max_pcm_block_bytes = max_pcm_block_bytes;
+        self
     }
 
     pub const fn engine(self) -> DecodeEngineKind {
@@ -147,6 +163,15 @@ impl DecodeExecution {
     #[doc(hidden)]
     pub const fn hasher_workers(self) -> usize {
         self.hasher_workers
+    }
+
+    /// Maximum bytes one decoded PCM block can own for this opened source.
+    ///
+    /// `None` means probing could not prove a bound, so an upper layer must
+    /// keep any decoded-PCM retention path disabled.
+    #[doc(hidden)]
+    pub const fn max_pcm_block_bytes(self) -> Option<u64> {
+        self.max_pcm_block_bytes
     }
 }
 

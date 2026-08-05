@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 实施状态：In progress（packet 级已为 ALAC 与资源几何落在 permit 内的 FLAC
   route 默认启用；文件级已有非默认测量实现但产品仍固定请求一个 lane；窗口级
-  未实施）
+  未实施；decode-analysis overlap 已有 `performance-probes` 非默认候选，尚未毕业）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -674,6 +674,21 @@ ALAC 1→8 污染对照为 4.35–4.43x，没有低于既有干净值。
 以前的“没有被测量，也没有被归因”据此关闭；backend 的微架构膨胀、varied 静态映射
 不均与 hand-off 是**已经测量但尚未继续优化**的边界，不是仍然未知的顺序底线。
 
+### decode-analysis overlap 候选（2026-08-06，非默认）
+
+容量 1 的顺序 channel 候选已在 `Application` owning layer 实现：decode 保留调用
+线程，单一 analysis thread 按块序推进同一个 `AnalyzerSession`。它只在非默认
+`performance-probes` feature 中从 route 未使用的 worker permit 取得预算；普通
+library、CLI 与 GUI build 的 overlap budget 恒为零，不改变产品默认路径。
+
+准入不再用首块外推全流，而是消费 decoder 在 probe 时根据 route 元数据证明的单块
+`f64` PCM 上界；无法证明上界时串行退化。channel 以显式 `Finish` 区分真正 EOF 与
+decode failure/cancellation 的断开，后两者不 finalize 部分 analysis prefix；线程创建
+失败、worker panic 与无终态断开均转为结构化错误并在返回前 join。确定性差分、运行中
+取消、decode/finish 错误优先级、零帧 EOF 取消、可变块预算与 spawn failure 现有直接
+测试，但 ADR-0007 source-bound A/B、RSS 与完整 route/corpus 门禁尚未完成，因此该
+候选不得进入默认 production build。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
@@ -708,7 +723,8 @@ workers。只有已毕业且资源几何可证明落在 permit 内的 route 会�
 超出 permit 的 FLAC 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持
 完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）已有仅供
 `performance-probes` 测量的实现，但产品仍固定请求一个 lane，尚未毕业或默认启用；
-窗口级（P2）仍未实施。
+窗口级（P2）仍未实施。decode-analysis overlap 同样只存在于非默认
+`performance-probes` build，尚未完成 ADR-0007 裁决，普通产品 build 保持串行。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项

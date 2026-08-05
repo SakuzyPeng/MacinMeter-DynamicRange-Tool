@@ -2462,6 +2462,7 @@ fn decoder_factory_reports_the_engine_selected_after_content_probe() {
     assert_eq!(execution.workers().get(), 1);
     assert_eq!(execution.decoder_workers().get(), 1);
     assert_eq!(execution.hasher_workers(), 0);
+    assert!(execution.max_pcm_block_bytes().is_some());
 
     let reservation = worker_reservation(4);
     let (_, execution) = DecoderFactory::with_application_reservation(reservation)
@@ -2471,6 +2472,7 @@ fn decoder_factory_reports_the_engine_selected_after_content_probe() {
     assert_eq!(execution.workers().get(), 1);
     assert_eq!(execution.decoder_workers().get(), 1);
     assert_eq!(execution.hasher_workers(), 0);
+    assert!(execution.max_pcm_block_bytes().is_some());
 
     let (_, execution) = DecoderFactory::with_application_reservation(reservation)
         .open_with_execution(&alac)
@@ -2479,6 +2481,40 @@ fn decoder_factory_reports_the_engine_selected_after_content_probe() {
     assert_eq!(execution.workers(), reservation.workers());
     assert_eq!(execution.decoder_workers(), reservation.workers());
     assert_eq!(execution.hasher_workers(), 0);
+    assert!(execution.max_pcm_block_bytes().is_some());
+}
+
+#[test]
+fn every_stable_route_proves_a_bound_for_each_decoded_pcm_block() {
+    for name in [
+        "native-pcm-v1/wav-pcm-s16-stereo.wav",
+        "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
+        "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
+        "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+    ] {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures")
+            .join(name);
+        let (mut opened, execution) = DecoderFactory::new()
+            .open_with_execution(&path)
+            .unwrap_or_else(|error| panic!("{name} must open: {error}"));
+        let maximum = execution
+            .max_pcm_block_bytes()
+            .unwrap_or_else(|| panic!("{name} must prove its maximum PCM block"));
+        let mut blocks = 0;
+
+        while let ReadOutcome::Data(block) = opened.reader.read_block().unwrap() {
+            blocks += 1;
+            let bytes = u64::try_from(block.samples().len())
+                .unwrap()
+                .saturating_mul(size_of::<f64>() as u64);
+            assert!(
+                bytes <= maximum,
+                "{name}: block_bytes={bytes}; maximum={maximum}"
+            );
+        }
+        assert!(blocks > 0, "{name} must exercise at least one PCM block");
+    }
 }
 
 #[test]
