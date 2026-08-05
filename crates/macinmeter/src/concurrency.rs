@@ -250,6 +250,20 @@ mod tests {
             plan.allocate(nonzero(2)).unwrap().decode().workers().get(),
             3
         );
+        // Three lanes is the widest split that still grants a packet pool, and
+        // the only one that leaves nothing of this plan unspent: two lane
+        // executors plus three two-worker decoders is exactly eight. Widening
+        // once more cannot seat a second decoder anywhere, so the whole batch
+        // falls to serial lanes rather than overspending.
+        let saturating = plan.allocate(nonzero(3)).unwrap();
+        assert_eq!(saturating.decode().workers().get(), 2);
+        assert_eq!(
+            allocated_internal_workers(
+                saturating.file_lanes().get(),
+                saturating.decode().workers().get()
+            ),
+            8
+        );
         assert_eq!(
             plan.allocate(nonzero(4)).unwrap().decode().workers().get(),
             1

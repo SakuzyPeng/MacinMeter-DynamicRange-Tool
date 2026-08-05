@@ -528,7 +528,13 @@ mod tests {
     use crate::{NoopProgressSink, concurrency::ConcurrencyPlan};
     use std::sync::atomic::AtomicUsize as TestCounter;
 
-    const LANE_COUNTS: [usize; 4] = [1, 2, 4, 8];
+    /// Three lanes is not a rounder number than the rest: on the eight-worker
+    /// plan below it is the widest split that still grants a packet pool, and
+    /// the only one whose lane executors and decoders together consume the whole
+    /// plan. A sweep that jumps from two to four skips the one width where both
+    /// parallel axes are live at their fullest, which is exactly where lane and
+    /// packet ordering could interfere.
+    const LANE_COUNTS: [usize; 5] = [1, 2, 3, 4, 8];
 
     fn nonzero(value: usize) -> NonZeroUsize {
         NonZeroUsize::new(value).unwrap()
