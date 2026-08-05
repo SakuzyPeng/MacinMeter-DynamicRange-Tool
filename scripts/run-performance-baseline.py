@@ -303,6 +303,21 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             "Current serial application batch over eight independent WAV tracks",
             ("batch", media("batch"), "4"),
         ),
+        # ADR-0014 §7 requires WAV, FLAC, ALAC and mixed durations before file
+        # lanes may be enabled by default. The eight-WAV case above cannot
+        # supply that: identical items give every lane identical work, so it
+        # cannot show tail latency, unfair assignment, or how a lane holding a
+        # packet-parallel route shares the plan with one that decodes serially.
+        # Twelve items over the eight-worker ceiling at a 12:1 duration spread
+        # make all three observable, and this serial number is the reference a
+        # later lane implementation has to beat in the same interleaved run.
+        BenchmarkCase(
+            "batch/12-mixed-tracks",
+            "batch",
+            "Current serial application batch over twelve mixed-route, "
+            "mixed-duration tracks",
+            ("batch", media("batch-mixed"), "1"),
+        ),
         BenchmarkCase(
             "discovery/1024-supported",
             "discovery",
@@ -1299,11 +1314,19 @@ def validate_corpus_work(
 
         if case.mode == "batch":
             iterations = int(case.arguments[2])
+            # Take the directory from the case rather than a fixed prefix, so a
+            # second batch directory is validated against its own manifest
+            # entries instead of silently inheriting the first one's totals.
+            directory = Path(case.arguments[1]).name
             batch_entries = [
                 entry
                 for relative, entry in media.items()
-                if relative.startswith("batch/")
+                if relative.startswith(f"{directory}/")
             ]
+            if not batch_entries:
+                raise BaselineError(
+                    f"{case.case_id} matched no manifest media under {directory!r}"
+                )
             frames = sum(required_manifest_int(entry, "frames") for entry in batch_entries)
             interleaved_samples = sum(
                 required_manifest_int(entry, "frames")

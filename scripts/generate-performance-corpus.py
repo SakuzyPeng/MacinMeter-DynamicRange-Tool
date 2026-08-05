@@ -29,6 +29,36 @@ ALAC_FFMPEG_VERSION = "8.0.1"
 VARIED_ALAC_VARIANTS = 8
 BATCH_TRACK_FRAMES = 15 * SAMPLE_RATE
 BATCH_TRACKS = 8
+# ADR-0014 §7 requires a batch corpus carrying WAV, FLAC, ALAC and mixed
+# durations before file lanes may be enabled by default. The existing eight-WAV
+# directory cannot serve that purpose: every item is the same format and the
+# same length, so each lane receives identical work and no scheduling or
+# fairness defect can appear. This table therefore varies three things at once.
+#
+# Twelve items exceed the eight-worker product ceiling, so lanes must take a
+# second item and the assignment order becomes observable. Durations span 12:1,
+# which makes tail latency a real outcome rather than a rounding difference: if
+# the 60-second item is claimed last, the batch cannot finish before it alone
+# does. Formats are interleaved rather than grouped so that a lane holding a
+# packet-parallel route sits beside one that decodes serially, which is the
+# condition under which the shared worker and memory plan has to arbitrate.
+#
+# `kind` selects the writer; `seconds` is audio length; `signal` picks decode
+# cost, since a compressed item's work depends on how hard its residuals are.
+MIXED_BATCH_TRACKS = (
+    ("flac", 60, 16, "pseudorandom"),
+    ("wave", 5, 16, "pseudorandom"),
+    ("alac", 45, 16, "tonal"),
+    ("wave", 5, 16, "tonal"),
+    ("flac", 30, 24, "pseudorandom"),
+    ("alac", 10, 16, "pseudorandom"),
+    ("wave6", 15, 24, "pseudorandom"),
+    ("flac", 20, 16, "tonal"),
+    ("wave", 30, 16, "pseudorandom"),
+    ("alac", 20, 16, "pseudorandom"),
+    ("flac", 10, 24, "tonal"),
+    ("wave", 15, 24, "pseudorandom"),
+)
 DISCOVERY_SUPPORTED_FILES = 1_024
 DISCOVERY_IGNORED_FILES = 256
 STABLE_EXTENSIONS = ("wav", "wave", "flac", "aiff", "aif")
@@ -552,9 +582,10 @@ def write_alac_track(
     identifier: str,
     filename: str,
     signal: str,
+    frames: int = PACKET_SWEEP_FRAMES,
 ) -> dict[str, object]:
     normalized_sha = normalized_cycle_sha256(
-        [normalized for _, normalized in blocks], frames=PACKET_SWEEP_FRAMES, channels=2
+        [normalized for _, normalized in blocks], frames=frames, channels=2
     )
     payloads = [pack_integer_block(values, 16, "little") for values, _ in blocks]
 
@@ -580,14 +611,14 @@ def write_alac_track(
         write_cycled_payload(
             source,
             wave_header(
-                frames=PACKET_SWEEP_FRAMES,
+                frames=frames,
                 channels=2,
                 sample_rate=SAMPLE_RATE,
                 bits=16,
                 format_tag=1,
             ),
             payloads,
-            frames=PACKET_SWEEP_FRAMES,
+            frames=frames,
             channels=2,
             bytes_per_sample=2,
         )
@@ -628,7 +659,7 @@ def write_alac_track(
         identifier=identifier,
         container="mp4",
         codec="alac",
-        frames=PACKET_SWEEP_FRAMES,
+        frames=frames,
         channels=2,
         bits=16,
         normalized_sha256=normalized_sha,
@@ -697,11 +728,10 @@ def write_flac_track(
     identifier: str,
     filename: str,
     signal: str,
+    frames: int = PACKET_SWEEP_FRAMES,
 ) -> dict[str, object]:
     values, normalized = block
-    normalized_sha = normalized_pcm_sha256(
-        normalized, frames=PACKET_SWEEP_FRAMES, channels=2
-    )
+    normalized_sha = normalized_pcm_sha256(normalized, frames=frames, channels=2)
     payload = pack_integer_block(values, bits, "little")
 
     flac = shutil.which("flac")
@@ -720,14 +750,14 @@ def write_flac_track(
         write_repeated_payload(
             source,
             wave_header(
-                frames=PACKET_SWEEP_FRAMES,
+                frames=frames,
                 channels=2,
                 sample_rate=SAMPLE_RATE,
                 bits=bits,
                 format_tag=1,
             ),
             payload,
-            frames=PACKET_SWEEP_FRAMES,
+            frames=frames,
             channels=2,
             bytes_per_sample=bits // 8,
         )
@@ -753,7 +783,7 @@ def write_flac_track(
         identifier=identifier,
         container="flac",
         codec="flac",
-        frames=PACKET_SWEEP_FRAMES,
+        frames=frames,
         channels=2,
         bits=bits,
         normalized_sha256=normalized_sha,
@@ -845,6 +875,101 @@ def write_batch_routes(root: Path) -> list[dict[str, object]]:
     return entries
 
 
+def mixed_batch_block(
+    *, signal: str, channels: int, bits: int, index: int
+) -> tuple[list[int], bytes, str]:
+    """One block plus the signal name recorded for it.
+
+    Pseudorandom blocks take a per-item seed so no two items in the directory
+    are the same audio, which keeps a lane from being accidentally cheap
+    because it repeated an earlier item's already-warm work.
+    """
+    if signal == "tonal":
+        values, normalized = deterministic_tonal_block(channels=channels, bits=bits)
+        return values, normalized, f"deterministic_tonal_v1_{bits}bit"
+    seed = 200 + index
+    values, normalized = deterministic_integer_block(
+        channels=channels, bits=bits, seed=seed
+    )
+    return values, normalized, f"deterministic_integer_v1_seed_{seed}"
+
+
+def write_mixed_batch_routes(root: Path) -> list[dict[str, object]]:
+    """Write the ADR-0014 §7 mixed batch directory.
+
+    Items keep a zero-padded ordinal so discovery order is stable and an item
+    index in a `BatchResult` names one file regardless of which lane produced
+    it. The extension already states the route, so the name does not repeat it.
+    """
+    directory = root / "batch-mixed"
+    directory.mkdir()
+    entries: list[dict[str, object]] = []
+    for index, (kind, seconds, bits, signal) in enumerate(MIXED_BATCH_TRACKS):
+        frames = seconds * SAMPLE_RATE
+        channels = 6 if kind == "wave6" else 2
+        values, normalized, signal_name = mixed_batch_block(
+            signal=signal, channels=channels, bits=bits, index=index
+        )
+        identifier = f"batch-mixed-{index:02d}"
+        if kind == "flac":
+            entries.append(
+                write_flac_track(
+                    root,
+                    block=(values, normalized),
+                    bits=bits,
+                    identifier=identifier,
+                    filename=f"batch-mixed/track-{index:02d}.flac",
+                    signal=signal_name,
+                    frames=frames,
+                )
+            )
+            continue
+        if kind == "alac":
+            entries.append(
+                write_alac_track(
+                    root,
+                    blocks=[(values, normalized)],
+                    identifier=identifier,
+                    filename=f"batch-mixed/track-{index:02d}.m4a",
+                    signal=signal_name,
+                    frames=frames,
+                )
+            )
+            continue
+        path = directory / f"track-{index:02d}.wav"
+        write_repeated_payload(
+            path,
+            wave_header(
+                frames=frames,
+                channels=channels,
+                sample_rate=SAMPLE_RATE,
+                bits=bits,
+                format_tag=1,
+            ),
+            pack_integer_block(values, bits, "little"),
+            frames=frames,
+            channels=channels,
+            bytes_per_sample=bits // 8,
+        )
+        entries.append(
+            media_entry(
+                root,
+                path,
+                identifier=identifier,
+                container="wave",
+                codec="pcm_integer",
+                frames=frames,
+                channels=channels,
+                bits=bits,
+                normalized_sha256=normalized_pcm_sha256(
+                    normalized, frames=frames, channels=channels
+                ),
+                signal=signal_name,
+            )
+        )
+    return entries
+
+
 def discovery_relative_paths() -> tuple[list[Path], list[Path]]:
     supported = [
         Path(f"group-{index % 16:02d}")
@@ -884,6 +1009,7 @@ def generate_into(root: Path) -> dict[str, object]:
     media.extend(write_flac_routes(root))
     media.append(write_surround_route(root))
     media.extend(write_batch_routes(root))
+    media.extend(write_mixed_batch_routes(root))
     media.sort(key=lambda entry: str(entry["id"]))
     discovery = write_discovery_tree(root)
     manifest: dict[str, object] = {
