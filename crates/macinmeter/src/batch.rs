@@ -5,11 +5,14 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
+    io,
     num::NonZeroUsize,
+    panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{
         Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc::channel,
     },
     thread,
 };
@@ -70,6 +73,8 @@ pub struct BatchReport {
 pub(crate) struct BatchRunner {
     analyzer: Analyzer,
     file_lanes: NonZeroUsize,
+    #[cfg(test)]
+    fault: Option<LaneFault>,
 }
 
 impl Default for BatchRunner {
@@ -77,6 +82,8 @@ impl Default for BatchRunner {
         Self {
             analyzer: Analyzer::default(),
             file_lanes: NonZeroUsize::MIN,
+            #[cfg(test)]
+            fault: None,
         }
     }
 }
@@ -84,15 +91,23 @@ impl Default for BatchRunner {
 impl BatchRunner {
     /// Build a runner over the job's allocation.
     ///
-    /// The lane count and the per-lane decode permit are two halves of one
-    /// split the plan already performed, so widening lanes has necessarily
-    /// already narrowed each lane's decoder. Nothing here may request a second
-    /// permit or size a pool from the batch length.
+    /// The lane executors and per-lane decode permit are two halves of one split
+    /// the plan already performed, so widening lanes has necessarily already
+    /// paid for the added lane threads and narrowed each decoder. Nothing here
+    /// may request a second permit or size a pool from the batch length.
     pub(crate) const fn new(allocation: PlanAllocation) -> Self {
         Self {
             analyzer: Analyzer::new(allocation.decode()),
             file_lanes: allocation.file_lanes(),
+            #[cfg(test)]
+            fault: None,
         }
+    }
+
+    #[cfg(test)]
+    fn with_fault(mut self, fault: LaneFault) -> Self {
+        self.fault = Some(fault);
+        self
     }
 
     pub(crate) fn run(
@@ -110,18 +125,104 @@ impl BatchRunner {
         // than by a fixed stride: a static split would decide the tail from the
         // input order, and a batch's item costs are not known before decoding.
         let claim = AtomicUsize::new(0);
+        let stop = AtomicBool::new(false);
         let outcomes: Vec<Mutex<Option<LaneOutcome>>> =
             files.iter().map(|_| Mutex::new(None)).collect();
         let lanes = self.file_lanes.get().min(files.len().max(1));
 
-        thread::scope(|scope| {
-            for _ in 1..lanes {
-                scope.spawn(|| self.run_lane(&files, &claim, &outcomes, control));
+        thread::scope(|scope| -> Result<(), AnalysisError> {
+            let mut starts = Vec::with_capacity(lanes.saturating_sub(1));
+            let mut handles = Vec::with_capacity(lanes.saturating_sub(1));
+            let mut spawn_error = None;
+
+            // Keep every successfully created lane behind a start gate until
+            // construction is complete. If a later spawn fails, dropping the
+            // gates wakes and joins the earlier lanes before any item starts.
+            for lane in 1..lanes {
+                let (start, start_gate) = channel::<()>();
+                let runner = self;
+                let lane_files = &files;
+                let lane_claim = &claim;
+                let lane_outcomes = &outcomes;
+                let lane_stop = &stop;
+                let operation = move || {
+                    if start_gate.recv().is_err() {
+                        return false;
+                    }
+                    runner.run_lane_catching(
+                        lane_files,
+                        lane_claim,
+                        lane_outcomes,
+                        lane_stop,
+                        control,
+                    )
+                };
+                let builder = thread::Builder::new().name(format!("macinmeter-file-lane-{lane}"));
+                #[cfg(test)]
+                let spawned = if self.fault == Some(LaneFault::Spawn(lane)) {
+                    Err(io::Error::other("injected batch file-lane spawn failure"))
+                } else {
+                    builder.spawn_scoped(scope, operation)
+                };
+                #[cfg(not(test))]
+                let spawned = builder.spawn_scoped(scope, operation);
+
+                match spawned {
+                    Ok(handle) => {
+                        starts.push(start);
+                        handles.push(handle);
+                    }
+                    Err(error) => {
+                        stop.store(true, Ordering::Release);
+                        spawn_error = Some(error);
+                        break;
+                    }
+                }
             }
-            // The calling thread is one of the lanes, so a batch never costs a
-            // thread it does not use and a single-lane batch spawns nothing.
-            self.run_lane(&files, &claim, &outcomes, control);
-        });
+
+            let mut lane_panicked = false;
+            if spawn_error.is_some() {
+                drop(starts);
+            } else {
+                for start in starts {
+                    if start.send(()).is_err() {
+                        stop.store(true, Ordering::Release);
+                        lane_panicked = true;
+                    }
+                }
+            }
+
+            // The calling thread is one of the lanes, so a single-lane batch
+            // creates no lane thread. Catching its unwind keeps the same
+            // structured failure contract as the spawned lanes.
+            if spawn_error.is_none()
+                && !lane_panicked
+                && self.run_lane_catching(&files, &claim, &outcomes, &stop, control)
+            {
+                lane_panicked = true;
+            }
+
+            // Join manually: dropping a panicked scoped handle would make
+            // `thread::scope` resume the panic instead of returning an
+            // `AnalysisError` through the application facade.
+            for handle in handles {
+                match handle.join() {
+                    Ok(panicked) => lane_panicked |= panicked,
+                    Err(_) => {
+                        stop.store(true, Ordering::Release);
+                        lane_panicked = true;
+                    }
+                }
+            }
+
+            if let Some(error) = spawn_error {
+                return Err(lane_spawn_error(error));
+            }
+            if lane_panicked {
+                return Err(lane_panic_error());
+            }
+            Ok(())
+        })?;
 
         // Cancellation is decided after every lane has joined. Reporting it
         // earlier would return while in-flight items were still decoding.
@@ -188,13 +289,24 @@ impl BatchRunner {
         files: &[PathBuf],
         claim: &AtomicUsize,
         outcomes: &[Mutex<Option<LaneOutcome>>],
+        stop: &AtomicBool,
         control: &ExecutionControl<'_>,
     ) {
         loop {
+            if stop.load(Ordering::Acquire) {
+                return;
+            }
             let index = claim.fetch_add(1, Ordering::Relaxed);
             let Some(path) = files.get(index) else {
                 return;
             };
+            if stop.load(Ordering::Acquire) {
+                return;
+            }
+            #[cfg(test)]
+            if self.fault == Some(LaneFault::Panic(index)) {
+                panic!("injected batch file-lane panic at item {index}");
+            }
             if control.cancellation.is_cancelled() {
                 Self::store(&outcomes[index], LaneOutcome::Cancelled(cancelled()));
                 return;
@@ -215,6 +327,26 @@ impl BatchRunner {
         }
     }
 
+    /// Run one lane behind an unwind boundary and publish a stop request before
+    /// the other lanes can claim more work.
+    fn run_lane_catching(
+        &self,
+        files: &[PathBuf],
+        claim: &AtomicUsize,
+        outcomes: &[Mutex<Option<LaneOutcome>>],
+        stop: &AtomicBool,
+        control: &ExecutionControl<'_>,
+    ) -> bool {
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            self.run_lane(files, claim, outcomes, stop, control);
+        }))
+        .is_err();
+        if panicked {
+            stop.store(true, Ordering::Release);
+        }
+        panicked
+    }
+
     fn store(slot: &Mutex<Option<LaneOutcome>>, outcome: LaneOutcome) {
         *slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(outcome);
     }
@@ -229,6 +361,13 @@ enum LaneOutcome {
     Cancelled(AnalysisError),
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaneFault {
+    Spawn(usize),
+    Panic(usize),
+}
+
 fn cancelled() -> AnalysisError {
     AnalysisError::cancelled()
 }
@@ -238,6 +377,24 @@ fn unclaimed_item_error() -> AnalysisError {
         ErrorCode::Internal,
         AnalysisStage::Internal,
         "a batch item was never claimed by a file lane",
+    )
+}
+
+fn lane_spawn_error(error: io::Error) -> AnalysisError {
+    AnalysisError::new(
+        ErrorCode::ResourceExhausted,
+        AnalysisStage::Internal,
+        "failed to start a batch file lane",
+    )
+    .with_details(error.to_string())
+    .recoverable(true)
+}
+
+fn lane_panic_error() -> AnalysisError {
+    AnalysisError::new(
+        ErrorCode::Internal,
+        AnalysisStage::Internal,
+        "a batch file lane panicked",
     )
 }
 
@@ -571,15 +728,61 @@ mod tests {
     }
 
     #[test]
+    fn lane_spawn_failure_is_structured_and_starts_no_item() {
+        let cancellation = CancellationToken::new();
+        let started = TestCounter::new(0);
+        let sink = |event: AnalysisEvent| {
+            if matches!(event, AnalysisEvent::FileStarted { .. }) {
+                started.fetch_add(1, Ordering::SeqCst);
+            }
+        };
+        let control = ExecutionControl::new(&cancellation, &sink);
+        let error = BatchRunner::new(allocation_for(4))
+            .with_fault(LaneFault::Spawn(2))
+            .run(BatchRequest::new(mixed_inputs(), false), &control)
+            .expect_err("an injected lane spawn failure must be structured");
+
+        assert_eq!(error.code, ErrorCode::ResourceExhausted);
+        assert_eq!(error.stage, AnalysisStage::Internal);
+        assert_eq!(error.message, "failed to start a batch file lane");
+        assert_eq!(
+            started.load(Ordering::SeqCst),
+            0,
+            "the start gate must keep earlier lanes idle until every spawn succeeds"
+        );
+    }
+
+    #[test]
+    fn lane_panic_is_joined_and_returned_as_a_structured_error() {
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let control = ExecutionControl::new(&cancellation, &progress);
+        let error = BatchRunner::new(allocation_for(4))
+            .with_fault(LaneFault::Panic(0))
+            .run(BatchRequest::new(mixed_inputs(), false), &control)
+            .expect_err("an injected lane panic must not escape the application facade");
+
+        assert_eq!(error.code, ErrorCode::Internal);
+        assert_eq!(error.stage, AnalysisStage::Internal);
+        assert_eq!(error.message, "a batch file lane panicked");
+    }
+
+    #[test]
     fn lanes_and_their_decoders_never_exceed_the_plan_that_granted_them() {
         for lanes in LANE_COUNTS {
             let allocation = allocation_for(lanes);
             let granted = allocation.file_lanes().get();
             let per_lane = allocation.decode().workers().get();
+            let lane_threads = granted.saturating_sub(1);
+            let decoder_threads = if per_lane > 1 {
+                granted.saturating_mul(per_lane)
+            } else {
+                0
+            };
             assert!(
-                granted.saturating_mul(per_lane) <= MAX_LANE_PLAN_WORKERS,
-                "{lanes} requested lanes produced {granted}x{per_lane} over a \
-                 {MAX_LANE_PLAN_WORKERS}-worker plan"
+                lane_threads.saturating_add(decoder_threads) <= MAX_LANE_PLAN_WORKERS,
+                "{lanes} requested lanes produced {lane_threads} lane threads plus \
+                 {decoder_threads} decoder threads over a {MAX_LANE_PLAN_WORKERS}-worker plan"
             );
             // A mixed batch must not let the packet-parallel route reclaim what
             // widening lanes already spent.

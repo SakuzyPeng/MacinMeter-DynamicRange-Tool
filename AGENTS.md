@@ -29,10 +29,11 @@ dependencies into lower layers.
   metadata types, but reject over-limit media before decoder creation and
   over-limit direct sessions before allocation.
 - ADR-0014 packet-level decoding is enabled by default for the ADR-0013 ALAC
-  route, bounded by one application-owned plan drawn from the host. All other
-  routes decode serially, and batch execution is still serial: file lanes (P1)
-  and window-level analysis (P2) remain unimplemented. FLAC packet workers stay
-  blocked until they preserve equivalent ordered full-stream MD5 verification.
+  route and for FLAC streams whose STREAMINFO geometry fits the granted
+  reservation, bounded by one application-owned plan drawn from the host. FLAC
+  preserves equivalent ordered full-stream MD5 verification on every route.
+  File lanes (P1) have a non-default measurement implementation, but the product
+  still requests one lane; window-level analysis (P2) remains unimplemented.
   Every further axis stays disabled until its route/axis-specific differential,
   failure, cancellation, resource, and ADR-0007 performance gates pass.
 - WAV integer/float PCM, FLAC, AIFF integer PCM, and the ADR-0013 constrained

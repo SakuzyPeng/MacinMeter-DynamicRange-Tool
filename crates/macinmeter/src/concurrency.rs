@@ -30,7 +30,7 @@ pub(crate) struct ConcurrencyPlan {
 }
 
 impl ConcurrencyPlan {
-    /// The product default: one worker for the whole job.
+    /// The fully serial reference: one worker for the whole job.
     pub(crate) const fn serial() -> Self {
         Self {
             total_workers: NonZeroUsize::MIN,
@@ -43,7 +43,7 @@ impl ConcurrencyPlan {
         not(test),
         allow(
             dead_code,
-            reason = "ADR-0014 keeps non-serial production plans dormant until a route graduates"
+            reason = "the fixed constructors currently cover every production plan"
         )
     )]
     pub(crate) fn bounded(requested: NonZeroUsize) -> Self {
@@ -82,7 +82,7 @@ impl ConcurrencyPlan {
         not(test),
         allow(
             dead_code,
-            reason = "the product plan is unconditionally serial, so nothing branches on it yet"
+            reason = "route selection branches on the granted reservation instead"
         )
     )]
     pub(crate) const fn is_serial(self) -> bool {
@@ -91,18 +91,31 @@ impl ConcurrencyPlan {
 
     /// Split the whole plan across file lanes in one shot.
     ///
-    /// This is the only place permits are handed out. Lanes and their packet
-    /// workers come out of the same total, so a batch that widens its lanes
-    /// necessarily narrows each lane's decoder instead of stacking pools.
+    /// This is the only place permits are handed out. Every lane after the
+    /// caller-owned first lane needs its own executor thread. Those executors
+    /// are charged before the remaining permits are divided among per-lane
+    /// packet pools, so widening a batch can never stack an uncounted lane pool
+    /// on top of its decoder pools.
     pub(crate) fn allocate(
         self,
         requested_file_lanes: NonZeroUsize,
     ) -> Result<PlanAllocation, AnalysisError> {
         let total = self.total_workers().get();
         let lanes = requested_file_lanes.get().min(total);
-        let workers_per_lane = total / lanes;
+        let lane_threads = lanes.saturating_sub(1);
+        let decoder_thread_budget = total.saturating_sub(lane_threads);
+        let divided_decoder_workers = decoder_thread_budget / lanes;
+        // A one-worker reservation executes serially on its lane and creates no
+        // packet-pool thread. If every lane cannot receive at least two decoder
+        // threads, keep all of them serial instead of granting a pool that
+        // would exceed the plan once lane executors are counted.
+        let workers_per_lane = if divided_decoder_workers >= 2 {
+            divided_decoder_workers
+        } else {
+            1
+        };
         debug_assert!(
-            lanes.saturating_mul(workers_per_lane) <= total,
+            allocated_internal_workers(lanes, workers_per_lane) <= total,
             "a plan allocation may never exceed its own total"
         );
 
@@ -157,6 +170,21 @@ fn internal_plan_error() -> AnalysisError {
     )
 }
 
+/// Internal threads the allocation can create beyond the admitted job's
+/// caller-owned execution thread.
+///
+/// A serial decoder runs on its lane. A packet reservation wider than one
+/// creates all of its decoder workers in addition to the lane executor.
+const fn allocated_internal_workers(lanes: usize, decoder_workers_per_lane: usize) -> usize {
+    let lane_threads = lanes.saturating_sub(1);
+    let decoder_threads = if decoder_workers_per_lane > 1 {
+        lanes.saturating_mul(decoder_workers_per_lane)
+    } else {
+        0
+    };
+    lane_threads.saturating_add(decoder_threads)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,7 +230,7 @@ mod tests {
                 let lanes = allocation.file_lanes().get();
                 let per_lane = allocation.decode().workers().get();
                 assert!(
-                    lanes * per_lane <= total,
+                    allocated_internal_workers(lanes, per_lane) <= total,
                     "total={total}; requested_lanes={requested_lanes}; \
                      lanes={lanes}; per_lane={per_lane}"
                 );
@@ -220,11 +248,11 @@ mod tests {
         );
         assert_eq!(
             plan.allocate(nonzero(2)).unwrap().decode().workers().get(),
-            4
+            3
         );
         assert_eq!(
             plan.allocate(nonzero(4)).unwrap().decode().workers().get(),
-            2
+            1
         );
 
         let saturated = plan.allocate(nonzero(8)).unwrap();

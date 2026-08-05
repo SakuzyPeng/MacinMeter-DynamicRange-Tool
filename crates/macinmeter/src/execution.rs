@@ -16,8 +16,8 @@ const SERIAL_ACTIVE_JOBS: usize = 1;
 const DEFAULT_MAX_QUEUED_JOBS: usize = 64;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
-/// Batch items still run one at a time. ADR-0014 admits file lanes as P1, after
-/// packet-level decoding.
+/// The product still requests one batch lane. Wider ADR-0014 P1 lanes are a
+/// non-default measurement input until their remaining gates pass.
 const PRODUCTION_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
 
 /// Decode workers the product asks for before host and ceiling clamping.
@@ -709,7 +709,7 @@ mod tests {
         assert_eq!(
             allocation.file_lanes().get(),
             1,
-            "file lanes are ADR-0014 P1 and remain unimplemented"
+            "ADR-0014 P1 lanes remain disabled in the product budget"
         );
 
         let decode = allocation.decode();

@@ -390,11 +390,13 @@ def attribution_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
 def file_lane_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
     """ADR-0014 P1 lane widths, selectable but absent from the default suite.
 
-    Lanes and per-lane decode workers come out of one plan, so a width is not a
-    free dimension: four lanes means two decode workers each. The mixed batch is
-    the only input that can price that trade, since it holds packet-parallel and
-    serial routes side by side. The product asks for one lane until this sweep
-    and a formal A/B say otherwise, so these stay out of the default suite.
+    Lane executors and per-lane decode workers come out of one plan, so a width
+    is not a free dimension: after the first caller-owned lane, every additional
+    lane is charged before the remaining permits are split across decoder pools.
+    The mixed batch is the only input that can price that trade, since it holds
+    packet-parallel and serial routes side by side. The product asks for one lane
+    until this sweep and a formal A/B say otherwise, so these stay out of the
+    default suite.
     """
     return tuple(
         BenchmarkCase(

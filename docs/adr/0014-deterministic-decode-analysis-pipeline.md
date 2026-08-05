@@ -2,7 +2,8 @@
 
 - 状态：Accepted
 - 实施状态：In progress（packet 级已为 ALAC 与资源几何落在 permit 内的 FLAC
-  route 默认启用；文件级与窗口级未实施）
+  route 默认启用；文件级已有非默认测量实现但产品仍固定请求一个 lane；窗口级
+  未实施）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -323,10 +324,12 @@ packet 级另加：
   block 等待更早序号”；
 - `macinmeter` 新增 `ConcurrencyPlan`，每 worker 派生 4 个排队 packet 与 4 MiB
   in-flight PCM。`allocate()` 是唯一的 permit 发放点，在 job 进入 admission 队列
-  前一次性完成，且以整除保证 `file_lanes × workers_per_lane ≤ total_workers`；
-  `bounded()` 同时受产品上限和 `available_parallelism()` 约束；
+  前一次性完成；首个 caller 自有 lane 之外的 lane executor 先从总量扣除，剩余
+  permit 才分给各 lane 的 packet pool，从而保证实际 lane thread 与 packet worker
+  总数不超过 `total_workers`。`bounded()` 同时受产品上限和
+  `available_parallelism()` 约束；
 - `ApplicationJob` 持有该 allocation 并向 `codecs` 下发；`DecoderFactory` 只在
-  收到的 permit 内解码，自身不创建 worker。当前生产 plan 恒为 serial、
+  收到的 permit 内解码，自身不创建 worker。该步生产 plan 仍恒为 serial、
   file lanes 恒为 1；`ConcurrencyPlan`、`PlanAllocation` 与 job allocation accessor
   均保持 crate-private，低层跨 crate wiring 入口为 doc-hidden，不形成支持的公共
   worker/queue 调参面；
@@ -349,7 +352,7 @@ packet 级另加：
 
 ### 第 2 步（2026-08-02，实现与正确性部分完成；2026-08-03 加固；未启用）
 
-ALAC packet workers 已按 §2 的顺序提交拓扑实现，但生产 plan 仍恒为 serial，
+ALAC packet workers 已按 §2 的顺序提交拓扑实现，但该步生产 plan 仍恒为 serial，
 因此该路径目前只由测试的显式 reservation 驱动：
 
 - `codecs` 新增 `decode_engine`，把解码语义收敛为单一 `decode_packet`：串行
@@ -703,8 +706,9 @@ ALAC 1→8 污染对照为 4.35–4.43x，没有低于既有干净值。
 workers。只有已毕业且资源几何可证明落在 permit 内的 route 会切换 engine——目前
 是 ADR-0013 的 ALAC route，以及最坏重排窗口适配 reservation 的 FLAC；其余 route、
 超出 permit 的 FLAC 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持
-完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）与窗口级（P2）
-仍未实施。
+完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）已有仅供
+`performance-probes` 测量的实现，但产品仍固定请求一个 lane，尚未毕业或默认启用；
+窗口级（P2）仍未实施。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项

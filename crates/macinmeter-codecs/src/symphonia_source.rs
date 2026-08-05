@@ -396,11 +396,11 @@ fn flac_parallel_execution(
         };
     let decoder_workers =
         NonZeroUsize::new(reservation.workers().get().checked_sub(hasher_workers)?)?;
-    let hash_bytes = match integrity_plan {
-        Some(plan) => samples_per_packet
+    let hash_bytes = match (integrity_plan, hasher_workers) {
+        (Some(plan), 1) => samples_per_packet
             .checked_mul(plan.retained_bytes_per_sample())
             .and_then(|bytes| bytes.checked_mul(ASYNC_HASH_EXTRA_PACKETS))?,
-        None => 0,
+        _ => 0,
     };
     let reorder_bytes = reservation
         .max_in_flight_pcm_bytes()
@@ -535,6 +535,30 @@ mod flac_reorder_window_tests {
         assert_eq!(
             execution.decode_reservation.max_in_flight_pcm_bytes(),
             reorder_window
+        );
+    }
+
+    #[test]
+    fn inline_hashing_does_not_reserve_async_buffers() {
+        let path = Path::new("inline-signed.flac");
+        let channels = ChannelCount::new(2).unwrap();
+        // This valid block geometry fits the complete four-worker reorder
+        // window, but only if the two buffers owned exclusively by the async
+        // hasher are not charged to the inline verifier.
+        let params = signed_flac(Some(47_000), 24);
+        let integrity = FlacIntegrityPlan::for_stream(path, &params).unwrap();
+        let granted = reservation(4);
+        let packet_samples = 47_000_u64 * 2;
+        let reorder_window = packet_samples * (8 + 3) * granted.queue_capacity().get() as u64;
+        assert!(reorder_window <= granted.max_in_flight_pcm_bytes());
+
+        let execution = flac_parallel_execution(&params, channels, integrity, granted)
+            .expect("inline verification must not force a fitting stream to serial");
+        assert_eq!(execution.hasher_workers, 0);
+        assert_eq!(execution.decode_reservation.workers().get(), 4);
+        assert_eq!(
+            execution.decode_reservation.max_in_flight_pcm_bytes(),
+            granted.max_in_flight_pcm_bytes()
         );
     }
 }
