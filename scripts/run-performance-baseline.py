@@ -63,8 +63,11 @@ ALAC_QUEUE_SWEEP_WORKERS = 8
 ALAC_QUEUE_CAPACITIES = (8, 64)
 # ADR-0014 P1 lane widths. One lane is the product request and the serial
 # reference; the wider widths spend the same plan, so each one narrows the
-# per-lane decoder that pays for it.
-FILE_LANE_COUNTS = (1, 2, 4, 8)
+# per-lane decoder that pays for it. Three lanes is the widest allocation that
+# still grants a packet pool, and on an eight-worker plan it is the only width
+# whose lane executors and decoders together consume the whole plan, so a sweep
+# that skips it cannot see where the packet-parallel routes stop scaling.
+FILE_LANE_COUNTS = (1, 2, 3, 4, 8)
 # Mirrors of the crate-private application plan derivation the worker uses.
 DECODE_QUEUE_DEPTH_PER_WORKER = 4
 DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
