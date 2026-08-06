@@ -68,6 +68,10 @@ ALAC_QUEUE_CAPACITIES = (8, 64)
 # whose lane executors and decoders together consume the whole plan, so a sweep
 # that skips it cannot see where the packet-parallel routes stop scaling.
 FILE_LANE_COUNTS = (1, 2, 3, 4, 8)
+# The worker counts every ADR-0014 axis must be compared across before it can
+# graduate. One worker is the boundary case for decode-analysis overlap: a
+# serial route spends its only permit, so no spare remains for an overlap.
+APPLICATION_WORKER_COUNTS = (1, 2, 4, 8)
 # Mirrors of the crate-private application plan derivation the worker uses.
 DECODE_QUEUE_DEPTH_PER_WORKER = 4
 DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
@@ -414,6 +418,38 @@ def file_lane_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             ("flac", "batch-pure-flac", "FLAC-only"),
         )
         for lanes in FILE_LANE_COUNTS
+    )
+
+
+def application_worker_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
+    """The 1/2/4/8 worker dimension the ADR-0014 graduation gates require.
+
+    For decode-analysis overlap this sweep is a boundary rather than a scale.
+    A serial route spends exactly one permit, so a one-worker plan leaves no
+    spare and the overlap cannot engage at all, while every wider plan leaves
+    one. The packet routes are the built-in control: they spend every permit at
+    each width, so nothing here may move them. The product plan is fixed, so
+    these stay out of the default suite.
+    """
+
+    def media(name: str) -> str:
+        return str((corpus / name).resolve())
+
+    return tuple(
+        BenchmarkCase(
+            f"application-workers/{track}-w{workers}",
+            "application",
+            f"{label} through the application over a {workers}-worker plan",
+            ("application", media(name), str(iterations), str(workers)),
+        )
+        for track, name, iterations, label in (
+            ("wave-s16", "stereo-s16-60s.wav", 8, "WAV s16"),
+            ("wave-f64", "stereo-f64-60s.wav", 8, "WAV f64"),
+            ("aiff-s16", "stereo-s16-60s.aiff", 8, "AIFF s16"),
+            ("flac-s24-240s", "stereo-s24-flac-240s.flac", 3, "FLAC s24"),
+            ("alac-s16-240s", "stereo-s16-alac-240s.m4a", 3, "ALAC s16"),
+        )
+        for workers in APPLICATION_WORKER_COUNTS
     )
 
 
@@ -1856,6 +1892,7 @@ def main() -> int:
         + attribution_cases(corpus)
         + pipeline_attribution_cases(corpus)
         + file_lane_cases(corpus)
+        + application_worker_cases(corpus)
     )
     if args.list_cases:
         for case in available:
@@ -1896,7 +1933,9 @@ def main() -> int:
             variants["scalar"] = build_default_worker(
                 root,
                 performance_probes=any(
-                    case.mode == "decode-pipeline" or case.case_id.startswith("batch-lanes/")
+                    case.mode == "decode-pipeline"
+                    or case.case_id.startswith("batch-lanes/")
+                    or case.case_id.startswith("application-workers/")
                     for case in cases
                 ),
             )

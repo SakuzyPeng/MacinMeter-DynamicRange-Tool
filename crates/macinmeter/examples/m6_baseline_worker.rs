@@ -68,7 +68,7 @@ fn usage() -> &'static str {
   m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS [QUEUE_CAPACITY]]
   m6_baseline_worker decode-phases PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker decode-pipeline PATH ITERATIONS DECODE_WORKERS
-  m6_baseline_worker application PATH ITERATIONS
+  m6_baseline_worker application PATH ITERATIONS [DECODE_WORKERS]
   m6_baseline_worker batch DIRECTORY ITERATIONS [FILE_LANES]
   m6_baseline_worker discovery DIRECTORY ITERATIONS
   m6_baseline_worker render-json PATH ITERATIONS"
@@ -648,10 +648,46 @@ fn ensure_same_decode_geometry(left: &DecodeSummary, right: &DecodeSummary) -> R
 }
 
 fn run_application(arguments: &[OsString]) -> Result<Value, String> {
-    require_len(arguments, 2, "application")?;
+    if arguments.len() != 2 && arguments.len() != 3 {
+        return Err(format!(
+            "application expects 2 or 3 argument(s), received {}\n{}",
+            arguments.len(),
+            usage()
+        ));
+    }
     let path = PathBuf::from(&arguments[0]);
     let iterations = positive_iterations(&arguments[1])?;
-    let application = Application::new();
+    // The graduation gates compare every axis across 1/2/4/8 workers. For
+    // decode-analysis overlap that sweep is not a scale but a boundary: a
+    // one-worker plan leaves a serial route no spare permit, so the overlap
+    // cannot engage. Absent the argument this stays the product plan.
+    let requested_workers = match arguments.get(2) {
+        Some(value) => Some(parse_number::<usize>(value, "decode workers")?),
+        None => None,
+    };
+    let application = match requested_workers {
+        None => Application::new(),
+        Some(workers) => {
+            let workers = NonZeroUsize::new(workers)
+                .ok_or_else(|| "decode workers must be greater than zero".to_owned())?;
+            // Same rule as the lane width: a measurement surface reachable only
+            // in an explicit probe build, and a default build refuses a value it
+            // cannot honour rather than silently ignoring it.
+            #[cfg(feature = "performance-probes")]
+            {
+                Application::with_budget(ExecutionBudget::product().with_decode_workers(workers))
+            }
+            #[cfg(not(feature = "performance-probes"))]
+            {
+                let _ = workers;
+                return Err(
+                    "decode worker counts require a worker built with the performance-probes \
+                     feature"
+                        .to_owned(),
+                );
+            }
+        }
+    };
     let mut report = None;
 
     let started = Instant::now();
@@ -682,6 +718,7 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
         json!({
             "path": display_name(&path),
             "backend": report.diagnostics().backend,
+            "requestedDecodeWorkers": requested_workers,
             "decodedFramesPerIteration": report.analysis().frames_seen(),
             "analysisResultFingerprintSha256": analysis_fingerprint,
         }),

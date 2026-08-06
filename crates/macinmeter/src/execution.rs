@@ -115,14 +115,30 @@ impl ExecutionBudget {
 
     /// Request a batch lane width.
     ///
-    /// ADR-0014 P1 is unmeasured, so the product asks for one lane and no
-    /// public constructor can reach this. The lane count is a measurement
-    /// input, not a tuning knob: exposing it under the same non-default feature
-    /// as the pipeline probes keeps it out of the product surface, and the plan
-    /// still clamps the request and narrows each lane's decoder to pay for it.
+    /// The product asks for one lane until ADR-0014 P1 graduates, and no public
+    /// constructor can reach this. The lane count is a measurement input, not a
+    /// tuning knob: exposing it under the same non-default feature as the
+    /// pipeline probes keeps it out of the product surface, and the plan still
+    /// clamps the request and narrows each lane's decoder to pay for it.
     #[cfg(any(test, feature = "performance-probes"))]
     pub const fn with_file_lanes(self, file_lanes: NonZeroUsize) -> Self {
         Self { file_lanes, ..self }
+    }
+
+    /// Request a decode worker count for the internal plan.
+    ///
+    /// The graduation gates require every axis to be compared across 1/2/4/8
+    /// workers, and for decode-analysis overlap the worker count is not merely
+    /// a scale: a one-worker plan leaves a serial route no spare permit, so the
+    /// overlap cannot engage at all. Measuring that boundary needs the real
+    /// `Application` path rather than a mirrored constant. The plan still
+    /// clamps the request to the product ceiling and the host.
+    #[cfg(any(test, feature = "performance-probes"))]
+    pub fn with_decode_workers(self, requested: NonZeroUsize) -> Self {
+        Self {
+            concurrency: ConcurrencyPlan::bounded(requested),
+            ..self
+        }
     }
 
     /// Replace the internal plan.
