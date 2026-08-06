@@ -23,6 +23,11 @@ STEREO_FRAMES = 60 * SAMPLE_RATE
 SURROUND_FRAMES = 30 * SAMPLE_RATE
 # The packet-worker A/B needs a track long enough for scheduling to matter.
 PACKET_SWEEP_FRAMES = 240 * SAMPLE_RATE
+# The stable WAV/AIFF sources hand PCM to the application in at most 1,152-frame
+# blocks. Exactly 240 seconds is divisible by 1,152, so it has no decoder tail;
+# one additional source frame forces a real one-frame final PcmBlock across the
+# decode/analysis boundary without materially changing the workload duration.
+SERIAL_ROUTE_SWEEP_FRAMES = PACKET_SWEEP_FRAMES + 1
 ALAC_FFMPEG_VERSION = "8.0.1"
 # Difficulty variants in the load-imbalance track. Matching the maximum
 # worker count makes the fixed dispatch pin one difficulty per worker.
@@ -1059,14 +1064,14 @@ def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
     """Long WAV and AIFF, the serial routes' long-audio and many-block case.
 
     The graduated packet routes already have 240s media; the serial routes had
-    only 60s, so nothing exercised a serial stream long enough to hand hundreds
-    of blocks across the decode/analysis boundary. At 4096-frame blocks these
-    carry 2812 full blocks and a 2048-frame partial final block, so the short
-    tail is real media rather than a synthetic fixture.
+    only 60s, so nothing exercised a serial stream long enough to hand thousands
+    of blocks across the decode/analysis boundary. The current stable routes
+    produce 10,000 full 1,152-frame blocks plus a one-frame final block, so the
+    short tail is real decoded media rather than generator-only geometry.
     """
     values, normalized = deterministic_integer_block(channels=2, bits=16, seed=1)
     normalized_sha = normalized_pcm_sha256(
-        normalized, frames=PACKET_SWEEP_FRAMES, channels=2
+        normalized, frames=SERIAL_ROUTE_SWEEP_FRAMES, channels=2
     )
     little = pack_integer_block(values, 16, "little")
     big = pack_integer_block(values, 16, "big")
@@ -1079,7 +1084,7 @@ def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
             "stereo-s16-wave-240s",
             "wave",
             wave_header(
-                frames=PACKET_SWEEP_FRAMES,
+                frames=SERIAL_ROUTE_SWEEP_FRAMES,
                 channels=2,
                 sample_rate=SAMPLE_RATE,
                 bits=16,
@@ -1092,7 +1097,7 @@ def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
             "stereo-s16-aiff-240s",
             "aiff",
             aiff_header(
-                frames=PACKET_SWEEP_FRAMES,
+                frames=SERIAL_ROUTE_SWEEP_FRAMES,
                 channels=2,
                 sample_rate=SAMPLE_RATE,
                 bits=16,
@@ -1105,7 +1110,7 @@ def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
             path,
             header,
             payload,
-            frames=PACKET_SWEEP_FRAMES,
+            frames=SERIAL_ROUTE_SWEEP_FRAMES,
             channels=2,
             bytes_per_sample=2,
         )
@@ -1116,7 +1121,7 @@ def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
                 identifier=identifier,
                 container=container,
                 codec="pcm_integer",
-                frames=PACKET_SWEEP_FRAMES,
+                frames=SERIAL_ROUTE_SWEEP_FRAMES,
                 channels=2,
                 bits=16,
                 normalized_sha256=normalized_sha,

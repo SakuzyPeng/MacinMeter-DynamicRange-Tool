@@ -11,6 +11,9 @@ mod wire;
 
 pub use album::{AlbumAggregate, AlbumAggregator, AlbumTrackMetrics, AlbumWeighting};
 pub use application::AnalyzeRequest;
+#[cfg(feature = "performance-probes")]
+#[doc(hidden)]
+pub use application::ApplicationPerformanceProbe;
 pub use batch::{
     BatchItem, BatchItemOutcome, BatchReport, BatchRequest, BatchStatus, BatchSummary,
 };

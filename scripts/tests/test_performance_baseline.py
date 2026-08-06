@@ -40,6 +40,99 @@ class PerformanceBaselineTests(unittest.TestCase):
             for workers in baseline.PACKET_WORKER_COUNTS:
                 self.assertIn(f"decode/{track}-w{workers}", case_ids)
 
+        self.assertIn("application/wave-s16-240s", case_ids)
+        self.assertIn("application/aiff-s16-240s", case_ids)
+
+    def test_application_worker_gate_binds_grant_engine_overlap_and_tail(self) -> None:
+        root = Path("/corpus")
+        case = baseline.BenchmarkCase(
+            "application-workers/wave-s16-240s-w8",
+            "application",
+            "application worker probe",
+            ("application", str(root / "stereo-s16-240s.wav"), "1", "8"),
+        )
+        frames = corpus.SERIAL_ROUTE_SWEEP_FRAMES
+        details = {
+            "requestedDecodeWorkers": 8,
+            "grantedDecodeWorkers": 8,
+            "selectedEngine": "Serial",
+            "selectedTotalWorkers": 1,
+            "selectedDecoderWorkers": 1,
+            "selectedHasherWorkers": 0,
+            "decodeAnalysisOverlapped": True,
+            "decodedBlocksPerIteration": 10_001,
+            "finalBlockFrames": 1,
+            "decodedFramesPerIteration": frames,
+            "analysisResultFingerprintSha256": "b" * 64,
+        }
+        manifest = {
+            "media": [
+                {
+                    "path": "stereo-s16-240s.wav",
+                    "frames": frames,
+                    "channels": 2,
+                    "sampleRate": corpus.SAMPLE_RATE,
+                    "container": "wave",
+                    "codec": "pcm_integer",
+                    "normalizedInterleavedF64LeSha256": "a" * 64,
+                }
+            ]
+        }
+        sample = {
+            "caseId": case.case_id,
+            "work": {
+                "audioFrames": frames,
+                "interleavedSamples": frames * 2,
+                "audioSeconds": frames / corpus.SAMPLE_RATE,
+                "logicalItems": 1,
+            },
+            "details": details,
+        }
+        baseline.validate_corpus_work([sample], [case], root, manifest)
+
+        for field, invalid in (
+            ("grantedDecodeWorkers", 4),
+            ("selectedEngine", "AlacPacketWorkers"),
+            ("decodeAnalysisOverlapped", False),
+            ("decodedBlocksPerIteration", 10_000),
+            ("finalBlockFrames", 1_152),
+        ):
+            with self.subTest(field=field):
+                changed = dict(details)
+                changed[field] = invalid
+                sample["details"] = changed
+                with self.assertRaises(baseline.BaselineError):
+                    baseline.validate_corpus_work([sample], [case], root, manifest)
+
+    def test_application_worker_gate_binds_packet_engine_subdivision(self) -> None:
+        for suffix, container, codec, engine, decoder_workers, hasher_workers in (
+            ("flac", "flac", "flac", "FlacPacketWorkers", 7, 1),
+            ("m4a", "mp4", "alac", "AlacPacketWorkers", 8, 0),
+        ):
+            case = baseline.BenchmarkCase(
+                f"application-workers/packet-w8-{suffix}",
+                "application",
+                "packet control",
+                ("application", f"/corpus/input.{suffix}", "1", "8"),
+            )
+            details = {
+                "requestedDecodeWorkers": 8,
+                "grantedDecodeWorkers": 8,
+                "selectedEngine": engine,
+                "selectedTotalWorkers": 8,
+                "selectedDecoderWorkers": decoder_workers,
+                "selectedHasherWorkers": hasher_workers,
+                "decodeAnalysisOverlapped": False,
+                "decodedBlocksPerIteration": 10,
+                "finalBlockFrames": 4_096,
+            }
+            baseline.assert_application_allocation(
+                case,
+                details,
+                40_960,
+                {"container": container, "codec": codec},
+            )
+
     def test_attribution_cases_are_explicit_and_pair_both_packet_routes(self) -> None:
         default_ids = {
             case.case_id for case in baseline.suite_cases(Path("/corpus"))

@@ -689,14 +689,27 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
         }
     };
     let mut report = None;
+    #[cfg(feature = "performance-probes")]
+    let mut execution_probe = None;
 
     let started = Instant::now();
     for _ in 0..iterations {
-        report = Some(
-            application
-                .analyze_file(macinmeter::AnalyzeRequest::new(&path))
-                .map_err(|error| error.to_string())?,
-        );
+        #[cfg(feature = "performance-probes")]
+        let (next_report, next_probe) = application
+            .analyze_file_with_performance_probe(macinmeter::AnalyzeRequest::new(&path))
+            .map_err(|error| error.to_string())?;
+        #[cfg(not(feature = "performance-probes"))]
+        let next_report = application
+            .analyze_file(macinmeter::AnalyzeRequest::new(&path))
+            .map_err(|error| error.to_string())?;
+        #[cfg(feature = "performance-probes")]
+        {
+            if execution_probe.is_some_and(|previous| previous != next_probe) {
+                return Err("application execution topology changed between iterations".to_owned());
+            }
+            execution_probe = Some(next_probe);
+        }
+        report = Some(next_report);
     }
     let elapsed = started.elapsed();
     let report = report
@@ -704,6 +717,52 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
         .ok_or_else(|| "application produced no report".to_owned())?;
     let analysis_fingerprint = fingerprint(report.analysis())?.0;
     let (fingerprint, result_bytes) = fingerprint(report)?;
+    let details = json!({
+        "path": display_name(&path),
+        "backend": report.diagnostics().backend,
+        "requestedDecodeWorkers": requested_workers,
+        "decodedFramesPerIteration": report.analysis().frames_seen(),
+        "analysisResultFingerprintSha256": analysis_fingerprint,
+    });
+    #[cfg(feature = "performance-probes")]
+    let details = {
+        let mut details = details;
+        let probe =
+            execution_probe.ok_or_else(|| "application produced no execution probe".to_owned())?;
+        let object = details
+            .as_object_mut()
+            .ok_or_else(|| "application details were not a JSON object".to_owned())?;
+        object.insert(
+            "grantedDecodeWorkers".to_owned(),
+            json!(probe.granted_decode_workers()),
+        );
+        object.insert("selectedEngine".to_owned(), json!(probe.selected_engine()));
+        object.insert(
+            "selectedTotalWorkers".to_owned(),
+            json!(probe.selected_total_workers()),
+        );
+        object.insert(
+            "selectedDecoderWorkers".to_owned(),
+            json!(probe.selected_decoder_workers()),
+        );
+        object.insert(
+            "selectedHasherWorkers".to_owned(),
+            json!(probe.selected_hasher_workers()),
+        );
+        object.insert(
+            "decodeAnalysisOverlapped".to_owned(),
+            json!(probe.decode_analysis_overlapped()),
+        );
+        object.insert(
+            "decodedBlocksPerIteration".to_owned(),
+            json!(probe.decoded_blocks()),
+        );
+        object.insert(
+            "finalBlockFrames".to_owned(),
+            json!(probe.final_block_frames()),
+        );
+        details
+    };
     workload_output(
         "application",
         elapsed,
@@ -715,13 +774,7 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
         )?,
         fingerprint,
         result_bytes,
-        json!({
-            "path": display_name(&path),
-            "backend": report.diagnostics().backend,
-            "requestedDecodeWorkers": requested_workers,
-            "decodedFramesPerIteration": report.analysis().frames_seen(),
-            "analysisResultFingerprintSha256": analysis_fingerprint,
-        }),
+        details,
     )
 }
 

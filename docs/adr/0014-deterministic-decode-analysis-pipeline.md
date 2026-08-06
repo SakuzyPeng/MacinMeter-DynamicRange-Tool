@@ -686,8 +686,11 @@ library、CLI 与 GUI build 的 overlap budget 恒为零，不改变产品默认
 decode failure/cancellation 的断开，后两者不 finalize 部分 analysis prefix；线程创建
 失败、worker panic 与无终态断开均转为结构化错误并在返回前 join。确定性差分、运行中
 取消、decode/finish 错误优先级、零帧 EOF 取消、可变块预算与 spawn failure 现有直接
-测试，但 ADR-0007 source-bound A/B、RSS 与完整 route/corpus 门禁尚未完成，因此该
-候选不得进入默认 production build。
+测试。非默认 application worker sweep 现在把 requested/granted plan、实际 decode
+engine/worker 细分、overlap 选择及末块几何写入原始样本并逐项校验；宿主无法完整授予
+1/2/4/8 worker 时拒绝把较窄执行误记为较宽 case。WAV/AIFF 长语料各含 10,000 个完整
+1,152-frame 解码块及一个真实的一帧末块。不过 ADR-0007 source-bound A/B、RSS 与完整
+route/corpus 门禁仍未执行，因此该候选不得进入默认 production build。
 
 ## 明确非目标
 

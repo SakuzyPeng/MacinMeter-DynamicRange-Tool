@@ -2,10 +2,17 @@ use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, ErrorCode, ExecutionControl,
 };
 use macinmeter_analysis::AnalyzerSession;
+#[cfg(feature = "performance-probes")]
+use macinmeter_codecs::{DecodeEngineKind, DecodeExecution};
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
 use macinmeter_domain::{DecodeReservation, PcmBlock, PcmStreamInfo};
 use serde::{Deserialize, Serialize};
-use std::{io, path::PathBuf, sync::mpsc::sync_channel, thread};
+use std::{
+    io,
+    path::PathBuf,
+    sync::mpsc::{SyncSender, sync_channel},
+    thread,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +23,120 @@ pub struct AnalyzeRequest {
 impl AnalyzeRequest {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
+    }
+}
+
+/// The exact application execution selected by a non-default performance run.
+///
+/// This type is deliberately absent from ordinary builds and from every product
+/// report/wire field. The ADR-0007 worker uses it to prove that a case labelled
+/// with a worker count actually received that grant and reached the intended
+/// decode/analysis topology.
+#[cfg(feature = "performance-probes")]
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApplicationPerformanceProbe {
+    granted_decode_workers: usize,
+    selected_engine: DecodeEngineKind,
+    selected_total_workers: usize,
+    selected_decoder_workers: usize,
+    selected_hasher_workers: usize,
+    decode_analysis_overlapped: bool,
+    decoded_blocks: u64,
+    final_block_frames: usize,
+}
+
+#[cfg(feature = "performance-probes")]
+impl ApplicationPerformanceProbe {
+    const fn new(
+        reservation: DecodeReservation,
+        execution: DecodeExecution,
+        opened: &OpenedAnalysis,
+    ) -> Self {
+        Self {
+            granted_decode_workers: reservation.workers().get(),
+            selected_engine: execution.engine(),
+            selected_total_workers: execution.workers().get(),
+            selected_decoder_workers: execution.decoder_workers().get(),
+            selected_hasher_workers: execution.hasher_workers(),
+            decode_analysis_overlapped: opened.overlapped,
+            decoded_blocks: opened.decoded_blocks,
+            final_block_frames: opened.final_block_frames,
+        }
+    }
+
+    pub const fn granted_decode_workers(self) -> usize {
+        self.granted_decode_workers
+    }
+
+    pub const fn selected_engine(self) -> &'static str {
+        match self.selected_engine {
+            DecodeEngineKind::Serial => "Serial",
+            DecodeEngineKind::AlacPacketWorkers => "AlacPacketWorkers",
+            DecodeEngineKind::FlacPacketWorkers => "FlacPacketWorkers",
+        }
+    }
+
+    pub const fn selected_total_workers(self) -> usize {
+        self.selected_total_workers
+    }
+
+    pub const fn selected_decoder_workers(self) -> usize {
+        self.selected_decoder_workers
+    }
+
+    pub const fn selected_hasher_workers(self) -> usize {
+        self.selected_hasher_workers
+    }
+
+    pub const fn decode_analysis_overlapped(self) -> bool {
+        self.decode_analysis_overlapped
+    }
+
+    pub const fn decoded_blocks(self) -> u64 {
+        self.decoded_blocks
+    }
+
+    pub const fn final_block_frames(self) -> usize {
+        self.final_block_frames
+    }
+}
+
+struct AnalyzedFile {
+    report: AnalysisReport,
+    #[cfg(feature = "performance-probes")]
+    probe: ApplicationPerformanceProbe,
+}
+
+struct OpenedAnalysis {
+    report: AnalysisReport,
+    #[cfg(feature = "performance-probes")]
+    overlapped: bool,
+    #[cfg(feature = "performance-probes")]
+    decoded_blocks: u64,
+    #[cfg(feature = "performance-probes")]
+    final_block_frames: usize,
+}
+
+#[cfg(feature = "performance-probes")]
+#[derive(Debug, Default)]
+struct DecodeBlockGeometry {
+    blocks: u64,
+    final_block_frames: usize,
+}
+
+#[cfg(feature = "performance-probes")]
+impl DecodeBlockGeometry {
+    fn record(&mut self, block: &PcmBlock) -> Result<(), AnalysisError> {
+        self.blocks = self.blocks.checked_add(1).ok_or_else(|| {
+            AnalysisError::new(
+                ErrorCode::Internal,
+                AnalysisStage::Internal,
+                "application performance-probe block count overflowed",
+            )
+        })?;
+        self.final_block_frames = block.frames();
+        Ok(())
     }
 }
 
@@ -59,12 +180,32 @@ impl Analyzer {
         self.analyze_file_at(request, 0, control)
     }
 
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn analyze_file_with_performance_probe(
+        &self,
+        request: AnalyzeRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
+        self.analyze_file_at_run(request, 0, control)
+            .map(|analyzed| (analyzed.report, analyzed.probe))
+    }
+
     pub(crate) fn analyze_file_at(
         &self,
         request: AnalyzeRequest,
         item_index: usize,
         control: &ExecutionControl<'_>,
     ) -> Result<AnalysisReport, AnalysisError> {
+        self.analyze_file_at_run(request, item_index, control)
+            .map(|analyzed| analyzed.report)
+    }
+
+    fn analyze_file_at_run(
+        &self,
+        request: AnalyzeRequest,
+        item_index: usize,
+        control: &ExecutionControl<'_>,
+    ) -> Result<AnalyzedFile, AnalysisError> {
         ensure_not_cancelled(control)?;
         let display_path = request.path.display().to_string();
         control.progress.emit(AnalysisEvent::FileStarted {
@@ -87,7 +228,7 @@ impl Analyzer {
         item_index: usize,
         control: &ExecutionControl<'_>,
         display_path: &str,
-    ) -> Result<AnalysisReport, AnalysisError> {
+    ) -> Result<AnalyzedFile, AnalysisError> {
         // Measurement builds read the selected engine too, because the permits
         // a route did not spend are exactly what decode/analysis overlap may
         // use. A requested reservation alone cannot tell them apart: every
@@ -108,25 +249,45 @@ impl Analyzer {
             max_in_flight_pcm_bytes: self.reservation.max_in_flight_pcm_bytes(),
             max_pcm_block_bytes: execution.max_pcm_block_bytes(),
             inject_spawn_failure: false,
-            analyst_schedule: AnalystSchedule::default(),
+            schedule: OverlapSchedule::default(),
         };
         #[cfg(not(feature = "performance-probes"))]
-        let overlap = {
-            let _ = execution;
-            OverlapBudget::default()
-        };
-        Self::analyze_opened(opened, overlap, item_index, control, display_path)
+        let overlap = OverlapBudget::default();
+        let opened = Self::analyze_opened_run(opened, overlap, item_index, control, display_path)?;
+        #[cfg(feature = "performance-probes")]
+        let probe = ApplicationPerformanceProbe::new(self.reservation, execution, &opened);
+        #[cfg(not(feature = "performance-probes"))]
+        let _ = execution;
+        Ok(AnalyzedFile {
+            report: opened.report,
+            #[cfg(feature = "performance-probes")]
+            probe,
+        })
     }
 
+    #[cfg(test)]
     pub(crate) fn analyze_opened(
-        mut opened: OpenedAudio,
+        opened: OpenedAudio,
         budget: OverlapBudget,
         item_index: usize,
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
+        Self::analyze_opened_run(opened, budget, item_index, control, display_path)
+            .map(|analyzed| analyzed.report)
+    }
+
+    fn analyze_opened_run(
+        mut opened: OpenedAudio,
+        budget: OverlapBudget,
+        item_index: usize,
+        control: &ExecutionControl<'_>,
+        display_path: &str,
+    ) -> Result<OpenedAnalysis, AnalysisError> {
         #[cfg(test)]
         LAST_ANALYSIS_OVERLAP.with(|last| last.set(false));
+        #[cfg(feature = "performance-probes")]
+        let mut block_geometry = DecodeBlockGeometry::default();
         let pcm = opened.reader.stream_info().clone();
         let mut session = AnalyzerSession::new(pcm.spec.clone())?;
 
@@ -137,48 +298,66 @@ impl Analyzer {
         ensure_not_cancelled(control)?;
         let first = read_checked(&mut opened, &pcm, display_path)?;
 
-        let analysis = match first {
+        let (analysis, _overlapped) = match first {
             None => {
                 // Preserve the serial boundary: EOF progress is observable and
                 // may itself request cancellation, which must win before a
                 // zero-frame report is finalized.
                 emit_decode_progress(&opened, item_index, control, display_path);
                 ensure_not_cancelled(control)?;
-                session.finish()?
+                (session.finish()?, false)
             }
             Some(block) if budget.admits(&block) => {
+                #[cfg(feature = "performance-probes")]
+                block_geometry.record(&block)?;
                 // The first block establishes the same public commit boundary
                 // as the serial path. Overlap begins with the next decode, so
                 // analysis failures still precede this block's progress event.
                 session.push_interleaved(block.samples())?;
                 emit_decode_progress(&opened, item_index, control, display_path);
                 ensure_not_cancelled(control)?;
-                analyze_overlapped(
+                let analysis = analyze_overlapped(
                     session,
                     &mut opened,
                     item_index,
                     control,
                     display_path,
                     &budget,
-                )?
+                    #[cfg(feature = "performance-probes")]
+                    &mut block_geometry,
+                )?;
+                (analysis, true)
             }
             Some(block) => {
+                #[cfg(feature = "performance-probes")]
+                block_geometry.record(&block)?;
                 session.push_interleaved(block.samples())?;
                 emit_decode_progress(&opened, item_index, control, display_path);
-                analyze_serially(
+                let analysis = analyze_serially(
                     session,
                     &mut opened,
                     &pcm,
                     item_index,
                     control,
                     display_path,
-                )?
+                    #[cfg(feature = "performance-probes")]
+                    &mut block_geometry,
+                )?;
+                (analysis, false)
             }
         };
 
         let diagnostics = opened.reader.diagnostics().clone();
         match AnalysisReport::try_new(opened.source, pcm, analysis, diagnostics) {
-            Ok(report) => Ok(report),
+            Ok(report) => Ok(OpenedAnalysis {
+                report,
+                #[cfg(feature = "performance-probes")]
+                overlapped: _overlapped,
+                #[cfg(feature = "performance-probes")]
+                decoded_blocks: block_geometry.blocks,
+                #[cfg(feature = "performance-probes")]
+                final_block_frames: block_geometry.final_block_frames,
+            }),
             Err(error) => Err(error
                 .with_display_path(display_path)
                 .with_backend(opened.reader.diagnostics().backend.clone())),
@@ -201,9 +380,9 @@ pub(crate) struct OverlapBudget {
     /// Instance-owned deterministic fault injection; production always leaves
     /// it false.
     inject_spawn_failure: bool,
-    /// Deterministic schedule seam on the analysis thread. Zero-sized outside
+    /// Deterministic schedule seam across the hand-off. Zero-sized outside
     /// tests, so production carries no hook or branch for it.
-    analyst_schedule: AnalystSchedule,
+    schedule: OverlapSchedule,
 }
 
 impl OverlapBudget {
@@ -225,8 +404,8 @@ impl OverlapBudget {
             && retained <= self.max_in_flight_pcm_bytes
     }
 
-    fn analyst_schedule(&self) -> AnalystSchedule {
-        self.analyst_schedule.clone()
+    fn schedule(&self) -> OverlapSchedule {
+        self.schedule.clone()
     }
 }
 
@@ -235,48 +414,111 @@ enum AnalysisInput {
     Finish,
 }
 
-/// A deterministic seam on the analysis thread, for forcing schedules the
-/// production build can reach but a plain fixture cannot.
+#[cfg(not(test))]
+fn send_analysis_block(sender: &SyncSender<AnalysisInput>, block: PcmBlock) -> bool {
+    sender.send(AnalysisInput::Block(block)).is_ok()
+}
+
+#[cfg(test)]
+fn send_analysis_block(
+    sender: &SyncSender<AnalysisInput>,
+    block: PcmBlock,
+    block_index: usize,
+    schedule: &OverlapSchedule,
+) -> bool {
+    let sent = match sender.try_send(AnalysisInput::Block(block)) {
+        Ok(()) => true,
+        Err(std::sync::mpsc::TrySendError::Full(AnalysisInput::Block(block))) => {
+            // This hook runs only after the real depth-one channel reports
+            // itself full, immediately before the same input enters the
+            // blocking send. Tests can therefore release a held analyst
+            // without inferring queue state from progress timing.
+            schedule.on_full_send(block_index);
+            sender.send(AnalysisInput::Block(block)).is_ok()
+        }
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
+        Err(std::sync::mpsc::TrySendError::Full(AnalysisInput::Finish)) => {
+            unreachable!("send_analysis_block only constructs block inputs")
+        }
+    };
+    if sent {
+        schedule.after_send(block_index);
+    }
+    sent
+}
+
+/// A deterministic seam around the overlap hand-off, for forcing schedules
+/// the production build can reach but a plain fixture cannot.
 ///
 /// In an ordinary build this is a zero-sized no-op, so the overlap carries no
 /// hook, branch or storage for it.
 #[cfg(not(test))]
 #[derive(Debug, Clone, Default)]
-pub(crate) struct AnalystSchedule {}
+pub(crate) struct OverlapSchedule {}
 
 #[cfg(not(test))]
-impl AnalystSchedule {
+impl OverlapSchedule {
     #[inline]
-    fn before_push(&self, _block_index: usize) {}
+    fn before_push(&self, _block: &PcmBlock) {}
 }
 
 #[cfg(test)]
 #[derive(Clone, Default)]
-pub(crate) struct AnalystSchedule {
+pub(crate) struct OverlapSchedule {
     #[allow(clippy::type_complexity)]
-    before_push: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync>>,
+    before_push: Option<std::sync::Arc<dyn Fn(usize, &PcmBlock) + Send + Sync>>,
+    #[allow(clippy::type_complexity)]
+    on_full_send: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync>>,
+    #[allow(clippy::type_complexity)]
+    after_send: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync>>,
 }
 
 #[cfg(test)]
-impl std::fmt::Debug for AnalystSchedule {
+impl std::fmt::Debug for OverlapSchedule {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("AnalystSchedule")
+            .debug_struct("OverlapSchedule")
             .field("before_push", &self.before_push.is_some())
+            .field("on_full_send", &self.on_full_send.is_some())
+            .field("after_send", &self.after_send.is_some())
             .finish()
     }
 }
 
 #[cfg(test)]
-impl AnalystSchedule {
-    fn new(before_push: impl Fn(usize) + Send + Sync + 'static) -> Self {
+impl OverlapSchedule {
+    fn new(before_push: impl Fn(usize, &PcmBlock) + Send + Sync + 'static) -> Self {
         Self {
             before_push: Some(std::sync::Arc::new(before_push)),
+            on_full_send: None,
+            after_send: None,
         }
     }
 
-    fn before_push(&self, block_index: usize) {
+    fn with_full_send_hook(mut self, on_full_send: impl Fn(usize) + Send + Sync + 'static) -> Self {
+        self.on_full_send = Some(std::sync::Arc::new(on_full_send));
+        self
+    }
+
+    fn with_after_send_hook(mut self, after_send: impl Fn(usize) + Send + Sync + 'static) -> Self {
+        self.after_send = Some(std::sync::Arc::new(after_send));
+        self
+    }
+
+    fn before_push(&self, block_index: usize, block: &PcmBlock) {
         if let Some(hook) = &self.before_push {
+            hook(block_index, block);
+        }
+    }
+
+    fn on_full_send(&self, block_index: usize) {
+        if let Some(hook) = &self.on_full_send {
+            hook(block_index);
+        }
+    }
+
+    fn after_send(&self, block_index: usize) {
+        if let Some(hook) = &self.after_send {
             hook(block_index);
         }
     }
@@ -294,22 +536,33 @@ fn analyze_overlapped(
     control: &ExecutionControl<'_>,
     display_path: &str,
     budget: &OverlapBudget,
+    #[cfg(feature = "performance-probes")] block_geometry: &mut DecodeBlockGeometry,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     // One queued block. A deeper queue would buy no overlap for two stages and
     // would retain PCM the plan has not priced.
     let (blocks, incoming) = sync_channel::<AnalysisInput>(1);
 
-    let schedule = budget.analyst_schedule();
+    let analyst_schedule = budget.schedule();
+    #[cfg(test)]
+    let producer_schedule = analyst_schedule.clone();
     thread::scope(|scope| {
         let operation = move || -> Result<Option<_>, AnalysisError> {
             // The caller thread already pushed block 0, so the first block this
             // thread sees is block 1 of the stream.
+            #[cfg(test)]
             let mut block_index = 1_usize;
             loop {
                 match incoming.recv() {
                     Ok(AnalysisInput::Block(block)) => {
-                        schedule.before_push(block_index);
-                        block_index += 1;
+                        analyst_schedule.before_push(
+                            #[cfg(test)]
+                            block_index,
+                            &block,
+                        );
+                        #[cfg(test)]
+                        {
+                            block_index = block_index.saturating_add(1);
+                        }
                         session.push_interleaved(block.samples())?;
                     }
                     Ok(AnalysisInput::Finish) => {
@@ -338,6 +591,8 @@ fn analyze_overlapped(
         let pcm = opened.reader.stream_info().clone();
 
         let decoded = (|| -> Result<(), AnalysisError> {
+            #[cfg(test)]
+            let mut block_index = 1_usize;
             loop {
                 ensure_not_cancelled(control)?;
                 let Some(block) = read_checked(opened, &pcm, display_path)? else {
@@ -350,12 +605,25 @@ fn analyze_overlapped(
                     }
                     return Ok(());
                 };
+                #[cfg(feature = "performance-probes")]
+                block_geometry.record(&block)?;
                 emit_decode_progress(opened, item_index, control, display_path);
-                if blocks.send(AnalysisInput::Block(block)).is_err() {
+                if !send_analysis_block(
+                    &blocks,
+                    block,
+                    #[cfg(test)]
+                    block_index,
+                    #[cfg(test)]
+                    &producer_schedule,
+                ) {
                     // The analyzer stopped early, so it holds the failure that
                     // decides this stream. Stop feeding it and let the join
                     // below report that error rather than a disconnect.
                     return Ok(());
+                }
+                #[cfg(test)]
+                {
+                    block_index = block_index.saturating_add(1);
                 }
             }
         })();
@@ -393,6 +661,7 @@ fn analyze_serially(
     item_index: usize,
     control: &ExecutionControl<'_>,
     display_path: &str,
+    #[cfg(feature = "performance-probes")] block_geometry: &mut DecodeBlockGeometry,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     loop {
         ensure_not_cancelled(control)?;
@@ -400,6 +669,8 @@ fn analyze_serially(
             emit_decode_progress(opened, item_index, control, display_path);
             break;
         };
+        #[cfg(feature = "performance-probes")]
+        block_geometry.record(&block)?;
         session.push_interleaved(block.samples())?;
         emit_decode_progress(opened, item_index, control, display_path);
     }
@@ -736,14 +1007,14 @@ mod tests {
             max_in_flight_pcm_bytes: 4 * 1024 * 1024,
             max_pcm_block_bytes: Some(256 * size_of::<f64>() as u64),
             inject_spawn_failure: false,
-            analyst_schedule: AnalystSchedule::default(),
+            schedule: OverlapSchedule::default(),
         }
     }
 
-    /// The overlap budget with a deterministic hook on the analysis thread.
-    fn overlapping_with(schedule: AnalystSchedule) -> OverlapBudget {
+    /// The overlap budget with deterministic hand-off hooks.
+    fn overlapping_with(schedule: OverlapSchedule) -> OverlapBudget {
         OverlapBudget {
-            analyst_schedule: schedule,
+            schedule,
             ..overlapping()
         }
     }
@@ -1064,8 +1335,8 @@ mod tests {
 
         let report = Analyzer::analyze_opened(
             opened_audio(channels, channels, indexed_blocks(32, channels)),
-            overlapping_with(AnalystSchedule::new(move |index| {
-                recorder.lock().unwrap().push(index);
+            overlapping_with(OverlapSchedule::new(move |_position, block| {
+                recorder.lock().unwrap().push(block.samples()[0].to_bits());
             })),
             0,
             &ExecutionControl::new(&cancellation, &progress),
@@ -1075,13 +1346,18 @@ mod tests {
 
         assert!(LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get));
         // Block 0 is pushed on the calling thread, so the analysis thread sees
-        // exactly blocks 1..32, strictly ascending and with nothing repeated.
-        assert_eq!(*seen.lock().unwrap(), (1..32).collect::<Vec<_>>());
+        // the identities encoded in blocks 1..32, strictly ascending and with
+        // nothing repeated. The expectation comes from the block data rather
+        // than a receiver-owned counter.
+        let expected = (1..32)
+            .map(|index| ((index * 8) as f64 / 4096.0).to_bits())
+            .collect::<Vec<_>>();
+        assert_eq!(*seen.lock().unwrap(), expected);
         assert_eq!(report.analysis().frames_seen(), 32 * 4);
     }
 
     #[test]
-    fn a_forced_analyst_lag_changes_nothing_about_the_result() {
+    fn a_forced_full_handoff_changes_nothing_about_the_result() {
         let channels = ChannelCount::new(2).unwrap();
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
@@ -1096,65 +1372,57 @@ mod tests {
         )
         .expect("the unhindered overlap must analyze the fixture");
 
-        // Hold the analysis thread on its first block until the decoding thread
-        // has necessarily filled the depth-one queue and blocked on send. The
-        // release is driven by the decoding thread's own progress events, so the
-        // interleaving is deterministic rather than timed.
-        let (blocked, release) = std::sync::mpsc::channel::<()>();
-        let release = Mutex::new(release);
+        // Hold the analysis thread on block 1. Block 2 then occupies the sole
+        // queue slot, and the test-only send seam releases the analyst only
+        // after the real SyncSender reports Full for block 3. This observes the
+        // queue state directly instead of inferring it from pre-send progress.
+        let (release, release_receiver) = std::sync::mpsc::channel::<()>();
+        let release_receiver = Mutex::new(release_receiver);
+        let (analyst_held, wait_until_held) = std::sync::mpsc::channel::<()>();
+        let wait_until_held = Mutex::new(wait_until_held);
+        let full_sends = Arc::new(Mutex::new(Vec::new()));
+        let observed_full_sends = Arc::clone(&full_sends);
+        let release = Mutex::new(Some(release));
+        let schedule = OverlapSchedule::new(move |index, _block| {
+            if index == 1 {
+                let _ = analyst_held.send(());
+                release_receiver
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(30))
+                    .expect("the depth-one hand-off must become full");
+            }
+        })
+        .with_after_send_hook(move |index| {
+            if index == 1 {
+                wait_until_held
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(30))
+                    .expect("the analyst must hold block 1 before decode continues");
+            }
+        })
+        .with_full_send_hook(move |index| {
+            observed_full_sends.lock().unwrap().push(index);
+            if let Some(release) = release.lock().unwrap().take() {
+                let _ = release.send(());
+            }
+        });
         let lagged = Analyzer::analyze_opened(
             opened_audio(channels, channels, varied_blocks(channels)),
-            overlapping_with(AnalystSchedule::new(move |index| {
-                if index == 1 {
-                    // A timeout fails loudly instead of hanging if the queue
-                    // depth ever stops forcing the decoder to block here.
-                    release
-                        .lock()
-                        .unwrap()
-                        .recv_timeout(Duration::from_secs(30))
-                        .expect("the decoding thread must reach its blocking send");
-                }
-            })),
+            overlapping_with(schedule),
             0,
-            &ExecutionControl::new(&cancellation, &BlockedAtSend::new(blocked)),
+            &control,
             "lag.fake",
         )
         .expect("a lagging analysis thread must still analyze the fixture");
 
+        assert_eq!(full_sends.lock().unwrap().first(), Some(&3));
         assert_eq!(
             format!("{:?}", prompt.analysis()),
             format!("{:?}", lagged.analysis()),
             "the schedule of the two threads may not reach the result"
         );
-    }
-
-    /// Releases the analysis thread once the decoder has published enough
-    /// progress that its next send must block on the depth-one queue.
-    struct BlockedAtSend {
-        events: TestCounter,
-        release: Mutex<Option<std::sync::mpsc::Sender<()>>>,
-    }
-
-    impl BlockedAtSend {
-        fn new(release: std::sync::mpsc::Sender<()>) -> Self {
-            Self {
-                events: TestCounter::new(0),
-                release: Mutex::new(Some(release)),
-            }
-        }
-    }
-
-    impl crate::ProgressSink for BlockedAtSend {
-        fn emit(&self, _event: AnalysisEvent) {
-            // Block 0 pushed and reported, then blocks 1 and 2 read: one is
-            // held by the analyst and one fills the queue, so the send after
-            // this event is the one that blocks.
-            if self.events.fetch_add(1, Ordering::SeqCst) == 2
-                && let Some(release) = self.release.lock().unwrap().take()
-            {
-                let _ = release.send(());
-            }
-        }
     }
 
     #[test]
@@ -1166,7 +1434,7 @@ mod tests {
             let progress = NoopProgressSink;
             let error = Analyzer::analyze_opened(
                 opened_audio(channels, channels, indexed_blocks(32, channels)),
-                overlapping_with(AnalystSchedule::new(move |index| {
+                overlapping_with(OverlapSchedule::new(move |index, _block| {
                     assert!(index != at, "injected analysis panic at block {index}");
                 })),
                 0,

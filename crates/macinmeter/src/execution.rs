@@ -1,3 +1,5 @@
+#[cfg(feature = "performance-probes")]
+use crate::application::ApplicationPerformanceProbe;
 use crate::{
     AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchReport, BatchRequest,
     CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
@@ -206,6 +208,22 @@ impl Application {
         self.analyze_file_with_control(request, &ExecutionControl::new(&cancellation, &progress))
     }
 
+    /// Analyze one file and return the exact non-default execution topology.
+    ///
+    /// This measurement entry is absent from ordinary product builds and does
+    /// not add any field to `AnalysisReport` or the wire schema.
+    #[cfg(feature = "performance-probes")]
+    #[doc(hidden)]
+    pub fn analyze_file_with_performance_probe(
+        &self,
+        request: AnalyzeRequest,
+    ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        self.reserve(&cancellation)?
+            .analyze_file_with_performance_probe(request, &progress)
+    }
+
     pub fn analyze_file_with_control(
         &self,
         request: AnalyzeRequest,
@@ -283,6 +301,19 @@ impl ApplicationJob {
         let decode = self.allocation().decode();
         self.execute(progress, |control| {
             Analyzer::new(decode).analyze_file_with_control(request, control)
+        })
+    }
+
+    #[cfg(feature = "performance-probes")]
+    #[doc(hidden)]
+    pub fn analyze_file_with_performance_probe(
+        self,
+        request: AnalyzeRequest,
+        progress: &dyn ProgressSink,
+    ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
+        let decode = self.allocation().decode();
+        self.execute(progress, |control| {
+            Analyzer::new(decode).analyze_file_with_performance_probe(request, control)
         })
     }
 
@@ -557,11 +588,27 @@ mod tests {
     #[test]
     fn performance_probe_builds_can_measure_decode_analysis_overlap() {
         let application = Application::with_budget(bounded_budget(8));
-        wire_bytes(&application, "native-pcm-v1/wav-pcm-s16-stereo.wav");
+        let (report, probe) = application
+            .analyze_file_with_performance_probe(AnalyzeRequest::new(fixture(
+                "native-pcm-v1/wav-pcm-s16-stereo.wav",
+            )))
+            .expect("the explicit performance path must analyze the WAV fixture");
 
         assert!(
             last_analysis_overlapped(),
             "the non-default measurement build must reach the candidate"
+        );
+        assert_eq!(probe.granted_decode_workers(), 8);
+        assert_eq!(probe.selected_engine(), "Serial");
+        assert_eq!(probe.selected_total_workers(), 1);
+        assert_eq!(probe.selected_decoder_workers(), 1);
+        assert_eq!(probe.selected_hasher_workers(), 0);
+        assert!(probe.decode_analysis_overlapped());
+        assert!(probe.decoded_blocks() > 0);
+        assert!(probe.final_block_frames() > 0);
+        assert_eq!(
+            report.analysis().frames_seen(),
+            report.diagnostics().decoded_frames
         );
     }
 

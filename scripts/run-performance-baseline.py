@@ -72,6 +72,10 @@ FILE_LANE_COUNTS = (1, 2, 3, 4, 8)
 # graduate. One worker is the boundary case for decode-analysis overlap: a
 # serial route spends its only permit, so no spare remains for an overlap.
 APPLICATION_WORKER_COUNTS = (1, 2, 4, 8)
+# Source-bound geometry of the current stable WAV/AIFF routes. The long serial
+# corpus deliberately adds one frame beyond 10,000 complete packets so this
+# gate can prove the application really handed a short tail across the overlap.
+SERIAL_ROUTE_PCM_BLOCK_FRAMES = 1_152
 # Mirrors of the crate-private application plan derivation the worker uses.
 DECODE_QUEUE_DEPTH_PER_WORKER = 4
 DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER = 4 * 1024 * 1024
@@ -234,13 +238,13 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
         BenchmarkCase(
             "application/wave-s16-240s",
             "application",
-            "Application reservation over a long WAV stream with a partial final block",
+            "Application reservation over a long WAV stream with a one-frame final block",
             ("application", media("stereo-s16-240s.wav"), "2"),
         ),
         BenchmarkCase(
             "application/aiff-s16-240s",
             "application",
-            "Application reservation over a long AIFF stream with a partial final block",
+            "Application reservation over a long AIFF stream with a one-frame final block",
             ("application", media("stereo-s16-240s.aiff"), "2"),
         ),
         BenchmarkCase(
@@ -1383,6 +1387,8 @@ def validate_corpus_work(
                     raise BaselineError(
                         f"{case.case_id} application frame count drifted"
                     )
+                if case.case_id.startswith("application-workers/"):
+                    assert_application_allocation(case, details, frames, entry)
                 analysis_fingerprint = details.get(
                     "analysisResultFingerprintSha256"
                 )
@@ -1471,6 +1477,102 @@ def validate_corpus_work(
             "application analysis differs across containers carrying identical PCM: "
             f"{mismatched_pcm_groups}"
         )
+
+
+def assert_application_allocation(
+    case: BenchmarkCase,
+    details: dict[str, object],
+    frames: int,
+    manifest_entry: dict[str, object],
+) -> None:
+    """Bind an application worker case to the topology it claims to time."""
+
+    if len(case.arguments) != 4:
+        raise BaselineError(
+            f"{case.case_id} is not an explicit application worker case"
+        )
+    requested = int(case.arguments[3])
+    container = manifest_entry.get("container")
+    codec = manifest_entry.get("codec")
+    serial_route = container in ("wave", "aiff") and codec in (
+        "pcm_integer",
+        "pcm_float",
+    )
+    flac_route = container == "flac" and codec == "flac"
+    alac_route = container == "mp4" and codec == "alac"
+    if not (serial_route or flac_route or alac_route):
+        raise BaselineError(
+            f"{case.case_id} has no declared application worker route"
+        )
+
+    expected_engine = (
+        "Serial"
+        if serial_route or requested == 1
+        else "FlacPacketWorkers"
+        if flac_route
+        else "AlacPacketWorkers"
+    )
+    expected_total_workers = 1 if serial_route else requested
+    expected_hasher_workers = int(flac_route and requested == MAX_DECODE_WORKERS)
+    expected_decoder_workers = expected_total_workers - expected_hasher_workers
+    expected = {
+        "requestedDecodeWorkers": requested,
+        # Reject host clamping instead of writing a w8 label over a narrower
+        # plan. A formal 1/2/4/8 sweep needs a host that can grant all four.
+        "grantedDecodeWorkers": requested,
+        "selectedEngine": expected_engine,
+        "selectedTotalWorkers": expected_total_workers,
+        "selectedDecoderWorkers": expected_decoder_workers,
+        "selectedHasherWorkers": expected_hasher_workers,
+        "decodeAnalysisOverlapped": serial_route and requested > 1,
+    }
+    for key in (
+        "requestedDecodeWorkers",
+        "grantedDecodeWorkers",
+        "selectedTotalWorkers",
+        "selectedDecoderWorkers",
+        "selectedHasherWorkers",
+    ):
+        if not isinstance(details.get(key), int) or isinstance(details.get(key), bool):
+            raise BaselineError(
+                f"{case.case_id} application topology field {key} is not an integer"
+            )
+    if not isinstance(details.get("selectedEngine"), str) or not isinstance(
+        details.get("decodeAnalysisOverlapped"), bool
+    ):
+        raise BaselineError(f"{case.case_id} application topology types are invalid")
+    for key, value in expected.items():
+        if details.get(key) != value:
+            raise BaselineError(
+                f"{case.case_id} application topology field {key} is "
+                f"{details.get(key)!r}, expected {value!r}"
+            )
+
+    decoded_blocks = details.get("decodedBlocksPerIteration")
+    final_block_frames = details.get("finalBlockFrames")
+    if (
+        not isinstance(decoded_blocks, int)
+        or isinstance(decoded_blocks, bool)
+        or decoded_blocks <= 0
+        or not isinstance(final_block_frames, int)
+        or isinstance(final_block_frames, bool)
+        or final_block_frames <= 0
+    ):
+        raise BaselineError(f"{case.case_id} application block geometry is invalid")
+
+    if serial_route:
+        expected_blocks = (
+            frames + SERIAL_ROUTE_PCM_BLOCK_FRAMES - 1
+        ) // SERIAL_ROUTE_PCM_BLOCK_FRAMES
+        expected_final_frames = frames % SERIAL_ROUTE_PCM_BLOCK_FRAMES
+        if expected_final_frames == 0:
+            expected_final_frames = SERIAL_ROUTE_PCM_BLOCK_FRAMES
+        if decoded_blocks != expected_blocks or final_block_frames != expected_final_frames:
+            raise BaselineError(
+                f"{case.case_id} decoded {decoded_blocks!r} blocks ending in "
+                f"{final_block_frames!r} frames, expected {expected_blocks} blocks "
+                f"ending in {expected_final_frames} frames"
+            )
 
 
 def assert_decode_allocation(case: BenchmarkCase, details: dict[str, object]) -> None:
