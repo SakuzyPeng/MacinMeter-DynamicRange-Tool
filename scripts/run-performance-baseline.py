@@ -226,6 +226,23 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             "Application reservation, AIFF decoding, analysis, and report construction",
             ("application", media("stereo-s16-60s.aiff"), "8"),
         ),
+        # The 60s serial tracks are too short to say anything about a stream
+        # that hands hundreds of blocks across an internal boundary, which is
+        # the shape every serial-route optimisation has to hold for. The
+        # graduated packet routes already carry 240s media; these give the
+        # serial routes the same reach.
+        BenchmarkCase(
+            "application/wave-s16-240s",
+            "application",
+            "Application reservation over a long WAV stream with a partial final block",
+            ("application", media("stereo-s16-240s.wav"), "2"),
+        ),
+        BenchmarkCase(
+            "application/aiff-s16-240s",
+            "application",
+            "Application reservation over a long AIFF stream with a partial final block",
+            ("application", media("stereo-s16-240s.aiff"), "2"),
+        ),
         BenchmarkCase(
             "application/flac-s16",
             "application",
@@ -446,6 +463,8 @@ def application_worker_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             ("wave-s16", "stereo-s16-60s.wav", 8, "WAV s16"),
             ("wave-f64", "stereo-f64-60s.wav", 8, "WAV f64"),
             ("aiff-s16", "stereo-s16-60s.aiff", 8, "AIFF s16"),
+            ("wave-s16-240s", "stereo-s16-240s.wav", 2, "WAV s16 240s"),
+            ("aiff-s16-240s", "stereo-s16-240s.aiff", 2, "AIFF s16 240s"),
             ("flac-s24-240s", "stereo-s24-flac-240s.flac", 3, "FLAC s24"),
             ("alac-s16-240s", "stereo-s16-alac-240s.m4a", 3, "ALAC s16"),
         )

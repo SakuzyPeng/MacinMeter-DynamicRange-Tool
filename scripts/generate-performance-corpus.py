@@ -1055,9 +1055,81 @@ def write_discovery_tree(root: Path) -> dict[str, object]:
     }
 
 
+def write_long_serial_routes(root: Path) -> list[dict[str, object]]:
+    """Long WAV and AIFF, the serial routes' long-audio and many-block case.
+
+    The graduated packet routes already have 240s media; the serial routes had
+    only 60s, so nothing exercised a serial stream long enough to hand hundreds
+    of blocks across the decode/analysis boundary. At 4096-frame blocks these
+    carry 2812 full blocks and a 2048-frame partial final block, so the short
+    tail is real media rather than a synthetic fixture.
+    """
+    values, normalized = deterministic_integer_block(channels=2, bits=16, seed=1)
+    normalized_sha = normalized_pcm_sha256(
+        normalized, frames=PACKET_SWEEP_FRAMES, channels=2
+    )
+    little = pack_integer_block(values, 16, "little")
+    big = pack_integer_block(values, 16, "big")
+    signal = "deterministic_integer_v1_seed_1"
+    entries: list[dict[str, object]] = []
+
+    for filename, identifier, container, header, payload in (
+        (
+            "stereo-s16-240s.wav",
+            "stereo-s16-wave-240s",
+            "wave",
+            wave_header(
+                frames=PACKET_SWEEP_FRAMES,
+                channels=2,
+                sample_rate=SAMPLE_RATE,
+                bits=16,
+                format_tag=1,
+            ),
+            little,
+        ),
+        (
+            "stereo-s16-240s.aiff",
+            "stereo-s16-aiff-240s",
+            "aiff",
+            aiff_header(
+                frames=PACKET_SWEEP_FRAMES,
+                channels=2,
+                sample_rate=SAMPLE_RATE,
+                bits=16,
+            ),
+            big,
+        ),
+    ):
+        path = root / filename
+        write_repeated_payload(
+            path,
+            header,
+            payload,
+            frames=PACKET_SWEEP_FRAMES,
+            channels=2,
+            bytes_per_sample=2,
+        )
+        entries.append(
+            media_entry(
+                root,
+                path,
+                identifier=identifier,
+                container=container,
+                codec="pcm_integer",
+                frames=PACKET_SWEEP_FRAMES,
+                channels=2,
+                bits=16,
+                normalized_sha256=normalized_sha,
+                signal=signal,
+            )
+        )
+    return entries
+
+
 def generate_into(root: Path) -> dict[str, object]:
     root.mkdir(parents=True)
     media = write_stereo_routes(root)
+    media.extend(write_long_serial_routes(root))
     media.extend(write_alac_routes(root))
     media.extend(write_flac_routes(root))
     media.append(write_surround_route(root))
