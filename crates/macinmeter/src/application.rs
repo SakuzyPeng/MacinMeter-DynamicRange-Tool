@@ -158,7 +158,6 @@ pub(crate) struct Analyzer {
     decoder_factory: DecoderFactory,
     /// The same grant the factory decodes inside. Overlap is charged against
     /// it, so this is a copy of one plan rather than a second budget.
-    #[cfg(feature = "performance-probes")]
     reservation: DecodeReservation,
 }
 
@@ -167,7 +166,6 @@ impl Analyzer {
     pub(crate) const fn new(decode: DecodeReservation) -> Self {
         Self {
             decoder_factory: DecoderFactory::with_application_reservation(decode),
-            #[cfg(feature = "performance-probes")]
             reservation: decode,
         }
     }
@@ -229,17 +227,14 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalyzedFile, AnalysisError> {
-        // Measurement builds read the selected engine too, because the permits
-        // a route did not spend are exactly what decode/analysis overlap may
-        // use. A requested reservation alone cannot tell them apart: every
-        // route that has not graduated falls back to the serial engine.
+        // The selected engine, not the requested reservation, decides what is
+        // left for the overlap: every route that has not graduated falls back
+        // to the serial engine and spends one permit however many it was
+        // granted, and those unspent permits are exactly what the overlap runs
+        // on. A route that spent them all leaves nothing and stays as it was.
         let (opened, execution) = self.decoder_factory.open_with_execution(&request.path)?;
         #[cfg(test)]
         LAST_DECODE_EXECUTION.with(|last| last.set(Some(execution)));
-        // The candidate remains a non-default measurement path until its
-        // ADR-0007 A/B and the rest of its graduation gates pass. Ordinary
-        // library, CLI and GUI builds therefore receive no overlap budget.
-        #[cfg(feature = "performance-probes")]
         let overlap = OverlapBudget {
             spare_permits: self
                 .reservation
@@ -251,13 +246,9 @@ impl Analyzer {
             inject_spawn_failure: false,
             schedule: OverlapSchedule::default(),
         };
-        #[cfg(not(feature = "performance-probes"))]
-        let overlap = OverlapBudget::default();
         let opened = Self::analyze_opened_run(opened, overlap, item_index, control, display_path)?;
         #[cfg(feature = "performance-probes")]
         let probe = ApplicationPerformanceProbe::new(self.reservation, execution, &opened);
-        #[cfg(not(feature = "performance-probes"))]
-        let _ = execution;
         Ok(AnalyzedFile {
             report: opened.report,
             #[cfg(feature = "performance-probes")]

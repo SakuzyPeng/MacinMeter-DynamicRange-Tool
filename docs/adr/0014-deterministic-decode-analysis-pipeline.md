@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 实施状态：In progress（packet 级已为 ALAC 与资源几何落在 permit 内的 FLAC
   route 默认启用；文件级已有非默认测量实现但产品仍固定请求一个 lane；窗口级
-  未实施；decode-analysis overlap 已有 `performance-probes` 非默认候选，尚未毕业）
+  未实施；decode-analysis overlap 已毕业并默认启用）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -674,12 +674,14 @@ ALAC 1→8 污染对照为 4.35–4.43x，没有低于既有干净值。
 以前的“没有被测量，也没有被归因”据此关闭；backend 的微架构膨胀、varied 静态映射
 不均与 hand-off 是**已经测量但尚未继续优化**的边界，不是仍然未知的顺序底线。
 
-### decode-analysis overlap 候选（2026-08-06，非默认）
+### decode-analysis overlap（2026-08-06，已毕业并默认启用）
 
-容量 1 的顺序 channel 候选已在 `Application` owning layer 实现：decode 保留调用
-线程，单一 analysis thread 按块序推进同一个 `AnalyzerSession`。它只在非默认
-`performance-probes` feature 中从 route 未使用的 worker permit 取得预算；普通
-library、CLI 与 GUI build 的 overlap budget 恒为零，不改变产品默认路径。
+容量 1 的顺序 channel 已在 `Application` owning layer 实现并默认启用：decode 保留
+调用线程，单一 analysis thread 按块序推进同一个 `AnalyzerSession`。它的预算来自
+**route 未使用的 worker permit**——串行 route 无论获授几个 permit 都只花 1 个，剩
+下的正是 overlap 的来源；花光 permit 的 route（packet 引擎、单 worker plan）没有
+余量，路径与启用前完全相同。因此这不是新增线程，是用掉本已闲置的那一个，§5 的
+一次性授予与线程总量不变。
 
 准入不再用首块外推全流，而是消费 decoder 在 probe 时根据 route 元数据证明的单块
 `f64` PCM 上界；无法证明上界时串行退化。channel 以显式 `Finish` 区分真正 EOF 与
@@ -689,8 +691,15 @@ decode failure/cancellation 的断开，后两者不 finalize 部分 analysis pr
 测试。非默认 application worker sweep 现在把 requested/granted plan、实际 decode
 engine/worker 细分、overlap 选择及末块几何写入原始样本并逐项校验；宿主无法完整授予
 1/2/4/8 worker 时拒绝把较窄执行误记为较宽 case。WAV/AIFF 长语料各含 10,000 个完整
-1,152-frame 解码块及一个真实的一帧末块。不过 ADR-0007 source-bound A/B、RSS 与完整
-route/corpus 门禁仍未执行，因此该候选不得进入默认 production build。
+1,152-frame 解码块及一个真实的一帧末块。
+
+毕业依据：129 个 fixture 的 release CLI 输出（含 stderr）与启用前逐字节相同；两台
+异构主机上串行 route 的收益为 1.31–1.45x，且位移达同轮合并 MAD 的 5.1x–12.6x；
+packet route 作为内建对照在每个宽度上 `decodeAnalysisOverlapped` 均为 false；每条
+track 跨 1/2/4/8 worker 的 result fingerprint 唯一；RSS 增量约 0.07–0.2 MiB，只在
+overlap 实际启用的宽度出现，且不随流长或 worker 数增长。原始记录不入仓库。
+
+产品仍不发布任何加速比：结果与 worker 数无关，报告不指示由哪条路径产生。
 
 ## 明确非目标
 
@@ -726,8 +735,8 @@ workers。只有已毕业且资源几何可证明落在 permit 内的 route 会�
 超出 permit 的 FLAC 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持
 完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）已有仅供
 `performance-probes` 测量的实现，但产品仍固定请求一个 lane，尚未毕业或默认启用；
-窗口级（P2）仍未实施。decode-analysis overlap 同样只存在于非默认
-`performance-probes` build，尚未完成 ADR-0007 裁决，普通产品 build 保持串行。
+窗口级（P2）仍未实施。decode-analysis overlap 已毕业并默认启用：它只消费 route
+未花掉的 permit，花光 permit 的 route 与单 worker plan 路径不变。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项

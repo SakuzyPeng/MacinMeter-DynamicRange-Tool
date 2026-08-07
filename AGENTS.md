@@ -32,8 +32,10 @@ dependencies into lower layers.
   route and for FLAC streams whose STREAMINFO geometry fits the granted
   reservation, bounded by one application-owned plan drawn from the host. FLAC
   preserves equivalent ordered full-stream MD5 verification on every route.
-  File lanes (P1) have a non-default measurement implementation, but the product
-  still requests one lane; window-level analysis (P2) remains unimplemented.
+  Decode-analysis overlap graduated and is enabled by default, drawn from the
+  permits a route left unspent rather than from a new thread. File lanes (P1)
+  have a non-default measurement implementation, but the product still requests
+  one lane; window-level analysis (P2) remains unimplemented.
   Every further axis stays disabled until its route/axis-specific differential,
   failure, cancellation, resource, and ADR-0007 performance gates pass.
 - WAV integer/float PCM, FLAC, AIFF integer PCM, and the ADR-0013 constrained

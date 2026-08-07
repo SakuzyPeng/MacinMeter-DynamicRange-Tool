@@ -572,15 +572,46 @@ mod tests {
         crate::application::LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get)
     }
 
-    #[cfg(not(feature = "performance-probes"))]
     #[test]
-    fn ordinary_builds_keep_decode_analysis_overlap_disabled() {
+    fn a_serial_route_overlaps_decode_and_analysis_in_an_ordinary_build() {
         let application = Application::with_budget(bounded_budget(8));
         wire_bytes(&application, "native-pcm-v1/wav-pcm-s16-stereo.wav");
 
         assert!(
+            last_analysis_overlapped(),
+            "a graduated overlap must reach the ordinary product build"
+        );
+    }
+
+    #[test]
+    fn a_one_worker_plan_leaves_no_permit_to_overlap_with() {
+        // The serial route spends the only permit, so there is nothing left to
+        // put an analysis thread on. This is the boundary the whole admission
+        // rests on, and it must hold in the product build, not just under the
+        // measurement feature.
+        let application = Application::with_budget(ExecutionBudget::serial());
+        wire_bytes(&application, "native-pcm-v1/wav-pcm-s16-stereo.wav");
+
+        assert!(
             !last_analysis_overlapped(),
-            "the ungraduated candidate must not enter the ordinary product build"
+            "a plan with no spare permit may never start an analysis thread"
+        );
+    }
+
+    #[test]
+    fn a_packet_route_that_spent_every_permit_does_not_also_overlap() {
+        // ALAC takes all eight permits for its packet workers, so the overlap
+        // has nothing to spend and the two axes cannot stack.
+        let application = Application::with_budget(bounded_budget(8));
+        wire_bytes(
+            &application,
+            "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+        );
+
+        assert_eq!(last_execution().workers().get(), 8);
+        assert!(
+            !last_analysis_overlapped(),
+            "a route that spent every permit may not also claim an overlap thread"
         );
     }
 

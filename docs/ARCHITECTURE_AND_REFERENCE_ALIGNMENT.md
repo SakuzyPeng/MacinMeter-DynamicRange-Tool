@@ -45,7 +45,7 @@
 > [ADR-0013：稳定 MP4/M4A + ALAC 路由](adr/0013-mp4-m4a-alac-stable-route.md)（Accepted / Done）
 >
 > post-M6 并发方向：
-> [ADR-0014：确定性有界并行与 packet 解码优先](adr/0014-deterministic-decode-analysis-pipeline.md)（Accepted / In progress；packet 级已为 ALAC 与适配资源几何的 FLAC route 默认启用；文件级已有非默认测量实现但产品仍固定一个 lane，窗口级未实施）
+> [ADR-0014：确定性有界并行与 packet 解码优先](adr/0014-deterministic-decode-analysis-pipeline.md)（Accepted / In progress；packet 级已为 ALAC 与适配资源几何的 FLAC route 默认启用；decode-analysis overlap 已毕业并默认启用；文件级已有非默认测量实现但产品仍固定一个 lane，窗口级未实施）
 
 ## 1. 文档目的
 

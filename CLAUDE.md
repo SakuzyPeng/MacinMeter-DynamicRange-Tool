@@ -40,11 +40,14 @@ domain
 - ADR-0014 packet-level decoding is enabled for the ADR-0013 ALAC route and for
   FLAC streams whose STREAMINFO geometry proves the whole reorder window fits
   the granted reservation; a stream that cannot prove that bound degrades to the
-  serial oracle before any thread is created. File lanes (P1) have a non-default
-  measurement implementation, but the product continues to request one lane;
-  window-level analysis (P2) remains unimplemented. Do not describe either axis
-  as shipped. Results never depend on worker count, so a report is not evidence
-  of which engine produced it.
+  serial oracle before any thread is created. Decode-analysis overlap graduated
+  and is enabled by default; it spends only the permits a route left unspent, so
+  a route that spent them all and a one-worker plan behave exactly as before.
+  File lanes (P1) have a non-default measurement implementation, but the product
+  continues to request one lane; window-level analysis (P2) remains
+  unimplemented. Do not describe either of those two as shipped. Results never
+  depend on worker count, so a report is not evidence of which engine produced
+  it.
 - All internal concurrency axes must consume one application-owned worker and
   memory plan; nested file × packet × window pools are forbidden. FLAC graduated
   with ordered full-stream MD5 intact; it may not later be disabled or weakened.
