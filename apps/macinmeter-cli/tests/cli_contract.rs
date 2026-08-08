@@ -425,6 +425,28 @@ fn batch_output_file_preserves_item_order_and_progress_identity_across_lanes() {
 }
 
 #[test]
+fn batch_help_states_the_ordering_guarantee_rather_than_an_execution_strategy() {
+    // The help text ships inside the binary, so it is a release surface. It
+    // described batch as serial for as long as batch was serial, and file
+    // lanes made that false. What a caller can rely on is the report order,
+    // which no lane count changes; how many items run at once is not a public
+    // contract and must not be restated here as if it were.
+    for arguments in [["--help"].as_slice(), ["batch", "--help"].as_slice()] {
+        let output = run(arguments);
+        assert_code(&output, 0);
+        let help = stdout(&output);
+        assert!(
+            help.contains("stable input order"),
+            "{arguments:?} must state the order guarantee:\n{help}"
+        );
+        assert!(
+            !help.to_lowercase().contains("serial"),
+            "{arguments:?} must not claim serial execution:\n{help}"
+        );
+    }
+}
+
+#[test]
 fn missing_analyze_path_and_implicit_old_style_are_argument_errors() {
     let missing = run(["analyze"]);
     assert_code(&missing, 2);
