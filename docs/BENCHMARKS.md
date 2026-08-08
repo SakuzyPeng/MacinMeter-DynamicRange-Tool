@@ -23,10 +23,11 @@ external decoder. The M6 suite measures these scopes separately:
 - recursive discovery and wire-v3 pretty-JSON rendering.
 
 Non-default case families extend it along the ADR-0014 axes: a packet-worker
-sweep, an application worker sweep, a file-lane sweep, and source-owned
-pipeline attribution probes. The lane and worker sweeps record the plan the
-host actually granted and the split it actually made, and fail rather than
-label a narrowed execution with the width it requested.
+sweep, an application worker sweep, a file-lane sweep, a decode-analysis
+hand-off shape sweep, and source-owned pipeline attribution probes. The lane,
+worker, and hand-off sweeps record the plan and topology that actually ran, and
+fail rather than label a narrowed or serial execution with the width or shape
+it requested.
 
 The generated corpus contains no private audio and stays under ignored
 `target/`. Its manifest pins media bytes, geometry, normalized decoded-f64

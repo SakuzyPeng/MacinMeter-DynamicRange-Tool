@@ -43,8 +43,10 @@ pub struct ApplicationPerformanceProbe {
     selected_decoder_workers: usize,
     selected_hasher_workers: usize,
     decode_analysis_overlapped: bool,
-    overlap_channel_depth: usize,
-    overlap_batch_blocks: usize,
+    requested_overlap_channel_depth: usize,
+    requested_overlap_batch_blocks: usize,
+    applied_overlap_channel_depth: Option<usize>,
+    applied_overlap_batch_blocks: Option<usize>,
     decoded_blocks: u64,
     final_block_frames: usize,
 }
@@ -64,11 +66,21 @@ impl ApplicationPerformanceProbe {
             selected_decoder_workers: execution.decoder_workers().get(),
             selected_hasher_workers: execution.hasher_workers(),
             decode_analysis_overlapped: opened.overlapped,
-            // The shape the hand-off was asked for. It is only the shape that
-            // ran when `decode_analysis_overlapped` is also true: a shape the
-            // in-flight allowance could not hold leaves the stream serial.
-            overlap_channel_depth: shape.channel_depth(),
-            overlap_batch_blocks: shape.batch_blocks(),
+            requested_overlap_channel_depth: shape.channel_depth(),
+            requested_overlap_batch_blocks: shape.batch_blocks(),
+            // A refused shape creates no hand-off at all. Keep that distinct
+            // from the request so a benchmark cannot label a serial fallback
+            // with the depth and batch it failed to apply.
+            applied_overlap_channel_depth: if opened.overlapped {
+                Some(shape.channel_depth())
+            } else {
+                None
+            },
+            applied_overlap_batch_blocks: if opened.overlapped {
+                Some(shape.batch_blocks())
+            } else {
+                None
+            },
             decoded_blocks: opened.decoded_blocks,
             final_block_frames: opened.final_block_frames,
         }
@@ -102,12 +114,20 @@ impl ApplicationPerformanceProbe {
         self.decode_analysis_overlapped
     }
 
-    pub const fn overlap_channel_depth(self) -> usize {
-        self.overlap_channel_depth
+    pub const fn requested_overlap_channel_depth(self) -> usize {
+        self.requested_overlap_channel_depth
     }
 
-    pub const fn overlap_batch_blocks(self) -> usize {
-        self.overlap_batch_blocks
+    pub const fn requested_overlap_batch_blocks(self) -> usize {
+        self.requested_overlap_batch_blocks
+    }
+
+    pub const fn applied_overlap_channel_depth(self) -> Option<usize> {
+        self.applied_overlap_channel_depth
+    }
+
+    pub const fn applied_overlap_batch_blocks(self) -> Option<usize> {
+        self.applied_overlap_batch_blocks
     }
 
     pub const fn decoded_blocks(self) -> u64 {

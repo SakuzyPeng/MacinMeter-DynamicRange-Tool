@@ -8,9 +8,10 @@
   },
   "scripts": {
     "check-version": "node scripts/sync-version.cjs --check",
+    "test:progress": "node scripts/test-batch-progress.cjs",
     "sync-version": "node scripts/sync-version.cjs --write",
     "dev": "vite",
-    "build": "npm run check-version && tsc && vite build",
+    "build": "npm run check-version && npm run test:progress && tsc && vite build",
     "preview": "vite preview",
     "tauri": "npm run check-version && tauri"
   },

@@ -37,6 +37,10 @@ leaderboard or a user-facing throughput guarantee.
   floor. It records source-owned open, decoder, conversion, queue/caller and
   hasher phases, then accepts chunked ALAC sample-table validation and direct
   construction of the final PCM buffer through interleaved Windows A/B runs.
+- [`ADR0014_FILE_LANE_WIDTH_REPORT.md`](ADR0014_FILE_LANE_WIDTH_REPORT.md)
+  records the allocation-bound file-lane width sweep on macOS arm64 and Windows
+  x86_64. Both raw records bind the clean source, worker, suite, corpus,
+  environment, every sample and the actual post-discovery allocation.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,
@@ -75,7 +79,8 @@ route-specific packet decode the first parallel candidate, followed by file- and
 window-level work. It does not turn the historical M6 records into a parallelism
 claim: every candidate needs a new source-bound record under the same ADR-0007
 protocol, and a route stays serial until it graduates on its own evidence. The
-ALAC and FLAC routes have graduated; file- and window-level work have not.
+ALAC and FLAC packet routes, decode-analysis overlap, and file lanes have
+graduated; window-level work has not.
 
 Records are bound to one host. A speedup measured on one machine says nothing
 about another, so a report compares only figures from within its own run — which

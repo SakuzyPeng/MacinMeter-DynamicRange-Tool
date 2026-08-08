@@ -791,12 +791,20 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
             json!(probe.decode_analysis_overlapped()),
         );
         object.insert(
-            "overlapChannelDepth".to_owned(),
-            json!(probe.overlap_channel_depth()),
+            "requestedOverlapChannelDepth".to_owned(),
+            json!(probe.requested_overlap_channel_depth()),
         );
         object.insert(
-            "overlapBatchBlocks".to_owned(),
-            json!(probe.overlap_batch_blocks()),
+            "requestedOverlapBatchBlocks".to_owned(),
+            json!(probe.requested_overlap_batch_blocks()),
+        );
+        object.insert(
+            "appliedOverlapChannelDepth".to_owned(),
+            json!(probe.applied_overlap_channel_depth()),
+        );
+        object.insert(
+            "appliedOverlapBatchBlocks".to_owned(),
+            json!(probe.applied_overlap_batch_blocks()),
         );
         object.insert(
             "decodedBlocksPerIteration".to_owned(),

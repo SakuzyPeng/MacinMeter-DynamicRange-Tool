@@ -741,12 +741,35 @@ mod tests {
         assert_eq!(probe.selected_decoder_workers(), 1);
         assert_eq!(probe.selected_hasher_workers(), 0);
         assert!(probe.decode_analysis_overlapped());
+        assert_eq!(probe.requested_overlap_channel_depth(), 1);
+        assert_eq!(probe.requested_overlap_batch_blocks(), 1);
+        assert_eq!(probe.applied_overlap_channel_depth(), Some(1));
+        assert_eq!(probe.applied_overlap_batch_blocks(), Some(1));
         assert!(probe.decoded_blocks() > 0);
         assert!(probe.final_block_frames() > 0);
         assert_eq!(
             report.analysis().frames_seen(),
             report.diagnostics().decoded_frames
         );
+    }
+
+    #[cfg(feature = "performance-probes")]
+    #[test]
+    fn performance_probe_distinguishes_a_refused_shape_from_the_applied_handoff() {
+        let oversized = NonZeroUsize::new(4_096).unwrap();
+        let application =
+            Application::with_budget(bounded_budget(8).with_overlap_shape(oversized, oversized));
+        let (_, probe) = application
+            .analyze_file_with_performance_probe(AnalyzeRequest::new(fixture(
+                "native-pcm-v1/wav-pcm-s16-stereo.wav",
+            )))
+            .expect("a refused measurement shape must fall back to serial analysis");
+
+        assert!(!probe.decode_analysis_overlapped());
+        assert_eq!(probe.requested_overlap_channel_depth(), 4_096);
+        assert_eq!(probe.requested_overlap_batch_blocks(), 4_096);
+        assert_eq!(probe.applied_overlap_channel_depth(), None);
+        assert_eq!(probe.applied_overlap_batch_blocks(), None);
     }
 
     #[cfg(feature = "performance-probes")]

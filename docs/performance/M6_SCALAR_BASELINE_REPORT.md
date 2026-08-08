@@ -12,7 +12,8 @@
 
 > 后继说明（2026-08-02）：本文的“不恢复并行”是 profile 前的 M6 时点结论。
 > [`ADR-0014`](../adr/0014-deterministic-decode-analysis-pipeline.md) 后来独立接受
-> packet-first 的有界并行方向；当前实现仍串行，新 candidate 必须继续以本基线
+> packet-first 的有界并行方向；在该说明写入时实现仍串行，此后 packet route、
+> decode-analysis overlap 和 file lane 已逐轴毕业。新 candidate 仍必须以本基线
 > 协议建立 source-bound 同轮 A/B。
 
 ## 结论
@@ -27,7 +28,7 @@ M6 已经得到第一份可复核的 0.2.0 安全标量/串行基线。它建立
 2. FLAC decode：同源 PCM 下，它的 decode 时间明显高于未压缩格式，并主导 FLAC
    application 路径。
 
-当前数据不支持先做文件级并发。8-track 串行 batch 的单位音频成本与单文件 WAV
+该次数据当时不支持先做文件级并发。8-track 串行 batch 的单位音频成本与单文件 WAV
 application 基本一致，没有出现额外 scheduler/discovery 瓶颈；是否需要并发仍需
 真实用户规模、较慢设备或更重 codec workload 的需求证据。
 

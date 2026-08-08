@@ -53,12 +53,15 @@
   解码，在 route 未花掉的 permit 上重叠解码与分析，并按同一 plan 推导批量的 file
   lane；单个文件仍独占整个解码器。以上均不新增公开选项，报告也不指示由哪条路径
   产生。
-- **Behavior change:** batch progress lines on stderr now interleave across
-  file lanes. Each line still names the item it belongs to, and the item order
-  inside the report is unchanged, but a script that parses stderr by line order
-  must read the item index instead.
-  **行为变更：** 批量在 stderr 上的进度行现在跨 file lane 交错。每行仍标明所属
-  条目，报告内的条目顺序不变；但按行序解析 stderr 的脚本必须改为读取条目序号。
+- **Behavior change:** batch progress events now interleave across file lanes
+  through the Rust progress sink, Tauri `analysis-event`, and CLI stderr. Every
+  event still names the item it belongs to, and the item order inside the report
+  is unchanged. Consumers must use the item index rather than treating event
+  order as a completed serial prefix; the GUI aggregates per-item progress.
+  **行为变更：** 批量进度事件现在通过 Rust progress sink、Tauri
+  `analysis-event` 与 CLI stderr 跨 file lane 交错。每个事件仍标明所属条目，报告内
+  的条目顺序不变；消费方必须读取 item index，不能再把事件顺序当作已完成的串行
+  前缀，GUI 会聚合逐条目进度。
 - The GUI release boundary remains unsigned/unnotarized Apple Silicon macOS
   11.0+, without Intel/universal, Windows, or Linux GUI artifacts.
   GUI 发行边界仍为未签名、未公证的 Apple Silicon macOS 11.0+，不增加

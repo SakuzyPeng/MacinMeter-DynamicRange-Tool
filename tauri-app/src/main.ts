@@ -6,6 +6,7 @@ import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toPng, toSvg } from "html-to-image";
 import packageMetadata from "../package.json";
+import { BatchProgress } from "./batch-progress";
 import {
   changeLanguage,
   getCurrentLanguage,
@@ -85,6 +86,7 @@ let selectionRevision = 0;
 let previewJobId: string | null = null;
 let activeJobId: string | null = null;
 let activeTotal = 1;
+const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
 let hidePath = false;
 let sortMode: SortMode = "none";
@@ -824,6 +826,7 @@ const runAnalysis = async (): Promise<void> => {
   const jobId = crypto.randomUUID();
   activeJobId = jobId;
   activeTotal = Math.max(discoveredFiles?.length ?? 1, 1);
+  activeProgress.reset(activeTotal);
   clearResults();
   updateControls();
   status("status.running", {}, { progress: 0 });
@@ -963,6 +966,7 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
     status("status.discovering", {}, { progress: 0 });
   } else if (event.type === "discovery_finished") {
     activeTotal = Math.max(event.files, 1);
+    activeProgress.reset(activeTotal);
     status("status.running", {}, { progress: 0 });
   } else if (event.type === "file_started") {
     status(
@@ -972,7 +976,7 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
         current: event.index + 1,
         total: activeTotal,
       },
-      { progress: (event.index / activeTotal) * 100 },
+      { progress: activeProgress.update(event.index, 0) },
     );
   } else if (event.type === "decode_progress") {
     const fraction = event.progress.fraction ?? 0;
@@ -983,7 +987,7 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
         current: event.index + 1,
         total: activeTotal,
       },
-      { progress: ((event.index + fraction) / activeTotal) * 100 },
+      { progress: activeProgress.update(event.index, fraction) },
     );
   } else if (event.type === "file_finished") {
     status(
@@ -993,7 +997,7 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
         current: event.index + 1,
         total: activeTotal,
       },
-      { progress: ((event.index + 1) / activeTotal) * 100 },
+      { progress: activeProgress.update(event.index, 1) },
     );
   } else if (event.type === "batch_finished") {
     status(

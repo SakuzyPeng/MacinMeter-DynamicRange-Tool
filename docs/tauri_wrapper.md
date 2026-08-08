@@ -12,15 +12,23 @@ The backend exposes:
 | Command | Purpose |
 |---|---|
 | `run_analysis` | analyze one explicit file |
-| `run_batch` | analyze discovered inputs serially |
+| `run_batch` | analyze discovered inputs across bounded file lanes and report them in stable order |
 | `discover_inputs` | expand files/directories in stable order under a cancellable `jobId` |
 | `cancel_job` | cancel exactly one caller-generated `jobId` |
 | `get_capabilities` | return the read-only native capability snapshot; the picker builds its extension filter from `stableDiscoveryExtensions` instead of a handwritten list |
 
-`run_batch` is serial in the current 0.3.0 implementation. Accepted
-[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) permits future
-bounded packet/file/window work only inside the shared `Application` execution
-domain; Tauri remains an adapter and does not become a scheduler or own a pool.
+`run_batch` uses the file-lane width the shared application plan derives after
+discovery. Packet workers, decode-analysis overlap, and file lanes have
+graduated under accepted
+[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md); window-level
+parallelism has not been implemented. All internal work remains inside the
+shared `Application` execution domain, so Tauri remains an adapter and does not
+become a scheduler or own a pool.
+
+Progress events may interleave across file lanes. Every event carries its item
+index and path, the report remains in stable discovery order, and the frontend
+aggregates progress from the latest state of every item instead of treating an
+event index as a completed serial prefix.
 
 The frontend creates each `jobId`. Tauri state maps that ID to an independent
 `CancellationToken`; inserting a duplicate active ID is an error. Progress

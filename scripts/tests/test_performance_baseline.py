@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import math
@@ -111,6 +112,10 @@ class PerformanceBaselineTests(unittest.TestCase):
             "selectedDecoderWorkers": 1,
             "selectedHasherWorkers": 0,
             "decodeAnalysisOverlapped": True,
+            "requestedOverlapChannelDepth": 1,
+            "requestedOverlapBatchBlocks": 1,
+            "appliedOverlapChannelDepth": 1,
+            "appliedOverlapBatchBlocks": 1,
             "decodedBlocksPerIteration": 10_001,
             "finalBlockFrames": 1,
             "decodedFramesPerIteration": frames,
@@ -145,6 +150,10 @@ class PerformanceBaselineTests(unittest.TestCase):
             ("grantedDecodeWorkers", 4),
             ("selectedEngine", "AlacPacketWorkers"),
             ("decodeAnalysisOverlapped", False),
+            ("requestedOverlapChannelDepth", 2),
+            ("requestedOverlapBatchBlocks", 4),
+            ("appliedOverlapChannelDepth", None),
+            ("appliedOverlapBatchBlocks", None),
             ("decodedBlocksPerIteration", 10_000),
             ("finalBlockFrames", 1_152),
         ):
@@ -154,6 +163,102 @@ class PerformanceBaselineTests(unittest.TestCase):
                 sample["details"] = changed
                 with self.assertRaises(baseline.BaselineError):
                     baseline.validate_corpus_work([sample], [case], root, manifest)
+
+    def test_overlap_handoff_gate_binds_requested_and_applied_shape(self) -> None:
+        root = Path("/corpus")
+        frames = corpus.SERIAL_ROUTE_SWEEP_FRAMES
+        case = baseline.BenchmarkCase(
+            "overlap-handoff/wave-s16-240s-d4-b4",
+            "application",
+            "explicit overlap hand-off",
+            (
+                "application",
+                str(root / "stereo-s16-240s.wav"),
+                "1",
+                "8",
+                "4",
+                "4",
+            ),
+        )
+        details = {
+            "requestedDecodeWorkers": 8,
+            "grantedDecodeWorkers": 8,
+            "selectedEngine": "Serial",
+            "selectedTotalWorkers": 1,
+            "selectedDecoderWorkers": 1,
+            "selectedHasherWorkers": 0,
+            "decodeAnalysisOverlapped": True,
+            "requestedOverlapChannelDepth": 4,
+            "requestedOverlapBatchBlocks": 4,
+            "appliedOverlapChannelDepth": 4,
+            "appliedOverlapBatchBlocks": 4,
+            "decodedBlocksPerIteration": 10_001,
+            "finalBlockFrames": 1,
+            "decodedFramesPerIteration": frames,
+            "analysisResultFingerprintSha256": "b" * 64,
+        }
+        manifest = {
+            "media": [
+                {
+                    "path": "stereo-s16-240s.wav",
+                    "frames": frames,
+                    "channels": 2,
+                    "sampleRate": corpus.SAMPLE_RATE,
+                    "container": "wave",
+                    "codec": "pcm_integer",
+                    "normalizedInterleavedF64LeSha256": "a" * 64,
+                }
+            ]
+        }
+        sample = {
+            "caseId": case.case_id,
+            "work": {
+                "audioFrames": frames,
+                "interleavedSamples": frames * 2,
+                "audioSeconds": frames / corpus.SAMPLE_RATE,
+                "logicalItems": 1,
+            },
+            "details": details,
+        }
+        baseline.validate_corpus_work([sample], [case], root, manifest)
+
+        for field, invalid in (
+            ("requestedOverlapChannelDepth", 1),
+            ("requestedOverlapBatchBlocks", 1),
+            ("appliedOverlapChannelDepth", None),
+            ("appliedOverlapBatchBlocks", None),
+            ("decodeAnalysisOverlapped", False),
+        ):
+            with self.subTest(field=field):
+                changed = dict(details)
+                changed[field] = invalid
+                sample["details"] = changed
+                with self.assertRaises(baseline.BaselineError):
+                    baseline.validate_corpus_work([sample], [case], root, manifest)
+        sample["details"] = details
+
+        too_wide = dataclasses.replace(
+            case,
+            case_id="overlap-handoff/wave-s16-240s-d4096-b4096",
+            arguments=case.arguments[:4] + ("4096", "4096"),
+        )
+        sample["caseId"] = too_wide.case_id
+        with self.assertRaises(baseline.BaselineError):
+            baseline.validate_corpus_work([sample], [too_wide], root, manifest)
+
+    def test_overlap_handoff_cases_are_explicit_and_cover_the_shape_grid(self) -> None:
+        root = Path("/corpus")
+        default_ids = {case.case_id for case in baseline.suite_cases(root)}
+        cases = baseline.overlap_handoff_cases(root)
+        case_ids = {case.case_id for case in cases}
+
+        self.assertTrue(default_ids.isdisjoint(case_ids))
+        self.assertEqual(len(cases), 2 * len(baseline.OVERLAP_HANDOFF_SHAPES))
+        for track in ("wave-s16-240s", "aiff-s16-240s"):
+            for depth, batch in baseline.OVERLAP_HANDOFF_SHAPES:
+                self.assertIn(
+                    f"overlap-handoff/{track}-d{depth}-b{batch}", case_ids
+                )
 
     def test_application_worker_gate_binds_packet_engine_subdivision(self) -> None:
         for suffix, container, codec, engine, decoder_workers, hasher_workers in (
@@ -174,6 +279,10 @@ class PerformanceBaselineTests(unittest.TestCase):
                 "selectedDecoderWorkers": decoder_workers,
                 "selectedHasherWorkers": hasher_workers,
                 "decodeAnalysisOverlapped": False,
+                "requestedOverlapChannelDepth": 1,
+                "requestedOverlapBatchBlocks": 1,
+                "appliedOverlapChannelDepth": None,
+                "appliedOverlapBatchBlocks": None,
                 "decodedBlocksPerIteration": 10,
                 "finalBlockFrames": 4_096,
             }
@@ -183,6 +292,20 @@ class PerformanceBaselineTests(unittest.TestCase):
                 40_960,
                 {"container": container, "codec": codec},
             )
+            for field in (
+                "appliedOverlapChannelDepth",
+                "appliedOverlapBatchBlocks",
+            ):
+                with self.subTest(suffix=suffix, missing=field):
+                    missing = dict(details)
+                    del missing[field]
+                    with self.assertRaises(baseline.BaselineError):
+                        baseline.assert_application_allocation(
+                            case,
+                            missing,
+                            40_960,
+                            {"container": container, "codec": codec},
+                        )
 
     def test_attribution_cases_are_explicit_and_pair_both_packet_routes(self) -> None:
         default_ids = {

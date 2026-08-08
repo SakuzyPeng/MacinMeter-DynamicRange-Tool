@@ -23,9 +23,9 @@ M0 删除 0.1.x 未受信的并行路径，M2 固定严格 `PcmSource` 契约，
 application 执行域，M4/M6 又建立 bit-exact 差分与 source-bound 性能协议。此前
 “不恢复并行”的约束用于先取得可信串行基线，不是永久否定并行本身。
 
-现在可以解除窗口级、packet 级和文件级并行的 blanket ban，但不能把“允许立项”
-误写成“已经实现”或“一次性开放所有轴”。当前产品仍串行；每条并行路径只有通过本
-ADR 的逐轴毕业门槛后，才可以成为默认生产路径。
+本 ADR 接受时可以解除窗口级、packet 级和文件级并行的 blanket ban，但不能把“允许
+立项”误写成“已经实现”或“一次性开放所有轴”。当时产品仍串行；此后只有通过本 ADR
+逐轴毕业门槛的路径才成为默认生产路径，当前完成状态以上方实施状态为准。
 
 ### 参考实现包含并行调度能力
 
@@ -734,9 +734,11 @@ worker 砍到 2 个**：实测 ALAC 240s 由 64 ms 退化到 207 ms（3.2x），
 不足以证明一个标为 L8 的 case 没有被宿主夹紧为更窄执行。
 
 结果不变：129 个 fixture 的单文件 release CLI 输出（含 stderr）与启用前逐字节相同，
-四个 fixture 目录的批量 JSON 报告逐字节相同。**可观察的变化只有一处**：批量的 stderr
-进度行现在跨 lane 交错，每行仍带自己的 item index，报告内的 item 顺序与既有测试
-`item_order_and_outcomes_are_identical_at_every_lane_count` 保证一致。
+四个 fixture 目录的批量 JSON 报告逐字节相同。**可观察的变化只有进度事件的跨条目
+顺序**：公共 `ProgressSink`、Tauri `analysis-event` 与 CLI stderr 现在都可能跨 lane
+交错；每个事件仍带自己的 item index，报告内的 item 顺序与既有测试
+`item_order_and_outcomes_are_identical_at_every_lane_count` 保证一致。GUI 按逐条目状态
+聚合总进度，不再从最新事件的 index 推导已完成前缀。
 
 毕业宽度随后在两台异构主机上以绑定实际 allocation 的方式重测：每个样本记录 discovery
 之后真实的 granted plan、lane 数与每 lane decoder 数，两台逐字段一致，`grantedPlanWorkers`
@@ -744,7 +746,9 @@ worker 砍到 2 个**：实测 ALAC 240s 由 64 ms 退化到 207 ms（3.2x），
 保底加速两条判据在两台上都选它；WAV-only 的最优仍是最大 lane 数，固定推导宽度对该组成
 的代价为 +22%~+38%，而固定最大 lane 数对另外两种组成的代价为 +25%~+32%。minimax 判据
 在两台上结论相反，因此未被采纳为决定性依据。每种组成跨全部宽度的 result fingerprint
-唯一，RSS 不随 lane 数单调增长。原始记录与逐格数值不入仓库。
+唯一，RSS 不随 lane 数单调增长。完整身份、逐格数值与全部原始样本见
+[`ADR0014_FILE_LANE_WIDTH_REPORT.md`](../performance/ADR0014_FILE_LANE_WIDTH_REPORT.md)
+及其链接的两份 runner JSON。
 
 比宽度更重要的是记录方式：先前的宽度 sweep 只写下**请求**的 lane 数，一个被宿主夹紧
 为更窄执行的 case 在输出里无法与真正的宽 case 区分。上述断言把标签绑定到实际切分，

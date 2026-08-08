@@ -73,6 +73,20 @@ FILE_LANE_COUNTS = (1, 2, 3, 4, 8)
 # graduate. One worker is the boundary case for decode-analysis overlap: a
 # serial route spends its only permit, so no spare remains for an overlap.
 APPLICATION_WORKER_COUNTS = (1, 2, 4, 8)
+# Explicit decode-analysis hand-off shapes. The default is part of the grid;
+# the others vary channel depth, message batching, or both without changing the
+# eight-worker application plan they spend. These cases stay outside the
+# default suite and are valid only when the probe reports the same applied
+# shape rather than a serial fallback.
+OVERLAP_HANDOFF_SHAPES = (
+    (1, 1),
+    (2, 1),
+    (8, 1),
+    (1, 4),
+    (4, 4),
+    (1, 64),
+    (3, 7),
+)
 # Source-bound geometry of the current stable WAV/AIFF routes. The long serial
 # corpus deliberately adds one frame beyond 10,000 complete packets so this
 # gate can prove the application really handed a short tail across the overlap.
@@ -471,6 +485,41 @@ def application_worker_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
             ("alac-s16-240s", "stereo-s16-alac-240s.m4a", 3, "ALAC s16"),
         )
         for workers in APPLICATION_WORKER_COUNTS
+    )
+
+
+def overlap_handoff_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
+    """Explicit depth/batch shapes for the graduated application overlap.
+
+    Every case holds the same full eight-worker plan and a long serial route.
+    The runner prices the requested shape against that route's block geometry,
+    then requires the probe to report that exact applied hand-off. A request
+    that silently stayed serial therefore invalidates the run before timing can
+    be summarized.
+    """
+
+    def media(name: str) -> str:
+        return str((corpus / name).resolve())
+
+    return tuple(
+        BenchmarkCase(
+            f"overlap-handoff/{track}-d{depth}-b{batch}",
+            "application",
+            f"{label} through an overlap of depth {depth} and {batch} block(s) per hand-off",
+            (
+                "application",
+                media(name),
+                str(iterations),
+                str(MAX_DECODE_WORKERS),
+                str(depth),
+                str(batch),
+            ),
+        )
+        for track, name, iterations, label in (
+            ("wave-s16-240s", "stereo-s16-240s.wav", 2, "WAV s16 240s"),
+            ("aiff-s16-240s", "stereo-s16-240s.aiff", 2, "AIFF s16 240s"),
+        )
+        for depth, batch in OVERLAP_HANDOFF_SHAPES
     )
 
 
@@ -1385,7 +1434,7 @@ def validate_corpus_work(
                     raise BaselineError(
                         f"{case.case_id} application frame count drifted"
                     )
-                if case.case_id.startswith("application-workers/"):
+                if case.case_id.startswith(("application-workers/", "overlap-handoff/")):
                     assert_application_allocation(case, details, frames, entry)
                 analysis_fingerprint = details.get(
                     "analysisResultFingerprintSha256"
@@ -1531,13 +1580,17 @@ def assert_application_allocation(
     frames: int,
     manifest_entry: dict[str, object],
 ) -> None:
-    """Bind an application worker case to the topology it claims to time."""
+    """Bind an application case to the topology and hand-off it claims to time."""
 
-    if len(case.arguments) != 4:
+    shape_case = case.case_id.startswith("overlap-handoff/")
+    expected_arguments = 6 if shape_case else 4
+    if len(case.arguments) != expected_arguments:
         raise BaselineError(
-            f"{case.case_id} is not an explicit application worker case"
+            f"{case.case_id} is not a valid explicit application topology case"
         )
     requested = int(case.arguments[3])
+    requested_depth = int(case.arguments[4]) if shape_case else 1
+    requested_batch = int(case.arguments[5]) if shape_case else 1
     container = manifest_entry.get("container")
     codec = manifest_entry.get("codec")
     serial_route = container in ("wave", "aiff") and codec in (
@@ -1561,6 +1614,25 @@ def assert_application_allocation(
     expected_total_workers = 1 if serial_route else requested
     expected_hasher_workers = int(flac_route and requested == MAX_DECODE_WORKERS)
     expected_decoder_workers = expected_total_workers - expected_hasher_workers
+    expected_overlap = serial_route and requested > 1
+    if shape_case:
+        if not expected_overlap:
+            raise BaselineError(
+                f"{case.case_id} cannot apply an overlap hand-off on its declared route and plan"
+            )
+        channels = required_manifest_int(manifest_entry, "channels")
+        max_block_bytes = SERIAL_ROUTE_PCM_BLOCK_FRAMES * channels * 8
+        retained_blocks = requested_batch * (requested_depth + 2) - 1
+        retained_bytes = max_block_bytes * retained_blocks
+        in_flight_allowance = min(
+            requested * DECODE_IN_FLIGHT_PCM_BYTES_PER_WORKER,
+            MAX_IN_FLIGHT_PCM_BYTES,
+        )
+        if retained_bytes > in_flight_allowance:
+            raise BaselineError(
+                f"{case.case_id} requests {retained_bytes} retained PCM bytes but its "
+                f"plan grants only {in_flight_allowance}"
+            )
     expected = {
         "requestedDecodeWorkers": requested,
         # Reject host clamping instead of writing a w8 label over a narrower
@@ -1570,7 +1642,11 @@ def assert_application_allocation(
         "selectedTotalWorkers": expected_total_workers,
         "selectedDecoderWorkers": expected_decoder_workers,
         "selectedHasherWorkers": expected_hasher_workers,
-        "decodeAnalysisOverlapped": serial_route and requested > 1,
+        "decodeAnalysisOverlapped": expected_overlap,
+        "requestedOverlapChannelDepth": requested_depth,
+        "requestedOverlapBatchBlocks": requested_batch,
+        "appliedOverlapChannelDepth": requested_depth if expected_overlap else None,
+        "appliedOverlapBatchBlocks": requested_batch if expected_overlap else None,
     }
     for key in (
         "requestedDecodeWorkers",
@@ -1578,10 +1654,24 @@ def assert_application_allocation(
         "selectedTotalWorkers",
         "selectedDecoderWorkers",
         "selectedHasherWorkers",
+        "requestedOverlapChannelDepth",
+        "requestedOverlapBatchBlocks",
     ):
         if not isinstance(details.get(key), int) or isinstance(details.get(key), bool):
             raise BaselineError(
                 f"{case.case_id} application topology field {key} is not an integer"
+            )
+    for key in ("appliedOverlapChannelDepth", "appliedOverlapBatchBlocks"):
+        if key not in details:
+            raise BaselineError(
+                f"{case.case_id} application topology field {key} is missing"
+            )
+        value = details[key]
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            raise BaselineError(
+                f"{case.case_id} application topology field {key} is neither null nor an integer"
             )
     if not isinstance(details.get("selectedEngine"), str) or not isinstance(
         details.get("decodeAnalysisOverlapped"), bool
@@ -2060,6 +2150,7 @@ def main() -> int:
         + pipeline_attribution_cases(corpus)
         + file_lane_cases(corpus)
         + application_worker_cases(corpus)
+        + overlap_handoff_cases(corpus)
     )
     if args.list_cases:
         for case in available:
@@ -2103,6 +2194,7 @@ def main() -> int:
                     case.mode == "decode-pipeline"
                     or case.case_id.startswith("batch-lanes/")
                     or case.case_id.startswith("application-workers/")
+                    or case.case_id.startswith("overlap-handoff/")
                     for case in cases
                 ),
             )

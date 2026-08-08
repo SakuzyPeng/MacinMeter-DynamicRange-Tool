@@ -388,8 +388,9 @@ Error
 
 ### 7.4 并发策略
 
-- M0 的串行文件处理和串行解码继续作为确定性差分基线；当前生产实现也仍串行，
-  但 ADR-0014 已解除窗口级、packet 级和文件级并行的永久硬禁令；
+- M0 的串行文件处理和串行解码继续作为确定性差分基线；当前生产实现已按
+  ADR-0014 的逐轴门禁启用 route-specific packet worker、decode-analysis overlap 与
+  file lane，窗口级仍未实施；
 - 优先级固定为 packet P0、文件 P1、窗口 P2。packet 首批只做 ADR-0013 的受限
   ALAC route；FLAC 必须先保存与现有 `verify: true` 等价的有序全流 MD5；
 - packet 允许乱序计算但只按输入序提交 PCM、错误与 progress；坏包不得变成空块、
@@ -927,7 +928,7 @@ schema v4 / 0.3.0。历史 0.2.0 记录保持原样。
 | 产品核心 | 可信的离线 DR 分析库和 CLI；GUI 为薄适配层 |
 | 默认算法 | 产品只有一套固定规则；M4 有界数值对齐已完成，公开报告不暴露内部名称或状态 |
 | 增强功能 | Edge trim、静音过滤等与参考算法分离并显式启用 |
-| 默认并发 | 0.3.0 使用确定性串行基线；后续只由 application 的统一预算恢复并发 |
+| 默认并发 | 0.3.0 在 application 统一预算内启用已毕业的 packet worker、decode-analysis overlap 与 file lane；串行路径继续作为差分基线，窗口级未实施 |
 | 格式承诺 | 区分原生稳定、外部依赖、实验性和不可用 |
 | 公共 API | 沿用 0.2.0 重置后的 Rust API/CLI；0.3.0 wire schema v4 显式新增 `mp4`/`alac` |
 | 发行 CPU | portable baseline；任何函数级加速由 M6 profiling 与差分证据决定 |
