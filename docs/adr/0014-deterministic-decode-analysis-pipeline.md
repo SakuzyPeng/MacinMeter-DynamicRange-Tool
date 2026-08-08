@@ -738,13 +738,17 @@ worker 砍到 2 个**：实测 ALAC 240s 由 64 ms 退化到 207 ms（3.2x），
 进度行现在跨 lane 交错，每行仍带自己的 item index，报告内的 item 顺序与既有测试
 `item_order_and_outcomes_are_identical_at_every_lane_count` 保证一致。
 
-批量收益（本机快速核对，非正式 A/B）：混合 86 → 64 ms，纯 WAV 78 → 37 ms，
-纯 FLAC 92 → 64 ms；同时单文件 ALAC 保持 8 worker、66 ms。正式的宽度 sweep 与
-双主机记录不入仓库。
+毕业宽度随后在两台异构主机上以绑定实际 allocation 的方式重测：每个样本记录 discovery
+之后真实的 granted plan、lane 数与每 lane decoder 数，两台逐字段一致，`grantedPlanWorkers`
+处处为完整 plan。推导宽度在混合与 FLAC-only 两种组成上就是各自最优，三组成总耗时与
+保底加速两条判据在两台上都选它；WAV-only 的最优仍是最大 lane 数，固定推导宽度对该组成
+的代价为 +22%~+38%，而固定最大 lane 数对另外两种组成的代价为 +25%~+32%。minimax 判据
+在两台上结论相反，因此未被采纳为决定性依据。每种组成跨全部宽度的 result fingerprint
+唯一，RSS 不随 lane 数单调增长。原始记录与逐格数值不入仓库。
 
-固定单一宽度的代价是明确的：WAV-only 批量放弃约 15%–40% 的可得加速（它自身的最优
-是最大 lane 数）。总耗时与保底加速两条判据在两台异构主机上都选该宽度；minimax 判据
-在两台上结论相反，因此未被采纳为决定性依据。
+比宽度更重要的是记录方式：先前的宽度 sweep 只写下**请求**的 lane 数，一个被宿主夹紧
+为更窄执行的 case 在输出里无法与真正的宽 case 区分。上述断言把标签绑定到实际切分，
+并对本轮真实样本做过篡改检查——四个字段各自被改后均被拒绝。
 
 ## 明确非目标
 
