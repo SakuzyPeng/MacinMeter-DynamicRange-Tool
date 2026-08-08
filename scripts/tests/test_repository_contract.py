@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -96,6 +97,13 @@ serde.workspace = true
             "getCurrentWebview().onDragDropEvent(({ payload }) => "
             "selectInputs(payload.paths));\n",
         )
+        # Any bytes that are not the scaffold's own icons satisfy the guard,
+        # which is the point: it rejects one known artwork rather than trying to
+        # describe a correct one.
+        for icon in ("32x32.png", "128x128.png", "icon.ico", "icon.icns", "icon.png"):
+            self.write(f"tauri-app/src-tauri/icons/{icon}", f"not the scaffold {icon}")
+        self.write("tauri-app/icons-src/macinmeter-icon.svg", "<svg/>\n")
+        self.write("tauri-app/icons-src/OFL-SourceSerif4.txt", "SIL Open Font License 1.1\n")
         self.write(
             ".github/workflows/workspace-validation.yml",
             """name: Validation
@@ -321,6 +329,23 @@ jobs: {}
         self.assertTrue(
             any("must be named a test build" in error for error in self.errors())
         )
+
+    def test_rejects_the_tauri_scaffold_icon(self) -> None:
+        # Checked against the real digest map by substituting the fixture's own
+        # bytes for one entry, so the mechanism is exercised without committing
+        # a copy of Tauri's artwork to test against.
+        icon = self.root / "tauri-app/src-tauri/icons/icon.ico"
+        digest = hashlib.sha256(icon.read_bytes()).hexdigest()
+        original = dict(repository_contract.TAURI_SCAFFOLD_ICON_SHA256)
+        repository_contract.TAURI_SCAFFOLD_ICON_SHA256["icon.ico"] = digest
+        try:
+            self.assertTrue(
+                any("still the Tauri scaffold icon" in error for error in self.errors())
+            )
+        finally:
+            repository_contract.TAURI_SCAFFOLD_ICON_SHA256.clear()
+            repository_contract.TAURI_SCAFFOLD_ICON_SHA256.update(original)
+        self.assertEqual(self.errors(), [])
 
     def test_rejects_macos_release_target_drift(self) -> None:
         config_path = self.root / "tauri-app/src-tauri/tauri.conf.json"

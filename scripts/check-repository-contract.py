@@ -8,6 +8,7 @@ library. It does not resolve or download dependencies.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -110,6 +111,19 @@ def workflow_job_body(path: Path, job: str) -> list[str] | None:
             break
         body.append(line)
     return body
+
+
+# The Tauri scaffold's own icons, by digest. Its logo is Tauri's trademark
+# rather than a neutral placeholder, and it shipped in every build until
+# 2026-08-09. Pinning the exact bytes is narrower and more honest than trying to
+# describe what a correct icon looks like, and it is the mistake that happened.
+TAURI_SCAFFOLD_ICON_SHA256 = {
+    "32x32.png": "1c6782dc65c8111c12cbc1882a0fea5e71ab8e51b18da2ce9580f5c88860ed02",
+    "128x128.png": "19b4fec485db7df51a691fcce72a3dd6f983e754fc4262da7154e4a4c688f69e",
+    "icon.ico": "392206b573a809997f3ff16fe68f456a52e931c372107eade9572b329bbe3321",
+    "icon.icns": "3dc10493b7de48a61de58f768f8a5708d3a44a068c148cedf0502b9b9b71ba5d",
+    "icon.png": "273cd669e07c455ad1c7c095890a37984652157cee73128a867300067dfb80e7",
+}
 
 
 def validate(root: Path) -> list[str]:
@@ -231,6 +245,28 @@ def validate(root: Path) -> list[str]:
     require(
         bundle.get("targets") == ["app", "dmg"],
         "tauri.conf.json must retain the macOS app and DMG bundle targets",
+    )
+    for name, digest in TAURI_SCAFFOLD_ICON_SHA256.items():
+        icon_path = root / "tauri-app/src-tauri/icons" / name
+        require(
+            icon_path.is_file(),
+            f"tauri-app/src-tauri/icons/{name} must exist",
+        )
+        if icon_path.is_file():
+            actual = hashlib.sha256(icon_path.read_bytes()).hexdigest()
+            require(
+                actual != digest,
+                f"tauri-app/src-tauri/icons/{name} is still the Tauri scaffold icon; "
+                "regenerate from tauri-app/icons-src/macinmeter-icon.svg",
+            )
+    icon_source = root / "tauri-app/icons-src/macinmeter-icon.svg"
+    require(
+        icon_source.is_file(),
+        "tauri-app/icons-src/macinmeter-icon.svg must remain the icon source of truth",
+    )
+    require(
+        (root / "tauri-app/icons-src/OFL-SourceSerif4.txt").is_file(),
+        "the icon's outlined letterforms require their SIL Open Font License text",
     )
     require(
         bundle.get("macOS", {}).get("minimumSystemVersion") == "11.0",

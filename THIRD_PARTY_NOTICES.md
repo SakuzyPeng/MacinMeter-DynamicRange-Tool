@@ -14,6 +14,16 @@ The 0.3.0 source tree directly uses projects including:
 - Tauri and its dialog plugin for the desktop adapter;
 - Vite and TypeScript for the frontend build.
 
+The application icon sets the letters "DR" in Source Serif 4 at weight 700,
+converted to outlines so the source SVG renders without the font installed.
+Source Serif 4 is Copyright 2014 The Source Serif 4 Project Authors and is
+licensed under the SIL Open Font License 1.1; the licence text is kept beside
+the source at `tauri-app/icons-src/OFL-SourceSerif4.txt`. No font file is
+redistributed with MacinMeter.
+应用图标以 Source Serif 4 Bold 排出 "DR" 并转为轮廓，源 SVG 因此不依赖字体安装。
+Source Serif 4 采用 SIL Open Font License 1.1，许可全文随源文件保存在
+`tauri-app/icons-src/OFL-SourceSerif4.txt`；MacinMeter 不随附任何字体文件。
+
 The authoritative package versions are recorded in `Cargo.lock` and
 `tauri-app/package-lock.json`. Transitive dependencies change independently,
 so this short notice is not a substitute for a release license inventory.
