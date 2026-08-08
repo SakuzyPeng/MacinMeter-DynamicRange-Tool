@@ -7,9 +7,10 @@ use macinmeter_codecs::{DecodeEngineKind, DecodeExecution};
 use macinmeter_codecs::{DecoderFactory, OpenedAudio, ReadOutcome};
 use macinmeter_domain::{DecodeReservation, PcmBlock, PcmStreamInfo};
 use serde::{Deserialize, Serialize};
+#[cfg(any(test, feature = "performance-probes"))]
+use std::num::NonZeroUsize;
 use std::{
     io,
-    num::NonZeroUsize,
     path::PathBuf,
     sync::mpsc::{SyncSender, sync_channel},
     thread,
@@ -432,8 +433,10 @@ const MAX_OVERLAP_CHANNEL_DEPTH: usize = 16;
 pub(crate) enum OverlapShape {
     /// Take the depth from the stream's proven worst-case block size.
     Derived,
-    /// An explicit depth. Reachable only from a measurement build, and still
-    /// priced against the granted allowance like any other.
+    /// An explicit depth, still priced against the granted allowance like any
+    /// other. The variant itself is absent from a product build, so such a
+    /// build cannot represent a hand-off the derivation did not choose.
+    #[cfg(any(test, feature = "performance-probes"))]
     Explicit(NonZeroUsize),
 }
 
@@ -460,6 +463,7 @@ impl OverlapShape {
     /// drops below one, which is the hand-off that shipped before depth existed.
     pub(crate) const fn channel_depth(self, max_block_bytes: u64) -> usize {
         match self {
+            #[cfg(any(test, feature = "performance-probes"))]
             Self::Explicit(depth) => depth.get(),
             Self::Derived => {
                 if max_block_bytes == 0 {
