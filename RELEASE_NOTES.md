@@ -5,13 +5,18 @@
 > Status: development release contract; no signed/notarized public artifact has
 > been created. / 状态：开发线发行契约；尚未创建已签名、公证的公开制品。
 >
-> Concurrency note: the current 0.3.0 implementation remains serial. Accepted
-> [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) permits
-> bounded packet/file/window candidates as future work, but
-> none is shipped here; the v0.2.0 exclusions below are historical release
-> boundaries, not a permanent post-M6 ban. / 并发说明：当前 0.3.0 实现仍串行；
-> ADR-0014 已允许后续有界 packet/file/window candidate，但本版本尚未交付。下方
-> v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
+> Concurrency note: 0.3.0 ships the bounded packet-level, decode-analysis and
+> file-lane axes of accepted
+> [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md), all under
+> one application-owned worker and memory plan; window-level parallelism is not
+> implemented. A report and its decoded PCM do not depend on how many workers a
+> host grants, and there is no public thread, batch-size or queue control. This
+> release publishes no throughput figure. The v0.2.0 exclusions below are
+> historical release boundaries, not a permanent post-M6 ban. / 并发说明：0.3.0
+> 交付已接受的 ADR-0014 中 packet 级、解码-分析与 file lane 三条轴，全部受同一
+> application 自有 worker 与内存计划约束；窗口级并行未实现。报告与其解码 PCM 不依赖
+> 宿主授予多少 worker，也不提供公开的线程、batch size 或队列控制。本版本不发布任何
+> 吞吐数字。下方 v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
 
 - Added a constrained stable in-process MP4/M4A + ALAC route: compatible
   version 0, 16/24-bit, 1–8 standard-layout channels, one audio-only track,
@@ -39,6 +44,21 @@
   fields are unchanged.
   新增公开 `mp4`/`alac` 身份，共享 CLI/Tauri wire envelope 升级为 schema v4；
   固定分析算法与数值报告字段不变。
+- Added bounded packet-level decoding for the ALAC route and for FLAC streams
+  whose geometry fits the granted reservation, overlapped decoding and analysis
+  on a permit the route leaves unspent, and batch file lanes derived from the
+  same plan. A single file still receives the whole decoder. Nothing here is a
+  new public option, and a report never indicates which path produced it.
+  为 ALAC route 以及几何能落入已授予 reservation 的 FLAC 流启用有界 packet 级
+  解码，在 route 未花掉的 permit 上重叠解码与分析，并按同一 plan 推导批量的 file
+  lane；单个文件仍独占整个解码器。以上均不新增公开选项，报告也不指示由哪条路径
+  产生。
+- **Behavior change:** batch progress lines on stderr now interleave across
+  file lanes. Each line still names the item it belongs to, and the item order
+  inside the report is unchanged, but a script that parses stderr by line order
+  must read the item index instead.
+  **行为变更：** 批量在 stderr 上的进度行现在跨 file lane 交错。每行仍标明所属
+  条目，报告内的条目顺序不变；但按行序解析 stderr 的脚本必须改为读取条目序号。
 - The GUI release boundary remains unsigned/unnotarized Apple Silicon macOS
   11.0+, without Intel/universal, Windows, or Linux GUI artifacts.
   GUI 发行边界仍为未签名、未公证的 Apple Silicon macOS 11.0+，不增加

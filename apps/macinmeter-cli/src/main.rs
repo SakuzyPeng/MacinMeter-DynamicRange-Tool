@@ -34,7 +34,7 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Analyze files and directories serially.
+    /// Analyze files and directories, reporting them in stable input order.
     Batch {
         inputs: Vec<PathBuf>,
         #[arg(long)]

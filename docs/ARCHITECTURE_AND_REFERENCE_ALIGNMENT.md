@@ -686,17 +686,23 @@ interleaved `f64` 的 `AnalyzerSession` conformance worker、串行 suite runner
 - [x] 实现共用资源计划、向下传递的 decode allocation 与有界顺序提交层；
 - [x] 实现 ALAC packet worker，并在 committed fixture 上证明 1/2/4/8 worker、
   最小/最大 queue reservation 与确定性强制乱序下的 raw-bit、错误和 progress 等价；
-  demux 复用 decoder slot 0，构造失败也会 join 已启动线程（仍未默认启用）；
+  demux 复用 decoder slot 0，构造失败也会 join 已启动线程（该步骤完成时尚未默认启用）；
 - [x] 补长音频 ALAC corpus 并完成 exact-fingerprint 同轮 worker-count 扫描；
   压缩率 99.5% 与 60.0% 两条 240 s track 分别给出 1.94x/3.58x/5.65x 与
-  1.94x/3.65x/5.97x，各自 fingerprint 唯一（仍未启用）；
-- [ ] 完成 39 项 safe-master 逐 token 对照，以及同一长 corpus 在 1/2/4/8 worker、
+  1.94x/3.65x/5.97x，各自 fingerprint 唯一（该步骤完成时尚未默认启用）；
+- [x] 完成 39 项 safe-master 逐 token 对照，以及同一长 corpus 在 1/2/4/8 worker、
   最小/默认/最大 queue 下的 decoded-f64、`AnalysisResult` raw bits 与 wire report
   全矩阵；
-- [ ] 补队列容量性能 A/B、小队列最坏乱序长流内存压力、真实音乐素材代表性与
-  `Application` 启用路径；只有 ADR-0014 全部毕业门槛通过后才决定是否默认启用；
-- [ ] 形成 FLAC ordered full-stream MD5 设计后再评估 FLAC packet worker；
-- [ ] 文件级与窗口级分别按自身毕业门槛评估，不与首个 packet 切片捆绑。
+- [x] 补队列容量性能 A/B、小队列最坏乱序长流内存压力、真实音乐素材代表性与
+  `Application` 启用路径；ADR-0014 的毕业门槛通过后 packet 级默认启用；
+- [x] 形成 FLAC ordered full-stream MD5 设计并据此启用 FLAC packet worker，仅限
+  重排窗口可证明落入已授予 reservation 的流；
+- [x] 解码-分析重叠毕业并默认启用：它只消费 route 未花掉的 permit，花光 permit 的
+  route 与单 worker plan 路径不变；
+- [x] 文件级（P1）按自身门槛毕业，宽度由 plan 自行推导而非固定常数；批量在
+  discovery 后切分，单文件与单条目批量仍独占整个 decoder；
+- [ ] 窗口级（P2）按自身毕业门槛单独评估，不与已毕业的三条轴捆绑；ADR-0014 要求
+  只有 profile 重新指向 analyzer 时才实施。
 
 ## 9. 实施顺序记录
 

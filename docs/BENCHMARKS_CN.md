@@ -2,19 +2,26 @@
 
 # 性能状态
 
-MacinMeter 0.2.0 不发布性能保证。M6 已完成可复现的本地标量基线、
-sampling-profile、交错 A/B 协议与一条有界 analyzer 优化链，但其结果仍只是绑定
-source、binary、corpus 与 environment 的证据，不是面向用户的吞吐承诺。
+MacinMeter 0.3.0 不发布性能保证。M6 已完成可复现的本地标量基线、
+sampling-profile、交错 A/B 协议与一条有界 analyzer 优化链，此后 ADR-0014 又按同一
+套协议毕业了三条并行轴；但所有结果仍只是绑定 source、binary、corpus 与
+environment 的证据，不是面向用户的吞吐承诺。
 
 此前记录在这里的数字来自已经删除的 0.1.x 包级并行、文件级并行、SIMD 和
 FFmpeg/DSD 路径，不能代表当前架构，也不能作为正确性或吞吐承诺。
 
-0.2.0 有意保留安全标量、全串行的产品路径。M6 suite 分层测量：
+0.3.0 保留安全标量的产品路径，不引入 SIMD、unsafe 或外部 decoder。M6 suite
+分层测量：
 
 - 2、8、64 声道 direct finite-f64 analysis；
 - WAV、AIFF、FLAC 与 WAV-float64 原生解码；
-- 共享 `Application` 路径与当前串行的 8-track batch；
+- 共享 `Application` 路径与 8-track batch；
 - 递归 discovery 与 wire-v3 pretty JSON rendering。
+
+非默认 case 族沿 ADR-0014 的各条轴扩展：packet worker sweep、application worker
+sweep、file lane sweep 与 source 自有的 pipeline 归因 probe。lane 与 worker 两个
+sweep 会记录宿主实际授予的 plan 与实际做出的切分，宁可失败也不把被收窄的执行标成
+它所请求的宽度。
 
 生成语料不含私人音频，只存在 ignored `target/`。manifest 固定媒体 bytes、
 geometry、归一化 decoded-f64 oracle 与 generator identity。
@@ -64,12 +71,16 @@ FLAC 有 79.07% 位于 Symphonia decoder 内，产品 sample materialization 与
 限定的 refinement，最终 clean 交错 A/B 中 stereo 保持在噪声内，8 声道中位
 耗时下降 12.92%，64 声道下降 26.72%，跨 variant result fingerprint 完全相同。
 
+以上比例描述的是当时被测量的串行产品。它们早于 ADR-0014，无法描述一条 route 在
+packet worker 解码之后如何分配时间，因此不得当作当前的归因来读。
+
 历史 M6 证据本身不授权 packet/file/window 并行、SIMD、unsafe 或外部 decoder。
 后继独立决策
-[`ADR-0014`](adr/0014-deterministic-decode-analysis-pipeline.md) 现已允许有界确定性
-并行 candidate，并把 route-specific packet 解码设为第一优先级；当前产品在各
-candidate 独立毕业前仍保持串行。所有比较与未来加速声明仍必须遵循
-[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)。首次 clean-source
+[`ADR-0014`](adr/0014-deterministic-decode-analysis-pipeline.md) 允许有界确定性并行
+candidate，每条各凭自己的证据毕业：packet 解码、解码-分析重叠与批量 file lane 已
+毕业，窗口级并行尚未实现。所有比较与未来加速声明仍必须遵循
+[`ADR-0007`](adr/0007-m6-reproducible-performance-baseline.md)，因此这些毕业过程中
+的任何加速数字都不会出现在本文档或任何面向用户的材料里。首次 clean-source
 结果与原始样本见
 [`M6 标量基线报告`](performance/M6_SCALAR_BASELINE_REPORT.md)、
 [`M6 sampling-profile 报告`](performance/M6_SAMPLING_PROFILE_REPORT.md)和

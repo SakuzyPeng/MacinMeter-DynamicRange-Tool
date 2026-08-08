@@ -64,15 +64,18 @@ macinmeter analyze "01 - Song.flac"
 macinmeter batch "My Album/" --recursive
 ```
 
-`batch` processes files serially in stable input order. A failed item does not
-prevent later items from running. It produces independent track reports and
-does not implicitly calculate an album DR.
+`batch` reports files in stable input order, whatever order they finish in. A
+failed item does not prevent later items from running. It produces independent
+track reports and does not implicitly calculate an album DR. Progress lines on
+stderr interleave across items and each one names the item it belongs to.
 
-That is the current 0.3.0 implementation state, not a permanent architecture
-ban. [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) has
-accepted bounded packet-, file-, and window-level parallelism as future work,
-with route-specific packet decoding first; none is enabled until its separate
-correctness, resource, and performance gates pass.
+[ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) has accepted
+bounded packet-, file-, and window-level parallelism, each enabled only after
+passing its own correctness, resource, and performance gates. Route-specific
+packet decoding, decode-analysis overlap, and batch file lanes have passed
+theirs and are enabled in 0.3.0; window-level parallelism has not been
+implemented. There is no public thread, batch-size, or queue control, and no
+throughput figure is published.
 
 The following is real stdout generated from a committed synthetic fixture:
 
@@ -257,9 +260,12 @@ macinmeter-domain
 ```
 
 Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The current product
-has one analyzer implementation and serial batch execution. Decoding is serial
-except on the ADR-0013 ALAC route, which uses bounded packet workers under one
-application-owned plan; results are identical either way. ADR-0014 permits only
+has one analyzer implementation. Under one application-owned worker and memory
+plan it decodes the ADR-0013 ALAC route and provably bounded FLAC streams with
+packet workers, overlaps decoding with analysis on a permit the route leaves
+unspent, and runs batch items across file lanes derived from that same plan; a
+single file receives the whole decoder, and window-level parallelism is not
+implemented. Results are identical whichever path runs. ADR-0014 permits only
 bounded, deterministic internal parallelism after per-route/per-axis
 graduation; it does not restore the removed 0.1.x parallel decoder. Design history and deeper technical material live in:
 

@@ -60,13 +60,14 @@ macinmeter analyze "01 - Song.flac"
 macinmeter batch "My Album/" --recursive
 ```
 
-`batch` 按稳定输入顺序串行处理文件。某一项失败不会阻止后续项目继续运行。它返回
-相互独立的逐轨报告，不会隐式计算 album DR。
+`batch` 无论文件以什么顺序完成，都按稳定输入顺序输出。某一项失败不会阻止后续项目
+继续运行。它返回相互独立的逐轨报告，不会隐式计算 album DR。stderr 上的进度行会跨
+条目交错，每行都标明所属条目。
 
-这是当前 0.3.0 的实现状态，不是永久架构禁令。
 [`ADR-0014`](docs/adr/0014-deterministic-decode-analysis-pipeline.md) 已接受有界的
-packet、文件与窗口级并行作为后续方向，并以 route-specific packet 解码为先；各
-路径在独立通过正确性、资源与性能门禁前均未启用。
+packet、文件与窗口级并行，每条轴都必须各自通过正确性、资源与性能门禁后才启用。
+route-specific packet 解码、解码-分析重叠与批量 file lane 已通过并在 0.3.0 中启用；
+窗口级并行尚未实现。不提供公开的线程、batch size 或队列控制，也不发布任何吞吐数字。
 
 下面是仓库内固定合成 fixture 实际产生的 stdout：
 
@@ -225,8 +226,11 @@ macinmeter-domain
 ```
 
 所有第一方 Rust crate 都使用 `#![forbid(unsafe_code)]`。当前产品只有一个分析器
-实现，采用串行原生解码与串行 batch。ADR-0014 只允许通过逐 route/逐轴毕业的
-有界确定性内部并行，不恢复已删除的 0.1.x 并行 decoder。设计历史与进一步技术
+实现。在同一份 application 自有的 worker 与内存计划下，它以 packet worker 解码
+ADR-0013 的 ALAC route 与可证明有界的 FLAC 流，在 route 未花掉的 permit 上重叠
+解码与分析，并按同一 plan 推导的 file lane 运行批量条目；单个文件独占整个 decoder，
+窗口级并行尚未实现。无论走哪条路径结果都相同。ADR-0014 只允许通过逐 route/逐轴
+毕业的有界确定性内部并行，不恢复已删除的 0.1.x 并行 decoder。设计历史与进一步技术
 资料集中在：
 
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
