@@ -250,6 +250,12 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
     } else {
         output.push_str("\nTrack aggregate: unavailable\n");
     }
+    if !report.diagnostics().warnings.is_empty() {
+        output.push_str("\nWarnings:\n");
+        for warning in &report.diagnostics().warnings {
+            output.push_str(&format!("- {warning}\n"));
+        }
+    }
     Ok(output)
 }
 
@@ -266,6 +272,9 @@ fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
                     _ => "unavailable".to_string(),
                 };
                 output.push_str(&format!("OK   {} — {aggregate}\n", item.display_path));
+                for warning in &report.diagnostics().warnings {
+                    output.push_str(&format!("     warning: {warning}\n"));
+                }
             }
             BatchItemOutcome::Failure { error } => {
                 output.push_str(&format!(

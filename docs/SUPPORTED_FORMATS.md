@@ -33,6 +33,15 @@ oracle. Its FLAC case is stereo and multi-block, and AIFF/FLAC also pass the
 shared Rust API and CLI report boundary. These are product contract fixtures,
 not reference-plugin goldens.
 
+Classic integer PCM accepts a 16-byte `fmt` chunk, an 18-byte chunk with
+`cbSize=0`, or the observed 40-byte spelling whose entire 24-byte tail is zero.
+The last form carries no interpreted extension semantics and decodes bit-for-bit
+like its compact twin; any nonzero tail remains unsupported. Classic IEEE-float
+keeps the 16/18-byte forms. The current Symphonia WAV representation accepts
+1–26 channels on both classic and Extensible paths. RF64 and BW64 signatures are
+recognized explicitly but remain unavailable rather than being mislabeled as
+unknown content.
+
 The separate
 [`native-pcm-extensible-v1`](../tests/fixtures/native-pcm-extensible-v1/README.md)
 corpus pairs every accepted Extensible shape with a classic WAV carrying the
@@ -56,7 +65,7 @@ one identity mapping. Reported channel layout remains `unknown`.
 
 The following routes are not built into the current stable surface:
 
-- padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible streams
+- RF64/BW64, padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, WAV streams
   above 26 channels, reserved channel-mask bits, AIFC, compressed WAV variants,
   and unsupported codecs in otherwise recognized containers;
 - AAC (including AAC in M4A/MP4), MP1/MP2/MP3, Vorbis, Opus, AC-3, E-AC-3,
@@ -114,3 +123,8 @@ rather than producing a separate `without_lfe` result.
 Silent channels visibly remain `silent` and contribute DR0; only insufficient
 data is excluded. If no channel can contribute, aggregate DR values are
 explicit `null`.
+
+Reports add warnings without changing the fixed numeric result when a nonempty
+stream is shorter than one complete analysis window, when a multichannel layout
+is unknown and may therefore include LFE, or when silent channels contribute
+DR0 to the track aggregate.

@@ -39,7 +39,7 @@ pub(crate) struct ContainerPcmInfo {
 const WAVE_FORMAT_PCM: u16 = 0x0001;
 const WAVE_FORMAT_IEEE_FLOAT: u16 = 0x0003;
 const WAVE_FORMAT_EXTENSIBLE: u16 = 0xfffe;
-const WAVE_EXTENSIBLE_MAX_CHANNELS: u16 = 26;
+const WAVE_BACKEND_MAX_CHANNELS: u16 = 26;
 const WAVE_EXTENSIBLE_STANDARD_CHANNEL_MASK: u32 = 0x0003_ffff;
 const KSDATAFORMAT_SUBTYPE_PCM: [u8; 16] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
@@ -72,6 +72,21 @@ pub(crate) fn identify_container<R: Read + Seek>(
 
     if read >= 4 && &header[..4] == b"fLaC" {
         return Ok(ContainerSignature::Flac);
+    }
+    if read >= 12
+        && (&header[..4] == b"RF64" || &header[..4] == b"BW64")
+        && &header[8..12] == b"WAVE"
+    {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "RF64/BW64 is outside the stable native WAV route",
+            Some(format!(
+                "container_signature={}",
+                String::from_utf8_lossy(&header[..4])
+            )),
+        ));
     }
     if read >= 12 && &header[..4] == b"RIFF" && &header[8..12] == b"WAVE" {
         return Ok(ContainerSignature::Wave);
@@ -405,6 +420,7 @@ fn validate_wave_format<R: Read>(
                 bits_per_sample,
                 &[8, 16, 24, 32],
             )?;
+            validate_wave_backend_channel_count(path, channels)?;
             Ok(SourceCodec::PcmInteger)
         }
         WAVE_FORMAT_IEEE_FLOAT => {
@@ -416,6 +432,7 @@ fn validate_wave_format<R: Read>(
                 bits_per_sample,
                 &[32, 64],
             )?;
+            validate_wave_backend_channel_count(path, channels)?;
             Ok(SourceCodec::PcmFloat)
         }
         WAVE_FORMAT_EXTENSIBLE => {
@@ -450,32 +467,74 @@ fn validate_classic_wave_format<R: Read>(
             )),
         ));
     }
-    if !matches!(chunk_len, 16 | 18) {
-        return Err(analysis_error(
-            path,
-            ErrorCode::UnsupportedFormat,
-            AnalysisStage::Probe,
-            "extended WAV fmt data is outside the stable native matrix",
-            Some(format!(
-                "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}"
-            )),
-        ));
-    }
-    if chunk_len == 18 {
-        let mut extension_size = [0_u8; 2];
-        reader
-            .read_exact(&mut extension_size)
-            .map_err(|error| malformed_wave_io(path, error))?;
-        let extension_size = u16::from_le_bytes(extension_size);
-        if extension_size != 0 {
+    match chunk_len {
+        16 => {}
+        18 => {
+            let mut extension_size = [0_u8; 2];
+            reader
+                .read_exact(&mut extension_size)
+                .map_err(|error| malformed_wave_io(path, error))?;
+            let extension_size = u16::from_le_bytes(extension_size);
+            if extension_size != 0 {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::UnsupportedFormat,
+                    AnalysisStage::Probe,
+                    "WAV fmt extension data is outside the stable native matrix",
+                    Some(format!("extension_size={extension_size}")),
+                ));
+            }
+        }
+        // Some otherwise-classic PCM writers reserve the 24-byte
+        // WAVEFORMATEXTENSIBLE tail but leave every byte zero. Symphonia treats
+        // this exact spelling as classic PCM. Accept only the observed inert
+        // padding: a nonzero byte could carry semantics the stable route has
+        // not interpreted or validated.
+        40 if format_tag == WAVE_FORMAT_PCM => {
+            let mut padding = [0_u8; 24];
+            reader
+                .read_exact(&mut padding)
+                .map_err(|error| malformed_wave_io(path, error))?;
+            if let Some(first_nonzero) = padding.iter().position(|byte| *byte != 0) {
+                return Err(analysis_error(
+                    path,
+                    ErrorCode::UnsupportedFormat,
+                    AnalysisStage::Probe,
+                    "nonzero classic PCM fmt padding is outside the stable native matrix",
+                    Some(format!(
+                        "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}; \
+                         first_nonzero_offset={}",
+                        16 + first_nonzero
+                    )),
+                ));
+            }
+        }
+        _ => {
             return Err(analysis_error(
                 path,
                 ErrorCode::UnsupportedFormat,
                 AnalysisStage::Probe,
-                "WAV fmt extension data is outside the stable native matrix",
-                Some(format!("extension_size={extension_size}")),
+                "extended WAV fmt data is outside the stable native matrix",
+                Some(format!(
+                    "format_tag=0x{format_tag:04x}; fmt_size={chunk_len}"
+                )),
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_wave_backend_channel_count(path: &Path, channels: u16) -> Result<(), AnalysisError> {
+    if channels > WAVE_BACKEND_MAX_CHANNELS {
+        return Err(analysis_error(
+            path,
+            ErrorCode::UnsupportedFormat,
+            AnalysisStage::Probe,
+            "WAV exceeds the stable backend channel limit",
+            Some(format!(
+                "declared_channels={channels}; max_wave_channels={WAVE_BACKEND_MAX_CHANNELS}"
+            )),
+        ));
     }
     Ok(())
 }
@@ -576,17 +635,7 @@ fn validate_wave_extensible_format<R: Read>(
             )),
         ));
     }
-    if channels > WAVE_EXTENSIBLE_MAX_CHANNELS {
-        return Err(analysis_error(
-            path,
-            ErrorCode::UnsupportedFormat,
-            AnalysisStage::Probe,
-            "WAVE_FORMAT_EXTENSIBLE exceeds the stable backend channel limit",
-            Some(format!(
-                "declared_channels={channels}; max_extensible_channels={WAVE_EXTENSIBLE_MAX_CHANNELS}"
-            )),
-        ));
-    }
+    validate_wave_backend_channel_count(path, channels)?;
     if channel_mask & !WAVE_EXTENSIBLE_STANDARD_CHANNEL_MASK != 0 {
         return Err(analysis_error(
             path,

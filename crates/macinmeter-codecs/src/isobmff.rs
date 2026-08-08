@@ -252,16 +252,14 @@ fn inspect_track<R: Read + Seek>(
                     ));
                 }
             }
-            b"edts" => {
-                if edit.is_some() {
-                    return Err(malformed(
-                        path,
-                        "ISO BMFF track contains duplicate edit boxes",
-                        None,
-                    ));
-                }
-                edit = Some(inspect_edits(reader, path, header)?);
+            b"edts" if edit.is_some() => {
+                return Err(malformed(
+                    path,
+                    "ISO BMFF track contains duplicate edit boxes",
+                    None,
+                ));
             }
+            b"edts" => edit = Some(header),
             _ => {}
         }
         position = header.end;
@@ -270,6 +268,7 @@ fn inspect_track<R: Read + Seek>(
         mdia.ok_or_else(|| malformed(path, "ISO BMFF track is missing its mdia box", None))?;
     let info = inspect_media(reader, path, mdia)?;
     if let Some(edit) = edit {
+        let edit = inspect_edits(reader, path, edit)?;
         validate_identity_edit(path, edit, movie, &info)?;
     }
     Ok(info)

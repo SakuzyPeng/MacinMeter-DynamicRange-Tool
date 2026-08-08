@@ -28,6 +28,12 @@ raw-bit 归一化 oracle 固定了每一个已声明 PCM 位深；其中 FLAC �
 multi-block，AIFF/FLAC 还通过 Rust API 与 CLI 的共享 report 边界。这些是产品
 契约 fixture，不是参考插件 golden。
 
+经典整数 PCM 接受 16-byte `fmt`、`cbSize=0` 的 18-byte `fmt`，以及本次真实语料
+暴露的 40-byte 拼写，但后者的 24-byte 尾部必须全部为零。该尾部不携带任何已解释
+的扩展语义，并且解码结果与紧凑孪生逐位一致；任一非零尾部仍不支持。经典 IEEE
+float 继续只接受 16/18-byte 形式。当前 Symphonia WAV 表示在经典与 Extensible
+路径上都只接受 1–26 声道。RF64/BW64 会被明确识别为尚未支持，而不再误报成未知内容。
+
 独立的
 [`native-pcm-extensible-v1`](../tests/fixtures/native-pcm-extensible-v1/README.md)
 corpus 为每一种接受的 Extensible 形状提供携带相同 PCM 的经典 WAV 孪生。Extensible
@@ -47,7 +53,7 @@ list 只能缺失或是一条 identity mapping。报告中的 channel layout 仍
 
 当前稳定面不包含：
 
-- padded 或 valid bits 未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、
+- RF64/BW64、padded 或 valid bits 未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 WAV、
   使用保留 channel-mask bits 的 Extensible、AIFC、压缩 WAV 变体及可识别容器内
   未支持的其他编码；
 - AAC（包括 M4A/MP4 内的 AAC）、MP1/MP2/MP3、Vorbis、Opus、AC-3、E-AC-3、
@@ -91,3 +97,6 @@ frame 对齐的 block，sticky EOF，或结构化错误；空等候和解码失�
 只生成一个 `track` 聚合，并按照已记录的数值规则纳入 LFE，而不再生成单独的
 `without_lfe` 结果。静音声道仍明确显示为 `silent`，并以 DR0 参与聚合；只有数据
 不足的声道会被排除。如果没有声道可以参与，aggregate 的 DR 字段使用显式 `null`。
+
+报告会在不改变固定数值结果的前提下增加警告：非空输入短于一个完整分析窗口、
+多声道布局未知而可能包含 LFE，或静音声道以 DR0 参与 track 聚合时，都会明确提示。

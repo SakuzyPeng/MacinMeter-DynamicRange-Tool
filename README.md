@@ -25,17 +25,18 @@ An explicit file path is probed by content and may use any extension. Folder
 scans look for `.wav`, `.wave`, `.flac`, `.aif`, `.aiff`, `.m4a`, and `.mp4`;
 a supported file with another extension can still be analyzed by passing its
 path directly.
-Current file analysis covers up to 64 channels. The constrained
-WAVE_FORMAT_EXTENSIBLE route covers up to 26 channels and retains an unknown
-channel layout; the format guide records its exact valid-bit and mask rules.
+Product analysis accepts up to 64 channels, while the current Symphonia WAV
+backend represents 1–26 channels for both classic and WAVE_FORMAT_EXTENSIBLE
+input. The constrained Extensible route retains an unknown channel layout; the
+format guide records its exact valid-bit and mask rules.
 
 Some files with familiar extensions use variants that are not available yet,
 including padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible
-streams above 26 channels, AIFC, Ogg FLAC, fragmented MP4, and MP4 with video
-or extra tracks. AAC, MP3, ALAC 20/32-bit or nonstandard-layout variants,
-Vorbis, Opus, and DSD are unavailable. MacinMeter reports these as unsupported;
-it does not invoke FFmpeg or silently resample or preprocess them. The [format
-guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
+streams above 26 channels, RF64/BW64, AIFC, Ogg FLAC, fragmented MP4, and MP4
+with video or extra tracks. AAC, MP3, ALAC 20/32-bit or nonstandard-layout
+variants, Vorbis, Opus, and DSD are unavailable. MacinMeter reports these as
+unsupported; it does not invoke FFmpeg or silently resample or preprocess them.
+The [format guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
 
 ## Installation
 

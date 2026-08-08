@@ -29,6 +29,15 @@ fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {
         .expect("batch should produce an item outcome for ordinary media failures")
 }
 
+fn assert_only_partial_window_warning(warnings: &[String]) {
+    assert_eq!(
+        warnings.len(),
+        1,
+        "unexpected report warnings: {warnings:?}"
+    );
+    assert!(warnings[0].contains("one partial window"), "{warnings:?}");
+}
+
 #[test]
 fn rust_api_analyzes_a_repository_wave_fixture() {
     let path = fixture("tiny_duration.wav");
@@ -51,7 +60,7 @@ fn rust_api_analyzes_a_repository_wave_fixture() {
     assert_eq!(analysis.channels().len(), 2);
     assert_eq!(analysis.algorithm().parameters.histogram_bins, 10_001);
     assert_eq!(diagnostics.decoded_frames, 441);
-    assert!(diagnostics.warnings.is_empty());
+    assert_only_partial_window_warning(&diagnostics.warnings);
 }
 
 #[test]
@@ -100,7 +109,7 @@ fn rust_api_analyzes_the_product_aiff_and_flac_routes() {
         assert_eq!(analysis.channels().len(), usize::from(channels));
         assert_eq!(diagnostics.backend, "symphonia");
         assert_eq!(diagnostics.decoded_frames, frames);
-        assert!(diagnostics.warnings.is_empty());
+        assert_only_partial_window_warning(&diagnostics.warnings);
     }
 }
 
@@ -139,7 +148,7 @@ fn rust_api_analyzes_representative_m4a_and_mp4_alac_routes() {
         );
         assert_eq!(report.analysis().frames_seen(), frames);
         assert_eq!(report.diagnostics().decoded_frames, frames);
-        assert!(report.diagnostics().warnings.is_empty());
+        assert_only_partial_window_warning(&report.diagnostics().warnings);
     }
 }
 

@@ -22,13 +22,14 @@ WAV、FLAC、AIFF 与 MP4/M4A ALAC 文件报告逐声道和逐轨 DR。命令行
 显式文件路径按内容探测，可以使用任意扩展名。文件夹扫描会寻找 `.wav`、`.wave`、
 `.flac`、`.aif`、`.aiff`、`.m4a` 与 `.mp4`；其他后缀的受支持文件仍然可以通过
 直接传入路径分析。
-当前文件分析覆盖最多 64 声道。受限 WAVE_FORMAT_EXTENSIBLE 路径最多覆盖 26 声道，
-且 channel layout 保持 unknown；完整 valid-bit 与 mask 规则见支持格式文档。
+产品分析最多接受 64 声道，但当前 Symphonia WAV backend 对经典与
+WAVE_FORMAT_EXTENSIBLE 输入均只能表示 1–26 声道。受限 Extensible 路径的
+channel layout 保持 unknown；完整 valid-bit 与 mask 规则见支持格式文档。
 
 一些具有常见扩展名的文件采用了当前尚未支持的变体，例如 padded 或 valid bits
-未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、AIFC、Ogg FLAC、
-fragmented MP4，以及带视频或额外 track 的 MP4。AAC、MP3、ALAC 20/32-bit 或
-非标准布局变体、Vorbis、Opus 和 DSD 目前也不可用。
+未指定的 WAVE_FORMAT_EXTENSIBLE、超过 26 声道的 Extensible、RF64/BW64、AIFC、
+Ogg FLAC、fragmented MP4，以及带视频或额外 track 的 MP4。AAC、MP3、ALAC
+20/32-bit 或非标准布局变体、Vorbis、Opus 和 DSD 目前也不可用。
 MacinMeter 会把它们报告为不支持，不会调用 FFmpeg，也不会静默重采样或预处理。
 更完整的 route 细节记录在
 [支持格式](docs/SUPPORTED_FORMATS_CN.md)。

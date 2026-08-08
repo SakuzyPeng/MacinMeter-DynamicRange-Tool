@@ -314,6 +314,7 @@ impl Analyzer {
         let mut block_geometry = DecodeBlockGeometry::default();
         let pcm = opened.reader.stream_info().clone();
         let mut session = AnalyzerSession::new(pcm.spec.clone())?;
+        let full_window_frames = session.window_frames() as u64;
 
         // Read one block on the calling thread first. Overlap is admitted only
         // once a real block has proven its retention fits the granted budget,
@@ -371,7 +372,8 @@ impl Analyzer {
             }
         };
 
-        let diagnostics = opened.reader.diagnostics().clone();
+        let mut diagnostics = opened.reader.diagnostics().clone();
+        append_analysis_warnings(&mut diagnostics, &analysis, full_window_frames);
         match AnalysisReport::try_new(opened.source, pcm, analysis, diagnostics) {
             Ok(report) => Ok(OpenedAnalysis {
                 report,
@@ -386,6 +388,56 @@ impl Analyzer {
                 .with_display_path(display_path)
                 .with_backend(opened.reader.diagnostics().backend.clone())),
         }
+    }
+}
+
+fn append_analysis_warnings(
+    diagnostics: &mut macinmeter_domain::DecodeDiagnostics,
+    analysis: &macinmeter_domain::AnalysisResult,
+    full_window_frames: u64,
+) {
+    let frames_seen = analysis.frames_seen();
+    if frames_seen > 0 && frames_seen < full_window_frames {
+        diagnostics.warnings.push(format!(
+            "track DR is based on one partial window because the stream is shorter than a full \
+             analysis window (decoded_frames={frames_seen}; \
+             full_window_frames={full_window_frames})"
+        ));
+    }
+
+    let channels = analysis.stream().channels.get();
+    if channels > 2
+        && matches!(
+            &analysis.stream().channel_layout,
+            macinmeter_domain::ChannelLayout::Unknown
+        )
+    {
+        diagnostics.warnings.push(format!(
+            "the {channels}-channel layout is unknown; track DR uses every channel and may \
+             therefore include LFE"
+        ));
+    }
+
+    let silent_channels = analysis
+        .channels()
+        .iter()
+        .filter(|channel| {
+            matches!(
+                &channel.outcome,
+                macinmeter_domain::ChannelOutcome::Silent { .. }
+            )
+        })
+        .count();
+    if silent_channels > 0 {
+        let noun = if silent_channels == 1 {
+            "channel"
+        } else {
+            "channels"
+        };
+        diagnostics.warnings.push(format!(
+            "track DR includes {silent_channels} silent {noun} as DR0 under the fixed reference \
+             aggregation rule"
+        ));
     }
 }
 
@@ -1086,6 +1138,68 @@ mod tests {
         assert_eq!(error.display_path.as_deref(), Some("diagnostics.fake"));
         assert_eq!(error.backend.as_deref(), Some("fake-source"));
         assert!(error.message.contains("diagnostics"));
+    }
+
+    #[test]
+    fn report_warnings_expose_partial_windows_unknown_layout_and_silent_channels() {
+        let channels = ChannelCount::new(3).unwrap();
+        let opened = opened_audio(
+            channels,
+            channels,
+            vec![PcmBlock::new(vec![0.0, 0.25, -0.25], channels).unwrap()],
+        );
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+
+        let report = Analyzer::analyze_opened(
+            opened,
+            OverlapBudget::default(),
+            0,
+            &ExecutionControl::new(&cancellation, &progress),
+            "warnings.fake",
+        )
+        .expect("the warning fixture should analyze");
+        let warnings = &report.diagnostics().warnings;
+        assert_eq!(warnings.len(), 3);
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("one partial window"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("3-channel layout is unknown"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("1 silent channel as DR0"))
+        );
+    }
+
+    #[test]
+    fn one_complete_window_does_not_emit_the_partial_window_warning() {
+        let channels = ChannelCount::new(1).unwrap();
+        let stream = StreamSpec::new(48_000, channels.get(), ChannelLayout::Unknown).unwrap();
+        let frames = AnalyzerSession::new(stream).unwrap().window_frames();
+        let opened = opened_audio(
+            channels,
+            channels,
+            vec![PcmBlock::new(vec![0.25; frames], channels).unwrap()],
+        );
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+
+        let report = Analyzer::analyze_opened(
+            opened,
+            OverlapBudget::default(),
+            0,
+            &ExecutionControl::new(&cancellation, &progress),
+            "full-window.fake",
+        )
+        .expect("one complete window should analyze");
+        assert!(report.diagnostics().warnings.is_empty());
     }
 
     /// A budget wide enough to admit every block these tests build.

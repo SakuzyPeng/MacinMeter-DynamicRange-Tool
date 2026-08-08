@@ -525,6 +525,30 @@ M2 完成必须同时满足：
 - 本地 fmt、严格 Clippy、workspace tests、TypeScript build 与 Tauri check 通过；
 - 不触发或等待远端 CI。
 
+## 后继修订
+
+### 2026-08-09：真实 WAV 语料收紧 backend 边界并毕业零填充 fmt
+
+一组真实 Windows 批处理语料暴露了三种此前没有形成产品回归的 WAV 形状：
+
+- 32 声道 classic RIFF/PCM 会通过第一方 64 声道资源上限，随后由 Symphonia 以
+  `riff: invalid channel count` 拒绝并被误分为 `MalformedMedia`。Symphonia 0.5.5
+  的 WAV `Channels` 实际只定义连续低 26 bits，因此 classic 与 Extensible 现统一
+  在 decoder 创建前对 27–64 声道返回 `UnsupportedFormat / Probe`。64 声道仍是
+  analyzer/direct-session 的资源上限，不再被描述成当前 WAV backend 能力；
+- `RF64`/`BW64` 属于有效 WAVE 家族，但当前进程内 backend 只探测 `RIFF`。第一方
+  content probe 现显式识别这两个 signature 并返回专用 `UnsupportedFormat / Probe`，
+  不再声称内容“不是 WAV”；这只是准确拒绝，没有毕业 RF64/BW64；
+- 一条 classic tag-1 PCM 使用 40-byte `fmt`，其标准 16-byte 前缀后的 24 bytes
+  全部为零。现有 backend 已将该形状解释为同一 classic PCM。产品只毕业这个精确
+  inert 子集，并以 compact twin 固定 source metadata、frame/progress、finite-f64
+  normalization、sticky EOF 与逐位 PCM 等价；任一非零尾部、其他长度及 tag-3 的
+  40-byte 形状仍为 `UnsupportedFormat / Probe`。
+
+同一修订在 application report 中增加纯诊断 warning：非空输入不足一个完整分析窗、
+未知多声道布局可能包含 LFE、或静音声道按固定参考规则以 DR0 参与聚合时均明确提示。
+这些 warning 不改变 `AnalyzerSession`、channel/track 数值、固定聚合规则或 wire schema。
+
 ## 后果
 
 - M2 会先增加测试、fixture 和跨层校验，短期不保证新增格式；

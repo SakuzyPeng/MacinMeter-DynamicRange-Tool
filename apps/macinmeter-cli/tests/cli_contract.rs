@@ -74,6 +74,7 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     assert!(stdout.contains("Track aggregate: DR"));
     assert!(stdout.contains("Report levels: peak "));
     assert!(stdout.contains(", RMS "));
+    assert!(stdout.contains("Warnings:\n- track DR is based on one partial window"));
     assert!(!stdout.contains("[0]"));
     assert!(stderr.contains("[0] analyzing"));
     assert!(stderr.contains("[0] ok:"));
@@ -123,6 +124,19 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert!(value["data"]["analysis"]["channels"][0]["report"]["overallRmsLinear"].is_number());
     assert!(value["data"]["analysis"]["report"]["primaryPeakLinear"].is_number());
     assert!(value["data"]["analysis"]["report"]["overallRmsLinear"].is_number());
+    assert_eq!(
+        value["data"]["diagnostics"]["warnings"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        value["data"]["diagnostics"]["warnings"][0]
+            .as_str()
+            .unwrap()
+            .contains("one partial window")
+    );
     let api_report = macinmeter::Application::new()
         .analyze_file(macinmeter::AnalyzeRequest::new(&input))
         .expect("the same fixture should analyze through the Rust API");
@@ -136,6 +150,19 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     );
     assert!(!stdout(&output).contains("[0] analyzing"));
     assert!(stderr(&output).contains("[0] analyzing"));
+}
+
+#[test]
+fn batch_human_output_surfaces_report_warnings() {
+    let input = fixture("tiny_duration.wav");
+    let output = run(["batch".as_ref(), input.as_os_str()]);
+
+    assert_code(&output, 0);
+    let stdout = stdout(&output);
+    assert!(stdout.starts_with("MacinMeter batch\n"));
+    assert!(stdout.contains("OK   "));
+    assert!(stdout.contains("warning: track DR is based on one partial window"));
+    assert!(stdout.contains("Total 1, succeeded 1, failed 0"));
 }
 
 #[test]

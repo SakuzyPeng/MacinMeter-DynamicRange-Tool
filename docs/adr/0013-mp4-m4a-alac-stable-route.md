@@ -10,7 +10,8 @@
   - [ADR-0012：WAVE_FORMAT_EXTENSIBLE 线性 PCM](0012-wave-format-extensible-linear-pcm.md)
 - 后继能力修订：
   2026-08-03 扩大不可表示采样率 sentinel 的接受集，见下方 §2 与“后继修订”。
-  格式矩阵、错误分类与其余毕业证据不变。
+  2026-08-09 又修正非 ALAC 媒体的诊断优先级，见“后继修订”。格式矩阵与其余
+  毕业证据不变。
 - 后继并发修订：
   [ADR-0014](0014-deterministic-decode-analysis-pipeline.md) 保留本文的稳定 ALAC
   格式矩阵与严格错误契约，但允许在独立毕业后为该 route 增加有界、顺序提交的
@@ -181,6 +182,16 @@ WAV 孪生证据固定，而不是继承 backend 的全部隐式能力。
 同一次检查还记录了两个解码帧数比声明少恰好一个 4096-frame packet 的文件。ffmpeg
 对它们解出完全相同的帧数并报 `invalid samples per frame: 0`，只是把截断结果静默
 输出。本产品按既有契约判为 sticky `DecodeFailed / Decode`，不作改动。
+
+### 2026-08-09：非 ALAC codec 先于 ALAC edit-list 规则报告
+
+真实 IAMF/Opus 与 E-AC-3 文件同时携带非 identity edit list。第一方 parser 原先在
+遍历 `trak` 时立即解释 `edts`，因此会先返回“trimmed edit list unsupported”，掩盖
+该 track 根本不是 ALAC 的主要原因。现改为先完成 `mdia`/`stsd` 与 sample-entry
+codec identity 检查，再对已经确认的 ALAC track 解释 edit list。非 ALAC 输入因此
+稳定返回 `sample_entry=<fourcc>` 的 codec 错误；合法 ALAC 的 identity/cropped edit
+规则、错误码和接受面均不改变。组合回归同时携带非 ALAC sample entry 与非 identity
+edit，固定 codec identity 的优先级。
 
 ## 实施收口
 

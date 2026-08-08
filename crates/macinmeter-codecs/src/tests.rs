@@ -549,6 +549,32 @@ fn extensions_are_discovery_only_and_exclude_aifc() {
 }
 
 #[test]
+fn rf64_and_bw64_are_identified_as_unavailable_wave_variants() {
+    for signature in [*b"RF64", *b"BW64"] {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&signature);
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        let file = TestFile::new("wav", &bytes);
+
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::UnsupportedFormat);
+        assert_eq!(error.stage, AnalysisStage::Probe);
+        assert!(error.message.contains("RF64/BW64"), "{error}");
+        assert_eq!(
+            error.details.as_deref(),
+            Some(
+                format!(
+                    "container_signature={}",
+                    String::from_utf8_lossy(&signature)
+                )
+                .as_str()
+            )
+        );
+    }
+}
+
+#[test]
 fn capability_catalog_keeps_planned_routes_out_of_discovery() {
     for route in NATIVE_CAPABILITY_CATALOG {
         assert!(!route.container.is_empty() && !route.codec.is_empty());
@@ -589,7 +615,7 @@ fn capability_catalog_keeps_planned_routes_out_of_discovery() {
 }
 
 #[test]
-fn wave_capabilities_publish_the_extensible_stable_subset() {
+fn wave_capabilities_publish_the_backend_and_extensible_stable_subset() {
     for codec in ["pcm_integer", "pcm_float"] {
         let route = NATIVE_CAPABILITY_CATALOG
             .iter()
@@ -598,9 +624,14 @@ fn wave_capabilities_publish_the_extensible_stable_subset() {
         let limitations = route.limitations.join("; ");
         assert!(limitations.contains("exact WAVE_FORMAT_EXTENSIBLE"));
         assert!(limitations.contains("valid bits must equal container bits"));
-        assert!(limitations.contains("1-26 channels"));
+        assert!(limitations.contains("Symphonia WAV accepts 1-26 channels"));
         assert!(limitations.contains("low 18 speaker bits"));
         assert!(!limitations.contains("rejected at probe"));
+        if codec == "pcm_integer" {
+            assert!(limitations.contains("40-byte fmt chunk whose 24-byte tail is all zero"));
+        } else {
+            assert!(!limitations.contains("all-zero fmt tail"));
+        }
     }
 }
 
@@ -990,6 +1021,28 @@ fn alac_route_rejects_a_non_alac_sample_entry_by_codec_identity() {
 }
 
 #[test]
+fn non_alac_codec_identity_outranks_alac_specific_edit_validation() {
+    let mut bytes = fs::read(malformed_fixture_path("alac-non-alac-sample-entry.m4a")).unwrap();
+    let elst = bytes
+        .windows(4)
+        .position(|window| window == b"elst")
+        .expect("the fixture must contain an edit list");
+    bytes[elst + 16..elst + 20].copy_from_slice(&1_u32.to_be_bytes());
+    let file = TestFile::new("m4a", &bytes);
+
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{error}");
+    assert_eq!(error.stage, AnalysisStage::Probe, "{error}");
+    assert!(
+        error
+            .message
+            .contains("audio codec is outside the stable ALAC route"),
+        "{error}"
+    );
+    assert_eq!(error.details.as_deref(), Some("sample_entry=mp4a"));
+}
+
+#[test]
 fn alac_backend_metadata_must_match_the_validated_container() {
     use symphonia::core::codecs::{CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CodecParameters};
 
@@ -1060,6 +1113,21 @@ fn rejects_over_limit_wave_and_aiff_before_symphonia_probe() {
     assert_analysis_channel_limit_error(&error, channels);
     let display_path = file.path().display().to_string();
     assert_eq!(error.display_path.as_deref(), Some(display_path.as_str()));
+}
+
+#[test]
+fn rejects_unrepresentable_classic_wave_channels_before_symphonia_probe() {
+    for channels in [27, 32, 64] {
+        let file = TestFile::new("wav", &empty_pcm8_wave(channels));
+        let error = expect_open_error(file.path());
+        assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{channels}ch");
+        assert_eq!(error.stage, AnalysisStage::Probe, "{channels}ch");
+        assert!(error.message.contains("backend channel limit"), "{error}");
+        assert_eq!(
+            error.details.as_deref(),
+            Some(format!("declared_channels={channels}; max_wave_channels=26").as_str())
+        );
+    }
 }
 
 #[test]
@@ -1800,6 +1868,87 @@ fn accepts_wave_format_extensible_with_exact_supported_fields() {
 }
 
 #[test]
+fn zero_padded_classic_pcm_fmt_matches_its_compact_twin_and_source_contract() {
+    let frames = [[i16::MIN, i16::MAX], [0, 16_384], [-16_384, 1_000]];
+    let compact = TestFile::new("wav", &pcm16_wave(48_000, &frames));
+    let padded_bytes = zero_pad_classic_fmt_to_40(pcm16_wave(48_000, &frames));
+    let padded = TestFile::new("wav", &padded_bytes);
+    let (compact_source, compact_samples) = decode_all_samples(compact.path());
+
+    let mut opened = DecoderFactory::new()
+        .open(padded.path())
+        .expect("zero-padded classic PCM should open");
+    assert_eq!(opened.source.container, ContainerFormat::Wave);
+    assert_eq!(opened.source.codec, SourceCodec::PcmInteger);
+    assert_eq!(opened.source.sample_rate.get(), 48_000);
+    assert_eq!(opened.source.channels.get(), 2);
+    assert_eq!(opened.source.bits_per_sample, Some(16));
+    assert_eq!(opened.source.expected_frames, Some(3));
+    assert_eq!(opened.source.sample_rate, compact_source.sample_rate);
+    assert_eq!(opened.source.channels, compact_source.channels);
+    assert_eq!(
+        opened.source.bits_per_sample,
+        compact_source.bits_per_sample
+    );
+
+    let immutable_info = opened.reader.stream_info().clone();
+    assert_eq!(immutable_info.expected_frames, Some(3));
+    let mut padded_samples = Vec::new();
+    while let ReadOutcome::Data(block) = opened
+        .reader
+        .read_block()
+        .expect("padded PCM should decode")
+    {
+        assert_block_geometry(&block, opened.source.channels);
+        padded_samples.extend_from_slice(block.samples());
+    }
+    assert_eq!(raw_bits(&padded_samples), raw_bits(&compact_samples));
+    assert_eq!(
+        raw_bits(&padded_samples),
+        raw_bits(&[
+            -1.0,
+            f64::from(i16::MAX) / 32_768.0,
+            0.0,
+            0.5,
+            -0.5,
+            1_000.0 / 32_768.0,
+        ])
+    );
+    assert_eq!(opened.reader.stream_info(), &immutable_info);
+    assert_eq!(opened.reader.progress().decoded_frames(), 3);
+    assert!(opened.reader.progress().is_eof());
+    assert_eq!(opened.reader.diagnostics().decoded_frames, 3);
+    assert!(opened.reader.diagnostics().warnings.is_empty());
+
+    let terminal_progress = opened.reader.progress();
+    let terminal_diagnostics = opened.reader.diagnostics().clone();
+    for _ in 0..2 {
+        assert_eq!(opened.reader.read_block().unwrap(), ReadOutcome::Eof);
+        assert_eq!(opened.reader.stream_info(), &immutable_info);
+        assert_eq!(opened.reader.progress(), terminal_progress);
+        assert_eq!(opened.reader.diagnostics(), &terminal_diagnostics);
+    }
+}
+
+#[test]
+fn classic_fmt_padding_must_be_exactly_the_graduated_pcm_zero_tail() {
+    let mut nonzero_pcm = zero_pad_classic_fmt_to_40(pcm16_wave(48_000, &[[1, -1]]));
+    nonzero_pcm[36] = 22;
+    let file = TestFile::new("wav", &nonzero_pcm);
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{error}");
+    assert_eq!(error.stage, AnalysisStage::Probe, "{error}");
+    assert!(error.message.contains("nonzero classic PCM fmt padding"));
+
+    let padded_float = zero_pad_classic_fmt_to_40(float32_wave(48_000, &[0.25]));
+    let file = TestFile::new("wav", &padded_float);
+    let error = expect_open_error(file.path());
+    assert_eq!(error.code, ErrorCode::UnsupportedFormat, "{error}");
+    assert_eq!(error.stage, AnalysisStage::Probe, "{error}");
+    assert!(error.message.contains("extended WAV fmt data"));
+}
+
+#[test]
 fn extensible_probe_uses_the_adr_0012_error_classification() {
     let pcm_guid = [
         0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b,
@@ -2106,6 +2255,19 @@ fn float32_wave(sample_rate: u32, samples: &[f32]) -> Vec<u8> {
     for sample in samples {
         bytes.extend_from_slice(&sample.to_le_bytes());
     }
+    bytes
+}
+
+fn zero_pad_classic_fmt_to_40(mut bytes: Vec<u8>) -> Vec<u8> {
+    assert_eq!(&bytes[..4], b"RIFF");
+    assert_eq!(&bytes[8..16], b"WAVEfmt ");
+    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 16);
+    assert_eq!(&bytes[36..40], b"data");
+
+    let riff_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    bytes[4..8].copy_from_slice(&(riff_size + 24).to_le_bytes());
+    bytes[16..20].copy_from_slice(&40_u32.to_le_bytes());
+    bytes.splice(36..36, [0_u8; 24]);
     bytes
 }
 
