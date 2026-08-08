@@ -712,28 +712,37 @@ overlap 实际启用的宽度出现，且不随流长或 worker 数增长。原�
 **不增加流水级数、不买任何并行度**，只是让生产者在两级抖动时可以跑在前面而不是每块
 都 park。它不改变分析线程看到的块序列，因此不可能移动结果。
 
-**这不是一个调出来的常数。** runner 在两台异构主机、两条串行 track 上扫过
-1/2/4/8/16/32/64：曲线只升然后走平，16 之后仅有一条曲线还在改善且幅度约 1%，代价
-却是三到四倍的保留 PCM。曲线在任何被测格里都不下折，因此 16 是平段上的一点，而不是
-另一种输入组成可以挪走的峰。保留量仍按 `depth + 1` 个最坏块从 route 已持有的 in-flight
-额度中计价，装不下的深度照旧退化为串行而不是超支。
+runner 在两台异构主机、两条串行 track 上扫过 1/2/4/8/16/32/64。原始中位数并不
+单调：Windows 的主要收益在 16 前已经取得，16/32/64 的离散区间重叠；macOS 的网格
+更平、更嘈杂，多个相邻深度互有上下。因此选择 16 的依据不是“曲线永不下折”，而是它
+随后在同轮双主机 A/B 中得到支持，且 32/64 没有建立额外的跨主机收益，却分别保留约
+两倍、四倍的块。保留量仍按 `depth + 1` 个最坏块从 route 已持有的 in-flight 额度中
+计价，装不下的深度照旧退化为串行而不是超支。
 
-**同时被否掉的是另一条候选。** 「每次交接合并 K 块」曾在先测的那台主机上表现更好
-（立体声消除 78% 余量对深度的 28%），但在同构主机上六声道 batch 32 跑出 0.92x ——
-比不合批还慢，位移达样本离散的 20 倍。原因是一个前两次分解都没有的成本：批次大到
-装不进分析线程的缓存后，块交接过去时已被逐出。**这也排除了「像 lane 宽度那样由额度
-推导批量」**：取装得下的最大值恰好指向有害的一侧，而真正决定安全批量的是缓存驻留，
-plan 看不见它，in-flight 额度也不是它的代理。合批连同它引入的 flush-on-error 规则一并
-删除，生产者与分析线程的循环回到深度候选出现之前的原样。
+**同时被否掉的是另一条候选。** 「每次交接合并 K 块」的探索性测量表现出明显的
+host/组成敏感性，但没有形成满足本 ADR 毕业约束的、已提交且 source-bound 的双主机
+原始记录。因此这里不保留先前未受记录支持的精确加速、回退或离散倍数，也不把 cache
+驻留猜测写成已证明的原因。plan 无法从 worker/memory permit 推导 cache-safe 批量，
+所以合批连同它引入的 flush-on-error 规则一并删除，生产者与分析线程继续保持每条消息
+一个块。
 
 毕业依据（ADR-0007 同轮交错 A/B，两个 variant 在同一次 run 内按 seeded 调度交错，
 两台各 288 个样本，`outliersRemoved = 0`）：串行 route 在 Windows 上为 1.08–1.15x、
 位移达同轮合并 MAD 的 1.7x–8.0x，在 macOS 上 WAV 为 1.04x、纯 WAV 批量为 1.17x。
 **内建对照全部按机制预测落在噪声内**：单 worker plan（overlap 不启动）、FLAC 与 ALAC
-packet route（花光 permit，不走这条交接）、以及以 packet route 为主的混合批量，六格的
-位移绝对值均 ≤ 1.3 倍 MAD。16 个 case 在两台上跨 variant 与全部样本各只有一个 result
-fingerprint；139 个 fixture 的 release CLI 输出（含 stderr 与退出码）在两个二进制间逐
-字节相同。代价为单文件 RSS ≤ +0.44 MiB、三 lane 纯 WAV 批量 +1.00 MiB。
+packet route（花光 permit，不走这条交接）、以及以 packet route 为主的混合批量；两台
+共 14 个对照比较的位移绝对值均 ≤ 1.33 倍合并 MAD。16 个 case 在每台主机上跨 variant
+与全部样本各只有一个 result fingerprint。代价为单文件 median process-tree peak RSS
+增量 ≤ +0.44 MiB；三 lane 纯 WAV 批量在 macOS 为 +1.00 MiB、Windows 为 +0.15 MiB。
+完整身份、表格与原始记录见
+[`ADR0014_OVERLAP_HANDOFF_DEPTH_REPORT.md`](../performance/ADR0014_OVERLAP_HANDOFF_DEPTH_REPORT.md)。
+
+准入的资源退化也是决策的一部分：普通 8-worker plan 分成 3 条 file lane 时，每 lane
+得到 2 个 decoder worker 与 8 MiB in-flight PCM。若 WAV/AIFF 在稳定 64 声道上具有
+1,152-frame 最坏块，一个块是 589,824 bytes，depth 16 要保留 17 个，即 10,027,008
+bytes，超过该 lane 的额度；这时内部 decode-analysis overlap 必须保持串行，外层 3 条
+file lane 仍可继续执行。depth 1 在相同几何下原本能装入，但不据此为该边界声明加速。
+该 fail-safe 现由确定性回归测试固定。
 
 harness 侧同时修正了一处：非显式 case 的深度期望原先固定为 1，那只在产品恰好发布
 深度 1 时成立，跨 variant A/B 会因此拒绝它本该保护的比较。harness 读不到该常量也不

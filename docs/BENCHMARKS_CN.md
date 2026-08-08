@@ -19,9 +19,9 @@ FFmpeg/DSD 路径，不能代表当前架构，也不能作为正确性或吞吐
 - 递归 discovery 与 wire-v3 pretty JSON rendering。
 
 非默认 case 族沿 ADR-0014 的各条轴扩展：packet worker sweep、application worker
-sweep、file lane sweep、decode-analysis hand-off shape sweep 与 source 自有的
+sweep、file lane sweep、decode-analysis hand-off depth sweep 与 source 自有的
 pipeline 归因 probe。lane、worker 与 hand-off sweep 会记录实际运行的 plan 与拓扑，
-宁可失败也不把被收窄或保持串行的执行标成它所请求的宽度或 shape。
+宁可失败也不把被收窄或保持串行的执行标成它所请求的宽度或 depth。
 
 生成语料不含私人音频，只存在 ignored `target/`。manifest 固定媒体 bytes、
 geometry、归一化 decoded-f64 oracle 与 generator identity。

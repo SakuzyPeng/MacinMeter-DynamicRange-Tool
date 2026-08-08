@@ -46,13 +46,15 @@
   固定分析算法与数值报告字段不变。
 - Added bounded packet-level decoding for the ALAC route and for FLAC streams
   whose geometry fits the granted reservation, overlapped decoding and analysis
-  on a permit the route leaves unspent, and batch file lanes derived from the
-  same plan. A single file still receives the whole decoder. Nothing here is a
-  new public option, and a report never indicates which path produced it.
+  through a bounded depth-16 hand-off on a permit the route leaves unspent, and
+  batch file lanes derived from the same plan. A hand-off whose worst-case PCM
+  retention does not fit its lane grant remains serial. A single file still
+  receives the whole decoder. Nothing here is a new public option, and a report
+  never indicates which path produced it.
   为 ALAC route 以及几何能落入已授予 reservation 的 FLAC 流启用有界 packet 级
-  解码，在 route 未花掉的 permit 上重叠解码与分析，并按同一 plan 推导批量的 file
-  lane；单个文件仍独占整个解码器。以上均不新增公开选项，报告也不指示由哪条路径
-  产生。
+  解码，在 route 未花掉的 permit 上通过有界 depth-16 hand-off 重叠解码与分析，并按
+  同一 plan 推导批量的 file lane；最坏 PCM 保留量装不进 lane 额度时 hand-off 保持
+  串行。单个文件仍独占整个解码器。以上均不新增公开选项，报告也不指示由哪条路径产生。
 - **Behavior change:** batch progress events now interleave across file lanes
   through the Rust progress sink, Tauri `analysis-event`, and CLI stderr. Every
   event still names the item it belongs to, and the item order inside the report

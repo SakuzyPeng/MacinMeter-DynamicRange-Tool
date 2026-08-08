@@ -41,6 +41,10 @@ leaderboard or a user-facing throughput guarantee.
   records the allocation-bound file-lane width sweep on macOS arm64 and Windows
   x86_64. Both raw records bind the clean source, worker, suite, corpus,
   environment, every sample and the actual post-discovery allocation.
+- [`ADR0014_OVERLAP_HANDOFF_DEPTH_REPORT.md`](ADR0014_OVERLAP_HANDOFF_DEPTH_REPORT.md)
+  records the two-host depth sweep and the same-run depth-one/depth-sixteen A/B
+  for decode-analysis overlap. It also fixes the resource boundary where the
+  deeper hand-off must remain serial rather than exceed a per-lane PCM grant.
 - [`baselines/`](baselines/) contains the complete runner JSON, including every
   warm-up and measured sample. File names bind the suite, source prefix, and
   target; the JSON binds the full source commit, worker/corpus/suite hashes,

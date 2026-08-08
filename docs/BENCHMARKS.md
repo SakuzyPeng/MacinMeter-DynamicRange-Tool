@@ -24,9 +24,9 @@ external decoder. The M6 suite measures these scopes separately:
 
 Non-default case families extend it along the ADR-0014 axes: a packet-worker
 sweep, an application worker sweep, a file-lane sweep, a decode-analysis
-hand-off shape sweep, and source-owned pipeline attribution probes. The lane,
+hand-off depth sweep, and source-owned pipeline attribution probes. The lane,
 worker, and hand-off sweeps record the plan and topology that actually ran, and
-fail rather than label a narrowed or serial execution with the width or shape
+fail rather than label a narrowed or serial execution with the width or depth
 it requested.
 
 The generated corpus contains no private audio and stays under ignored

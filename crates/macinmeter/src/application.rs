@@ -67,7 +67,7 @@ impl ApplicationPerformanceProbe {
             requested_overlap_channel_depth: shape.channel_depth(),
             // A refused shape creates no hand-off at all. Keep that distinct
             // from the request so a benchmark cannot label a serial fallback
-            // with the depth and batch it failed to apply.
+            // with the depth it failed to apply.
             applied_overlap_channel_depth: if opened.overlapped {
                 Some(shape.channel_depth())
             } else {
@@ -397,12 +397,10 @@ impl Analyzer {
 /// [`OverlapBudget::admits`] out of the same in-flight allowance and is not
 /// reachable from a product build.
 ///
-/// Batching several blocks per message was built and measured alongside this
-/// and is deliberately absent. It closed far more of the hand-off gap on one
-/// host and composition and was a regression on another, because a batch large
-/// enough to help stops fitting the analyst's cache — a bound the plan cannot
-/// see and this allowance does not proxy. Depth's curve only rises and then
-/// flattens, so it has no moving optimum to miss.
+/// Batching several blocks per message was explored alongside this and is
+/// deliberately absent. Its host- and composition-sensitive behavior did not
+/// justify adding another hand-off rule whose cache residency the plan cannot
+/// price. Depth keeps the existing one-block-per-message invariant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OverlapShape {
     /// Messages the channel may hold. A deeper channel does not add a stage,
@@ -420,11 +418,10 @@ impl Default for OverlapShape {
 impl OverlapShape {
     /// The depth an ordinary build uses, and the only one it can reach.
     ///
-    /// Sixteen is where the measured curve has flattened on every host and
-    /// track swept: past it only one cell keeps improving, by about a percent,
-    /// for three to four times the retained PCM. The curve never turns down, so
-    /// this is a point on a plateau rather than a peak that another composition
-    /// could move.
+    /// Sixteen is the bounded point accepted by the two-host A/B. Windows gains
+    /// were mostly realized by 16, while the macOS depth medians were noisy and
+    /// broadly flat. Depths 32 and 64 established no additional cross-host
+    /// benefit while retaining roughly two and four times as many blocks.
     pub(crate) const DEFAULT: Self = Self {
         channel_depth: match NonZeroUsize::new(16) {
             Some(depth) => depth,
@@ -444,8 +441,8 @@ impl OverlapShape {
     /// Blocks this shape may retain beyond the one a serial run already holds.
     ///
     /// The channel holds `depth` blocks and the analyst holds the one it is
-    /// pushing. The default depth yields two, which is what the hand-off
-    /// retained before the shape existed.
+    /// pushing. The depth-one predecessor retained two blocks; the shipped
+    /// depth of 16 retains 17.
     const fn retained_blocks(self) -> u64 {
         (self.channel_depth.get() as u64).saturating_add(1)
     }
@@ -519,7 +516,7 @@ fn send_analysis_block(
     let sent = match sender.try_send(AnalysisInput::Block(block)) {
         Ok(()) => true,
         Err(std::sync::mpsc::TrySendError::Full(AnalysisInput::Block(block))) => {
-            // This hook runs only after the real depth-one channel reports
+            // This hook runs only after the real bounded channel reports
             // itself full, immediately before the same input enters the
             // blocking send. Tests can therefore release a held analyst
             // without inferring queue state from progress timing.
@@ -858,7 +855,7 @@ mod tests {
     use crate::{
         CancellationToken, ChannelCount, ChannelLayout, ContainerFormat, DecodeDiagnostics,
         DecodeProgress, NoopProgressSink, PcmBlock, PcmStreamInfo, SampleRate, SourceCodec,
-        SourceInfo, StreamSpec,
+        SourceInfo, StreamSpec, concurrency::ConcurrencyPlan,
     };
     use macinmeter_codecs::PcmSource;
     use std::{
@@ -1229,6 +1226,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn max_channel_file_lanes_refuse_depth_sixteen_instead_of_overspending() {
+        let allocation = ConcurrencyPlan::bounded_for_test(nonzero(8), nonzero(8))
+            .allocate(nonzero(3))
+            .unwrap();
+        let reservation = allocation.decode();
+        assert_eq!(allocation.file_lanes().get(), 3);
+        assert_eq!(reservation.workers().get(), 2);
+        assert_eq!(reservation.max_in_flight_pcm_bytes(), 8 * 1024 * 1024);
+
+        // The source-bound WAV/AIFF performance track proves at most 1,152
+        // frames per block. At the stable 64-channel ceiling, depth 16 must
+        // retain 17 × 589,824 bytes, which does not fit this per-lane grant.
+        let channels = ChannelCount::new(64).unwrap();
+        let block = PcmBlock::new(vec![0.0; usize::from(channels.get())], channels).unwrap();
+        let max_block_bytes = 1_152_u64
+            .saturating_mul(u64::from(channels.get()))
+            .saturating_mul(size_of::<f64>() as u64);
+        let available = reservation.max_in_flight_pcm_bytes();
+        assert_eq!(max_block_bytes, 589_824);
+        assert_eq!(
+            max_block_bytes * OverlapShape::DEFAULT.retained_blocks(),
+            10_027_008
+        );
+
+        assert!(
+            !OverlapBudget {
+                spare_permits: reservation.workers().get() - 1,
+                max_in_flight_pcm_bytes: available,
+                max_pcm_block_bytes: Some(max_block_bytes),
+                shape: OverlapShape::DEFAULT,
+                ..OverlapBudget::default()
+            }
+            .admits(&block),
+            "the default hand-off must stay serial instead of exceeding its lane grant"
+        );
+        assert!(
+            OverlapBudget {
+                spare_permits: reservation.workers().get() - 1,
+                max_in_flight_pcm_bytes: available,
+                max_pcm_block_bytes: Some(max_block_bytes),
+                shape: OverlapShape::new(nonzero(1)),
+                ..OverlapBudget::default()
+            }
+            .admits(&block),
+            "the depth-one predecessor fit this exact plan and geometry"
+        );
+    }
+
     /// The measurement depths, plus the default they have to reduce to.
     fn shapes() -> Vec<OverlapShape> {
         [1, 2, 3, 8, 16, 64]
@@ -1286,7 +1332,7 @@ mod tests {
     }
 
     #[test]
-    fn every_hand_off_shape_produces_the_same_analysis_bit_for_bit() {
+    fn every_hand_off_depth_produces_the_same_analysis_bit_for_bit() {
         let channels = ChannelCount::new(2).unwrap();
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
@@ -1314,8 +1360,8 @@ mod tests {
                 LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get),
                 "{shape:?} must actually overlap, or it proves nothing"
             );
-            // A batch larger than the whole stream is the boundary that decides
-            // whether the final partial batch is flushed before the terminator.
+            // Every depth still transfers exactly one block per message, so
+            // the final block and terminator preserve the serial boundary.
             assert_eq!(
                 format!("{:?}", serial.analysis()),
                 format!("{:?}", shaped_result.analysis()),
