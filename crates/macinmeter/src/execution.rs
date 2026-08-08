@@ -5,7 +5,7 @@ use crate::batch::BatchPerformanceProbe;
 use crate::{
     AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchReport, BatchRequest,
     CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
-    application::Analyzer,
+    application::{Analyzer, OverlapShape},
     batch::{BatchRunner, discover_inputs_with_control},
     concurrency::{ConcurrencyPlan, PlanAllocation},
 };
@@ -51,6 +51,7 @@ pub struct ExecutionBudget {
     max_queued_jobs: usize,
     concurrency: ConcurrencyPlan,
     file_lanes: NonZeroUsize,
+    overlap_shape: OverlapShape,
 }
 
 impl ExecutionBudget {
@@ -70,6 +71,7 @@ impl ExecutionBudget {
             // A batch narrower than this asks for fewer lanes, and a single
             // file asks for one, so no operation pays for lanes it cannot use.
             file_lanes: concurrency.saturating_file_lanes(),
+            overlap_shape: OverlapShape::DEFAULT,
         }
     }
 
@@ -83,6 +85,7 @@ impl ExecutionBudget {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
             concurrency: ConcurrencyPlan::serial(),
             file_lanes: SERIAL_FILE_LANES,
+            overlap_shape: OverlapShape::DEFAULT,
         }
     }
 
@@ -103,6 +106,7 @@ impl ExecutionBudget {
             max_queued_jobs,
             concurrency: ConcurrencyPlan::serial(),
             file_lanes: SERIAL_FILE_LANES,
+            overlap_shape: OverlapShape::DEFAULT,
         })
     }
 
@@ -143,6 +147,31 @@ impl ExecutionBudget {
     #[cfg(any(test, feature = "performance-probes"))]
     pub const fn with_file_lanes(self, file_lanes: NonZeroUsize) -> Self {
         Self { file_lanes, ..self }
+    }
+
+    /// How the decode-analysis hand-off is shaped.
+    pub(crate) const fn overlap_shape(self) -> OverlapShape {
+        self.overlap_shape
+    }
+
+    /// Override the graduated hand-off shape for measurement.
+    ///
+    /// Neither depth nor batch changes the block sequence the analyzer sees, so
+    /// this cannot move a result; both only trade retained PCM for hand-off
+    /// frequency, and the retention they ask for is priced against the same
+    /// in-flight allowance the route already holds. A shape that does not fit
+    /// leaves the stream serial rather than overspending, so this is a
+    /// measurement input under the non-default feature, not a product knob.
+    #[cfg(any(test, feature = "performance-probes"))]
+    pub fn with_overlap_shape(
+        self,
+        channel_depth: NonZeroUsize,
+        batch_blocks: NonZeroUsize,
+    ) -> Self {
+        Self {
+            overlap_shape: OverlapShape::new(channel_depth, batch_blocks),
+            ..self
+        }
     }
 
     /// Request a decode worker count for the internal plan.
@@ -325,6 +354,7 @@ pub struct ApplicationJob {
     /// operation, by the plan, before any thread is created.
     plan: ConcurrencyPlan,
     requested_file_lanes: NonZeroUsize,
+    overlap_shape: OverlapShape,
 }
 
 impl ApplicationJob {
@@ -354,8 +384,9 @@ impl ApplicationJob {
             Ok(allocation) => allocation.decode(),
             Err(error) => return Err(error),
         };
+        let shape = self.overlap_shape;
         self.execute(progress, |control| {
-            Analyzer::new(decode).analyze_file_with_control(request, control)
+            Analyzer::with_overlap_shape(decode, shape).analyze_file_with_control(request, control)
         })
     }
 
@@ -370,8 +401,10 @@ impl ApplicationJob {
             Ok(allocation) => allocation.decode(),
             Err(error) => return Err(error),
         };
+        let shape = self.overlap_shape;
         self.execute(progress, |control| {
-            Analyzer::new(decode).analyze_file_with_performance_probe(request, control)
+            Analyzer::with_overlap_shape(decode, shape)
+                .analyze_file_with_performance_probe(request, control)
         })
     }
 
@@ -380,9 +413,9 @@ impl ApplicationJob {
         request: BatchRequest,
         progress: &dyn ProgressSink,
     ) -> Result<BatchReport, AnalysisError> {
-        let (plan, lanes) = (self.plan, self.requested_file_lanes);
+        let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
-            BatchRunner::new(plan, lanes).run(request, control)
+            BatchRunner::with_overlap_shape(plan, lanes, shape).run(request, control)
         })
     }
 
@@ -393,9 +426,10 @@ impl ApplicationJob {
         request: BatchRequest,
         progress: &dyn ProgressSink,
     ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
-        let (plan, lanes) = (self.plan, self.requested_file_lanes);
+        let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
-            BatchRunner::new(plan, lanes).run_with_performance_probe(request, control)
+            BatchRunner::with_overlap_shape(plan, lanes, shape)
+                .run_with_performance_probe(request, control)
         })
     }
 
@@ -492,6 +526,7 @@ impl ExecutionCoordinator {
             },
             plan: self.inner.budget.concurrency(),
             requested_file_lanes: self.inner.budget.file_lanes(),
+            overlap_shape: self.inner.budget.overlap_shape(),
         })
     }
 }

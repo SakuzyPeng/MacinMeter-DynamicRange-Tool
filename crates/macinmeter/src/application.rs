@@ -9,6 +9,7 @@ use macinmeter_domain::{DecodeReservation, PcmBlock, PcmStreamInfo};
 use serde::{Deserialize, Serialize};
 use std::{
     io,
+    num::NonZeroUsize,
     path::PathBuf,
     sync::mpsc::{SyncSender, sync_channel},
     thread,
@@ -42,6 +43,8 @@ pub struct ApplicationPerformanceProbe {
     selected_decoder_workers: usize,
     selected_hasher_workers: usize,
     decode_analysis_overlapped: bool,
+    overlap_channel_depth: usize,
+    overlap_batch_blocks: usize,
     decoded_blocks: u64,
     final_block_frames: usize,
 }
@@ -51,6 +54,7 @@ impl ApplicationPerformanceProbe {
     const fn new(
         reservation: DecodeReservation,
         execution: DecodeExecution,
+        shape: OverlapShape,
         opened: &OpenedAnalysis,
     ) -> Self {
         Self {
@@ -60,6 +64,11 @@ impl ApplicationPerformanceProbe {
             selected_decoder_workers: execution.decoder_workers().get(),
             selected_hasher_workers: execution.hasher_workers(),
             decode_analysis_overlapped: opened.overlapped,
+            // The shape the hand-off was asked for. It is only the shape that
+            // ran when `decode_analysis_overlapped` is also true: a shape the
+            // in-flight allowance could not hold leaves the stream serial.
+            overlap_channel_depth: shape.channel_depth(),
+            overlap_batch_blocks: shape.batch_blocks(),
             decoded_blocks: opened.decoded_blocks,
             final_block_frames: opened.final_block_frames,
         }
@@ -91,6 +100,14 @@ impl ApplicationPerformanceProbe {
 
     pub const fn decode_analysis_overlapped(self) -> bool {
         self.decode_analysis_overlapped
+    }
+
+    pub const fn overlap_channel_depth(self) -> usize {
+        self.overlap_channel_depth
+    }
+
+    pub const fn overlap_batch_blocks(self) -> usize {
+        self.overlap_batch_blocks
     }
 
     pub const fn decoded_blocks(self) -> u64 {
@@ -159,14 +176,24 @@ pub(crate) struct Analyzer {
     /// The same grant the factory decodes inside. Overlap is charged against
     /// it, so this is a copy of one plan rather than a second budget.
     reservation: DecodeReservation,
+    /// Default unless an explicit measurement asked for another shape.
+    overlap_shape: OverlapShape,
 }
 
 impl Analyzer {
-    /// Build an analyzer that decodes inside an already-granted permit.
-    pub(crate) const fn new(decode: DecodeReservation) -> Self {
+    /// Build an analyzer that decodes inside an already-granted permit, with an
+    /// explicit hand-off shape.
+    ///
+    /// There is one constructor rather than a default-shaped convenience so
+    /// that no call site can acquire a shape by omission. The shape is still
+    /// priced against `decode`'s own in-flight allowance, so it cannot widen
+    /// retention past the granted plan; one that does not fit leaves the stream
+    /// serial.
+    pub(crate) fn with_overlap_shape(decode: DecodeReservation, shape: OverlapShape) -> Self {
         Self {
             decoder_factory: DecoderFactory::with_application_reservation(decode),
             reservation: decode,
+            overlap_shape: shape,
         }
     }
 
@@ -235,6 +262,7 @@ impl Analyzer {
         let (opened, execution) = self.decoder_factory.open_with_execution(&request.path)?;
         #[cfg(test)]
         LAST_DECODE_EXECUTION.with(|last| last.set(Some(execution)));
+        let shape = self.overlap_shape;
         let overlap = OverlapBudget {
             spare_permits: self
                 .reservation
@@ -243,12 +271,13 @@ impl Analyzer {
                 .saturating_sub(execution.workers().get()),
             max_in_flight_pcm_bytes: self.reservation.max_in_flight_pcm_bytes(),
             max_pcm_block_bytes: execution.max_pcm_block_bytes(),
+            shape,
             inject_spawn_failure: false,
             schedule: OverlapSchedule::default(),
         };
         let opened = Self::analyze_opened_run(opened, overlap, item_index, control, display_path)?;
         #[cfg(feature = "performance-probes")]
-        let probe = ApplicationPerformanceProbe::new(self.reservation, execution, &opened);
+        let probe = ApplicationPerformanceProbe::new(self.reservation, execution, shape, &opened);
         Ok(AnalyzedFile {
             report: opened.report,
             #[cfg(feature = "performance-probes")]
@@ -356,11 +385,76 @@ impl Analyzer {
     }
 }
 
+/// How the overlap hand-off is shaped, in blocks.
+///
+/// Neither field changes what the analyzer sees: the blocks cross in stream
+/// order and are pushed one at a time whatever shape carries them. They only
+/// trade retained PCM against how often the producer synchronises with the
+/// analyst, which is why they are priced by [`OverlapBudget::admits`] out of
+/// the same in-flight allowance and are not reachable from a product build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OverlapShape {
+    /// Messages the channel may hold. A deeper channel does not add a stage,
+    /// so it buys no parallelism; it lets the producer run ahead instead of
+    /// parking on every block when the two stages jitter against each other.
+    channel_depth: NonZeroUsize,
+    /// Blocks carried per message. This is the other lever on the same cost:
+    /// it reduces how many hand-offs exist at all rather than how often one
+    /// blocks.
+    batch_blocks: NonZeroUsize,
+}
+
+impl Default for OverlapShape {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl OverlapShape {
+    /// One block per message, one message in flight: the shape the overlap
+    /// graduated with, and the only one an ordinary build can reach.
+    pub(crate) const DEFAULT: Self = Self {
+        channel_depth: NonZeroUsize::MIN,
+        batch_blocks: NonZeroUsize::MIN,
+    };
+
+    #[cfg(any(test, feature = "performance-probes"))]
+    pub(crate) const fn new(channel_depth: NonZeroUsize, batch_blocks: NonZeroUsize) -> Self {
+        Self {
+            channel_depth,
+            batch_blocks,
+        }
+    }
+
+    pub(crate) const fn channel_depth(self) -> usize {
+        self.channel_depth.get()
+    }
+
+    pub(crate) const fn batch_blocks(self) -> usize {
+        self.batch_blocks.get()
+    }
+
+    /// Blocks this shape may retain beyond the one a serial run already holds.
+    ///
+    /// The channel holds `depth` messages of `batch` blocks, the analyst holds
+    /// the one message it is pushing, and the producer accumulates up to
+    /// `batch` of which one is the block serial decoding would hold anyway.
+    /// The default shape yields two, which is what the depth-one hand-off
+    /// retained before the shape existed.
+    const fn retained_blocks(self) -> u64 {
+        let depth = self.channel_depth.get() as u64;
+        let batch = self.batch_blocks.get() as u64;
+        batch
+            .saturating_mul(depth.saturating_add(2))
+            .saturating_sub(1)
+    }
+}
+
 /// What an already-granted plan leaves available for decode/analysis overlap.
 ///
-/// Both fields come from the one reservation the route decodes inside. Overlap
-/// spends a permit that route did not, so it can never add a thread the plan
-/// has not already counted.
+/// Every field comes from the one reservation the route decodes inside.
+/// Overlap spends a permit that route did not, so it can never add a thread
+/// the plan has not already counted.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct OverlapBudget {
     spare_permits: usize,
@@ -368,6 +462,8 @@ pub(crate) struct OverlapBudget {
     /// Probe-time upper bound for one decoded block. `None` means the route
     /// cannot prove safe retention and must stay serial.
     max_pcm_block_bytes: Option<u64>,
+    /// How the hand-off is shaped. Default outside an explicit measurement.
+    shape: OverlapShape,
     /// Instance-owned deterministic fault injection; production always leaves
     /// it false.
     inject_spawn_failure: bool,
@@ -379,17 +475,19 @@ pub(crate) struct OverlapBudget {
 impl OverlapBudget {
     /// Whether this block's stream may run decode and analysis concurrently.
     ///
-    /// Overlap retains two blocks beyond the one a serial run already holds:
-    /// one handed off and one being pushed while the caller decodes the next.
-    /// The decoder proves a worst-case block bound during probe. Pricing that
-    /// bound rather than the first observed block keeps valid variable-block
-    /// streams from making retention depend on their first packet geometry.
+    /// Overlap retains blocks beyond the one a serial run already holds, and
+    /// how many depends only on the shape. The decoder proves a worst-case
+    /// block bound during probe. Pricing that bound rather than the first
+    /// observed block keeps valid variable-block streams from making retention
+    /// depend on their first packet geometry. A shape too wide for the granted
+    /// in-flight allowance is refused here, so it degrades to serial rather
+    /// than exceeding a budget the plan already handed out.
     fn admits(&self, block: &PcmBlock) -> bool {
         let first_bytes = (block.samples().len() as u64).saturating_mul(size_of::<f64>() as u64);
         let Some(max_block_bytes) = self.max_pcm_block_bytes else {
             return false;
         };
-        let retained = max_block_bytes.saturating_mul(2);
+        let retained = max_block_bytes.saturating_mul(self.shape.retained_blocks());
         self.spare_permits >= 1
             && first_bytes <= max_block_bytes
             && retained <= self.max_in_flight_pcm_bytes
@@ -402,12 +500,28 @@ impl OverlapBudget {
 
 enum AnalysisInput {
     Block(PcmBlock),
+    /// A batched hand-off. Never constructed by the default shape, which keeps
+    /// the graduated path free of the per-message allocation this carries.
+    Blocks(Vec<PcmBlock>),
     Finish,
 }
 
 #[cfg(not(test))]
 fn send_analysis_block(sender: &SyncSender<AnalysisInput>, block: PcmBlock) -> bool {
     sender.send(AnalysisInput::Block(block)).is_ok()
+}
+
+/// Hand a full batch over, in stream order.
+///
+/// Returns false only on disconnect, exactly like the single-block send. The
+/// batch is cleared either way so a caller that keeps going cannot resend it.
+fn send_analysis_batch(sender: &SyncSender<AnalysisInput>, pending: &mut Vec<PcmBlock>) -> bool {
+    if pending.is_empty() {
+        return true;
+    }
+    sender
+        .send(AnalysisInput::Blocks(std::mem::take(pending)))
+        .is_ok()
 }
 
 #[cfg(test)]
@@ -428,8 +542,10 @@ fn send_analysis_block(
             sender.send(AnalysisInput::Block(block)).is_ok()
         }
         Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
-        Err(std::sync::mpsc::TrySendError::Full(AnalysisInput::Finish)) => {
-            unreachable!("send_analysis_block only constructs block inputs")
+        Err(std::sync::mpsc::TrySendError::Full(
+            AnalysisInput::Finish | AnalysisInput::Blocks(_),
+        )) => {
+            unreachable!("send_analysis_block only constructs single-block inputs")
         }
     };
     if sent {
@@ -529,9 +645,11 @@ fn analyze_overlapped(
     budget: &OverlapBudget,
     #[cfg(feature = "performance-probes")] block_geometry: &mut DecodeBlockGeometry,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
-    // One queued block. A deeper queue would buy no overlap for two stages and
-    // would retain PCM the plan has not priced.
-    let (blocks, incoming) = sync_channel::<AnalysisInput>(1);
+    // Two stages, so no depth buys parallelism; depth and batch only trade
+    // retained PCM against synchronisation, and `admits` already refused any
+    // shape whose retention the plan has not granted.
+    let shape = budget.shape;
+    let (blocks, incoming) = sync_channel::<AnalysisInput>(shape.channel_depth());
 
     let analyst_schedule = budget.schedule();
     #[cfg(test)]
@@ -555,6 +673,24 @@ fn analyze_overlapped(
                             block_index = block_index.saturating_add(1);
                         }
                         session.push_interleaved(block.samples())?;
+                    }
+                    Ok(AnalysisInput::Blocks(batch)) => {
+                        // Pushed one at a time and in order, so a batch is only
+                        // a cheaper way to carry the same sequence. A failure
+                        // stops on the offending block and leaves the rest
+                        // unpushed, exactly as the single-block arm does.
+                        for block in batch {
+                            analyst_schedule.before_push(
+                                #[cfg(test)]
+                                block_index,
+                                &block,
+                            );
+                            #[cfg(test)]
+                            {
+                                block_index = block_index.saturating_add(1);
+                            }
+                            session.push_interleaved(block.samples())?;
+                        }
                     }
                     Ok(AnalysisInput::Finish) => {
                         // This is the serial pre-finish cancellation boundary,
@@ -584,9 +720,32 @@ fn analyze_overlapped(
         let decoded = (|| -> Result<(), AnalysisError> {
             #[cfg(test)]
             let mut block_index = 1_usize;
+            let batch = shape.batch_blocks();
+            let mut pending: Vec<PcmBlock> = Vec::new();
+            if batch > 1 {
+                pending.reserve_exact(batch);
+            }
             loop {
-                ensure_not_cancelled(control)?;
-                let Some(block) = read_checked(opened, &pcm, display_path)? else {
+                // Every early return below hands the accumulated batch over
+                // first. Those blocks were decoded before whatever ends the
+                // stream, so in input order they precede it, and the analyzer
+                // must get its chance to fail on one of them before a later
+                // decode failure or a cancellation can decide the stream.
+                if let Err(error) = ensure_not_cancelled(control) {
+                    send_analysis_batch(&blocks, &mut pending);
+                    return Err(error);
+                }
+                let read = match read_checked(opened, &pcm, display_path) {
+                    Ok(read) => read,
+                    Err(error) => {
+                        send_analysis_batch(&blocks, &mut pending);
+                        return Err(error);
+                    }
+                };
+                let Some(block) = read else {
+                    if !send_analysis_batch(&blocks, &mut pending) {
+                        return Ok(());
+                    }
                     emit_decode_progress(opened, item_index, control, display_path);
                     // A progress observer can cancel at EOF. The analysis
                     // thread performs the authoritative pre-finish check after
@@ -597,24 +756,38 @@ fn analyze_overlapped(
                     return Ok(());
                 };
                 #[cfg(feature = "performance-probes")]
-                block_geometry.record(&block)?;
+                if let Err(error) = block_geometry.record(&block) {
+                    send_analysis_batch(&blocks, &mut pending);
+                    return Err(error);
+                }
                 emit_decode_progress(opened, item_index, control, display_path);
-                if !send_analysis_block(
-                    &blocks,
-                    block,
+                let handed_over = if batch > 1 {
+                    pending.push(block);
                     #[cfg(test)]
-                    block_index,
+                    {
+                        block_index = block_index.saturating_add(1);
+                    }
+                    pending.len() < batch || send_analysis_batch(&blocks, &mut pending)
+                } else {
+                    let sent = send_analysis_block(
+                        &blocks,
+                        block,
+                        #[cfg(test)]
+                        block_index,
+                        #[cfg(test)]
+                        &producer_schedule,
+                    );
                     #[cfg(test)]
-                    &producer_schedule,
-                ) {
+                    {
+                        block_index = block_index.saturating_add(1);
+                    }
+                    sent
+                };
+                if !handed_over {
                     // The analyzer stopped early, so it holds the failure that
                     // decides this stream. Stop feeding it and let the join
                     // below report that error rather than a disconnect.
                     return Ok(());
-                }
-                #[cfg(test)]
-                {
-                    block_index = block_index.saturating_add(1);
                 }
             }
         })();
@@ -997,6 +1170,7 @@ mod tests {
             spare_permits: 1,
             max_in_flight_pcm_bytes: 4 * 1024 * 1024,
             max_pcm_block_bytes: Some(256 * size_of::<f64>() as u64),
+            shape: OverlapShape::DEFAULT,
             inject_spawn_failure: false,
             schedule: OverlapSchedule::default(),
         }
@@ -1123,6 +1297,192 @@ mod tests {
             .admits(&block),
             "a route without a probe-time block bound must stay serial"
         );
+    }
+
+    /// The measurement shapes, plus the default they have to reduce to.
+    fn shapes() -> Vec<OverlapShape> {
+        [(1, 1), (2, 1), (8, 1), (1, 4), (4, 4), (1, 64), (3, 7)]
+            .into_iter()
+            .map(|(depth, batch)| OverlapShape::new(nonzero(depth), nonzero(batch)))
+            .collect()
+    }
+
+    fn nonzero(value: usize) -> NonZeroUsize {
+        NonZeroUsize::new(value).unwrap()
+    }
+
+    fn shaped(shape: OverlapShape) -> OverlapBudget {
+        OverlapBudget {
+            shape,
+            // Wide enough that no shape in the grid is refused for retention;
+            // the pricing itself is asserted separately below.
+            max_in_flight_pcm_bytes: u64::MAX,
+            ..overlapping()
+        }
+    }
+
+    #[test]
+    fn a_wider_hand_off_shape_costs_exactly_the_blocks_it_retains() {
+        // Channel depth and batch are two ways to spend the same allowance, so
+        // the price is one formula rather than two knobs: the channel holds
+        // depth messages of batch blocks, the analyst holds the message it is
+        // pushing, and the producer accumulates batch of which one is the block
+        // a serial run would hold anyway.
+        for (depth, batch, blocks) in [
+            (1, 1, 2_u64),
+            (2, 1, 3),
+            (8, 1, 9),
+            (1, 4, 11),
+            (4, 4, 23),
+            (1, 64, 191),
+        ] {
+            let shape = OverlapShape::new(nonzero(depth), nonzero(batch));
+            assert_eq!(
+                shape.retained_blocks(),
+                blocks,
+                "depth {depth} batch {batch}"
+            );
+
+            let channels = ChannelCount::new(2).unwrap();
+            let block = PcmBlock::new(vec![0.5; 64], channels).unwrap();
+            let max_block_bytes = 256 * size_of::<f64>() as u64;
+            assert!(
+                !OverlapBudget {
+                    shape,
+                    max_in_flight_pcm_bytes: max_block_bytes * blocks - 1,
+                    ..overlapping()
+                }
+                .admits(&block),
+                "depth {depth} batch {batch} must stay serial one byte short"
+            );
+            assert!(
+                OverlapBudget {
+                    shape,
+                    max_in_flight_pcm_bytes: max_block_bytes * blocks,
+                    ..overlapping()
+                }
+                .admits(&block),
+                "depth {depth} batch {batch} fits exactly at its own price"
+            );
+        }
+    }
+
+    #[test]
+    fn every_hand_off_shape_produces_the_same_analysis_bit_for_bit() {
+        let channels = ChannelCount::new(2).unwrap();
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let control = ExecutionControl::new(&cancellation, &progress);
+
+        let serial = Analyzer::analyze_opened(
+            opened_audio(channels, channels, varied_blocks(channels)),
+            OverlapBudget::default(),
+            0,
+            &control,
+            "shape.fake",
+        )
+        .expect("the serial path must analyze the fixture");
+
+        for shape in shapes() {
+            let shaped_result = Analyzer::analyze_opened(
+                opened_audio(channels, channels, varied_blocks(channels)),
+                shaped(shape),
+                0,
+                &control,
+                "shape.fake",
+            )
+            .expect("every shape must analyze the same fixture");
+            assert!(
+                LAST_ANALYSIS_OVERLAP.with(std::cell::Cell::get),
+                "{shape:?} must actually overlap, or it proves nothing"
+            );
+            // A batch larger than the whole stream is the boundary that decides
+            // whether the final partial batch is flushed before the terminator.
+            assert_eq!(
+                format!("{:?}", serial.analysis()),
+                format!("{:?}", shaped_result.analysis()),
+                "{shape:?} changed the analysis"
+            );
+        }
+    }
+
+    #[test]
+    fn a_batched_hand_off_delivers_every_block_in_read_order() {
+        let channels = ChannelCount::new(2).unwrap();
+        for shape in shapes() {
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let recorder = Arc::clone(&seen);
+            let schedule = OverlapSchedule::new(move |_, block: &PcmBlock| {
+                // The block's own first sample, not a counter the analyst
+                // increments: a recorder that counted itself would agree with
+                // any order at all.
+                recorder.lock().unwrap().push(block.samples()[0].to_bits());
+            });
+            let blocks = indexed_blocks(37, channels);
+            let expected: Vec<u64> = blocks
+                .iter()
+                .skip(1)
+                .map(|block| block.samples()[0].to_bits())
+                .collect();
+            let cancellation = CancellationToken::new();
+            let progress = NoopProgressSink;
+
+            Analyzer::analyze_opened(
+                opened_audio(channels, channels, blocks),
+                OverlapBudget {
+                    shape,
+                    max_in_flight_pcm_bytes: u64::MAX,
+                    ..overlapping_with(schedule)
+                },
+                0,
+                &ExecutionControl::new(&cancellation, &progress),
+                "order.fake",
+            )
+            .expect("the shaped hand-off must analyze the fixture");
+
+            assert_eq!(
+                *seen.lock().unwrap(),
+                expected,
+                "{shape:?} did not preserve read order"
+            );
+        }
+    }
+
+    #[test]
+    fn an_analysis_failure_held_in_an_unflushed_batch_still_outranks_decode() {
+        // The hazard batching introduces: blocks the producer is still holding
+        // were decoded before whatever ends the stream, so they precede it in
+        // input order. Dropping them on a decode failure would let the later
+        // failure decide a stream the earlier one owns. `lead = 1` leaves the
+        // failing block inside a batch that is never full, which is the case a
+        // flush-on-error is the only thing that covers.
+        let channels = ChannelCount::new(2).unwrap();
+        let mono = ChannelCount::new(1).unwrap();
+        for shape in shapes() {
+            for lead in [1_usize, 12, 28] {
+                let mut blocks = indexed_blocks(32, channels);
+                blocks[lead] = PcmBlock::new(vec![f64::MAX, f64::MAX], channels).unwrap();
+                blocks[lead + 1] = PcmBlock::new(vec![0.25], mono).unwrap();
+                let cancellation = CancellationToken::new();
+                let progress = NoopProgressSink;
+
+                let error = Analyzer::analyze_opened(
+                    opened_audio(channels, channels, blocks),
+                    shaped(shape),
+                    0,
+                    &ExecutionControl::new(&cancellation, &progress),
+                    "precedence.fake",
+                )
+                .expect_err("the earliest failure in input order must decide the stream");
+
+                assert_eq!(
+                    error.stage,
+                    AnalysisStage::Analysis,
+                    "{shape:?}: analysis failed at block {lead}, decode at {}",
+                    lead + 1
+                );
+            }
+        }
     }
 
     #[test]

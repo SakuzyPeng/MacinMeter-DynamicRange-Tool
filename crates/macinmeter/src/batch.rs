@@ -2,7 +2,9 @@
 use crate::concurrency::PlanAllocation;
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
-    ErrorCode, ExecutionControl, application::Analyzer, concurrency::ConcurrencyPlan,
+    ErrorCode, ExecutionControl,
+    application::{Analyzer, OverlapShape},
+    concurrency::ConcurrencyPlan,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -118,6 +120,7 @@ struct BatchExecution {
 pub(crate) struct BatchRunner {
     plan: ConcurrencyPlan,
     requested_file_lanes: NonZeroUsize,
+    overlap_shape: OverlapShape,
     #[cfg(test)]
     fault: Option<LaneFault>,
 }
@@ -127,6 +130,7 @@ impl Default for BatchRunner {
         Self {
             plan: ConcurrencyPlan::serial(),
             requested_file_lanes: NonZeroUsize::MIN,
+            overlap_shape: OverlapShape::DEFAULT,
             #[cfg(test)]
             fault: None,
         }
@@ -142,10 +146,16 @@ impl BatchRunner {
     /// lanes for a batch that turns out to hold one file would narrow that
     /// file's decoder for no reason. Splitting is still done exactly once, and
     /// still by the plan; it just happens once the item count is known.
-    pub(crate) const fn new(plan: ConcurrencyPlan, requested_file_lanes: NonZeroUsize) -> Self {
+    /// Every lane shares the one hand-off shape, since they share one plan.
+    pub(crate) const fn with_overlap_shape(
+        plan: ConcurrencyPlan,
+        requested_file_lanes: NonZeroUsize,
+        overlap_shape: OverlapShape,
+    ) -> Self {
         Self {
             plan,
             requested_file_lanes,
+            overlap_shape,
             #[cfg(test)]
             fault: None,
         }
@@ -197,7 +207,7 @@ impl BatchRunner {
         let lanes = NonZeroUsize::new(self.requested_file_lanes.get().min(files.len().max(1)))
             .unwrap_or(NonZeroUsize::MIN);
         let allocation = self.plan.allocate(lanes)?;
-        let analyzer = Analyzer::new(allocation.decode());
+        let analyzer = Analyzer::with_overlap_shape(allocation.decode(), self.overlap_shape);
 
         // Discovery already fixed the input order, so an item's index names one
         // file no matter which lane produces it. Lanes claim by index rather
@@ -649,7 +659,7 @@ mod tests {
     }
 
     fn runner_for(lanes: usize) -> BatchRunner {
-        BatchRunner::new(test_plan(), nonzero(lanes))
+        BatchRunner::with_overlap_shape(test_plan(), nonzero(lanes), OverlapShape::DEFAULT)
     }
 
     const MAX_LANE_PLAN_WORKERS: usize = 8;
