@@ -418,10 +418,18 @@ impl Default for OverlapShape {
 }
 
 impl OverlapShape {
-    /// One block per message, one message in flight: the shape the overlap
-    /// graduated with, and the only one an ordinary build can reach.
+    /// The depth an ordinary build uses, and the only one it can reach.
+    ///
+    /// Sixteen is where the measured curve has flattened on every host and
+    /// track swept: past it only one cell keeps improving, by about a percent,
+    /// for three to four times the retained PCM. The curve never turns down, so
+    /// this is a point on a plateau rather than a peak that another composition
+    /// could move.
     pub(crate) const DEFAULT: Self = Self {
-        channel_depth: NonZeroUsize::MIN,
+        channel_depth: match NonZeroUsize::new(16) {
+            Some(depth) => depth,
+            None => NonZeroUsize::MIN,
+        },
     };
 
     #[cfg(any(test, feature = "performance-probes"))]
@@ -1175,13 +1183,16 @@ mod tests {
         let channels = ChannelCount::new(2).unwrap();
         let block = PcmBlock::new(vec![0.5; 64], channels).unwrap();
         let max_block_bytes = 256 * size_of::<f64>() as u64;
+        // The default's own retention, not a literal: the point is that the
+        // boundary is the price of whatever depth ships.
+        let retained = OverlapShape::DEFAULT.retained_blocks();
 
         assert!(
             !OverlapBudget {
                 spare_permits: 1,
-                // One byte short of two worst-case blocks, even though the
-                // observed first block is much smaller.
-                max_in_flight_pcm_bytes: max_block_bytes * 2 - 1,
+                // One byte short of the worst case, even though the observed
+                // first block is much smaller.
+                max_in_flight_pcm_bytes: max_block_bytes * retained - 1,
                 max_pcm_block_bytes: Some(max_block_bytes),
                 ..OverlapBudget::default()
             }
@@ -1191,7 +1202,7 @@ mod tests {
         assert!(
             OverlapBudget {
                 spare_permits: 1,
-                max_in_flight_pcm_bytes: max_block_bytes * 2,
+                max_in_flight_pcm_bytes: max_block_bytes * retained,
                 max_pcm_block_bytes: Some(max_block_bytes),
                 ..OverlapBudget::default()
             }
@@ -1628,10 +1639,14 @@ mod tests {
         )
         .expect("the unhindered overlap must analyze the fixture");
 
-        // Hold the analysis thread on block 1. Block 2 then occupies the sole
-        // queue slot, and the test-only send seam releases the analyst only
-        // after the real SyncSender reports Full for block 3. This observes the
-        // queue state directly instead of inferring it from pre-send progress.
+        // Hold the analysis thread on block 1. The following blocks then fill
+        // the channel, and the test-only send seam releases the analyst only
+        // after the real SyncSender reports Full. That happens at block
+        // `depth + 2`: block 1 is in the analyst's hands and blocks 2..=depth+1
+        // occupy the channel. Deriving the index from the default rather than
+        // writing a number keeps this observing the queue directly, whatever
+        // depth the product ships.
+        let first_full = OverlapShape::DEFAULT.channel_depth() + 2;
         let (release, release_receiver) = std::sync::mpsc::channel::<()>();
         let release_receiver = Mutex::new(release_receiver);
         let (analyst_held, wait_until_held) = std::sync::mpsc::channel::<()>();
@@ -1646,7 +1661,7 @@ mod tests {
                     .lock()
                     .unwrap()
                     .recv_timeout(Duration::from_secs(30))
-                    .expect("the depth-one hand-off must become full");
+                    .expect("the hand-off must become full");
             }
         })
         .with_after_send_hook(move |index| {
@@ -1673,7 +1688,7 @@ mod tests {
         )
         .expect("a lagging analysis thread must still analyze the fixture");
 
-        assert_eq!(full_sends.lock().unwrap().first(), Some(&3));
+        assert_eq!(full_sends.lock().unwrap().first(), Some(&first_full));
         assert_eq!(
             format!("{:?}", prompt.analysis()),
             format!("{:?}", lagged.analysis()),

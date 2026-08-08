@@ -737,8 +737,9 @@ mod tests {
         assert_eq!(probe.selected_decoder_workers(), 1);
         assert_eq!(probe.selected_hasher_workers(), 0);
         assert!(probe.decode_analysis_overlapped());
-        assert_eq!(probe.requested_overlap_channel_depth(), 1);
-        assert_eq!(probe.applied_overlap_channel_depth(), Some(1));
+        let shipped = OverlapShape::DEFAULT.channel_depth();
+        assert_eq!(probe.requested_overlap_channel_depth(), shipped);
+        assert_eq!(probe.applied_overlap_channel_depth(), Some(shipped));
         assert!(probe.decoded_blocks() > 0);
         assert!(probe.final_block_frames() > 0);
         assert_eq!(
