@@ -727,7 +727,9 @@ host/组成敏感性，但没有形成满足本 ADR 毕业约束的、已提交�
 一个块。
 
 毕业依据（ADR-0007 同轮交错 A/B，两个 variant 在同一次 run 内按 seeded 调度交错，
-两台各 288 个样本，`outliersRemoved = 0`）：串行 route 在 Windows 上为 1.08–1.15x、
+两台各 288 个样本，`outliersRemoved = 0`；A/B 的语料全为立体声，推导在该几何上取到
+16，因此 A/B 覆盖的正是立体声实际运行的配置，更宽的几何由上述下界与退化规则承担而
+非由该 A/B 承担）：串行 route 在 Windows 上为 1.08–1.15x、
 位移达同轮合并 MAD 的 1.7x–8.0x，在 macOS 上 WAV 为 1.04x、纯 WAV 批量为 1.17x。
 **内建对照全部按机制预测落在噪声内**：单 worker plan（overlap 不启动）、FLAC 与 ALAC
 packet route（花光 permit，不走这条交接）、以及以 packet route 为主的混合批量；两台
