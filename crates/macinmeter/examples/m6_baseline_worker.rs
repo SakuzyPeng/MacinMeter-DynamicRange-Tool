@@ -68,7 +68,7 @@ fn usage() -> &'static str {
   m6_baseline_worker decode PATH ITERATIONS [DECODE_WORKERS [QUEUE_CAPACITY]]
   m6_baseline_worker decode-phases PATH ITERATIONS DECODE_WORKERS
   m6_baseline_worker decode-pipeline PATH ITERATIONS DECODE_WORKERS
-  m6_baseline_worker application PATH ITERATIONS [DECODE_WORKERS] [DEPTH] [BATCH]
+  m6_baseline_worker application PATH ITERATIONS [DECODE_WORKERS] [HANDOFF_DEPTH]
   m6_baseline_worker batch DIRECTORY ITERATIONS [FILE_LANES]
   m6_baseline_worker discovery DIRECTORY ITERATIONS
   m6_baseline_worker render-json PATH ITERATIONS"
@@ -648,9 +648,9 @@ fn ensure_same_decode_geometry(left: &DecodeSummary, right: &DecodeSummary) -> R
 }
 
 fn run_application(arguments: &[OsString]) -> Result<Value, String> {
-    if !(2..=5).contains(&arguments.len()) {
+    if !(2..=4).contains(&arguments.len()) {
         return Err(format!(
-            "application expects 2 to 5 argument(s), received {}\n{}",
+            "application expects 2 to 4 argument(s), received {}\n{}",
             arguments.len(),
             usage()
         ));
@@ -665,30 +665,23 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
         Some(value) => Some(parse_number::<usize>(value, "decode workers")?),
         None => None,
     };
-    // The hand-off shape is the other measurement input on the same account:
-    // depth and batch only trade retained PCM for synchronisation, and the
-    // application refuses a shape its in-flight allowance cannot hold rather
-    // than overspending. Absent both arguments this stays the graduated shape.
-    let overlap_shape = match (arguments.get(3), arguments.get(4)) {
-        (None, None) => None,
-        (depth, batch) => {
+    // The hand-off depth is the other measurement input on the same account:
+    // it trades retained PCM for how often the producer parks, and the
+    // application refuses a depth its in-flight allowance cannot hold rather
+    // than overspending. Absent the argument this stays the graduated depth.
+    let overlap_depth = match arguments.get(3) {
+        None => None,
+        Some(value) => {
             if requested_workers.is_none() {
-                // A shape only means something against a stated plan: whether
+                // A depth only means something against a stated plan: whether
                 // the overlap engages at all is decided by the permits the
-                // route leaves, so a shape without a worker count would time
+                // route leaves, so a depth without a worker count would time
                 // an unknown topology.
                 return Err(
-                    "an overlap hand-off shape requires an explicit decode worker count".to_owned(),
+                    "an overlap hand-off depth requires an explicit decode worker count".to_owned(),
                 );
             }
-            let parse = |value: Option<&OsString>, label| match value {
-                Some(value) => parse_number::<usize>(value, label),
-                None => Ok(1),
-            };
-            Some((
-                parse(depth, "overlap channel depth")?,
-                parse(batch, "overlap batch blocks")?,
-            ))
+            Some(parse_number::<usize>(value, "overlap channel depth")?)
         }
     };
     let application = match requested_workers {
@@ -702,23 +695,20 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
             #[cfg(feature = "performance-probes")]
             {
                 let mut budget = ExecutionBudget::product().with_decode_workers(workers);
-                if let Some((depth, batch)) = overlap_shape {
+                if let Some(depth) = overlap_depth {
                     let depth = NonZeroUsize::new(depth).ok_or_else(|| {
                         "overlap channel depth must be greater than zero".to_owned()
                     })?;
-                    let batch = NonZeroUsize::new(batch).ok_or_else(|| {
-                        "overlap batch blocks must be greater than zero".to_owned()
-                    })?;
-                    budget = budget.with_overlap_shape(depth, batch);
+                    budget = budget.with_overlap_shape(depth);
                 }
                 Application::with_budget(budget)
             }
             #[cfg(not(feature = "performance-probes"))]
             {
                 let _ = workers;
-                let _ = overlap_shape;
+                let _ = overlap_depth;
                 return Err(
-                    "decode worker counts and hand-off shapes require a worker built with the \
+                    "decode worker counts and hand-off depths require a worker built with the \
                      performance-probes feature"
                         .to_owned(),
                 );
@@ -795,16 +785,8 @@ fn run_application(arguments: &[OsString]) -> Result<Value, String> {
             json!(probe.requested_overlap_channel_depth()),
         );
         object.insert(
-            "requestedOverlapBatchBlocks".to_owned(),
-            json!(probe.requested_overlap_batch_blocks()),
-        );
-        object.insert(
             "appliedOverlapChannelDepth".to_owned(),
             json!(probe.applied_overlap_channel_depth()),
-        );
-        object.insert(
-            "appliedOverlapBatchBlocks".to_owned(),
-            json!(probe.applied_overlap_batch_blocks()),
         );
         object.insert(
             "decodedBlocksPerIteration".to_owned(),

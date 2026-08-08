@@ -154,22 +154,18 @@ impl ExecutionBudget {
         self.overlap_shape
     }
 
-    /// Override the graduated hand-off shape for measurement.
+    /// Override the graduated hand-off depth for measurement.
     ///
-    /// Neither depth nor batch changes the block sequence the analyzer sees, so
-    /// this cannot move a result; both only trade retained PCM for hand-off
-    /// frequency, and the retention they ask for is priced against the same
-    /// in-flight allowance the route already holds. A shape that does not fit
+    /// Depth does not change the block sequence the analyzer sees, so this
+    /// cannot move a result; it only trades retained PCM for how often the
+    /// producer parks, and the retention it asks for is priced against the same
+    /// in-flight allowance the route already holds. A depth that does not fit
     /// leaves the stream serial rather than overspending, so this is a
     /// measurement input under the non-default feature, not a product knob.
     #[cfg(any(test, feature = "performance-probes"))]
-    pub fn with_overlap_shape(
-        self,
-        channel_depth: NonZeroUsize,
-        batch_blocks: NonZeroUsize,
-    ) -> Self {
+    pub fn with_overlap_shape(self, channel_depth: NonZeroUsize) -> Self {
         Self {
-            overlap_shape: OverlapShape::new(channel_depth, batch_blocks),
+            overlap_shape: OverlapShape::new(channel_depth),
             ..self
         }
     }
@@ -742,9 +738,7 @@ mod tests {
         assert_eq!(probe.selected_hasher_workers(), 0);
         assert!(probe.decode_analysis_overlapped());
         assert_eq!(probe.requested_overlap_channel_depth(), 1);
-        assert_eq!(probe.requested_overlap_batch_blocks(), 1);
         assert_eq!(probe.applied_overlap_channel_depth(), Some(1));
-        assert_eq!(probe.applied_overlap_batch_blocks(), Some(1));
         assert!(probe.decoded_blocks() > 0);
         assert!(probe.final_block_frames() > 0);
         assert_eq!(
@@ -755,10 +749,9 @@ mod tests {
 
     #[cfg(feature = "performance-probes")]
     #[test]
-    fn performance_probe_distinguishes_a_refused_shape_from_the_applied_handoff() {
+    fn performance_probe_distinguishes_a_refused_depth_from_the_applied_handoff() {
         let oversized = NonZeroUsize::new(4_096).unwrap();
-        let application =
-            Application::with_budget(bounded_budget(8).with_overlap_shape(oversized, oversized));
+        let application = Application::with_budget(bounded_budget(8).with_overlap_shape(oversized));
         let (_, probe) = application
             .analyze_file_with_performance_probe(AnalyzeRequest::new(fixture(
                 "native-pcm-v1/wav-pcm-s16-stereo.wav",
@@ -767,9 +760,7 @@ mod tests {
 
         assert!(!probe.decode_analysis_overlapped());
         assert_eq!(probe.requested_overlap_channel_depth(), 4_096);
-        assert_eq!(probe.requested_overlap_batch_blocks(), 4_096);
         assert_eq!(probe.applied_overlap_channel_depth(), None);
-        assert_eq!(probe.applied_overlap_batch_blocks(), None);
     }
 
     #[cfg(feature = "performance-probes")]
