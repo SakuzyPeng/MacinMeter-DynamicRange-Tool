@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Minimum capability set for the MacinMeter main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "clipboard-manager:allow-write-image",
@@ -10,6 +12,7 @@
     "dialog:allow-save",
     "dialog:allow-confirm",
     "fs:allow-write-file",
-    "fs:allow-write-text-file"
+    "fs:allow-write-text-file",
+    "core:webview:allow-set-webview-zoom"
   ]
 }

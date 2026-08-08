@@ -402,12 +402,18 @@ button.toggle-btn.active {
 
 .search-actions {
   display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   gap: 5px;
 }
 
+/* Sized to grow rather than to one locale: the fixed 150px here fit the
+   Chinese placeholder at 88px but clipped the English one at 134px. */
 .search-actions input {
-  width: 150px;
+  min-width: 0;
+  max-width: 280px;
+  flex: 1 1 200px;
   padding: 0 8px;
 }
 
