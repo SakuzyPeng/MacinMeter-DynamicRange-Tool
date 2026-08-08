@@ -9,7 +9,10 @@ repository.workspace = true
 description = "MacinMeter Dynamic Range GUI"
 
 [lib]
-name = "macinmeter_gui"
+# Distinct from the binary target so Windows does not collide their debug
+# symbols: both would otherwise emit `macinmeter_gui.pdb` into one directory,
+# which Cargo reports on every Windows build.
+name = "macinmeter_gui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

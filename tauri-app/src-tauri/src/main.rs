@@ -3,5 +3,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    macinmeter_gui::run()
+    macinmeter_gui_lib::run()
 }

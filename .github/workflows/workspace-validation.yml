@@ -89,7 +89,7 @@ jobs:
   windows:
     name: Windows Rust, CLI, and Tauri
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     env:
       CARGO_INCREMENTAL: "0"
@@ -136,6 +136,65 @@ jobs:
               -or $document.kind -ne "analysis") {
             throw "release CLI analysis smoke test failed"
           }
+
+      # The Windows GUI is built so it can be exercised, not distributed.
+      # ADR-0011 keeps the release scope on unsigned Apple Silicon macOS, and
+      # nothing below produces a release candidate or claims one.
+      - name: Install Node.js for the Windows GUI test build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - name: Install GUI dependencies
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: tauri-app
+        run: npm ci
+
+      - name: Build the Windows GUI test bundle
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: tauri-app
+        # The committed bundle targets are the macOS release ones. Naming the
+        # Windows bundle here keeps that configuration the single source of the
+        # release contract instead of widening it for a test build.
+        run: npm run tauri -- build --bundles nsis
+
+      - name: Verify the Windows GUI test bundle
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $exe = Get-Item .\target\release\macinmeter-gui.exe
+          $installer = Get-ChildItem .\target\release\bundle\nsis\*-setup.exe
+          if ($installer.Count -ne 1) {
+            throw "expected exactly one NSIS installer, found $($installer.Count)"
+          }
+          if ($exe.Length -le 0 -or $installer[0].Length -le 0) {
+            throw "the Windows GUI build produced an empty artifact"
+          }
+          $version = (Get-Item .\target\release\macinmeter.exe).VersionInfo
+          Write-Host "gui exe:       $($exe.FullName) ($($exe.Length) bytes)"
+          Write-Host "nsis installer: $($installer[0].Name) ($($installer[0].Length) bytes)"
+          # Byte identity for whatever is handed to a tester, so a reported
+          # problem can be tied to an exact artifact.
+          Get-FileHash $exe.FullName, $installer[0].FullName -Algorithm SHA256 |
+            ForEach-Object { Write-Host "$($_.Hash)  $($_.Path)" }
+
+      - name: Retain the Windows CLI and GUI test build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Named a test build, not a candidate: it is unsigned, outside the
+          # ADR-0011 release scope, and must not be mistaken for a release asset.
+          name: macinmeter-windows-test-build-${{ github.sha }}
+          path: |
+            target/release/macinmeter.exe
+            target/release/macinmeter-gui.exe
+            target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
   macos:
     name: macOS arm64 Rust, CLI, Tauri, and GUI staging

@@ -350,6 +350,12 @@ def validate(root: Path) -> list[str]:
             macos_job is not None and "    runs-on: macos-26" in macos_job,
             f"{path.relative_to(root)} must retain the macOS 26 arm64 gate",
         )
+        macos_stage_command = "python3 scripts/stage-release.py stage --include-gui"
+        unsigned_candidate_flag = "--unsigned-macos-arm64-candidate"
+        upload_action = (
+            "actions/upload-artifact@"
+            "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+        )
         if windows_job is not None:
             windows_text = "\n".join(windows_job)
             required_windows_commands = (
@@ -368,15 +374,33 @@ def validate(root: Path) -> list[str]:
                 f"{path.relative_to(root)} Windows release build and smoke must remain "
                 "main/manual-only",
             )
+            required_windows_gui_commands = (
+                "npm ci",
+                "npm run tauri -- build --bundles nsis",
+                "macinmeter-gui.exe",
+                "bundle\\nsis",
+            )
+            for command in required_windows_gui_commands:
+                require(
+                    command in windows_text,
+                    f"{path.relative_to(root)} Windows GUI test build is missing: {command}",
+                )
+            require(
+                windows_text.count("if: github.event_name == 'workflow_dispatch'") == 5,
+                f"{path.relative_to(root)} the Windows GUI test build, its verification "
+                "and its retention must remain manual-only",
+            )
+            require(
+                "release-candidate" not in windows_text
+                and unsigned_candidate_flag not in windows_text,
+                f"{path.relative_to(root)} the Windows GUI build is a test build and may "
+                "not claim or produce a release candidate",
+            )
+            require(
+                "name: macinmeter-windows-test-build-${{ github.sha }}" in windows_text,
+                f"{path.relative_to(root)} the Windows artifact must be named a test build",
+            )
 
-        macos_stage_command = (
-            "python3 scripts/stage-release.py stage --include-gui"
-        )
-        unsigned_candidate_flag = "--unsigned-macos-arm64-candidate"
-        upload_action = (
-            "actions/upload-artifact@"
-            "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
-        )
         if macos_job is not None:
             macos_text = "\n".join(macos_job)
             required_macos_commands = (
@@ -425,12 +449,22 @@ def validate(root: Path) -> list[str]:
             f"{path.relative_to(root)} local staging and unsigned candidate staging "
             "must appear only inside the macOS arm64 job",
         )
+        # Two uploads, and each job may hold only its own. The macOS one is the
+        # release candidate ADR-0011 defines; the Windows one is a test build
+        # outside that scope. Counting them separately keeps a future edit from
+        # turning the Windows path into a second candidate by accident.
         require(
-            workflow_text.count("actions/upload-artifact@") == 1
-            and macos_job is not None
-            and upload_action in "\n".join(macos_job),
-            f"{path.relative_to(root)} must retain exactly one pinned, manual macOS "
-            "candidate upload",
+            workflow_text.count("actions/upload-artifact@") == 2,
+            f"{path.relative_to(root)} must retain exactly the macOS candidate upload "
+            "and the Windows test-build upload",
+        )
+        require(
+            macos_job is not None
+            and "\n".join(macos_job).count(upload_action) == 1
+            and windows_job is not None
+            and "\n".join(windows_job).count(upload_action) == 1,
+            f"{path.relative_to(root)} each retained upload must be pinned and stay "
+            "inside its own platform job",
         )
 
         forbidden_ci_tasks = {

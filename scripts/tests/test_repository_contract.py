@@ -126,6 +126,19 @@ jobs:
         run: cargo build --locked --release -p macinmeter-cli
       - if: github.event_name != 'pull_request'
         run: .\\target\\release\\macinmeter.exe analyze fixture.wav
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@node-sha
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm ci
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm run tauri -- build --bundles nsis
+      - if: github.event_name == 'workflow_dispatch'
+        run: dir .\\target\\release\\macinmeter-gui.exe .\\target\\release\\bundle\\nsis
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macinmeter-windows-test-build-${{ github.sha }}
+          path: target/release/bundle/nsis
   macos:
     runs-on: macos-26
     steps:
@@ -290,7 +303,23 @@ jobs: {}
         workflow.write_text(contents, encoding="utf-8")
 
         self.assertTrue(
-            any("pinned, manual macOS candidate upload" in error for error in self.errors())
+            any("must be pinned and stay" in error for error in self.errors())
+        )
+
+    def test_rejects_a_windows_build_that_claims_a_release_candidate(self) -> None:
+        # The Windows GUI is built to be exercised, not distributed: ADR-0011
+        # keeps the release scope on unsigned Apple Silicon macOS. The guard is
+        # on the claim, so that widening the scope has to be a decision rather
+        # than a workflow edit.
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            "name: macinmeter-windows-test-build-${{ github.sha }}",
+            "name: macinmeter-windows-release-candidate-${{ github.sha }}",
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any("must be named a test build" in error for error in self.errors())
         )
 
     def test_rejects_macos_release_target_drift(self) -> None:
