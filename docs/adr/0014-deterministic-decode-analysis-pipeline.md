@@ -681,7 +681,7 @@ ALAC 1→8 污染对照为 4.35–4.43x，没有低于既有干净值。
 
 ### decode-analysis overlap（2026-08-06，已毕业并默认启用）
 
-容量 1 的顺序 channel 已在 `Application` owning layer 实现并默认启用：decode 保留
+顺序 channel 已在 `Application` owning layer 实现并默认启用：decode 保留
 调用线程，单一 analysis thread 按块序推进同一个 `AnalyzerSession`。它的预算来自
 **route 未使用的 worker permit**——串行 route 无论获授几个 permit 都只花 1 个，剩
 下的正是 overlap 的来源；花光 permit 的 route（packet 引擎、单 worker plan）没有
@@ -705,6 +705,40 @@ track 跨 1/2/4/8 worker 的 result fingerprint 唯一；RSS 增量约 0.07–0.
 overlap 实际启用的宽度出现，且不随流长或 worker 数增长。原始记录不入仓库。
 
 产品仍不发布任何加速比：结果与 worker 数无关，报告不指示由哪条路径产生。
+
+#### 交接深度：从 1 加深到 16（2026-08-08）
+
+毕业时的 channel 容量为 1，生产者因而必须在每一块上与分析线程会合。加深 channel
+**不增加流水级数、不买任何并行度**，只是让生产者在两级抖动时可以跑在前面而不是每块
+都 park。它不改变分析线程看到的块序列，因此不可能移动结果。
+
+**这不是一个调出来的常数。** runner 在两台异构主机、两条串行 track 上扫过
+1/2/4/8/16/32/64：曲线只升然后走平，16 之后仅有一条曲线还在改善且幅度约 1%，代价
+却是三到四倍的保留 PCM。曲线在任何被测格里都不下折，因此 16 是平段上的一点，而不是
+另一种输入组成可以挪走的峰。保留量仍按 `depth + 1` 个最坏块从 route 已持有的 in-flight
+额度中计价，装不下的深度照旧退化为串行而不是超支。
+
+**同时被否掉的是另一条候选。** 「每次交接合并 K 块」曾在先测的那台主机上表现更好
+（立体声消除 78% 余量对深度的 28%），但在同构主机上六声道 batch 32 跑出 0.92x ——
+比不合批还慢，位移达样本离散的 20 倍。原因是一个前两次分解都没有的成本：批次大到
+装不进分析线程的缓存后，块交接过去时已被逐出。**这也排除了「像 lane 宽度那样由额度
+推导批量」**：取装得下的最大值恰好指向有害的一侧，而真正决定安全批量的是缓存驻留，
+plan 看不见它，in-flight 额度也不是它的代理。合批连同它引入的 flush-on-error 规则一并
+删除，生产者与分析线程的循环回到深度候选出现之前的原样。
+
+毕业依据（ADR-0007 同轮交错 A/B，两个 variant 在同一次 run 内按 seeded 调度交错，
+两台各 288 个样本，`outliersRemoved = 0`）：串行 route 在 Windows 上为 1.08–1.15x、
+位移达同轮合并 MAD 的 1.7x–8.0x，在 macOS 上 WAV 为 1.04x、纯 WAV 批量为 1.17x。
+**内建对照全部按机制预测落在噪声内**：单 worker plan（overlap 不启动）、FLAC 与 ALAC
+packet route（花光 permit，不走这条交接）、以及以 packet route 为主的混合批量，六格的
+位移绝对值均 ≤ 1.3 倍 MAD。16 个 case 在两台上跨 variant 与全部样本各只有一个 result
+fingerprint；139 个 fixture 的 release CLI 输出（含 stderr 与退出码）在两个二进制间逐
+字节相同。代价为单文件 RSS ≤ +0.44 MiB、三 lane 纯 WAV 批量 +1.00 MiB。
+
+harness 侧同时修正了一处：非显式 case 的深度期望原先固定为 1，那只在产品恰好发布
+深度 1 时成立，跨 variant A/B 会因此拒绝它本该保护的比较。harness 读不到该常量也不
+应镜像它，现改为绑定与构建无关的部分——overlap 启用时 applied 深度必须等于 requested、
+未启用时为 null。
 
 ### 文件级（P1）毕业与 allocate 时序下沉（2026-08-07）
 
