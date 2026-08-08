@@ -21,9 +21,11 @@ Highlights:
   application-owned worker and memory plan accepted by
   [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md); a report and
   its decoded PCM are identical whatever worker count a host grants, and
-  decode and analysis overlap on a permit the route left unspent; file-level
-  parallelism remains disabled in the product while window-level parallelism
-  remains unimplemented;
+  decode and analysis overlap on a permit the route left unspent, and a batch
+  runs its items across file lanes derived from that same plan while a single
+  file keeps the whole decoder; window-level parallelism remains unimplemented.
+  Batch progress lines now interleave across lanes, each naming the item it
+  belongs to;
 - retains the in-process Symphonia implementation, finite interleaved `f64`,
   the single `Application` façade, and the fixed analysis rules;
 - upgrades the shared CLI/Tauri `WireEnvelope` to schema v4 for the new
@@ -54,8 +56,9 @@ MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路�
 - 在 [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) 接受的唯一
   application 自有 worker 与内存计划下，为 ALAC route 以及 packet 几何能落入已授予
   reservation 的 FLAC 流启用有界 packet 级解码；无论宿主授予多少 worker，报告与
-  解码 PCM 完全相同；解码与分析在 route 未花掉的 permit 上重叠；文件级并行仍未在
-  产品中启用，窗口级并行仍未实现；
+  解码 PCM 完全相同；解码与分析在 route 未花掉的 permit 上重叠；批量按同一 plan
+  推导的 file lane 并行处理条目，而单个文件仍独占整个解码器；窗口级并行仍未实现。
+  批量进度行现在跨 lane 交错，每行标明所属条目；
 - 保持进程内 Symphonia 实现、有限交错 `f64`、唯一 `Application` façade 和固定
   分析规则；
 - 共享 CLI/Tauri `WireEnvelope` 因新增 `mp4` container 与 `alac` codec 标识升级

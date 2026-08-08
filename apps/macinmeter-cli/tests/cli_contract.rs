@@ -375,6 +375,56 @@ fn batch_exit_codes_cover_all_partial_and_zero_success() {
 }
 
 #[test]
+fn batch_output_file_preserves_item_order_and_progress_identity_across_lanes() {
+    let inputs = [
+        fixture("tiny_duration.wav"),
+        fixture("full_scale_clipping.wav"),
+        fixture("native-alac-v1/alac16-mono-44100.m4a"),
+    ];
+    let directory = tempfile::tempdir().expect("temporary output directory");
+    let report_path = directory.path().join("batch.json");
+    let output = run([
+        "batch".as_ref(),
+        inputs[0].as_os_str(),
+        inputs[1].as_os_str(),
+        inputs[2].as_os_str(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        "--output".as_ref(),
+        report_path.as_os_str(),
+    ]);
+
+    assert_code(&output, 0);
+    assert!(output.stdout.is_empty());
+    let report: Value = serde_json::from_slice(
+        &fs::read(&report_path).expect("batch output file should be readable"),
+    )
+    .expect("batch output file should contain JSON");
+    assert_eq!(report["kind"], "batch");
+    assert_eq!(report["data"]["summary"]["total"], inputs.len());
+    for (index, input) in inputs.iter().enumerate() {
+        assert_eq!(
+            report["data"]["items"][index]["displayPath"],
+            input.display().to_string(),
+            "batch report order must remain the discovery order"
+        );
+    }
+
+    let progress = stderr(&output);
+    for (index, input) in inputs.iter().enumerate() {
+        assert!(
+            progress.contains(&format!("[{index}] analyzing {}", input.display())),
+            "missing start event for item {index}:\n{progress}"
+        );
+        assert!(
+            progress.contains(&format!("[{index}] ok: {}", input.display())),
+            "missing finish event for item {index}:\n{progress}"
+        );
+    }
+    assert!(progress.contains("batch complete: 3 succeeded, 0 failed"));
+}
+
+#[test]
 fn missing_analyze_path_and_implicit_old_style_are_argument_errors() {
     let missing = run(["analyze"]);
     assert_code(&missing, 2);

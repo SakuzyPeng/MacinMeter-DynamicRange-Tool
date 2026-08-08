@@ -61,12 +61,13 @@ MAX_DECODE_WORKERS = 8
 # widest worker count. The plan's own derivation for 8 workers is 32.
 ALAC_QUEUE_SWEEP_WORKERS = 8
 ALAC_QUEUE_CAPACITIES = (8, 64)
-# ADR-0014 P1 lane widths. One lane is the product request and the serial
-# reference; the wider widths spend the same plan, so each one narrows the
-# per-lane decoder that pays for it. Three lanes is the widest allocation that
-# still grants a packet pool, and on an eight-worker plan it is the only width
-# whose lane executors and decoders together consume the whole plan, so a sweep
-# that skips it cannot see where the packet-parallel routes stop scaling.
+# ADR-0014 P1 lane widths. One lane is the serial differential; the product now
+# derives three lanes from an eight-worker plan. Every explicit width spends the
+# same plan, so widening lanes narrows the per-lane decoder that pays for it.
+# Three lanes is the widest allocation that still grants a packet pool, and on
+# an eight-worker plan it is the only width whose lane executors and decoders
+# together consume the whole plan, so a sweep that skips it cannot see where
+# the packet-parallel routes stop scaling.
 FILE_LANE_COUNTS = (1, 2, 3, 4, 8)
 # The worker counts every ADR-0014 axis must be compared across before it can
 # graduate. One worker is the boundary case for decode-analysis overlap: a
@@ -332,21 +333,18 @@ def suite_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
         BenchmarkCase(
             "batch/8-wave-tracks",
             "batch",
-            "Current serial application batch over eight independent WAV tracks",
+            "Product-derived file lanes over eight independent WAV tracks",
             ("batch", media("batch"), "4"),
         ),
-        # ADR-0014 §7 requires WAV, FLAC, ALAC and mixed durations before file
-        # lanes may be enabled by default. The eight-WAV case above cannot
-        # supply that: identical items give every lane identical work, so it
-        # cannot show tail latency, unfair assignment, or how a lane holding a
-        # packet-parallel route shares the plan with one that decodes serially.
-        # Twelve items over the eight-worker ceiling at a 12:1 duration spread
-        # make all three observable, and this serial number is the reference a
-        # later lane implementation has to beat in the same interleaved run.
+        # The eight-WAV case above cannot show tail latency, unfair assignment,
+        # or how a lane holding a packet-parallel route shares the plan with one
+        # that decodes serially. Twelve items over the eight-worker ceiling at a
+        # 12:1 duration spread make all three observable under the graduated
+        # product-derived width.
         BenchmarkCase(
             "batch/12-mixed-tracks",
             "batch",
-            "Current serial application batch over twelve mixed-route, "
+            "Product-derived file lanes over twelve mixed-route, "
             "mixed-duration tracks",
             ("batch", media("batch-mixed"), "1"),
         ),
@@ -422,9 +420,9 @@ def file_lane_cases(corpus: Path) -> tuple[BenchmarkCase, ...]:
     is not a free dimension: after the first caller-owned lane, every additional
     lane is charged before the remaining permits are split across decoder pools.
     The mixed batch is the only input that can price that trade, since it holds
-    packet-parallel and serial routes side by side. The product asks for one lane
-    until this sweep and a formal A/B say otherwise, so these stay out of the
-    default suite.
+    packet-parallel and serial routes side by side. The product uses the derived
+    width in the default suite; this full explicit sweep remains selectable as
+    its source-bound differential and regression surface.
     """
     return tuple(
         BenchmarkCase(
@@ -1443,6 +1441,8 @@ def validate_corpus_work(
             )
             if details.get("filesPerIteration") != len(batch_entries):
                 raise BaselineError(f"{case.case_id} batch file count drifted")
+            if len(case.arguments) == 4:
+                assert_batch_allocation(case, details, len(batch_entries))
             continue
 
         if case.mode == "discovery":
@@ -1477,6 +1477,52 @@ def validate_corpus_work(
             "application analysis differs across containers carrying identical PCM: "
             f"{mismatched_pcm_groups}"
         )
+
+
+def assert_batch_allocation(
+    case: BenchmarkCase,
+    details: dict[str, object],
+    files_per_iteration: int,
+) -> None:
+    """Bind an explicit file-lane case to the allocation it claims to time."""
+
+    if len(case.arguments) != 4:
+        raise BaselineError(f"{case.case_id} is not an explicit file-lane case")
+    requested = int(case.arguments[3])
+    if requested <= 0:
+        raise BaselineError(f"{case.case_id} requests no file lanes")
+
+    # Reject host clamping instead of writing an l8 label over a narrower plan.
+    # The formal sweep prices every width against the fixed eight-worker product
+    # ceiling, just as the application worker sweep rejects a narrowed grant.
+    granted_plan_workers = MAX_DECODE_WORKERS
+    allocated_file_lanes = min(
+        requested, granted_plan_workers, max(files_per_iteration, 1)
+    )
+    lane_threads = allocated_file_lanes - 1
+    divided_decoder_workers = (
+        granted_plan_workers - lane_threads
+    ) // allocated_file_lanes
+    decoder_workers_per_lane = (
+        divided_decoder_workers if divided_decoder_workers >= 2 else 1
+    )
+    expected = {
+        "requestedFileLanes": requested,
+        "grantedPlanWorkers": granted_plan_workers,
+        "allocatedFileLanes": allocated_file_lanes,
+        "decoderWorkersPerLane": decoder_workers_per_lane,
+    }
+    for key, value in expected.items():
+        actual = details.get(key)
+        if not isinstance(actual, int) or isinstance(actual, bool):
+            raise BaselineError(
+                f"{case.case_id} batch topology field {key} is not an integer"
+            )
+        if actual != value:
+            raise BaselineError(
+                f"{case.case_id} batch topology field {key} is "
+                f"{actual!r}, expected {value!r}"
+            )
 
 
 def assert_application_allocation(

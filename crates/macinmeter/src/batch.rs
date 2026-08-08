@@ -1,6 +1,8 @@
+#[cfg(feature = "performance-probes")]
+use crate::concurrency::PlanAllocation;
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
-    ErrorCode, ExecutionControl, application::Analyzer, concurrency::PlanAllocation,
+    ErrorCode, ExecutionControl, application::Analyzer, concurrency::ConcurrencyPlan,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -69,10 +71,53 @@ pub struct BatchReport {
     pub summary: BatchSummary,
 }
 
+/// The exact application allocation selected by a non-default batch performance run.
+///
+/// This type is deliberately absent from ordinary builds and from every batch
+/// report/wire field. The ADR-0007 worker uses it to prove that a case labelled
+/// with a file-lane width actually received that plan and split.
+#[cfg(feature = "performance-probes")]
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatchPerformanceProbe {
+    granted_plan_workers: usize,
+    allocated_file_lanes: usize,
+    decoder_workers_per_lane: usize,
+}
+
+#[cfg(feature = "performance-probes")]
+impl BatchPerformanceProbe {
+    const fn new(plan: ConcurrencyPlan, allocation: PlanAllocation) -> Self {
+        Self {
+            granted_plan_workers: plan.total_workers().get(),
+            allocated_file_lanes: allocation.file_lanes().get(),
+            decoder_workers_per_lane: allocation.decode().workers().get(),
+        }
+    }
+
+    pub const fn granted_plan_workers(self) -> usize {
+        self.granted_plan_workers
+    }
+
+    pub const fn allocated_file_lanes(self) -> usize {
+        self.allocated_file_lanes
+    }
+
+    pub const fn decoder_workers_per_lane(self) -> usize {
+        self.decoder_workers_per_lane
+    }
+}
+
+struct BatchExecution {
+    report: BatchReport,
+    #[cfg(feature = "performance-probes")]
+    allocation: PlanAllocation,
+}
+
 #[derive(Debug)]
 pub(crate) struct BatchRunner {
-    analyzer: Analyzer,
-    file_lanes: NonZeroUsize,
+    plan: ConcurrencyPlan,
+    requested_file_lanes: NonZeroUsize,
     #[cfg(test)]
     fault: Option<LaneFault>,
 }
@@ -80,8 +125,8 @@ pub(crate) struct BatchRunner {
 impl Default for BatchRunner {
     fn default() -> Self {
         Self {
-            analyzer: Analyzer::default(),
-            file_lanes: NonZeroUsize::MIN,
+            plan: ConcurrencyPlan::serial(),
+            requested_file_lanes: NonZeroUsize::MIN,
             #[cfg(test)]
             fault: None,
         }
@@ -89,16 +134,18 @@ impl Default for BatchRunner {
 }
 
 impl BatchRunner {
-    /// Build a runner over the job's allocation.
+    /// Build a runner over the job's own plan.
     ///
-    /// The lane executors and per-lane decode permit are two halves of one split
-    /// the plan already performed, so widening lanes has necessarily already
-    /// paid for the added lane threads and narrowed each decoder. Nothing here
-    /// may request a second permit or size a pool from the batch length.
-    pub(crate) const fn new(allocation: PlanAllocation) -> Self {
+    /// The runner takes the plan rather than an already-split allocation
+    /// because the split cannot be correct before discovery: lane executors and
+    /// per-lane decode permits are two halves of one division, so choosing
+    /// lanes for a batch that turns out to hold one file would narrow that
+    /// file's decoder for no reason. Splitting is still done exactly once, and
+    /// still by the plan; it just happens once the item count is known.
+    pub(crate) const fn new(plan: ConcurrencyPlan, requested_file_lanes: NonZeroUsize) -> Self {
         Self {
-            analyzer: Analyzer::new(allocation.decode()),
-            file_lanes: allocation.file_lanes(),
+            plan,
+            requested_file_lanes,
             #[cfg(test)]
             fault: None,
         }
@@ -115,10 +162,42 @@ impl BatchRunner {
         request: BatchRequest,
         control: &ExecutionControl<'_>,
     ) -> Result<BatchReport, AnalysisError> {
+        self.run_execution(request, control)
+            .map(|execution| execution.report)
+    }
+
+    #[cfg(feature = "performance-probes")]
+    pub(crate) fn run_with_performance_probe(
+        &self,
+        request: BatchRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
+        let execution = self.run_execution(request, control)?;
+        let probe = BatchPerformanceProbe::new(self.plan, execution.allocation);
+        Ok((execution.report, probe))
+    }
+
+    fn run_execution(
+        &self,
+        request: BatchRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<BatchExecution, AnalysisError> {
         if control.cancellation.is_cancelled() {
             return Err(AnalysisError::cancelled());
         }
         let files = discover_inputs_with_control(&request.inputs, request.recursive, control)?;
+
+        // Split the plan now that the item count is known. Asking for more
+        // lanes than there are files would spend permits on executors that
+        // could never claim an item, and would narrow every decoder to pay for
+        // them. This is still the one split the job performs: `allocate` is
+        // arithmetic over a total this job already holds exclusively, it cannot
+        // block and cannot fail for want of a resource, so no worker below ever
+        // waits for a second grant.
+        let lanes = NonZeroUsize::new(self.requested_file_lanes.get().min(files.len().max(1)))
+            .unwrap_or(NonZeroUsize::MIN);
+        let allocation = self.plan.allocate(lanes)?;
+        let analyzer = Analyzer::new(allocation.decode());
 
         // Discovery already fixed the input order, so an item's index names one
         // file no matter which lane produces it. Lanes claim by index rather
@@ -128,7 +207,7 @@ impl BatchRunner {
         let stop = AtomicBool::new(false);
         let outcomes: Vec<Mutex<Option<LaneOutcome>>> =
             files.iter().map(|_| Mutex::new(None)).collect();
-        let lanes = self.file_lanes.get().min(files.len().max(1));
+        let lanes = allocation.file_lanes().get();
 
         thread::scope(|scope| -> Result<(), AnalysisError> {
             let mut starts = Vec::with_capacity(lanes.saturating_sub(1));
@@ -141,6 +220,7 @@ impl BatchRunner {
             for lane in 1..lanes {
                 let (start, start_gate) = channel::<()>();
                 let runner = self;
+                let lane_analyzer = &analyzer;
                 let lane_files = &files;
                 let lane_claim = &claim;
                 let lane_outcomes = &outcomes;
@@ -150,6 +230,7 @@ impl BatchRunner {
                         return false;
                     }
                     runner.run_lane_catching(
+                        lane_analyzer,
                         lane_files,
                         lane_claim,
                         lane_outcomes,
@@ -197,7 +278,7 @@ impl BatchRunner {
             // structured failure contract as the spawned lanes.
             if spawn_error.is_none()
                 && !lane_panicked
-                && self.run_lane_catching(&files, &claim, &outcomes, &stop, control)
+                && self.run_lane_catching(&analyzer, &files, &claim, &outcomes, &stop, control)
             {
                 lane_panicked = true;
             }
@@ -270,10 +351,14 @@ impl BatchRunner {
         control
             .progress
             .emit(AnalysisEvent::BatchFinished { succeeded, failed });
-        Ok(BatchReport {
-            status,
-            items,
-            summary,
+        Ok(BatchExecution {
+            report: BatchReport {
+                status,
+                items,
+                summary,
+            },
+            #[cfg(feature = "performance-probes")]
+            allocation,
         })
     }
 
@@ -286,6 +371,7 @@ impl BatchRunner {
     /// lanes have joined.
     fn run_lane(
         &self,
+        analyzer: &Analyzer,
         files: &[PathBuf],
         claim: &AtomicUsize,
         outcomes: &[Mutex<Option<LaneOutcome>>],
@@ -312,7 +398,7 @@ impl BatchRunner {
                 return;
             }
             let request = AnalyzeRequest { path: path.clone() };
-            let outcome = match self.analyzer.analyze_file_at(request, index, control) {
+            let outcome = match analyzer.analyze_file_at(request, index, control) {
                 Ok(report) => LaneOutcome::Finished(BatchItemOutcome::Success {
                     report: Box::new(report),
                 }),
@@ -331,6 +417,7 @@ impl BatchRunner {
     /// the other lanes can claim more work.
     fn run_lane_catching(
         &self,
+        analyzer: &Analyzer,
         files: &[PathBuf],
         claim: &AtomicUsize,
         outcomes: &[Mutex<Option<LaneOutcome>>],
@@ -338,7 +425,7 @@ impl BatchRunner {
         control: &ExecutionControl<'_>,
     ) -> bool {
         let panicked = catch_unwind(AssertUnwindSafe(|| {
-            self.run_lane(files, claim, outcomes, stop, control);
+            self.run_lane(analyzer, files, claim, outcomes, stop, control);
         }))
         .is_err();
         if panicked {
@@ -546,14 +633,23 @@ mod tests {
             .join(relative)
     }
 
-    /// One allocation split the same way production would split it.
-    fn allocation_for(lanes: usize) -> PlanAllocation {
+    /// The fixed test plan the runner splits for itself.
+    fn test_plan() -> ConcurrencyPlan {
         ConcurrencyPlan::bounded_for_test(
             nonzero(MAX_LANE_PLAN_WORKERS),
             nonzero(MAX_LANE_PLAN_WORKERS),
         )
-        .allocate(nonzero(lanes))
-        .expect("a lane split of the fixed test plan must succeed")
+    }
+
+    /// One allocation split the same way the runner would split it.
+    fn allocation_for(lanes: usize) -> crate::concurrency::PlanAllocation {
+        test_plan()
+            .allocate(nonzero(lanes))
+            .expect("a lane split of the fixed test plan must succeed")
+    }
+
+    fn runner_for(lanes: usize) -> BatchRunner {
+        BatchRunner::new(test_plan(), nonzero(lanes))
     }
 
     const MAX_LANE_PLAN_WORKERS: usize = 8;
@@ -580,7 +676,7 @@ mod tests {
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
         let control = ExecutionControl::new(&cancellation, &progress);
-        BatchRunner::new(allocation_for(lanes)).run(BatchRequest::new(inputs, false), &control)
+        runner_for(lanes).run(BatchRequest::new(inputs, false), &control)
     }
 
     fn shape(report: &BatchReport) -> Vec<(String, bool)> {
@@ -662,7 +758,7 @@ mod tests {
                 }
             };
             let control = ExecutionControl::new(&cancellation, &sink);
-            BatchRunner::new(allocation_for(lanes))
+            runner_for(lanes)
                 .run(BatchRequest::new(inputs.clone(), false), &control)
                 .expect("the batch must complete");
 
@@ -717,8 +813,7 @@ mod tests {
                 _ => {}
             };
             let control = ExecutionControl::new(&cancellation, &sink);
-            let outcome = BatchRunner::new(allocation_for(lanes))
-                .run(BatchRequest::new(mixed_inputs(), false), &control);
+            let outcome = runner_for(lanes).run(BatchRequest::new(mixed_inputs(), false), &control);
 
             let error = outcome.expect_err("a cancelled batch must not return a report");
             assert_eq!(error.code, ErrorCode::Cancelled, "{lanes} lanes");
@@ -743,7 +838,7 @@ mod tests {
             }
         };
         let control = ExecutionControl::new(&cancellation, &sink);
-        let error = BatchRunner::new(allocation_for(4))
+        let error = runner_for(4)
             .with_fault(LaneFault::Spawn(2))
             .run(BatchRequest::new(mixed_inputs(), false), &control)
             .expect_err("an injected lane spawn failure must be structured");
@@ -763,7 +858,7 @@ mod tests {
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
         let control = ExecutionControl::new(&cancellation, &progress);
-        let error = BatchRunner::new(allocation_for(4))
+        let error = runner_for(4)
             .with_fault(LaneFault::Panic(0))
             .run(BatchRequest::new(mixed_inputs(), false), &control)
             .expect_err("an injected lane panic must not escape the application facade");
@@ -792,8 +887,8 @@ mod tests {
             );
             // A mixed batch must not let the packet-parallel route reclaim what
             // widening lanes already spent.
-            let runner = BatchRunner::new(allocation);
-            assert_eq!(runner.file_lanes.get(), granted);
+            let runner = runner_for(lanes);
+            assert_eq!(runner.requested_file_lanes.get(), lanes);
         }
     }
 }

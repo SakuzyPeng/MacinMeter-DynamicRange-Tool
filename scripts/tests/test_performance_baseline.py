@@ -43,6 +43,57 @@ class PerformanceBaselineTests(unittest.TestCase):
         self.assertIn("application/wave-s16-240s", case_ids)
         self.assertIn("application/aiff-s16-240s", case_ids)
 
+    def test_batch_lane_gate_binds_the_granted_plan_and_actual_split(self) -> None:
+        root = Path("/corpus")
+        case = baseline.BenchmarkCase(
+            "batch-lanes/3-wave-l3",
+            "batch",
+            "three-lane allocation probe",
+            ("batch", str(root / "batch-pure-wave"), "1", "3"),
+        )
+        manifest = {
+            "media": [
+                {
+                    "path": f"batch-pure-wave/track-{index}.wav",
+                    "frames": 10,
+                    "channels": 2,
+                    "sampleRate": 10,
+                }
+                for index in range(3)
+            ]
+        }
+        details = {
+            "filesPerIteration": 3,
+            "requestedFileLanes": 3,
+            "grantedPlanWorkers": 8,
+            "allocatedFileLanes": 3,
+            "decoderWorkersPerLane": 2,
+        }
+        sample = {
+            "caseId": case.case_id,
+            "work": {
+                "audioFrames": 30,
+                "interleavedSamples": 60,
+                "audioSeconds": 3.0,
+                "logicalItems": 3,
+            },
+            "details": details,
+        }
+        baseline.validate_corpus_work([sample], [case], root, manifest)
+
+        for field, invalid in (
+            ("requestedFileLanes", 2),
+            ("grantedPlanWorkers", 4),
+            ("allocatedFileLanes", 2),
+            ("decoderWorkersPerLane", 1),
+        ):
+            with self.subTest(field=field):
+                changed = dict(details)
+                changed[field] = invalid
+                sample["details"] = changed
+                with self.assertRaises(baseline.BaselineError):
+                    baseline.validate_corpus_work([sample], [case], root, manifest)
+
     def test_application_worker_gate_binds_grant_engine_overlap_and_tail(self) -> None:
         root = Path("/corpus")
         case = baseline.BenchmarkCase(

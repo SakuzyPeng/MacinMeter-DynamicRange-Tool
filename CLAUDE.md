@@ -43,11 +43,13 @@ domain
   serial oracle before any thread is created. Decode-analysis overlap graduated
   and is enabled by default; it spends only the permits a route left unspent, so
   a route that spent them all and a one-worker plan behave exactly as before.
-  File lanes (P1) have a non-default measurement implementation, but the product
-  continues to request one lane; window-level analysis (P2) remains
-  unimplemented. Do not describe either of those two as shipped. Results never
-  depend on worker count, so a report is not evidence of which engine produced
-  it.
+  File lanes (P1) graduated at the width the plan derives for itself — the
+  widest split that still grants each lane a packet pool, three on an eight-worker
+  plan. A single file and a one-item batch still take the whole decoder, because
+  the plan is split per operation once the item count is known rather than at
+  admission. Window-level analysis (P2) remains unimplemented; do not describe
+  it as shipped. Results never depend on worker count or lane count, so a report
+  is not evidence of which engine produced it.
 - All internal concurrency axes must consume one application-owned worker and
   memory plan; nested file × packet × window pools are forbidden. FLAC graduated
   with ordered full-stream MD5 intact; it may not later be disabled or weakened.

@@ -2,8 +2,8 @@
 
 - 状态：Accepted
 - 实施状态：In progress（packet 级已为 ALAC 与资源几何落在 permit 内的 FLAC
-  route 默认启用；文件级已有非默认测量实现但产品仍固定请求一个 lane；窗口级
-  未实施；decode-analysis overlap 已毕业并默认启用）
+  route 默认启用；文件级已按 plan 推导的饱和宽度毕业并默认启用；窗口级未实施；
+  decode-analysis overlap 已毕业并默认启用）
 - 日期：2026-08-02
 - 决策范围：解除窗口级、packet 级与文件级并行的一刀切硬禁令；固定统一资源与
   确定性契约；把受限 route 的 packet 级解码定为首要优化方向
@@ -190,8 +190,12 @@ ADR-0004 的“一个 active 顶层 job、最多 64 个 FIFO 排队 reservation�
   媒体声明、batch 长度或递归任务自行放大；
 - file lane、packet worker、window worker 和 decode-analysis overlap 消耗同一组
   permits，不允许形成 `file lanes × packet workers × window workers` 的乘法并发；
-- 所需 permit 在调度子任务前一次性分配，worker 不递归等待另一层 pool 的 permit，
-  避免嵌套 pool 死锁；预算不足时向更低并发或串行退化；
+- 所需 permit 在**创建任何线程之前**、由该 operation 一次性分配，worker 不递归等待
+  另一层 pool 的 permit，避免嵌套 pool 死锁；预算不足时向更低并发或串行退化。
+  该分配点自 2026-08-07 起下沉到 job 内部（见下方修订说明），但仍是每个 operation
+  唯一的一次切分：`allocate()` 是对该 job 已独占持有的 total 做纯算术切分，不从
+  共享池获取、不阻塞、不因资源不足失败，准入早在 job 存在之前完成，因此没有任何
+  worker 会等待第二次授予，死锁论证不受影响；
 - compressed packet、decoded `f64`、重排序项和 decoder/session reservation 均
   计入有界计划；队列容量不能随媒体时长、packet count 或声明的 frame count 增长；
 - Tauri/CLI 不建立自己的 Rayon/Tokio pool，也不绕过 `Application`。
@@ -323,8 +327,9 @@ packet 级另加：
   reservation 的 in-flight 预算为 0 bytes，直接表达“串行路径不得让任何已解码
   block 等待更早序号”；
 - `macinmeter` 新增 `ConcurrencyPlan`，每 worker 派生 4 个排队 packet 与 4 MiB
-  in-flight PCM。`allocate()` 是唯一的 permit 发放点，在 job 进入 admission 队列
-  前一次性完成；首个 caller 自有 lane 之外的 lane executor 先从总量扣除，剩余
+  in-flight PCM。`allocate()` 是唯一的 permit 发放点（该步在 job 进入 admission
+  队列前完成；2026-08-07 起下沉到 job 内、按 operation 一次性完成）；首个 caller
+  自有 lane 之外的 lane executor 先从总量扣除，剩余
   permit 才分给各 lane 的 packet pool，从而保证实际 lane thread 与 packet worker
   总数不超过 `total_workers`。`bounded()` 同时受产品上限和
   `available_parallelism()` 约束；
@@ -701,6 +706,46 @@ overlap 实际启用的宽度出现，且不随流长或 worker 数增长。原�
 
 产品仍不发布任何加速比：结果与 worker 数无关，报告不指示由哪条路径产生。
 
+### 文件级（P1）毕业与 allocate 时序下沉（2026-08-07）
+
+P1 以**由 plan 自行推导的饱和宽度**毕业并默认启用，不是一个调出来的常数：
+`allocate` 为 caller 之外的每条 lane 先扣一个 executor，再分剩余 permit，且在无法
+给每条 lane 至少 2 个 decoder 时整体退回串行 lane。逃过该断崖的最宽宽度满足
+`(total - (lanes - 1)) / lanes >= 2`，即 `lanes <= (total + 1) / 3`。8-worker plan
+得 3（恰好用尽：2 个 lane executor + 3×2 个 decoder），4-worker plan 得 1，
+16-worker plan 得 5。
+
+**这次毕业必须同时下沉 `allocate` 的时机。** lane 宽度与 decoder 宽度是同一次切分
+的两半，而切分此前发生在 reserve 时 —— 那时还不知道该 operation 是单文件还是批量、
+批量里有几个文件。若沿用旧时序，产品请求 3 条 lane 会把**单文件分析的解码器从 8 个
+worker 砍到 2 个**：实测 ALAC 240s 由 64 ms 退化到 207 ms（3.2x），FLAC 240s 由
+94 ms 退化到 153 ms（1.63x）。既有测试
+`the_product_default_selects_packet_workers_only_for_graduated_routes` 直接捕获了
+这一点。
+
+因此 `ApplicationJob` 改为持有 `ConcurrencyPlan` 而非已切分的 `PlanAllocation`：
+单文件 operation 取 `allocate(1)`，批量在**发现之后**按 `min(推导宽度, 文件数)` 切分。
+每个 operation 仍然只切一次，且都在创建任何线程之前完成；§5 的死锁论证如上所述不受
+影响，改变的只是「何时」。
+
+非默认 file-lane sweep 另外从 discovery 后的真实 allocation 记录
+`grantedPlanWorkers`、`allocatedFileLanes` 与 `decoderWorkersPerLane`。性能 harness
+逐项校验这些字段，并在宿主无法授予完整 8-worker plan 时 fail closed；只记录请求宽度
+不足以证明一个标为 L8 的 case 没有被宿主夹紧为更窄执行。
+
+结果不变：129 个 fixture 的单文件 release CLI 输出（含 stderr）与启用前逐字节相同，
+四个 fixture 目录的批量 JSON 报告逐字节相同。**可观察的变化只有一处**：批量的 stderr
+进度行现在跨 lane 交错，每行仍带自己的 item index，报告内的 item 顺序与既有测试
+`item_order_and_outcomes_are_identical_at_every_lane_count` 保证一致。
+
+批量收益（本机快速核对，非正式 A/B）：混合 86 → 64 ms，纯 WAV 78 → 37 ms，
+纯 FLAC 92 → 64 ms；同时单文件 ALAC 保持 8 worker、66 ms。正式的宽度 sweep 与
+双主机记录不入仓库。
+
+固定单一宽度的代价是明确的：WAV-only 批量放弃约 15%–40% 的可得加速（它自身的最优
+是最大 lane 数）。总耗时与保底加速两条判据在两台异构主机上都选该宽度；minimax 判据
+在两台上结论相反，因此未被采纳为决定性依据。
+
 ## 明确非目标
 
 - 接受 ADR 即宣称当前 0.3.0 已经并行，或一次提交同时打开三个轴；
@@ -733,10 +778,11 @@ overlap 实际启用的宽度出现，且不随流长或 worker 数增长。原�
 workers。只有已毕业且资源几何可证明落在 permit 内的 route 会切换 engine——目前
 是 ADR-0013 的 ALAC route，以及最坏重排窗口适配 reservation 的 FLAC；其余 route、
 超出 permit 的 FLAC 与单 worker 宿主仍走串行引擎。`ExecutionBudget::serial()` 保持
-完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）已有仅供
-`performance-probes` 测量的实现，但产品仍固定请求一个 lane，尚未毕业或默认启用；
-窗口级（P2）仍未实施。decode-analysis overlap 已毕业并默认启用：它只消费 route
-未花掉的 permit，花光 permit 的 route 与单 worker plan 路径不变。
+完全串行，作为差分参照继续可达，不是产品默认的别名。文件级（P1）已按 plan 自行
+推导的饱和宽度毕业并默认启用；batch 在 discovery 后按实际 item 数切分，单文件与
+单 item batch 仍保留完整 decoder。decode-analysis overlap 也已毕业并默认启用：它只
+消费 route 未花掉的 permit，花光 permit 的 route 与单 worker plan 路径不变。窗口级
+（P2）仍未实施。
 
 启用后 136 个 fixture 的 release CLI 输出与启用前逐字节相同（SHA-256
 `2cba423b44bf6a96dea548d4e88fc486eb268974c6c27649cdf2985fba238e29`），39 项
@@ -809,9 +855,10 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
   packet worker 与 reference 的对照；
 - 真实录音交叉检查的语料是私人且不可再生的，按 ADR-0007 立场不进入仓库，因此它是
   补充观察而非可复现证据；
-- 性能 harness 与 runner 各自镜像 crate-private 的 plan 派生。两者互相核对可以
-  发现镜像间错位，但不自动检测 plan 单独改变或另一台宿主的
-  `available_parallelism` 收缩；
+- direct-decode 性能 harness 与 runner 仍各自镜像 crate-private 的 plan 派生；
+  application worker 与 file-lane sweep 则额外记录并校验实际 granted plan、selected
+  engine 或 allocation，宿主 `available_parallelism` 收缩时会 fail closed，拒绝把
+  较窄执行写成较宽 case；
 - 确定性强制乱序 seam 是 `#[cfg(test)]`、不在 release worker 中，因此真实解码路径
   上的“长流 + 强制最坏乱序”组合仍未直接运行；该组合的界由 commit buffer 的直接
   压力测试承担；
@@ -829,4 +876,4 @@ safe-master 的 WireEnvelope 也与已登记 conformance artifact 逐字节相�
 
 ### 尚未开始
 
-- 文件级与窗口级并行的生产实现，二者目前只有准入契约。
+- 窗口级并行（P2）的生产实现，目前只有准入契约。

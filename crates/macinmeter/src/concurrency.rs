@@ -89,6 +89,27 @@ impl ConcurrencyPlan {
         self.total_workers.get() == 1
     }
 
+    /// The widest lane split this plan can make that still grants a packet pool.
+    ///
+    /// `allocate` charges one executor for every lane after the caller's own,
+    /// then divides what is left, and it drops a whole batch to serial lanes
+    /// once that division cannot seat two decoders each. The widest width that
+    /// escapes that cliff therefore satisfies
+    /// `(total - (lanes - 1)) / lanes >= 2`, which rearranges to
+    /// `lanes <= (total + 1) / 3`.
+    ///
+    /// This is a derivation, not a tuned constant: an eight-worker plan yields
+    /// three, a four-worker plan one, a sixteen-worker plan five. Three is also
+    /// the width at which an eight-worker plan is exactly spent — two lane
+    /// executors plus three two-worker decoders.
+    pub(crate) const fn saturating_file_lanes(self) -> NonZeroUsize {
+        let lanes = self.total_workers.get().saturating_add(1) / 3;
+        match NonZeroUsize::new(lanes) {
+            Some(lanes) => lanes,
+            None => NonZeroUsize::MIN,
+        }
+    }
+
     /// Split the whole plan across file lanes in one shot.
     ///
     /// This is the only place permits are handed out. Every lane after the
@@ -237,6 +258,42 @@ mod tests {
                 assert!(lanes <= total, "a lane may not exist without a permit");
             }
         }
+    }
+
+    #[test]
+    fn the_saturating_width_is_the_widest_split_that_still_grants_a_pool() {
+        for total in 1..=MAX_DECODE_WORKERS {
+            let plan = plan_of(total);
+            let derived = plan.saturating_file_lanes();
+            let per_lane = |lanes: usize| {
+                plan.allocate(nonzero(lanes))
+                    .unwrap()
+                    .decode()
+                    .workers()
+                    .get()
+            };
+
+            // The derived width still seats a packet pool, unless the plan is
+            // too narrow for any width to do so.
+            if total >= 3 {
+                assert!(
+                    per_lane(derived.get()) >= 2,
+                    "total={total}: derived {derived} lost its packet pool"
+                );
+            }
+            // And it is the widest such width: one more lane loses the pool.
+            let wider = derived.get() + 1;
+            if wider <= total {
+                assert_eq!(
+                    per_lane(wider),
+                    1,
+                    "total={total}: {wider} lanes still had a pool, so {derived} was not the widest"
+                );
+            }
+        }
+        assert_eq!(plan_of(8).saturating_file_lanes().get(), 3);
+        assert_eq!(plan_of(4).saturating_file_lanes().get(), 1);
+        assert_eq!(plan_of(1).saturating_file_lanes().get(), 1);
     }
 
     #[test]

@@ -1,5 +1,7 @@
 #[cfg(feature = "performance-probes")]
 use crate::application::ApplicationPerformanceProbe;
+#[cfg(feature = "performance-probes")]
+use crate::batch::BatchPerformanceProbe;
 use crate::{
     AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchReport, BatchRequest,
     CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
@@ -18,9 +20,11 @@ const SERIAL_ACTIVE_JOBS: usize = 1;
 const DEFAULT_MAX_QUEUED_JOBS: usize = 64;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
-/// The product still requests one batch lane. Wider ADR-0014 P1 lanes are a
-/// non-default measurement input until their remaining gates pass.
-const PRODUCTION_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
+/// A fully serial plan has nothing to split, so it asks for one lane.
+///
+/// The product plan derives its width from the plan instead; see
+/// [`ConcurrencyPlan::saturating_file_lanes`].
+const SERIAL_FILE_LANES: NonZeroUsize = NonZeroUsize::MIN;
 
 /// Decode workers the product asks for before host and ceiling clamping.
 ///
@@ -57,10 +61,15 @@ impl ExecutionBudget {
     /// never changes a result. Routes that have not graduated, and hosts that
     /// grant a single worker, stay on the serial engine.
     pub fn product() -> Self {
+        let concurrency = ConcurrencyPlan::bounded(PRODUCTION_DECODE_WORKERS);
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
-            concurrency: ConcurrencyPlan::bounded(PRODUCTION_DECODE_WORKERS),
-            file_lanes: PRODUCTION_FILE_LANES,
+            concurrency,
+            // ADR-0014 P1 graduated at the width the plan derives for itself:
+            // the widest lane split that still grants each lane a packet pool.
+            // A batch narrower than this asks for fewer lanes, and a single
+            // file asks for one, so no operation pays for lanes it cannot use.
+            file_lanes: concurrency.saturating_file_lanes(),
         }
     }
 
@@ -73,7 +82,7 @@ impl ExecutionBudget {
         Self {
             max_queued_jobs: DEFAULT_MAX_QUEUED_JOBS,
             concurrency: ConcurrencyPlan::serial(),
-            file_lanes: PRODUCTION_FILE_LANES,
+            file_lanes: SERIAL_FILE_LANES,
         }
     }
 
@@ -93,7 +102,7 @@ impl ExecutionBudget {
         Ok(Self {
             max_queued_jobs,
             concurrency: ConcurrencyPlan::serial(),
-            file_lanes: PRODUCTION_FILE_LANES,
+            file_lanes: SERIAL_FILE_LANES,
         })
     }
 
@@ -115,12 +124,21 @@ impl ExecutionBudget {
         self.file_lanes
     }
 
-    /// Request a batch lane width.
+    /// The lane width this budget requests, as a number.
     ///
-    /// The product asks for one lane until ADR-0014 P1 graduates, and no public
-    /// constructor can reach this. The lane count is a measurement input, not a
-    /// tuning knob: exposing it under the same non-default feature as the
-    /// pipeline probes keeps it out of the product surface, and the plan still
+    /// Read-only, like the queue accessors above. The product derives this
+    /// request from the host-bound plan; a batch may allocate fewer lanes after
+    /// discovery, which the non-default batch performance probe records
+    /// separately.
+    pub const fn requested_file_lanes(self) -> usize {
+        self.file_lanes.get()
+    }
+
+    /// Override the product-derived batch lane width for measurement.
+    ///
+    /// The lane count is a measurement input, not a product tuning knob:
+    /// exposing it under the same non-default feature as the pipeline probes
+    /// keeps the override out of the ordinary product surface. The plan still
     /// clamps the request and narrows each lane's decoder to pay for it.
     #[cfg(any(test, feature = "performance-probes"))]
     pub const fn with_file_lanes(self, file_lanes: NonZeroUsize) -> Self {
@@ -145,14 +163,17 @@ impl ExecutionBudget {
 
     /// Replace the internal plan.
     ///
-    /// ADR-0014 keeps every parallel axis off by default, so no public
-    /// constructor can reach this. It exists for the first-party differential
-    /// tests that have to drive a non-serial plan through the real
-    /// `Application` path rather than through a mirrored constant.
+    /// It exists for first-party differential tests that have to drive a fixed
+    /// non-serial plan through the real `Application` path rather than depend on
+    /// the test runner's host or a mirrored constant.
     #[cfg(test)]
     pub(crate) const fn with_concurrency(self, concurrency: ConcurrencyPlan) -> Self {
         Self {
             concurrency,
+            // Re-derive the width with the plan. A budget whose lane count came
+            // from a different plan than its own would not be a configuration
+            // the product can produce.
+            file_lanes: concurrency.saturating_file_lanes(),
             ..self
         }
     }
@@ -242,6 +263,21 @@ impl Application {
             .run_batch(request, control.progress)
     }
 
+    /// Run one batch and return the exact non-default allocation topology.
+    ///
+    /// This measurement entry is absent from ordinary product builds and does
+    /// not add any field to `BatchReport` or the wire schema.
+    #[cfg(feature = "performance-probes")]
+    #[doc(hidden)]
+    pub fn run_batch_with_performance_probe(
+        &self,
+        request: BatchRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
+        self.reserve(control.cancellation)?
+            .run_batch_with_performance_probe(request, control.progress)
+    }
+
     pub fn discover_inputs_with_control(
         &self,
         inputs: &[std::path::PathBuf],
@@ -281,16 +317,32 @@ impl Default for Application {
 #[derive(Debug)]
 pub struct ApplicationJob {
     reservation: ExecutionReservation,
-    allocation: PlanAllocation,
+    /// The whole plan this job holds exclusively for its lifetime.
+    ///
+    /// The job carries the plan rather than an already-split allocation because
+    /// the split depends on how many files the operation turns out to have, and
+    /// that is not known at admission. Splitting is still done exactly once per
+    /// operation, by the plan, before any thread is created.
+    plan: ConcurrencyPlan,
+    requested_file_lanes: NonZeroUsize,
 }
 
 impl ApplicationJob {
-    /// The permits this job received before any sub-task was scheduled.
+    /// Split this job's plan for an operation over `lanes` file lanes.
     ///
-    /// Permits are granted once, up front. Nothing below this job asks for a
-    /// second permit, which is what keeps nested pools from deadlocking.
-    pub(crate) const fn allocation(&self) -> PlanAllocation {
-        self.allocation
+    /// `allocate` is arithmetic over a total this job already holds
+    /// exclusively: it never acquires from a shared pool, never blocks and
+    /// cannot fail for want of a resource. Admission happened before this job
+    /// existed, so no worker below ever waits for a second grant and nested
+    /// pools still cannot deadlock.
+    #[cfg(test)]
+    pub(crate) fn allocation(&self) -> Result<PlanAllocation, AnalysisError> {
+        self.plan.allocate(self.requested_file_lanes)
+    }
+
+    /// The split a single-file operation takes: one lane, whole decoder.
+    fn single_file_allocation(&self) -> Result<PlanAllocation, AnalysisError> {
+        self.plan.allocate(NonZeroUsize::MIN)
     }
 
     pub fn analyze_file(
@@ -298,7 +350,10 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<AnalysisReport, AnalysisError> {
-        let decode = self.allocation().decode();
+        let decode = match self.single_file_allocation() {
+            Ok(allocation) => allocation.decode(),
+            Err(error) => return Err(error),
+        };
         self.execute(progress, |control| {
             Analyzer::new(decode).analyze_file_with_control(request, control)
         })
@@ -311,7 +366,10 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
-        let decode = self.allocation().decode();
+        let decode = match self.single_file_allocation() {
+            Ok(allocation) => allocation.decode(),
+            Err(error) => return Err(error),
+        };
         self.execute(progress, |control| {
             Analyzer::new(decode).analyze_file_with_performance_probe(request, control)
         })
@@ -322,9 +380,22 @@ impl ApplicationJob {
         request: BatchRequest,
         progress: &dyn ProgressSink,
     ) -> Result<BatchReport, AnalysisError> {
-        let allocation = self.allocation();
+        let (plan, lanes) = (self.plan, self.requested_file_lanes);
         self.execute(progress, |control| {
-            BatchRunner::new(allocation).run(request, control)
+            BatchRunner::new(plan, lanes).run(request, control)
+        })
+    }
+
+    #[cfg(feature = "performance-probes")]
+    #[doc(hidden)]
+    pub fn run_batch_with_performance_probe(
+        self,
+        request: BatchRequest,
+        progress: &dyn ProgressSink,
+    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
+        let (plan, lanes) = (self.plan, self.requested_file_lanes);
+        self.execute(progress, |control| {
+            BatchRunner::new(plan, lanes).run_with_performance_probe(request, control)
         })
     }
 
@@ -375,10 +446,9 @@ impl ExecutionCoordinator {
             return Err(AnalysisError::cancelled());
         }
 
-        // Every permit this job may ever spend is granted here, up front and
-        // outside the admission lock. Nothing below it asks for a second one.
-        let allocation = self
-            .inner
+        // Reject a plan this budget could never split before admitting the job,
+        // so an impossible allocation fails at reserve rather than mid-operation.
+        self.inner
             .budget
             .concurrency()
             .allocate(self.inner.budget.file_lanes())?;
@@ -420,7 +490,8 @@ impl ExecutionCoordinator {
                 ticket,
                 phase: ReservationPhase::Queued,
             },
-            allocation,
+            plan: self.inner.budget.concurrency(),
+            requested_file_lanes: self.inner.budget.file_lanes(),
         })
     }
 }
@@ -643,6 +714,33 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "performance-probes")]
+    #[test]
+    fn performance_probe_builds_bind_the_batch_allocation_after_discovery() {
+        let application = Application::with_budget(bounded_budget(8));
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let (report, probe) = application
+            .run_batch_with_performance_probe(
+                BatchRequest::new(
+                    vec![
+                        fixture("tiny_duration.wav"),
+                        fixture("full_scale_clipping.wav"),
+                        fixture("native-alac-v1/alac16-mono-44100.m4a"),
+                    ],
+                    false,
+                ),
+                &ExecutionControl::new(&cancellation, &progress),
+            )
+            .expect("the explicit performance path must run the three-file batch");
+
+        assert_eq!(report.summary.total, 3);
+        assert_eq!(report.summary.failed, 0);
+        assert_eq!(probe.granted_plan_workers(), 8);
+        assert_eq!(probe.allocated_file_lanes(), 3);
+        assert_eq!(probe.decoder_workers_per_lane(), 2);
+    }
+
     #[test]
     fn a_non_serial_plan_reaches_the_decoder_through_the_application_path() {
         // The fixed host ceiling makes this a deterministic non-serial test of
@@ -652,9 +750,11 @@ mod tests {
         let job = Application::with_budget(budget)
             .reserve(&CancellationToken::new())
             .unwrap();
-        let allocation = job.allocation();
+        // The single-file split, which is what a decoder actually receives when
+        // no lane is opened.
+        let allocation = job.single_file_allocation().unwrap();
 
-        assert_eq!(allocation.file_lanes().get(), 1, "batch items stay serial");
+        assert_eq!(allocation.file_lanes().get(), 1);
         let decode = allocation.decode();
         assert_eq!(plan_workers, TEST_HOST_WORKERS.get());
         assert_eq!(decode.workers().get(), plan_workers);
@@ -827,12 +927,10 @@ mod tests {
         );
 
         let job = application.reserve(&CancellationToken::new()).unwrap();
-        let allocation = job.allocation();
-        assert_eq!(
-            allocation.file_lanes().get(),
-            1,
-            "ADR-0014 P1 lanes remain disabled in the product budget"
-        );
+        // A single-file operation never opens a lane, so it always takes the
+        // whole decoder however many lanes the batch path would request.
+        let allocation = job.single_file_allocation().unwrap();
+        assert_eq!(allocation.file_lanes().get(), 1);
 
         let decode = allocation.decode();
         assert_eq!(decode.workers().get(), expected);
@@ -852,6 +950,54 @@ mod tests {
     }
 
     #[test]
+    fn a_single_file_operation_keeps_the_whole_decoder_though_the_product_asks_for_lanes() {
+        // The regression this guards: lane width and decoder width are two
+        // halves of one split, so requesting lanes for the product would have
+        // narrowed a single file's decoder from the whole plan to one lane's
+        // share had the split stayed at admission.
+        let application = Application::with_budget(bounded_budget(8));
+        assert!(
+            application.budget().requested_file_lanes() > 1,
+            "this test is vacuous unless the product budget requests lanes"
+        );
+
+        let job = application.reserve(&CancellationToken::new()).unwrap();
+        let decode = job.single_file_allocation().unwrap().decode();
+        assert_eq!(
+            decode.workers().get(),
+            TEST_HOST_WORKERS.get(),
+            "a single file must decode inside the whole plan, not one lane's share"
+        );
+    }
+
+    #[test]
+    fn a_batch_of_one_file_also_keeps_the_whole_decoder() {
+        // The batch path splits after discovery, so a one-item batch asks for
+        // one lane and keeps the full decoder just as a single file does.
+        let application = Application::with_budget(bounded_budget(8));
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let report = application
+            .run_batch(
+                BatchRequest::new(
+                    vec![fixture(
+                        "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+                    )],
+                    false,
+                ),
+                &ExecutionControl::new(&cancellation, &progress),
+            )
+            .expect("a one-item batch must analyze its file");
+
+        assert_eq!(report.summary.total, 1);
+        assert_eq!(
+            last_execution().workers().get(),
+            TEST_HOST_WORKERS.get(),
+            "a one-item batch may not narrow its only decoder to pay for lanes"
+        );
+    }
+
+    #[test]
     fn an_explicit_serial_budget_stays_fully_serial() {
         // The serial plan is the differential reference, so enabling the
         // product default must not turn it into an alias of that default.
@@ -861,6 +1007,7 @@ mod tests {
             .reserve(&CancellationToken::new())
             .unwrap()
             .allocation()
+            .unwrap()
             .decode();
         assert!(decode.is_serial());
         assert_eq!(decode.workers().get(), 1);

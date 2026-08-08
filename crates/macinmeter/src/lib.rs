@@ -14,6 +14,9 @@ pub use application::AnalyzeRequest;
 #[cfg(feature = "performance-probes")]
 #[doc(hidden)]
 pub use application::ApplicationPerformanceProbe;
+#[cfg(feature = "performance-probes")]
+#[doc(hidden)]
+pub use batch::BatchPerformanceProbe;
 pub use batch::{
     BatchItem, BatchItemOutcome, BatchReport, BatchRequest, BatchStatus, BatchSummary,
 };

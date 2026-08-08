@@ -278,7 +278,7 @@ fn rust_api_distinguishes_unsupported_content_and_truncated_media() {
 }
 
 #[test]
-fn batch_is_serial_and_preserves_explicit_input_order() {
+fn product_batch_preserves_explicit_input_order_across_file_lanes() {
     let first = fixture("full_scale_clipping.wav");
     let second = fixture("tiny_duration.wav");
     let report = run_batch(vec![first.clone(), second.clone()]);

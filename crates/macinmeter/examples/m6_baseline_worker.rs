@@ -788,43 +788,67 @@ fn run_batch(arguments: &[OsString]) -> Result<Value, String> {
     }
     let directory = PathBuf::from(&arguments[0]);
     let iterations = positive_iterations(&arguments[1])?;
-    // ADR-0014 P1 is unmeasured, so the product asks for one lane. The sweep
-    // needs the other widths in the same binary, and the plan still clamps the
-    // request and narrows each lane's decoder to pay for it.
+    // Absent the argument this is the product plan's own derived width. The
+    // sweep needs the other widths in the same binary, and the plan still
+    // clamps the request and narrows each lane's decoder to pay for it.
     let file_lanes = match arguments.get(2) {
-        Some(value) => parse_number::<usize>(value, "file lanes")?,
-        None => 1,
+        Some(value) => Some(
+            NonZeroUsize::new(parse_number::<usize>(value, "file lanes")?)
+                .ok_or_else(|| "file lanes must be greater than zero".to_owned())?,
+        ),
+        None => None,
     };
-    let file_lanes = NonZeroUsize::new(file_lanes)
-        .ok_or_else(|| "file lanes must be greater than zero".to_owned())?;
     // Requesting lanes is a measurement surface, not a product one, so it is
     // reachable only in the same explicit probe build as the pipeline probes. A
     // default build accepts the argument's product value and nothing else,
     // rather than silently ignoring a width it cannot honour.
-    #[cfg(feature = "performance-probes")]
-    let budget = ExecutionBudget::product().with_file_lanes(file_lanes);
-    #[cfg(not(feature = "performance-probes"))]
-    let budget = {
-        if file_lanes.get() != 1 {
-            return Err(
-                "file lanes require a worker built with the performance-probes feature".to_owned(),
-            );
+    let budget = match file_lanes {
+        None => ExecutionBudget::product(),
+        Some(lanes) => {
+            #[cfg(feature = "performance-probes")]
+            {
+                ExecutionBudget::product().with_file_lanes(lanes)
+            }
+            #[cfg(not(feature = "performance-probes"))]
+            {
+                let _ = lanes;
+                return Err(
+                    "explicit file lanes require a worker built with the performance-probes \
+                     feature"
+                        .to_owned(),
+                );
+            }
         }
-        ExecutionBudget::product()
     };
     let application = Application::with_budget(budget);
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
     let control = ExecutionControl::new(&cancellation, &progress);
     let mut report = None;
+    #[cfg(feature = "performance-probes")]
+    let mut execution_probe = None;
 
     let started = Instant::now();
     for _ in 0..iterations {
-        report = Some(
-            application
-                .run_batch(BatchRequest::new(vec![directory.clone()], true), &control)
-                .map_err(|error| error.to_string())?,
-        );
+        #[cfg(feature = "performance-probes")]
+        let (next_report, next_probe) = application
+            .run_batch_with_performance_probe(
+                BatchRequest::new(vec![directory.clone()], true),
+                &control,
+            )
+            .map_err(|error| error.to_string())?;
+        #[cfg(not(feature = "performance-probes"))]
+        let next_report = application
+            .run_batch(BatchRequest::new(vec![directory.clone()], true), &control)
+            .map_err(|error| error.to_string())?;
+        #[cfg(feature = "performance-probes")]
+        {
+            if execution_probe.is_some_and(|previous| previous != next_probe) {
+                return Err("batch execution topology changed between iterations".to_owned());
+            }
+            execution_probe = Some(next_probe);
+        }
+        report = Some(next_report);
     }
     let elapsed = started.elapsed();
     let report = report
@@ -869,18 +893,34 @@ fn run_batch(arguments: &[OsString]) -> Result<Value, String> {
         .map_err(|error| error.to_string())?
         .checked_mul(u64::from(iterations))
         .ok_or_else(|| "batch logical item count overflowed u64".to_owned())?;
-    workload_output(
-        "batch",
-        elapsed,
-        work,
-        fingerprint,
-        result_bytes,
-        json!({
-            "directory": display_name(&directory),
-            "filesPerIteration": report.summary.total,
-            "requestedFileLanes": file_lanes.get(),
-        }),
-    )
+    let details = json!({
+        "directory": display_name(&directory),
+        "filesPerIteration": report.summary.total,
+        "requestedFileLanes": budget.requested_file_lanes(),
+    });
+    #[cfg(feature = "performance-probes")]
+    let details = {
+        let mut details = details;
+        let probe =
+            execution_probe.ok_or_else(|| "batch produced no execution probe".to_owned())?;
+        let object = details
+            .as_object_mut()
+            .ok_or_else(|| "batch details were not a JSON object".to_owned())?;
+        object.insert(
+            "grantedPlanWorkers".to_owned(),
+            json!(probe.granted_plan_workers()),
+        );
+        object.insert(
+            "allocatedFileLanes".to_owned(),
+            json!(probe.allocated_file_lanes()),
+        );
+        object.insert(
+            "decoderWorkersPerLane".to_owned(),
+            json!(probe.decoder_workers_per_lane()),
+        );
+        details
+    };
+    workload_output("batch", elapsed, work, fingerprint, result_bytes, details)
 }
 
 fn run_discovery(arguments: &[OsString]) -> Result<Value, String> {
