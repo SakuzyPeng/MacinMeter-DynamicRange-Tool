@@ -1581,7 +1581,16 @@ def assert_application_allocation(
             f"{case.case_id} is not a valid explicit application topology case"
         )
     requested = int(case.arguments[3])
-    requested_depth = int(case.arguments[4]) if shape_case else 1
+    # Only an explicit hand-off case states its own depth. A default-shape case
+    # runs whatever depth the worker was built to ship, which the harness cannot
+    # read and must not mirror: during a cross-variant A/B the two binaries ship
+    # different depths on purpose, so a fixed expectation here would reject the
+    # comparison it exists to protect. What stays bound is that the applied
+    # depth is the requested one whenever the overlap engaged, and null when it
+    # did not.
+    requested_depth = (
+        int(case.arguments[4]) if shape_case else details.get("requestedOverlapChannelDepth")
+    )
     container = manifest_entry.get("container")
     codec = manifest_entry.get("codec")
     serial_route = container in ("wave", "aiff") and codec in (
@@ -1649,18 +1658,22 @@ def assert_application_allocation(
             raise BaselineError(
                 f"{case.case_id} application topology field {key} is not an integer"
             )
-    for key in ("appliedOverlapChannelDepth",):
-        if key not in details:
-            raise BaselineError(
-                f"{case.case_id} application topology field {key} is missing"
-            )
-        value = details[key]
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool)
-        ):
-            raise BaselineError(
-                f"{case.case_id} application topology field {key} is neither null nor an integer"
-            )
+    if "appliedOverlapChannelDepth" not in details:
+        raise BaselineError(
+            f"{case.case_id} application topology field appliedOverlapChannelDepth is missing"
+        )
+    applied_depth = details["appliedOverlapChannelDepth"]
+    if applied_depth is not None and (
+        not isinstance(applied_depth, int) or isinstance(applied_depth, bool)
+    ):
+        raise BaselineError(
+            f"{case.case_id} application topology field appliedOverlapChannelDepth "
+            "is neither null nor an integer"
+        )
+    if not isinstance(requested_depth, int) or requested_depth < 1:
+        raise BaselineError(
+            f"{case.case_id} application topology field requestedOverlapChannelDepth is invalid"
+        )
     if not isinstance(details.get("selectedEngine"), str) or not isinstance(
         details.get("decodeAnalysisOverlapped"), bool
     ):

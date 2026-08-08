@@ -150,15 +150,30 @@ class PerformanceBaselineTests(unittest.TestCase):
             ("decodeAnalysisOverlapped", False),
             ("requestedOverlapChannelDepth", 2),
             ("appliedOverlapChannelDepth", None),
+            ("appliedOverlapChannelDepth", 2),
+            ("requestedOverlapChannelDepth", 0),
             ("decodedBlocksPerIteration", 10_000),
             ("finalBlockFrames", 1_152),
         ):
-            with self.subTest(field=field):
+            with self.subTest(field=field, invalid=invalid):
                 changed = dict(details)
                 changed[field] = invalid
                 sample["details"] = changed
                 with self.assertRaises(baseline.BaselineError):
                     baseline.validate_corpus_work([sample], [case], root, manifest)
+
+        # A default-shape case does not state its own depth, so the harness may
+        # not mirror one: a build that ships a different depth is a legitimate
+        # A/B variant, not a topology error. What has to hold is that the depth
+        # actually applied is the one requested.
+        for depth in (1, 4, 16, 64):
+            with self.subTest(shipped=depth):
+                shipped = dict(details)
+                shipped["requestedOverlapChannelDepth"] = depth
+                shipped["appliedOverlapChannelDepth"] = depth
+                sample["details"] = shipped
+                baseline.validate_corpus_work([sample], [case], root, manifest)
+        sample["details"] = details
 
     def test_overlap_handoff_gate_binds_requested_and_applied_depth(self) -> None:
         root = Path("/corpus")
