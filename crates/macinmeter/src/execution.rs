@@ -737,12 +737,9 @@ mod tests {
         assert_eq!(probe.selected_decoder_workers(), 1);
         assert_eq!(probe.selected_hasher_workers(), 0);
         assert!(probe.decode_analysis_overlapped());
-        // The depth is derived per stream, so the assertion is that the probe
-        // reports the one that ran rather than a number written here: requested
-        // and applied agree, and the stereo fixture lands on the ceiling.
-        let applied = probe.applied_overlap_channel_depth();
-        assert_eq!(applied, Some(probe.requested_overlap_channel_depth()));
-        assert_eq!(applied, Some(16));
+        let shipped = OverlapShape::DEFAULT.channel_depth();
+        assert_eq!(probe.requested_overlap_channel_depth(), shipped);
+        assert_eq!(probe.applied_overlap_channel_depth(), Some(shipped));
         assert!(probe.decoded_blocks() > 0);
         assert!(probe.final_block_frames() > 0);
         assert_eq!(

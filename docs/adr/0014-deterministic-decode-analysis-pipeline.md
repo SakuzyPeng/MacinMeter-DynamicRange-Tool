@@ -727,9 +727,7 @@ host/组成敏感性，但没有形成满足本 ADR 毕业约束的、已提交�
 一个块。
 
 毕业依据（ADR-0007 同轮交错 A/B，两个 variant 在同一次 run 内按 seeded 调度交错，
-两台各 288 个样本，`outliersRemoved = 0`；A/B 的语料全为立体声，推导在该几何上取到
-16，因此 A/B 覆盖的正是立体声实际运行的配置，更宽的几何由上述下界与退化规则承担而
-非由该 A/B 承担）：串行 route 在 Windows 上为 1.08–1.15x、
+两台各 288 个样本，`outliersRemoved = 0`）：串行 route 在 Windows 上为 1.08–1.15x、
 位移达同轮合并 MAD 的 1.7x–8.0x，在 macOS 上 WAV 为 1.04x、纯 WAV 批量为 1.17x。
 **内建对照全部按机制预测落在噪声内**：单 worker plan（overlap 不启动）、FLAC 与 ALAC
 packet route（花光 permit，不走这条交接）、以及以 packet route 为主的混合批量；两台
@@ -745,6 +743,14 @@ packet route（花光 permit，不走这条交接）、以及以 packet route �
 bytes，超过该 lane 的额度；这时内部 decode-analysis overlap 必须保持串行，外层 3 条
 file lane 仍可继续执行。depth 1 在相同几何下原本能装入，但不据此为该边界声明加速。
 该 fail-safe 现由确定性回归测试固定。
+
+2026-08-09 的后续审查否决了按固定 `320 KiB` “cache residency” 推导深度的尝试：
+该值既不来自宿主 cache 拓扑，也不来自用户或 application 资源额度；depth-one 下界还会
+让宽块超过所谓 residency bound。更重要的是，已提交的 depth sweep 与 A/B 都是立体声，
+不能替 6/8/16/64 声道的新映射完成性能毕业。因此产品恢复本节记录的固定 depth 16 与
+额度不足时的串行退化。它是当前兼容默认值，不是跨硬件最优声明；若服务器场景需要可调
+资源，应另行设计 application 级 worker/memory envelope，由 planner 在同一总预算内
+分配内部机制，而不是从媒体几何猜测 cache 或公开 hand-off depth 本身。
 
 harness 侧同时修正了一处：非显式 case 的深度期望原先固定为 1，那只在产品恰好发布
 深度 1 时成立，跨 variant A/B 会因此拒绝它本该保护的比较。harness 读不到该常量也不
