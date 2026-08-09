@@ -1,4 +1,5 @@
 use macinmeter::{AnalysisError, AnalysisStage, DecodedDuration, ErrorCode, FiniteF32};
+use std::time::Duration;
 
 const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
@@ -20,6 +21,28 @@ pub(crate) fn format_duration_token(duration: DecodedDuration) -> Result<String,
     }
 
     Ok(format_whole_seconds(rounded_seconds as u64))
+}
+
+/// What this run cost on this machine, for human output only.
+///
+/// The realtime multiple is decoded audio seconds over elapsed wall seconds.
+/// It needs no baseline beyond the material itself, which is why it can be
+/// stated per run. It is still a property of the host and the moment, not of
+/// the analysis, so it stays out of the report and the wire envelope: those
+/// remain a pure function of the input.
+pub(crate) fn format_elapsed_line(elapsed: Duration, audio_seconds: f64) -> String {
+    let elapsed_seconds = elapsed.as_secs_f64();
+    // A ratio needs both terms to be real. Zero-length audio, an unmeasurably
+    // fast run, or a clock that did not advance yield no multiple rather than
+    // an infinity or a fabricated one.
+    if elapsed_seconds > 0.0 && audio_seconds > 0.0 {
+        format!(
+            "\nElapsed: {elapsed_seconds:.3} s ({:.1}x realtime)\n",
+            audio_seconds / elapsed_seconds
+        )
+    } else {
+        format!("\nElapsed: {elapsed_seconds:.3} s\n")
+    }
 }
 
 fn format_whole_seconds(total_seconds: u64) -> String {

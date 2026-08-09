@@ -8,13 +8,14 @@ use macinmeter::{
     BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
     ProgressSink, WireEnvelope,
 };
-use render::{format_dbfs, format_duration_token};
+use render::{format_dbfs, format_duration_token, format_elapsed_line};
 use std::{
     fs::OpenOptions,
     io::{self, Write},
     path::{Path, PathBuf},
     process,
     sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Parser)]
@@ -120,10 +121,12 @@ fn run_analyze(
 ) -> i32 {
     let request = macinmeter::AnalyzeRequest { path: file };
 
+    let started = Instant::now();
     match application.analyze_file_with_control(request, control) {
         Ok(report) => {
+            let elapsed = started.elapsed();
             let rendered = match format {
-                OutputFormat::Human => render_analysis(&report),
+                OutputFormat::Human => render_analysis(&report, elapsed),
                 OutputFormat::Json => render_json(&WireEnvelope::analysis(report)),
             };
             finish_output(rendered, output)
@@ -141,11 +144,13 @@ fn run_batch(
     control: &ExecutionControl<'_>,
 ) -> i32 {
     let request = BatchRequest { inputs, recursive };
+    let started = Instant::now();
     match application.run_batch(request, control) {
         Ok(report) => {
+            let elapsed = started.elapsed();
             let status = report.status;
             let rendered = match format {
-                OutputFormat::Human => render_batch(&report),
+                OutputFormat::Human => render_batch(&report, elapsed),
                 OutputFormat::Json => render_json(&WireEnvelope::batch(report)),
             };
             let output_code = finish_output(rendered, output);
@@ -199,7 +204,7 @@ fn render_json(envelope: &WireEnvelope) -> Result<String, AnalysisError> {
     })
 }
 
-fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
+fn render_analysis(report: &AnalysisReport, elapsed: Duration) -> Result<String, AnalysisError> {
     let analysis = report.analysis();
     let mut output = String::new();
     output.push_str("MacinMeter\n");
@@ -256,10 +261,14 @@ fn render_analysis(report: &AnalysisReport) -> Result<String, AnalysisError> {
             output.push_str(&format!("- {warning}\n"));
         }
     }
+    output.push_str(&format_elapsed_line(
+        elapsed,
+        report_metrics.duration.seconds(),
+    ));
     Ok(output)
 }
 
-fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
+fn render_batch(report: &BatchReport, elapsed: Duration) -> Result<String, AnalysisError> {
     let mut output = String::from("MacinMeter batch\n\n");
     for item in &report.items {
         match &item.outcome {
@@ -290,6 +299,20 @@ fn render_batch(report: &BatchReport) -> Result<String, AnalysisError> {
         "\nTotal {}, succeeded {}, failed {}\n",
         report.summary.total, report.summary.succeeded, report.summary.failed
     ));
+    // Only analyzed audio counts toward the multiple. A batch that spent its
+    // time rejecting unsupported files really did get through less audio per
+    // second, and hiding that would flatter the number.
+    let audio_seconds = report
+        .items
+        .iter()
+        .filter_map(|item| match &item.outcome {
+            BatchItemOutcome::Success { report } => {
+                Some(report.analysis().report().duration.seconds())
+            }
+            BatchItemOutcome::Failure { .. } => None,
+        })
+        .sum();
+    output.push_str(&format_elapsed_line(elapsed, audio_seconds));
     Ok(output)
 }
 

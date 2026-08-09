@@ -95,6 +95,8 @@ CH 2: DR2 (2.4300 dB), overall RMS -2.43 dBFS, selected DR peak 1.00000000
 
 Track aggregate: DR2 (2.4300 dB; 2 contributing channels)
 Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
+
+Elapsed: 0.002 s (2929.6x realtime)
 ```
 
 Progress for that command is written separately to stderr.
@@ -117,6 +119,10 @@ Progress for that command is written separately to stderr.
   universal clipping boundary.
 - Silent channels remain visible and contribute numeric DR0; channels with
   insufficient data are explicitly excluded.
+- `Elapsed` is what this run cost on this machine, and the realtime multiple is
+  decoded audio seconds over that wall time. Both describe the host and the
+  moment rather than the analysis, so they appear only in human output; JSON
+  stays a pure function of the input and is byte-identical between runs.
 
 The fixture above is designed for deterministic automated tests, not as an
 example of a typical music release.

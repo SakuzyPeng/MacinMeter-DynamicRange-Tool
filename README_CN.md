@@ -87,6 +87,8 @@ CH 2: DR2 (2.4300 dB), overall RMS -2.43 dBFS, selected DR peak 1.00000000
 
 Track aggregate: DR2 (2.4300 dB; 2 contributing channels)
 Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
+
+Elapsed: 0.002 s (2929.6x realtime)
 ```
 
 该命令的进度信息会另外写入 stderr。
@@ -103,6 +105,9 @@ Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
 - dBFS 以归一化幅度 `1.0` 作为 0 dB 参考。受支持的 IEEE float PCM 可以包含
   高于该参考的有限样本，所以 0 dBFS 不是普适的削波边界。
 - 当前算法会显式保留静音声道并让其贡献数值 DR0；数据不足的声道则明确排除。
+- `Elapsed` 是本次运行在本机的耗时，其后的实时倍率是解码音频秒数除以该墙钟
+  时间。两者描述的是主机与当次运行，而不是分析本身，因此只出现在人类可读输出
+  里；JSON 仍然是输入的纯函数，两次运行逐字节相同。
 
 上述 fixture 用于确定性自动化测试，不代表典型音乐发行物。
 

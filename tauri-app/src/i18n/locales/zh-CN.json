@@ -30,6 +30,8 @@
   "status.file": "正在分析 {{name}}（{{current}}/{{total}}）",
   "status.complete": "分析完成。",
   "status.batchComplete": "批量完成：{{succeeded}} 成功，{{failed}} 失败。",
+  "status.completeTimed": "分析完成 · 耗时 {{elapsed}} s · {{realtime}}× 实时",
+  "status.batchCompleteTimed": "批量完成：{{succeeded}} 成功，{{failed}} 失败 · 耗时 {{elapsed}} s · {{realtime}}× 实时",
   "status.cancelling": "正在取消分析…",
   "status.cancelled": "任务已取消。",
   "status.failed": "分析失败。",

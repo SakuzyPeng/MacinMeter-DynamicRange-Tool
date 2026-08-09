@@ -79,6 +79,63 @@ fn analyze_human_keeps_results_on_stdout_and_progress_on_stderr() {
     assert!(stderr.contains("[0] analyzing"));
     assert!(stderr.contains("[0] ok:"));
     assert!(!stderr.contains("Track aggregate:"));
+    assert!(elapsed_line(&stdout).ends_with("x realtime)"), "{stdout}");
+}
+
+/// The elapsed footer is the one human line that varies per run, so tests may
+/// only assert its shape.
+fn elapsed_line(stdout: &str) -> String {
+    let line = stdout
+        .lines()
+        .find(|line| line.starts_with("Elapsed: "))
+        .unwrap_or_else(|| panic!("human output should carry an elapsed line: {stdout}"))
+        .to_owned();
+    let seconds = line
+        .trim_start_matches("Elapsed: ")
+        .split(' ')
+        .next()
+        .expect("the elapsed line should start with a seconds token");
+    seconds
+        .parse::<f64>()
+        .unwrap_or_else(|error| panic!("{seconds:?} should be seconds: {error}"));
+    line
+}
+
+#[test]
+fn json_output_stays_free_of_the_per_run_elapsed_footer() {
+    let input = fixture("tiny_duration.wav");
+    let first = run([
+        "analyze".as_ref(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        input.as_os_str(),
+    ]);
+    let second = run([
+        "analyze".as_ref(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        input.as_os_str(),
+    ]);
+
+    assert_code(&first, 0);
+    // Timing is presentation, not result. Two runs of one file must still
+    // produce byte-identical machine output, which is what the fixture-level
+    // A/B comparison and every archived export depend on.
+    assert_eq!(stdout(&first), stdout(&second));
+    assert_eq!(stderr(&first), stderr(&second));
+    assert!(!stdout(&first).contains("Elapsed"));
+    assert!(!stderr(&first).contains("Elapsed"));
+}
+
+#[test]
+fn batch_human_output_reports_elapsed_over_analyzed_audio() {
+    let input = fixture("tiny_duration.wav");
+    let output = run(["batch".as_ref(), input.as_os_str()]);
+
+    assert_code(&output, 0);
+    let stdout = stdout(&output);
+    assert!(stdout.contains("Total 1, succeeded 1, failed 0"));
+    assert!(elapsed_line(&stdout).ends_with("x realtime)"), "{stdout}");
 }
 
 #[test]

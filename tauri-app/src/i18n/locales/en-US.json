@@ -30,6 +30,8 @@
   "status.file": "Analyzing {{name}} ({{current}}/{{total}})",
   "status.complete": "Analysis complete.",
   "status.batchComplete": "Batch complete: {{succeeded}} succeeded, {{failed}} failed.",
+  "status.completeTimed": "Analysis complete · {{elapsed}} s · {{realtime}}× realtime",
+  "status.batchCompleteTimed": "Batch complete: {{succeeded}} succeeded, {{failed}} failed · {{elapsed}} s · {{realtime}}× realtime",
   "status.cancelling": "Cancelling analysis…",
   "status.cancelled": "Analysis cancelled.",
   "status.failed": "Analysis failed.",

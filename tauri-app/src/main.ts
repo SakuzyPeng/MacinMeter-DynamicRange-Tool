@@ -516,7 +516,44 @@ const renderResults = (): void => {
   updateControls();
 };
 
-const renderEnvelope = (envelope: WireEnvelope): void => {
+const reportAudioSeconds = (report: AnalysisReport): number => {
+  const { decodedFrames, sampleRate } = report.analysis.report.duration;
+  return sampleRate > 0 ? decodedFrames / sampleRate : 0;
+};
+
+// Only analyzed audio counts, so a run that spent its time rejecting files
+// reports the lower multiple it actually achieved.
+const envelopeAudioSeconds = (envelope: WireEnvelope): number => {
+  if (envelope.kind === "analysis") return reportAudioSeconds(envelope.data);
+  if (envelope.kind === "batch") {
+    return envelope.data.items.reduce(
+      (total, item) =>
+        item.outcome.status === "success"
+          ? total + reportAudioSeconds(item.outcome.report)
+          : total,
+      0,
+    );
+  }
+  return 0;
+};
+
+// Wall time measured around the command, which is what the user waited. The
+// realtime multiple needs no baseline beyond the material's own length, but
+// it describes this host at this moment, so it stays in the status line and
+// never enters the envelope the GUI exports.
+const elapsedValues = (
+  elapsedMs: number,
+  audioSeconds: number,
+): { elapsed: string; realtime: string } | null => {
+  const elapsedSeconds = elapsedMs / 1000;
+  if (!(elapsedSeconds > 0) || !(audioSeconds > 0)) return null;
+  return {
+    elapsed: elapsedSeconds.toFixed(3),
+    realtime: (audioSeconds / elapsedSeconds).toFixed(1),
+  };
+};
+
+const renderEnvelope = (envelope: WireEnvelope, elapsedMs: number): void => {
   lastEnvelope = envelope;
   rawJson.textContent = JSON.stringify(envelope, null, 2);
   rawPanel.hidden = false;
@@ -527,14 +564,22 @@ const renderEnvelope = (envelope: WireEnvelope): void => {
       {},
       { error: envelope.data.code !== "cancelled", progress: 100 },
     );
-  } else if (envelope.kind === "analysis") {
-    status("status.complete", {}, { progress: 100 });
+    return;
+  }
+  const timing = elapsedValues(elapsedMs, envelopeAudioSeconds(envelope));
+  if (envelope.kind === "analysis") {
+    status(
+      timing ? "status.completeTimed" : "status.complete",
+      timing ?? {},
+      { progress: 100 },
+    );
   } else {
     status(
-      "status.batchComplete",
+      timing ? "status.batchCompleteTimed" : "status.batchComplete",
       {
         succeeded: envelope.data.summary.succeeded,
         failed: envelope.data.summary.failed,
+        ...(timing ?? {}),
       },
       { error: envelope.data.summary.failed > 0, progress: 100 },
     );
@@ -836,6 +881,7 @@ const runAnalysis = async (): Promise<void> => {
   updateControls();
   status("status.running", {}, { progress: 0 });
 
+  const startedAt = performance.now();
   try {
     const envelope =
       selectionKind === "files" && selectedInputs.length === 1
@@ -849,7 +895,7 @@ const runAnalysis = async (): Promise<void> => {
               recursive,
             },
           });
-    renderEnvelope(envelope);
+    renderEnvelope(envelope, performance.now() - startedAt);
   } catch (error) {
     status(
       "status.discoveryFailed",
