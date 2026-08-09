@@ -719,6 +719,11 @@ def windows_executable_info(path: Path, root: Path) -> dict:
         raise ReleaseError(f"cannot inspect a missing Windows executable: {resolved}")
     environment = os.environ.copy()
     environment[WINDOWS_INSPECT_PATH_ENV] = str(resolved)
+    # Windows PowerShell must compute its own module path. CI runs these steps
+    # under PowerShell 7, whose PSModulePath points at 7's module directory;
+    # inheriting it makes 5.1 find PowerShell 7's Microsoft.PowerShell.Security
+    # and fail to load it, because that copy targets a runtime 5.1 cannot host.
+    environment.pop("PSModulePath", None)
     command = (
         "$ErrorActionPreference = 'Stop'; "
         f"$target = $env:{WINDOWS_INSPECT_PATH_ENV}; "

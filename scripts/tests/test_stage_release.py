@@ -197,6 +197,31 @@ class StageReleaseTests(unittest.TestCase):
             str(executable.resolve()),
         )
 
+    def test_windows_executable_info_drops_an_inherited_module_path(self) -> None:
+        # Reproduced on Windows: with PSModulePath pointing at PowerShell 7's
+        # modules, 5.1 finds that copy of Microsoft.PowerShell.Security and
+        # cannot load it, so Get-AuthenticodeSignature never runs.
+        executable = self.root / "module-path.exe"
+        executable.write_bytes(b"MZ")
+        response = {
+            "fileVersion": "0.3.0.0",
+            "authenticodeStatus": "NotSigned",
+            "signerSubject": None,
+        }
+        with mock.patch.dict(
+            os.environ, {"PSModulePath": r"C:\Program Files\PowerShell\7\Modules"}
+        ):
+            with mock.patch.object(
+                stage_release,
+                "run",
+                return_value=SimpleNamespace(stdout=json.dumps(response)),
+            ) as mocked_run:
+                stage_release.windows_executable_info(executable, self.root)
+
+        self.assertNotIn(
+            "PSModulePath", mocked_run.call_args.kwargs["environment"]
+        )
+
     def test_windows_executable_info_refuses_a_missing_file(self) -> None:
         with self.assertRaisesRegex(
             stage_release.ReleaseError, "missing Windows executable"
