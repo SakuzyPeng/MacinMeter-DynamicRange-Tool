@@ -606,11 +606,25 @@ const renderPhaseTimings = (): void => {
     phaseTimings.textContent = "";
     return;
   }
+  const seconds = (ms: number): string => (ms / 1000).toFixed(3);
+  // `other` is the rest of that role's own window: the hand-off, progress, and
+  // on a route that never overlapped, the other role's work.
+  const other = (activeMs: number, spanMs: number): string =>
+    seconds(Math.max(0, spanMs - activeMs));
   phaseTimings.hidden = false;
-  phaseTimings.textContent = t("status.phases", {
-    decode: (lastPhaseTimings.decodeMs / 1000).toFixed(3),
-    analysis: (lastPhaseTimings.analysisMs / 1000).toFixed(3),
-  });
+  phaseTimings.textContent = [
+    t("status.phaseDecode", {
+      active: seconds(lastPhaseTimings.decodeMs),
+      other: other(lastPhaseTimings.decodeMs, lastPhaseTimings.decodeSpanMs),
+      span: seconds(lastPhaseTimings.decodeSpanMs),
+    }),
+    t("status.phaseAnalysis", {
+      active: seconds(lastPhaseTimings.analysisMs),
+      other: other(lastPhaseTimings.analysisMs, lastPhaseTimings.analysisSpanMs),
+      span: seconds(lastPhaseTimings.analysisSpanMs),
+    }),
+    t("status.phaseCaveat"),
+  ].join("\n");
 };
 
 const channelMarkdown = (channel: ChannelResult): string => {

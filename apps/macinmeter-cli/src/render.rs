@@ -49,18 +49,40 @@ pub(crate) fn format_elapsed_line(
     } else {
         format!("\nElapsed: {elapsed_seconds:.3} s\n")
     };
-    // Say what these two are before showing them. The roles may overlap, and
-    // setup/probe/report work is absent, so a reader who adds them or reads one
-    // as a percentage of elapsed draws a conclusion the numbers do not support.
+    // Each role gets its own line because each line partitions that role's own
+    // span exactly, which is the strongest claim these numbers support. What
+    // they cannot give is how much the two spans overlap each other: the sum of
+    // two interval sets does not determine their intersection.
     if let Some(phases) = phases {
-        line.push_str(&format!(
-            "  decode {:.3} s · analysis {:.3} s (may overlap and omit other work, so they do \
-             not partition the elapsed time)\n",
-            phases.decode().as_secs_f64(),
-            phases.analysis().as_secs_f64()
+        line.push_str(&format_role_line(
+            "decode  ",
+            phases.decode(),
+            phases.decode_span(),
         ));
+        line.push_str(&format_role_line(
+            "analysis",
+            phases.analysis(),
+            phases.analysis_span(),
+        ));
+        line.push_str(
+            "  each line splits that role's own span; the two spans may overlap each other\n",
+        );
     }
     line
+}
+
+fn format_role_line(role: &str, active: Duration, span: Duration) -> String {
+    // `other` is what the role's window held besides the role: hand-off,
+    // progress, and on a route that never overlapped, the other role's work.
+    // Saturate rather than assume, so a clock that did not advance monotonically
+    // cannot produce a nonsense remainder.
+    let other = span.saturating_sub(active);
+    format!(
+        "  {role} active {:.3} s · other {:.3} s (span {:.3} s)\n",
+        active.as_secs_f64(),
+        other.as_secs_f64(),
+        span.as_secs_f64()
+    )
 }
 
 fn format_whole_seconds(total_seconds: u64) -> String {

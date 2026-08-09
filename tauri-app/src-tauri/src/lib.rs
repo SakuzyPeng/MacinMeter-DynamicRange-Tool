@@ -129,7 +129,9 @@ struct JobEvent {
 struct JobTiming {
     job_id: String,
     decode_ms: f64,
+    decode_span_ms: f64,
     analysis_ms: f64,
+    analysis_span_ms: f64,
 }
 
 fn emit_timing(window: &tauri::Window, job_id: &str, timings: macinmeter::PhaseTimings) {
@@ -138,7 +140,9 @@ fn emit_timing(window: &tauri::Window, job_id: &str, timings: macinmeter::PhaseT
         JobTiming {
             job_id: job_id.to_owned(),
             decode_ms: timings.decode().as_secs_f64() * 1_000.0,
+            decode_span_ms: timings.decode_span().as_secs_f64() * 1_000.0,
             analysis_ms: timings.analysis().as_secs_f64() * 1_000.0,
+            analysis_span_ms: timings.analysis_span().as_secs_f64() * 1_000.0,
         },
     );
 }

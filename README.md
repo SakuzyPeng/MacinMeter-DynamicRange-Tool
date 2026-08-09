@@ -123,14 +123,26 @@ Progress for that command is written separately to stderr.
   decoded audio seconds over that wall time. Both describe the host and the
   moment rather than the analysis, so they appear only in human output; JSON
   stays a pure function of the input and is byte-identical between runs.
-- `--timing` adds how long decode and analysis each occupied. **Depending on the
-  route and resource plan, the roles may run serially or overlap; their totals
-  also omit other work, so they are not a split of elapsed time**. They may not
-  be added together, read as percentages of elapsed, or inverted into a serial
-  fraction. Every measured interval reads the clock at its start and stop: an
-  ordinary data block costs two reads for decode and two for analysis. That is
-  why timing is opt-in; without the flag the analyzer performs none of these
-  per-block clock reads. The result is identical either way.
+- `--timing` adds a line per role:
+
+  ```text
+  decode   active 0.230 s · other 0.005 s (span 0.235 s)
+  analysis active 0.203 s · other 0.032 s (span 0.235 s)
+  ```
+
+  A role's span runs from its first activity to its last, and `active + other`
+  reconstructs exactly that span. **That single span is all these numbers
+  partition.** `other` is whatever else filled the role's window: handing blocks
+  off, emitting progress, and on a route where the two never overlapped, the
+  other role's work. **The two spans may overlap each other, and by how much is
+  not recoverable from these numbers** — the total length of two sets of
+  intervals does not determine their intersection. So they may not be added
+  together, read as percentages of elapsed, or inverted into a serial fraction.
+
+  Every measured interval reads the clock at its start and stop: an ordinary
+  data block costs two reads for decode and two for analysis. That is why timing
+  is opt-in; without the flag the analyzer performs none of these per-block
+  clock reads. The result is identical either way.
 
 The fixture above is designed for deterministic automated tests, not as an
 example of a typical music release.

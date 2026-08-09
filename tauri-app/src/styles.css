@@ -486,6 +486,8 @@ button.status-dismiss:active:not(:disabled) {
 }
 
 .phase-timings {
+  /* One role per line, so the caveat cannot be read as belonging to only one
+     of them. The text carries its own newlines. */
   margin: 0 0 10px;
   padding: 8px 11px;
   border-radius: 8px;
@@ -493,6 +495,7 @@ button.status-dismiss:active:not(:disabled) {
   background: var(--surface-soft);
   font-size: 12px;
   line-height: 1.5;
+  white-space: pre-line;
   font-variant-numeric: tabular-nums;
 }
 

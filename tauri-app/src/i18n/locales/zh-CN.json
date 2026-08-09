@@ -82,5 +82,7 @@
   "md.error": "Error",
   "md.warnings": "Warnings",
   "btn.timing": "计时",
-  "status.phases": "解码 {{decode}} s · 分析 {{analysis}} s —— 两者可能重叠，且未覆盖其他工作，因此不构成对总耗时的划分"
+  "status.phaseDecode": "解码 活跃 {{active}} s · 其他 {{other}} s（区间 {{span}} s）",
+  "status.phaseAnalysis": "分析 活跃 {{active}} s · 其他 {{other}} s（区间 {{span}} s）",
+  "status.phaseCaveat": "每行划分的是该角色自己的区间；两个区间之间可能重叠"
 }

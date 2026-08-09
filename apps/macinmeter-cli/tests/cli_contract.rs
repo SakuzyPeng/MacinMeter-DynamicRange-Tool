@@ -127,6 +127,25 @@ fn json_output_stays_free_of_the_per_run_elapsed_footer() {
     assert!(!stderr(&first).contains("Elapsed"));
 }
 
+/// Read one labelled second count out of a role line, rounded as printed.
+///
+/// The values vary per run, so the assertions compare them against each other
+/// at the printed precision rather than against any expected duration.
+fn parse_role_seconds(line: &str, label: &str) -> u64 {
+    let tail = line
+        .split_once(label)
+        .unwrap_or_else(|| panic!("{label:?} should appear in {line:?}"))
+        .1;
+    let token = tail
+        .split_whitespace()
+        .next()
+        .unwrap_or_else(|| panic!("{label:?} should be followed by a value in {line:?}"));
+    let seconds: f64 = token
+        .parse()
+        .unwrap_or_else(|error| panic!("{token:?} should be seconds: {error}"));
+    (seconds * 1_000.0).round() as u64
+}
+
 #[test]
 fn timing_is_opt_in_and_never_presented_as_a_partition() {
     let input = fixture("edge_cases.wav");
@@ -137,18 +156,43 @@ fn timing_is_opt_in_and_never_presented_as_a_partition() {
     assert_code(&timed, 0);
     assert!(!stdout(&plain).contains("decode "), "{}", stdout(&plain));
 
-    let line = stdout(&timed)
-        .lines()
-        .find(|line| line.trim_start().starts_with("decode "))
-        .expect("--timing should report both roles")
-        .to_owned();
-    // The wording is the load-bearing part. Two occupancies printed without it
-    // invite exactly the sum, percentage, and serial-fraction readings the
-    // intervals do not support, including on routes that stay serial.
-    assert!(line.contains("analysis "), "{line}");
-    assert!(line.contains("may overlap"), "{line}");
-    assert!(line.contains("omit other work"), "{line}");
-    assert!(line.contains("do not partition"), "{line}");
+    let timed_stdout = stdout(&timed);
+    let role_line = |role: &str| {
+        timed_stdout
+            .lines()
+            .find(|line| line.trim_start().starts_with(role))
+            .unwrap_or_else(|| panic!("--timing should report {role}: {timed_stdout}"))
+            .to_owned()
+    };
+    // Each role's own line must carry all three of its numbers, because it is
+    // the split of that one span that these measurements actually establish.
+    for role in ["decode ", "analysis "] {
+        let line = role_line(role);
+        assert!(line.contains("active "), "{line}");
+        assert!(line.contains("other "), "{line}");
+        assert!(line.contains("(span "), "{line}");
+        // Each value is rounded independently, so the printed sum may miss the
+        // printed span by one millisecond. The exact identity is asserted where
+        // the durations are still exact, in the application contract.
+        let reconstructed =
+            parse_role_seconds(&line, "active ") + parse_role_seconds(&line, "other ");
+        let span = parse_role_seconds(&line, "(span ");
+        assert!(
+            reconstructed.abs_diff(span) <= 1,
+            "a role's active and other time must reconstruct its span: {line}"
+        );
+    }
+    // The caveat is the load-bearing part. Two spans printed without it read as
+    // a decomposition of elapsed time, which they are not: their intersection
+    // is not recoverable from these totals at all.
+    assert!(
+        timed_stdout.contains("each line splits that role's own span"),
+        "{timed_stdout}"
+    );
+    assert!(
+        timed_stdout.contains("the two spans may overlap each other"),
+        "{timed_stdout}"
+    );
 
     // The result is the same document either way, and stays out of JSON.
     let plain_json = run([

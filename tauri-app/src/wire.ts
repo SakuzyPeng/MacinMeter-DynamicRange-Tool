@@ -215,7 +215,9 @@ export type AnalysisEvent =
 export type JobTiming = {
   jobId: string;
   decodeMs: number;
+  decodeSpanMs: number;
   analysisMs: number;
+  analysisSpanMs: number;
 };
 
 export type JobEvent = {

@@ -120,12 +120,15 @@ the GUI's timing toggle. Each measured interval reads the clock at its start and
 stop, so an ordinary data block costs two reads per role and four in total. It
 is off unless a caller asks; an ordinary run and every ADR-0007 measurement
 still read no phase clock. `PhaseTimings` never enters `AnalysisReport` or the
-wire envelope, which stay a pure function of the input. The roles may run
-serially or overlap according to the selected route and granted plan, and the
-totals omit other work; they must therefore never be presented as a partition
-of elapsed time. This caller-visible split is not the `performance-probes`
-decomposition and does not license reintroducing that decomposition into
-product builds.
+wire envelope, which stay a pure function of the input. Each role also reports
+its own span, and `active + other` partitions exactly that one span — the
+strongest statement these measurements support. The two spans may overlap each
+other by an amount that is **not** recoverable from them, because the total
+length of two interval sets does not determine their intersection; recovering it
+would need a shared atomic state machine on both hot paths, which is refused.
+The totals therefore never partition elapsed time. This caller-visible split is
+not the `performance-probes` decomposition and does not license reintroducing
+that decomposition into product builds.
 
 See `docs/adr/0001-m0-0.2.0-trusted-trunk-rebuild.md`,
 `docs/adr/0004-m3-application-execution-budget.md`,

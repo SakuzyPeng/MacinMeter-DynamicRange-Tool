@@ -135,10 +135,19 @@ impl ApplicationPerformanceProbe {
 /// **not** partition elapsed time: their sum may fall below or exceed it. A
 /// caller that has not opted in receives zeroes, because collection is what
 /// costs something, not reporting.
+///
+/// Each role additionally reports its own span, from its first activity to its
+/// last. `span - active` **is** an exact partition of that one span, which is
+/// the strongest statement these measurements support: how much of one role's
+/// window it spent working. Two roles' spans may still overlap each other, and
+/// the intersection is not recoverable from these totals — the sum of two
+/// interval sets does not determine their intersection.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PhaseTimings {
     decode: Duration,
+    decode_span: Duration,
     analysis: Duration,
+    analysis_span: Duration,
 }
 
 impl PhaseTimings {
@@ -149,9 +158,23 @@ impl PhaseTimings {
         self.decode
     }
 
+    /// From the first block read to the last, including whatever the producing
+    /// thread did in between: handing blocks off, emitting progress, and on a
+    /// route that never overlapped, the analysis itself.
+    pub const fn decode_span(self) -> Duration {
+        self.decode_span
+    }
+
     /// Time spent inside the analyzer.
     pub const fn analysis(self) -> Duration {
         self.analysis
+    }
+
+    /// From the first push to the end of the final drain. On the overlapped
+    /// hand-off the remainder of this span is time the analyzer had no block to
+    /// work on, which is what makes decode the limit rather than analysis.
+    pub const fn analysis_span(self) -> Duration {
+        self.analysis_span
     }
 }
 
@@ -164,19 +187,28 @@ impl PhaseTimings {
 #[derive(Debug, Default)]
 pub(crate) struct SharedPhaseTimings {
     decode_ns: AtomicU64,
+    decode_span_ns: AtomicU64,
     analysis_ns: AtomicU64,
+    analysis_span_ns: AtomicU64,
 }
 
 impl SharedPhaseTimings {
     pub(crate) fn add(&self, timings: PhaseTimings) {
         add_saturating(&self.decode_ns, saturating_nanos(timings.decode));
+        add_saturating(&self.decode_span_ns, saturating_nanos(timings.decode_span));
         add_saturating(&self.analysis_ns, saturating_nanos(timings.analysis));
+        add_saturating(
+            &self.analysis_span_ns,
+            saturating_nanos(timings.analysis_span),
+        );
     }
 
     pub(crate) fn total(&self) -> PhaseTimings {
         PhaseTimings {
             decode: Duration::from_nanos(self.decode_ns.load(Ordering::Relaxed)),
+            decode_span: Duration::from_nanos(self.decode_span_ns.load(Ordering::Relaxed)),
             analysis: Duration::from_nanos(self.analysis_ns.load(Ordering::Relaxed)),
+            analysis_span: Duration::from_nanos(self.analysis_span_ns.load(Ordering::Relaxed)),
         }
     }
 }
@@ -217,10 +249,12 @@ impl<'a> RunObservation<'a> {
         }
     }
 
-    const fn timings(&self) -> PhaseTimings {
+    fn timings(&self) -> PhaseTimings {
         PhaseTimings {
             decode: self.decode.total,
+            decode_span: self.decode.span(),
             analysis: self.analysis.total,
+            analysis_span: self.analysis.span(),
         }
     }
 
@@ -254,6 +288,11 @@ impl Drop for RunObservation<'_> {
 struct RoleClock {
     enabled: bool,
     total: Duration,
+    /// The ends of the role's own span. Recording them costs no extra clock
+    /// read, because `stop` already has to take the current instant to close
+    /// the interval it is measuring.
+    first_start: Option<Instant>,
+    last_stop: Option<Instant>,
 }
 
 impl RoleClock {
@@ -261,6 +300,8 @@ impl RoleClock {
         Self {
             enabled,
             total: Duration::ZERO,
+            first_start: None,
+            last_stop: None,
         }
     }
 
@@ -269,9 +310,42 @@ impl RoleClock {
     }
 
     fn stop(&mut self, started: Option<Instant>) {
-        if let Some(started) = started {
-            self.total = self.total.saturating_add(started.elapsed());
+        let Some(started) = started else {
+            return;
+        };
+        let stopped = Instant::now();
+        self.total = self
+            .total
+            .saturating_add(stopped.saturating_duration_since(started));
+        self.first_start.get_or_insert(started);
+        self.last_stop = Some(stopped);
+    }
+
+    /// From the role's first activity to its last, whatever else happened in
+    /// between. `span - total` is therefore everything inside that window the
+    /// role was not doing, which on a shared thread includes the other role.
+    fn span(&self) -> Duration {
+        match (self.first_start, self.last_stop) {
+            (Some(first), Some(last)) => last.saturating_duration_since(first),
+            _ => Duration::ZERO,
         }
+    }
+
+    /// Fold in a clock the same role kept on another thread.
+    ///
+    /// The overlapped hand-off pushes the first block on the calling thread and
+    /// the rest on the analyst, so one role's activity legitimately spans two
+    /// clocks. Totals add; the span has to grow to cover both.
+    fn merge(&mut self, other: Self) {
+        self.total = self.total.saturating_add(other.total);
+        self.first_start = match (self.first_start, other.first_start) {
+            (Some(mine), Some(theirs)) => Some(mine.min(theirs)),
+            (mine, theirs) => mine.or(theirs),
+        };
+        self.last_stop = match (self.last_stop, other.last_stop) {
+            (Some(mine), Some(theirs)) => Some(mine.max(theirs)),
+            (mine, theirs) => mine.or(theirs),
+        };
     }
 }
 
@@ -906,8 +980,12 @@ fn analyze_overlapped(
     // The analyst owns its own clock and hands the total back at the join, so
     // the two roles never share a counter across the thread boundary.
     let mut analyst_clock = RoleClock::new(observation.analysis.enabled);
-    let (analysis, analyst_total) = thread::scope(|scope| {
-        let operation = move || -> (Result<Option<_>, AnalysisError>, Duration) {
+    // The clock travels beside the result rather than inside it: an `Err` that
+    // also carried the clock would grow the error variant every call site pays
+    // for. The analyst's measurements must survive the failure paths, since a
+    // stream that failed still did the decoding and analysis it did.
+    let (analysis, analyst_clock) = thread::scope(|scope| {
+        let operation = move || -> (Result<Option<_>, AnalysisError>, RoleClock) {
             // The caller thread already pushed block 0, so the first block this
             // thread sees is block 1 of the stream.
             #[cfg(test)]
@@ -947,7 +1025,7 @@ fn analyze_overlapped(
                     Err(_) => break Ok(None),
                 }
             };
-            (analysed, analyst_clock.total)
+            (analysed, analyst_clock)
         };
         let builder = thread::Builder::new().name("macinmeter-analysis".to_owned());
         let spawned = if budget.inject_spawn_failure {
@@ -957,9 +1035,15 @@ fn analyze_overlapped(
         } else {
             builder.spawn_scoped(scope, operation)
         };
-        let analyst = spawned
-            .map_err(|error| analyst_spawn_error(display_path, error))
-            .map_err(|error| (error, Duration::ZERO))?;
+        let analyst = match spawned {
+            Ok(analyst) => analyst,
+            Err(error) => {
+                return (
+                    Err(analyst_spawn_error(display_path, error)),
+                    RoleClock::new(false),
+                );
+            }
+        };
         #[cfg(test)]
         LAST_ANALYSIS_OVERLAP.with(|last| last.set(true));
         let pcm = opened.reader.stream_info().clone();
@@ -1007,9 +1091,14 @@ fn analyze_overlapped(
 
         // Join before deciding anything: the analyzer thread must be finished
         // before its session or its error can be read.
-        let (analysed, analyst_total) = match analyst.join() {
+        let (analysed, analyst_clock) = match analyst.join() {
             Ok(joined) => joined,
-            Err(_) => return Err((analyst_panic_error(display_path), Duration::ZERO)),
+            Err(_) => {
+                return (
+                    Err(analyst_panic_error(display_path)),
+                    RoleClock::new(false),
+                );
+            }
         };
 
         // An analysis failure is always the earlier one. The analyzer only sees
@@ -1023,16 +1112,10 @@ fn analyze_overlapped(
                 Ok(()) => Err(analysis_channel_error(display_path)),
             },
         };
-        analysis
-            .map(|analysis| (analysis, analyst_total))
-            .map_err(|error| (error, analyst_total))
-    })
-    .map_err(|(error, analyst_total)| {
-        observation.analysis.total = observation.analysis.total.saturating_add(analyst_total);
-        error
-    })?;
-    observation.analysis.total = observation.analysis.total.saturating_add(analyst_total);
-    Ok(analysis)
+        (analysis, analyst_clock)
+    });
+    observation.analysis.merge(analyst_clock);
+    analysis
 }
 
 /// Drive decode and analysis on the calling thread alone.
@@ -2032,24 +2115,62 @@ mod tests {
     }
 
     #[test]
-    fn shared_phase_timing_totals_saturate() {
-        let timings = SharedPhaseTimings::default();
-        timings.add(PhaseTimings {
-            decode: Duration::from_nanos(u64::MAX),
-            analysis: Duration::from_nanos(u64::MAX),
-        });
-        timings.add(PhaseTimings {
-            decode: Duration::from_nanos(1),
-            analysis: Duration::from_nanos(1),
-        });
+    fn a_role_span_covers_activity_split_across_two_threads() {
+        let mut caller = RoleClock::new(true);
+        let started = caller.start();
+        thread::sleep(Duration::from_millis(2));
+        caller.stop(started);
+        let (caller_total, caller_span) = (caller.total, caller.span());
 
-        assert_eq!(
-            timings.total(),
-            PhaseTimings {
-                decode: Duration::from_nanos(u64::MAX),
-                analysis: Duration::from_nanos(u64::MAX),
-            }
+        // The overlapped hand-off pushes block 0 on the calling thread and the
+        // rest on the analyst, so one role's activity legitimately lives in two
+        // clocks. A merge that only added the totals would leave the span
+        // ending before the analyst ever started, and `other` would then be
+        // computed against a window that never contained the work.
+        let mut analyst = RoleClock::new(true);
+        thread::sleep(Duration::from_millis(5));
+        let started = analyst.start();
+        thread::sleep(Duration::from_millis(2));
+        analyst.stop(started);
+        let (analyst_total, analyst_span) = (analyst.total, analyst.span());
+
+        caller.merge(analyst);
+        assert_eq!(caller.total, caller_total + analyst_total);
+        assert!(
+            caller.span() >= caller_span + analyst_span + Duration::from_millis(5),
+            "the merged span must reach from the first start to the last stop: {:?}",
+            caller.span()
         );
+        assert!(caller.span() >= caller.total);
+    }
+
+    #[test]
+    fn a_disabled_role_clock_reports_no_span() {
+        let mut clock = RoleClock::new(false);
+        let started = clock.start();
+        assert!(started.is_none(), "a disabled clock must not read the time");
+        clock.stop(started);
+
+        assert_eq!(clock.total, Duration::ZERO);
+        assert_eq!(clock.span(), Duration::ZERO);
+    }
+
+    #[test]
+    fn shared_phase_timing_totals_saturate() {
+        let saturated = |nanos| PhaseTimings {
+            decode: Duration::from_nanos(nanos),
+            decode_span: Duration::from_nanos(nanos),
+            analysis: Duration::from_nanos(nanos),
+            analysis_span: Duration::from_nanos(nanos),
+        };
+        let timings = SharedPhaseTimings::default();
+        timings.add(saturated(u64::MAX));
+        timings.add(saturated(1));
+
+        // Every counter has to clamp, spans included: `saturating_nanos` already
+        // clamps one item, and adding two clamped items with a wrapping add
+        // would turn a ceiling into a small wrong number.
+        assert_eq!(timings.total(), saturated(u64::MAX));
     }
 
     /// Blocks whose first sample is the block index, so a recorded push order

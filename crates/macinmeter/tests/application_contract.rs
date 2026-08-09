@@ -52,6 +52,11 @@ fn timing_is_opt_in_and_leaves_the_report_untouched() {
     );
     assert!(phases.decode() > std::time::Duration::ZERO, "{phases:?}");
     assert!(phases.analysis() > std::time::Duration::ZERO, "{phases:?}");
+    // A role's span is the only thing these measurements partition exactly:
+    // it contains that role's own activity by construction. The two spans are
+    // not comparable this way, and their intersection is not recoverable.
+    assert!(phases.decode_span() >= phases.decode(), "{phases:?}");
+    assert!(phases.analysis_span() >= phases.analysis(), "{phases:?}");
 
     let (_, batch_phases) = application
         .run_batch_timed(BatchRequest::new(vec![path], false), &control)

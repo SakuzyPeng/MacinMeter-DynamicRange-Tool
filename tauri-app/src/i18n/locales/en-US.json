@@ -82,5 +82,7 @@
   "md.error": "Error",
   "md.warnings": "Warnings",
   "btn.timing": "Timing",
-  "status.phases": "decode {{decode}} s · analysis {{analysis}} s — may overlap and omit other work, so they do not partition elapsed time"
+  "status.phaseDecode": "decode active {{active}} s · other {{other}} s (span {{span}} s)",
+  "status.phaseAnalysis": "analysis active {{active}} s · other {{other}} s (span {{span}} s)",
+  "status.phaseCaveat": "each line splits that role's own span; the two spans may overlap each other"
 }
