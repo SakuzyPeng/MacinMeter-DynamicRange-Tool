@@ -65,6 +65,8 @@ const batchSummary = element<HTMLDivElement>("batch-summary");
 const resultsElement = element<HTMLDivElement>("results");
 const hidePathButton = element<HTMLButtonElement>("hide-path");
 const showTimingButton = element<HTMLButtonElement>("show-timing");
+const hideWarningsButton = element<HTMLButtonElement>("hide-warnings");
+const hideFailedButton = element<HTMLButtonElement>("hide-failed");
 const phaseTimings = element<HTMLDivElement>("phase-timings");
 const copyMarkdownButton = element<HTMLButtonElement>("copy-md");
 const exportJsonButton = element<HTMLButtonElement>("export-json");
@@ -95,6 +97,10 @@ let hidePath = false;
 // Off by default: each interval reads the clock at both start and stop, and an
 // ordinary run should not pay for observation it did not ask for.
 let showTiming = false;
+// Warnings repeat on every multichannel file and a large scan can be mostly
+// failures, so both are dismissible in one action rather than one per entry.
+let hideWarnings = false;
+let hideFailed = false;
 let lastPhaseTimings: JobTiming | null = null;
 let sortMode: SortMode = "none";
 let searchQuery = "";
@@ -198,8 +204,10 @@ const updateControls = (): void => {
   copyMarkdownButton.disabled = !hasResult;
   exportJsonButton.disabled = !hasResult;
   exportImageButton.disabled = !hasResult;
-  sortModeSelect.disabled = !hasResult || displayEntries().length < 2;
-  searchNextButton.disabled = !hasResult || displayEntries().length === 0;
+  hideWarningsButton.disabled = running;
+  hideFailedButton.disabled = running;
+  sortModeSelect.disabled = !hasResult || visibleEntries().length < 2;
+  searchNextButton.disabled = !hasResult || visibleEntries().length === 0;
 };
 
 const selectionLabel = (): string => {
@@ -408,7 +416,7 @@ const renderReportEntry = (entry: DisplayEntry): string => {
     aggregate.roundedDr === null || aggregate.drDb === null
       ? `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>—</strong><em>${escapeHtml(t("result.noAggregate"))}</em></div>`
       : `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>DR${aggregate.roundedDr}</strong><em>${aggregate.drDb.toFixed(4)} dB</em></div>`;
-  const warnings = report.diagnostics.warnings.length
+  const warnings = !hideWarnings && report.diagnostics.warnings.length
     ? `<div class="diagnostics">${report.diagnostics.warnings.map(escapeHtml).join("<br>")}</div>`
     : "";
   return `<article id="entry-${entry.key}" class="directory-entry" data-search="${escapeHtml(`${fileName(entry.displayPath)} ${entry.displayPath}`.toLowerCase())}">
@@ -474,8 +482,13 @@ const displayEntries = (): DisplayEntry[] => {
   }));
 };
 
+const visibleEntries = (): DisplayEntry[] =>
+  hideFailed
+    ? displayEntries().filter((entry) => entry.report !== null)
+    : displayEntries();
+
 const sortedEntries = (): DisplayEntry[] => {
-  const entries = [...displayEntries()];
+  const entries = [...visibleEntries()];
   if (sortMode === "none") return entries;
   const direction = sortMode === "dr-asc" ? 1 : -1;
   return entries.sort((left, right) => {
@@ -670,7 +683,7 @@ const formatEntryMarkdown = (entry: DisplayEntry): string => {
 const formatAllMarkdown = (): string => {
   if (!lastEnvelope) return "";
   const header = `# ${t("md.title")}\n\nMacinMeter ${lastEnvelope.toolVersion}\n\n`;
-  return header + displayEntries().map(formatEntryMarkdown).join("\n");
+  return header + visibleEntries().map(formatEntryMarkdown).join("\n");
 };
 
 const copyText = async (
@@ -1006,6 +1019,20 @@ statusDismissButton.addEventListener("click", () => {
 hidePathButton.addEventListener("click", () => {
   hidePath = !hidePath;
   hidePathButton.classList.toggle("active", hidePath);
+  renderResults();
+});
+
+hideWarningsButton.addEventListener("click", () => {
+  hideWarnings = !hideWarnings;
+  hideWarningsButton.classList.toggle("active", hideWarnings);
+  renderResults();
+});
+
+hideFailedButton.addEventListener("click", () => {
+  hideFailed = !hideFailed;
+  hideFailedButton.classList.toggle("active", hideFailed);
+  // The batch summary keeps reporting the real failure count, so hiding the
+  // entries cannot make a partly failed run look like a clean one.
   renderResults();
 });
 

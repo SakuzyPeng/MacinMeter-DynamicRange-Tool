@@ -20,12 +20,20 @@
   --warning-soft: #fff4dc;
   --paper-shadow: rgba(60, 40, 20, 0.09);
   --paper-shadow-strong: rgba(60, 40, 20, 0.15);
+  /* Songti SC is macOS-only, so Chinese headings on Windows fell out of the
+     serif stack entirely and were drawn by whatever the platform substituted.
+     SimSun is the serif Windows actually ships. */
   --font-serif:
     "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC",
-    "Noto Serif CJK SC", serif;
+    "Noto Serif CJK SC", "Source Han Serif SC", SimSun, serif;
+  /* Chinese before Japanese. Windows ships Yu Gothic but not PingFang, and Yu
+     Gothic has no 顺 — measured on Windows, where 原 and 序 came from Yu Gothic
+     and 顺 fell through to Microsoft YaHei, so 原顺序 was drawn in two typefaces
+     and read as uneven stroke weight. macOS resolves this differently and never
+     showed it. Japanese fonts stay as a fallback for kana in file names. */
   --font-ui:
-    Inter, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic Pro",
-    "PingFang SC", "Yu Gothic", Meiryo, "Microsoft YaHei", system-ui,
+    Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Hiragino Sans",
+    "Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, system-ui,
     sans-serif;
   font-family:
     var(--font-ui);
@@ -401,10 +409,15 @@ button.toggle-btn.active {
 }
 
 .search-actions {
+  /* Its own row, left-aligned, rather than sharing the tool row's flex-end
+     alignment. How many buttons fit above it differs by platform, so leaving
+     it to wrap put the search box on the left on one and the right on the
+     other. */
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 5px;
 }
 

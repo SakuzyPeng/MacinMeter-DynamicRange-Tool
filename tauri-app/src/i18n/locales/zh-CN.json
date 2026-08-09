@@ -87,5 +87,7 @@
   "status.phaseCaveat": "每行划分的是该角色自己的区间；两个区间之间可能重叠",
   "status.phaseBatchDecode": "解码 活跃总计 {{active}} s · 其他总计 {{other}} s（各项区间合计 {{span}} s）",
   "status.phaseBatchAnalysis": "分析 活跃总计 {{active}} s · 其他总计 {{other}} s（各项区间合计 {{span}} s）",
-  "status.phaseBatchCaveat": "每行汇总各文件的区间；文件区间及两个角色之间均可能重叠"
+  "status.phaseBatchCaveat": "每行汇总各文件的区间；文件区间及两个角色之间均可能重叠",
+  "btn.hideWarnings": "隐藏警告",
+  "btn.hideFailed": "隐藏失败"
 }

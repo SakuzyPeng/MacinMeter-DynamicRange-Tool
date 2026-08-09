@@ -87,5 +87,7 @@
   "status.phaseCaveat": "each line splits that role's own span; the two spans may overlap each other",
   "status.phaseBatchDecode": "decode active total {{active}} s · other total {{other}} s (item spans {{span}} s)",
   "status.phaseBatchAnalysis": "analysis active total {{active}} s · other total {{other}} s (item spans {{span}} s)",
-  "status.phaseBatchCaveat": "each line sums per-item spans; item spans and the two roles may overlap"
+  "status.phaseBatchCaveat": "each line sums per-item spans; item spans and the two roles may overlap",
+  "btn.hideWarnings": "Hide warnings",
+  "btn.hideFailed": "Hide failed"
 }
