@@ -11,8 +11,8 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-confirm",
-    "fs:allow-write-file",
-    "fs:allow-write-text-file",
+    "fs:allow-create",
+    "fs:allow-write",
     "core:webview:allow-set-webview-zoom"
   ]
 }

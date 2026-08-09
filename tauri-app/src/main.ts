@@ -1,12 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { join } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { toPng, toSvg } from "html-to-image";
+import { create } from "@tauri-apps/plugin-fs";
+import { toBlob, toSvg } from "html-to-image";
 import packageMetadata from "../package.json";
 import { BatchProgress } from "./batch-progress";
+import {
+  byteRanges,
+  numberedExportPath,
+  paginateItemIndexes,
+  PNG_PAGE_MAX_CONTENT_HEIGHT,
+  safeImageScale,
+  SVG_PAGE_MAX_CONTENT_HEIGHT,
+} from "./export-utils";
 import {
   changeLanguage,
   getCurrentLanguage,
@@ -107,6 +116,7 @@ let searchQuery = "";
 let searchIndex = -1;
 let discoveryFilterExtensions: string[] = [];
 let statusState: StatusState = { key: "status.ready", progress: 0 };
+let exportInProgress = false;
 
 const escapeHtml = (value: string): string => {
   const replacements: Record<string, string> = {
@@ -191,23 +201,29 @@ const renderStatus = (): void => {
 
 const updateControls = (): void => {
   const running = activeJobId !== null;
-  pickFilesButton.disabled = running;
-  scanDirectoryButton.disabled = running;
-  deepScanButton.disabled = running;
-  clearButton.disabled = running;
-  showTimingButton.disabled = running;
-  analyzeButton.disabled = !running && selectedInputs.length === 0;
+  const interactionLocked = running || exportInProgress;
+  pickFilesButton.disabled = interactionLocked;
+  scanDirectoryButton.disabled = interactionLocked;
+  deepScanButton.disabled = interactionLocked;
+  clearButton.disabled = interactionLocked;
+  showTimingButton.disabled = interactionLocked;
+  analyzeButton.disabled =
+    exportInProgress || (!running && selectedInputs.length === 0);
   analyzeButton.classList.toggle("cancel-mode", running);
   analyzeButton.textContent = t(running ? "btn.cancel" : "btn.analyze");
 
   const hasResult = lastEnvelope !== null;
-  copyMarkdownButton.disabled = !hasResult;
-  exportJsonButton.disabled = !hasResult;
-  exportImageButton.disabled = !hasResult;
-  hideWarningsButton.disabled = running;
-  hideFailedButton.disabled = running;
-  sortModeSelect.disabled = !hasResult || visibleEntries().length < 2;
-  searchNextButton.disabled = !hasResult || visibleEntries().length === 0;
+  copyMarkdownButton.disabled = !hasResult || interactionLocked;
+  exportJsonButton.disabled = !hasResult || interactionLocked;
+  exportImageButton.disabled = !hasResult || interactionLocked;
+  hideWarningsButton.disabled = interactionLocked;
+  hideFailedButton.disabled = interactionLocked;
+  sortModeSelect.disabled =
+    interactionLocked || !hasResult || visibleEntries().length < 2;
+  searchInput.disabled = interactionLocked || !hasResult;
+  searchNextButton.disabled =
+    interactionLocked || !hasResult || visibleEntries().length === 0;
+  resultsElement.toggleAttribute("inert", exportInProgress);
 };
 
 const selectionLabel = (): string => {
@@ -717,7 +733,9 @@ const fileTimestamp = (): string => {
 };
 
 const dataUrlBytes = (dataUrl: string): Uint8Array => {
-  const encoded = dataUrl.split(",")[1] ?? "";
+  const separator = dataUrl.indexOf(",");
+  if (separator < 0) throw new Error("image encoder returned an invalid data URL");
+  const encoded = dataUrl.slice(separator + 1);
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -725,6 +743,39 @@ const dataUrlBytes = (dataUrl: string): Uint8Array => {
   }
   return bytes;
 };
+
+const dataUrlText = (dataUrl: string): string => {
+  const separator = dataUrl.indexOf(",");
+  if (separator < 0) throw new Error("image encoder returned an invalid data URL");
+  const metadata = dataUrl.slice(0, separator);
+  if (metadata.endsWith(";base64")) {
+    return new TextDecoder().decode(dataUrlBytes(dataUrl));
+  }
+  return decodeURIComponent(dataUrl.slice(separator + 1));
+};
+
+const writeBytesInChunks = async (
+  path: string,
+  bytes: Uint8Array,
+): Promise<void> => {
+  const file = await create(path);
+  try {
+    for (const range of byteRanges(bytes.byteLength)) {
+      const chunk = bytes.subarray(range.start, range.end);
+      const written = await file.write(chunk);
+      if (written !== chunk.byteLength) {
+        throw new Error(
+          `file write stopped after ${written} of ${chunk.byteLength} bytes`,
+        );
+      }
+    }
+  } finally {
+    await file.close();
+  }
+};
+
+const nextPaint = (): Promise<void> =>
+  new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 
 const showFormatDialog = (): Promise<"png" | "svg" | null> =>
   new Promise((resolve) => {
@@ -752,7 +803,7 @@ const showFormatDialog = (): Promise<"png" | "svg" | null> =>
 
 const imageOptions = (target: HTMLElement): Record<string, unknown> => {
   const bounds = target.getBoundingClientRect();
-  const scale = Math.min(3, 16_384 / Math.max(bounds.width, bounds.height, 1));
+  const scale = safeImageScale(bounds.width, bounds.height);
   return {
     backgroundColor: "#fbf7f0",
     canvasWidth: Math.round(bounds.width * scale),
@@ -771,22 +822,30 @@ const imageOptions = (target: HTMLElement): Record<string, unknown> => {
   };
 };
 
-const withImageCaptureFrame = async <T>(
-  target: HTMLElement,
+const prepareImageClone = (clone: HTMLElement): void => {
+  clone.removeAttribute("id");
+  clone.removeAttribute("inert");
+  clone.classList.add("exporting");
+  clone.classList.remove("search-hit");
+  clone.querySelectorAll<HTMLElement>("[id]").forEach((element) => {
+    element.removeAttribute("id");
+  });
+  clone.querySelectorAll(".search-hit").forEach((element) => {
+    element.classList.remove("search-hit");
+  });
+};
+
+const withMountedImageClone = async <T>(
+  sourceWidth: number,
+  clone: HTMLElement,
   capture: (frame: HTMLElement) => Promise<T>,
 ): Promise<T> => {
   const padding = 24;
   const frame = document.createElement("div");
   frame.className = "image-capture-frame";
-  frame.style.width = `${Math.ceil(target.getBoundingClientRect().width) + padding * 2}px`;
+  frame.style.width = `${Math.ceil(sourceWidth) + padding * 2}px`;
   frame.setAttribute("aria-hidden", "true");
-
-  const clone = target.cloneNode(true) as HTMLElement;
-  clone.classList.add("exporting");
-  clone.classList.remove("search-hit");
-  clone.querySelectorAll(".search-hit").forEach((element) => {
-    element.classList.remove("search-hit");
-  });
+  prepareImageClone(clone);
   frame.appendChild(clone);
   document.body.appendChild(frame);
 
@@ -797,12 +856,57 @@ const withImageCaptureFrame = async <T>(
   }
 };
 
-const renderPng = (target: HTMLElement): Promise<string> =>
-  withImageCaptureFrame(target, (frame) => toPng(frame, imageOptions(frame)));
+const withImageCaptureFrame = async <T>(
+  target: HTMLElement,
+  capture: (frame: HTMLElement) => Promise<T>,
+): Promise<T> =>
+  withMountedImageClone(
+    target.getBoundingClientRect().width,
+    target.cloneNode(true) as HTMLElement,
+    capture,
+  );
 
-const renderSvg = (target: HTMLElement): Promise<string> =>
-  withImageCaptureFrame(target, (frame) =>
-    toSvg(frame, {
+const withImageCapturePage = async <T>(
+  container: HTMLElement,
+  entries: readonly HTMLElement[],
+  capture: (frame: HTMLElement) => Promise<T>,
+): Promise<T> => {
+  const clone = container.cloneNode(false) as HTMLElement;
+  entries.forEach((entry) => clone.appendChild(entry.cloneNode(true)));
+  return withMountedImageClone(
+    container.getBoundingClientRect().width,
+    clone,
+    capture,
+  );
+};
+
+const imageCapturePages = (
+  container: HTMLElement,
+  maxContentHeight: number,
+): HTMLElement[][] => {
+  const entries = Array.from(container.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  );
+  const gap = Number.parseFloat(window.getComputedStyle(container).rowGap);
+  return paginateItemIndexes(
+    entries.map((entry) => entry.getBoundingClientRect().height),
+    gap,
+    maxContentHeight,
+  ).map((page) => page.map((index) => entries[index]));
+};
+
+const pngBytes = async (frame: HTMLElement): Promise<Uint8Array> => {
+  const blob = await toBlob(frame, imageOptions(frame));
+  if (!blob) throw new Error("PNG encoder returned no data");
+  return new Uint8Array(await blob.arrayBuffer());
+};
+
+const renderPng = (target: HTMLElement): Promise<Uint8Array> =>
+  withImageCaptureFrame(target, pngBytes);
+
+const svgText = async (frame: HTMLElement): Promise<string> =>
+  dataUrlText(
+    await toSvg(frame, {
       backgroundColor: "#fbf7f0",
       skipFonts: true,
       style: {
@@ -814,35 +918,125 @@ const renderSvg = (target: HTMLElement): Promise<string> =>
     }),
   );
 
+const renderPngPage = (
+  container: HTMLElement,
+  entries: readonly HTMLElement[],
+): Promise<Uint8Array> => withImageCapturePage(container, entries, pngBytes);
+
+const renderSvgPage = (
+  container: HTMLElement,
+  entries: readonly HTMLElement[],
+): Promise<string> => withImageCapturePage(container, entries, svgText);
+
 const exportImage = async (): Promise<void> => {
-  if (!lastEnvelope || resultsElement.children.length === 0) return;
-  const format = await showFormatDialog();
-  if (!format) return;
-  const name = `MacinMeter_v${lastEnvelope.toolVersion}_${fileTimestamp()}.${format}`;
-  const path = await save({
-    defaultPath: name,
-    filters: [
-      {
-        name: format === "png" ? "PNG Image" : "SVG Image",
-        extensions: [format],
-      },
-    ],
-  });
-  if (!path) return;
+  if (
+    !lastEnvelope ||
+    resultsElement.children.length === 0 ||
+    exportInProgress
+  ) {
+    return;
+  }
+  const envelope = lastEnvelope;
   try {
-    if (format === "png") {
-      await writeFile(path, dataUrlBytes(await renderPng(resultsElement)));
+    const format = await showFormatDialog();
+    if (!format) return;
+    const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.${format}`;
+    const pages = imageCapturePages(
+      resultsElement,
+      format === "png"
+        ? PNG_PAGE_MAX_CONTENT_HEIGHT
+        : SVG_PAGE_MAX_CONTENT_HEIGHT,
+    );
+    if (pages.length === 0) return;
+    let outputPaths: string[];
+    if (pages.length === 1) {
+      const path = await save({
+        defaultPath: name,
+        filters: [
+          {
+            name: format === "png" ? "PNG Image" : "SVG Image",
+            extensions: [format],
+          },
+        ],
+      });
+      if (!path) return;
+      outputPaths = [path];
     } else {
-      const dataUrl = await renderSvg(resultsElement);
-      await writeTextFile(path, decodeURIComponent(dataUrl.split(",")[1] ?? ""));
+      const directory = await open({
+        title: t("dialog.exportFolder"),
+        directory: true,
+        multiple: false,
+        recursive: false,
+      });
+      if (!directory || Array.isArray(directory)) return;
+      outputPaths = await Promise.all(
+        pages.map((_, index) =>
+          join(directory, numberedExportPath(name, index, pages.length)),
+        ),
+      );
     }
-    status("status.exported", { name });
+
+    exportInProgress = true;
+    updateControls();
+    for (let index = 0; index < pages.length; index += 1) {
+      status(
+        "status.exportingImage",
+        { current: index + 1, total: pages.length },
+        { progress: (index / pages.length) * 100 },
+      );
+      await nextPaint();
+      const bytes =
+        format === "png"
+          ? await renderPngPage(resultsElement, pages[index])
+          : new TextEncoder().encode(
+              await renderSvgPage(resultsElement, pages[index]),
+            );
+      await writeBytesInChunks(outputPaths[index], bytes);
+    }
+    status(
+      pages.length === 1 ? "status.exported" : "status.exportedMany",
+      { name, count: pages.length },
+      { progress: 100 },
+    );
   } catch (error) {
     status(
       "status.exportFailed",
       { message: describeInvokeError(error) },
       { error: true },
     );
+  } finally {
+    exportInProgress = false;
+    updateControls();
+  }
+};
+
+const exportJson = async (): Promise<void> => {
+  if (!lastEnvelope || exportInProgress) return;
+  const envelope = lastEnvelope;
+  try {
+    const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.json`;
+    const path = await save({
+      defaultPath: name,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!path) return;
+
+    exportInProgress = true;
+    updateControls();
+    status("status.exportingJson", {}, { progress: 0 });
+    await nextPaint();
+    const bytes = new TextEncoder().encode(JSON.stringify(envelope, null, 2));
+    await writeBytesInChunks(path, bytes);
+    status("status.exported", { name }, { progress: 100 });
+  } catch (error) {
+    status(
+      "status.exportFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    exportInProgress = false;
+    updateControls();
   }
 };
 
@@ -853,8 +1047,7 @@ const copyPngToClipboard = async (
   const original = button.textContent;
   button.disabled = true;
   try {
-    const dataUrl = await renderPng(target);
-    await writeImage(dataUrlBytes(dataUrl));
+    await writeImage(await renderPng(target));
     button.classList.add("copied");
     button.textContent = "OK!";
     status("status.pngCopied");
@@ -1049,25 +1242,7 @@ copyMarkdownButton.addEventListener("click", () => {
   void copyText(formatAllMarkdown(), copyMarkdownButton);
 });
 
-exportJsonButton.addEventListener("click", async () => {
-  if (!lastEnvelope) return;
-  const name = `MacinMeter_v${lastEnvelope.toolVersion}_${fileTimestamp()}.json`;
-  const path = await save({
-    defaultPath: name,
-    filters: [{ name: "JSON", extensions: ["json"] }],
-  });
-  if (!path) return;
-  try {
-    await writeTextFile(path, JSON.stringify(lastEnvelope, null, 2));
-    status("status.exported", { name });
-  } catch (error) {
-    status(
-      "status.exportFailed",
-      { message: describeInvokeError(error) },
-      { error: true },
-    );
-  }
-});
+exportJsonButton.addEventListener("click", () => void exportJson());
 
 exportImageButton.addEventListener("click", () => void exportImage());
 
