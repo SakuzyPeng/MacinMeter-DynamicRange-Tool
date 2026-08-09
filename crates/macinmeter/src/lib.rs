@@ -34,8 +34,8 @@ pub use macinmeter_domain::{
     ChannelMeasurement, ChannelOutcome, ChannelReportMetrics, ChannelResult, ChannelRole,
     ContainerFormat, DecodeDiagnostics, DecodeProgress, DecodedDuration, ErrorCode,
     ExcludedChannel, ExclusionReason, FiniteF32, FiniteF64, MAX_ANALYSIS_CHANNELS, PcmBlock,
-    PcmStreamInfo, SampleRate, SourceCodec, SourceInfo, StreamSpec, TrackAggregate,
-    TrackReportMetrics,
+    PcmStreamInfo, ReportDiagnostics, SampleRate, SourceCodec, SourceInfo, StreamSpec,
+    TrackAggregate, TrackReportMetrics,
 };
 pub use wire::{WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload};
 

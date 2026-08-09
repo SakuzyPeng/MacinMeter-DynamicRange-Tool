@@ -125,6 +125,7 @@ data is excluded. If no channel can contribute, aggregate DR values are
 explicit `null`.
 
 Reports add warnings without changing the fixed numeric result when a nonempty
-stream is shorter than one complete analysis window, when a multichannel layout
-is unknown and may therefore include LFE, or when silent channels contribute
-DR0 to the track aggregate.
+stream is shorter than one complete analysis window, for every stream with more
+than two channels because current stable routes do not expose channel roles and
+may therefore include LFE, or when silent channels contribute DR0 to the track
+aggregate.

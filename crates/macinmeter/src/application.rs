@@ -372,9 +372,15 @@ impl Analyzer {
             }
         };
 
-        let mut diagnostics = opened.reader.diagnostics().clone();
-        append_analysis_warnings(&mut diagnostics, &analysis, full_window_frames);
-        match AnalysisReport::try_new(opened.source, pcm, analysis, diagnostics) {
+        let diagnostics = opened.reader.diagnostics().clone();
+        let report_warnings = analysis_report_warnings(&analysis, full_window_frames);
+        match AnalysisReport::try_new_with_report_warnings(
+            opened.source,
+            pcm,
+            analysis,
+            diagnostics,
+            report_warnings,
+        ) {
             Ok(report) => Ok(OpenedAnalysis {
                 report,
                 #[cfg(feature = "performance-probes")]
@@ -391,14 +397,14 @@ impl Analyzer {
     }
 }
 
-fn append_analysis_warnings(
-    diagnostics: &mut macinmeter_domain::DecodeDiagnostics,
+fn analysis_report_warnings(
     analysis: &macinmeter_domain::AnalysisResult,
     full_window_frames: u64,
-) {
+) -> Vec<String> {
+    let mut warnings = Vec::new();
     let frames_seen = analysis.frames_seen();
     if frames_seen > 0 && frames_seen < full_window_frames {
-        diagnostics.warnings.push(format!(
+        warnings.push(format!(
             "track DR is based on one partial window because the stream is shorter than a full \
              analysis window (decoded_frames={frames_seen}; \
              full_window_frames={full_window_frames})"
@@ -406,15 +412,13 @@ fn append_analysis_warnings(
     }
 
     let channels = analysis.stream().channels.get();
-    if channels > 2
-        && matches!(
-            &analysis.stream().channel_layout,
-            macinmeter_domain::ChannelLayout::Unknown
-        )
-    {
-        diagnostics.warnings.push(format!(
-            "the {channels}-channel layout is unknown; track DR uses every channel and may \
-             therefore include LFE"
+    // Every current stable file route projects ChannelLayout::Unknown. Treat
+    // the missing channel roles as a product capability boundary instead of a
+    // data-dependent layout branch that can never vary on this path.
+    if channels > 2 {
+        warnings.push(format!(
+            "current stable file routes do not expose channel roles for this {channels}-channel \
+             stream; track DR uses every channel and may therefore include LFE"
         ));
     }
 
@@ -434,11 +438,12 @@ fn append_analysis_warnings(
         } else {
             "channels"
         };
-        diagnostics.warnings.push(format!(
+        warnings.push(format!(
             "track DR includes {silent_channels} silent {noun} as DR0 under the fixed reference \
              aggregation rule"
         ));
     }
+    warnings
 }
 
 /// How the overlap hand-off is shaped, in blocks.
@@ -1141,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn report_warnings_expose_partial_windows_unknown_layout_and_silent_channels() {
+    fn report_warnings_expose_partial_windows_unlabeled_multichannel_and_silent_channels() {
         let channels = ChannelCount::new(3).unwrap();
         let opened = opened_audio(
             channels,
@@ -1169,7 +1174,7 @@ mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.contains("3-channel layout is unknown"))
+                .any(|warning| warning.contains("do not expose channel roles"))
         );
         assert!(
             warnings

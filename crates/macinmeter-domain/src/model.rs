@@ -312,12 +312,45 @@ impl DecodeProgress {
     }
 }
 
+/// Diagnostic state owned and updated by a decoder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodeDiagnostics {
     pub backend: String,
     pub decoded_frames: u64,
     pub warnings: Vec<String>,
+}
+
+/// Diagnostics attached to a completed analysis report.
+///
+/// This is deliberately distinct from [`DecodeDiagnostics`]: report assembly
+/// may add interpretation warnings after the decoder has reached its terminal
+/// state, without retyping those warnings as decoder output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportDiagnostics {
+    pub backend: String,
+    pub decoded_frames: u64,
+    pub warnings: Vec<String>,
+}
+
+impl ReportDiagnostics {
+    fn from_decode(
+        diagnostics: DecodeDiagnostics,
+        report_warnings: Vec<String>,
+    ) -> ReportDiagnostics {
+        let DecodeDiagnostics {
+            backend,
+            decoded_frames,
+            mut warnings,
+        } = diagnostics;
+        warnings.extend(report_warnings);
+        Self {
+            backend,
+            decoded_frames,
+            warnings,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -588,7 +621,7 @@ pub struct AnalysisReport {
     source: SourceInfo,
     pcm: PcmStreamInfo,
     analysis: AnalysisResult,
-    diagnostics: DecodeDiagnostics,
+    diagnostics: ReportDiagnostics,
 }
 
 impl AnalysisReport {
@@ -597,6 +630,16 @@ impl AnalysisReport {
         pcm: PcmStreamInfo,
         analysis: AnalysisResult,
         diagnostics: DecodeDiagnostics,
+    ) -> Result<Self, AnalysisError> {
+        Self::try_new_with_report_warnings(source, pcm, analysis, diagnostics, Vec::new())
+    }
+
+    pub fn try_new_with_report_warnings(
+        source: SourceInfo,
+        pcm: PcmStreamInfo,
+        analysis: AnalysisResult,
+        diagnostics: DecodeDiagnostics,
+        report_warnings: Vec<String>,
     ) -> Result<Self, AnalysisError> {
         if pcm.spec != *analysis.stream() {
             return Err(analysis_report_error(
@@ -615,7 +658,7 @@ impl AnalysisReport {
             source,
             pcm,
             analysis,
-            diagnostics,
+            diagnostics: ReportDiagnostics::from_decode(diagnostics, report_warnings),
         })
     }
 
@@ -631,7 +674,7 @@ impl AnalysisReport {
         &self.analysis
     }
 
-    pub fn diagnostics(&self) -> &DecodeDiagnostics {
+    pub fn diagnostics(&self) -> &ReportDiagnostics {
         &self.diagnostics
     }
 }
@@ -1034,6 +1077,32 @@ mod tests {
         assert_eq!(valid.pcm().spec.sample_rate.get(), 48_000);
         assert_eq!(valid.source().expected_frames, Some(999));
         assert_eq!(valid.pcm().expected_frames, None);
+
+        let decode_diagnostics = DecodeDiagnostics {
+            backend: "domain-test".to_owned(),
+            decoded_frames: 9,
+            warnings: vec!["decoder warning".to_owned()],
+        };
+        let with_report_warning = AnalysisReport::try_new_with_report_warnings(
+            source.clone(),
+            pcm.clone(),
+            analysis.clone(),
+            decode_diagnostics.clone(),
+            vec!["analysis interpretation warning".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(decode_diagnostics.warnings, ["decoder warning"]);
+        assert_eq!(
+            with_report_warning.diagnostics().warnings,
+            ["decoder warning", "analysis interpretation warning"]
+        );
+        let serialized = serde_json::to_value(&with_report_warning).unwrap();
+        assert_eq!(serialized["diagnostics"]["backend"], "domain-test");
+        assert_eq!(serialized["diagnostics"]["decodedFrames"], 9);
+        assert_eq!(
+            serialized["diagnostics"]["warnings"],
+            serde_json::json!(["decoder warning", "analysis interpretation warning"])
+        );
 
         for mismatched_spec in [
             StreamSpec::new(44_100, 1, ChannelLayout::Unknown).unwrap(),

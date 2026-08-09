@@ -546,8 +546,11 @@ M2 完成必须同时满足：
   40-byte 形状仍为 `UnsupportedFormat / Probe`。
 
 同一修订在 application report 中增加纯诊断 warning：非空输入不足一个完整分析窗、
-未知多声道布局可能包含 LFE、或静音声道按固定参考规则以 DR0 参与聚合时均明确提示。
-这些 warning 不改变 `AnalyzerSession`、channel/track 数值、固定聚合规则或 wire schema。
+当前全部稳定文件 route 都不提供声道角色而使三声道及以上输入可能包含 LFE、或静音
+声道按固定参考规则以 DR0 参与聚合时均明确提示。报告组装将这些解释性提示放入独立的
+`ReportDiagnostics`；decoder 仍只拥有 `DecodeDiagnostics`。二者保持既有 JSON
+`diagnostics` 投影，因此这些 warning 不改变 `AnalyzerSession`、channel/track 数值、
+固定聚合规则或 wire schema。
 
 ## 后果
 
