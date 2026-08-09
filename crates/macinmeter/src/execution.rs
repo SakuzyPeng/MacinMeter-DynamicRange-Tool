@@ -714,9 +714,14 @@ mod tests {
     }
 
     fn fixture(name: &str) -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures")
-            .join(name)
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let packaged = manifest.join("package-fixtures");
+        let fixtures = if packaged.is_dir() {
+            packaged
+        } else {
+            manifest.join("../../tests/fixtures")
+        };
+        fixtures.join(name)
     }
 
     fn wire_bytes(application: &Application, name: &str) -> Vec<u8> {

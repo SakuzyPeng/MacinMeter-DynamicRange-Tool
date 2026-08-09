@@ -31,6 +31,9 @@ INHERITED_PACKAGE_FIELDS = (
     "repository",
 )
 DEPENDENCY_SECTIONS = ("dependencies", "dev-dependencies", "build-dependencies")
+# Cargo dereferences these tracked aliases into the published archive. Keeping
+# the media corpus at one repository path avoids two copies drifting apart.
+PACKAGE_FIXTURE_MEMBERS = {"macinmeter-codecs", "macinmeter"}
 
 
 def load_toml(path: Path) -> dict:
@@ -57,6 +60,29 @@ def tracked_files(root: Path) -> list[str]:
         for entry in completed.stdout.split(b"\0")
         if entry
     ]
+
+
+def tracked_symlink_targets(root: Path) -> dict[str, str]:
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-s", "-z"],
+        check=True,
+        capture_output=True,
+    )
+    targets: dict[str, str] = {}
+    for entry in completed.stdout.split(b"\0"):
+        if not entry:
+            continue
+        metadata, relative = entry.split(b"\t", 1)
+        mode, object_id, _stage = metadata.split()
+        if mode != b"120000":
+            continue
+        blob = subprocess.run(
+            ["git", "-C", str(root), "cat-file", "blob", object_id.decode("ascii")],
+            check=True,
+            capture_output=True,
+        )
+        targets[relative.decode("utf-8")] = blob.stdout.decode("utf-8")
+    return targets
 
 
 def workflow_events(path: Path) -> list[str] | None:
@@ -154,6 +180,17 @@ def validate(root: Path) -> list[str]:
         workspace_package.get("edition") == "2024",
         "workspace.package.edition must remain 2024",
     )
+    workspace_license_path = root / "LICENSE"
+    require(
+        workspace_license_path.is_file(),
+        "the workspace license file must exist at LICENSE",
+    )
+    workspace_license = (
+        workspace_license_path.read_bytes() if workspace_license_path.is_file() else None
+    )
+    tracked = tracked_files(root)
+    tracked_set = set(tracked)
+    tracked_symlinks = tracked_symlink_targets(root)
 
     member_manifests = {
         (root / member / "Cargo.toml").resolve()
@@ -228,6 +265,36 @@ def validate(root: Path) -> list[str]:
             isinstance(description, str) and description.strip(),
             f"{relative_manifest}: package.description must be a non-empty string",
         )
+        if package.get("publish") is not False:
+            # Cargo does not include a workspace-root license automatically.
+            # Retain SPDX metadata and ship the exact notice as a package file.
+            package_license_path = manifest_path.parent / "LICENSE"
+            package_license_relative = package_license_path.relative_to(root).as_posix()
+            require(
+                package_license_path.is_file(),
+                f"{relative_manifest}: publishable packages must include LICENSE",
+            )
+            require(
+                package_license_relative in tracked_set,
+                f"{relative_manifest}: packaged LICENSE must be tracked by git",
+            )
+            if package_license_path.is_file() and workspace_license is not None:
+                require(
+                    package_license_path.read_bytes() == workspace_license,
+                    f"{relative_manifest}: packaged LICENSE must match the workspace LICENSE",
+                )
+        if package_name in PACKAGE_FIXTURE_MEMBERS:
+            fixture_alias = (manifest_path.parent / "package-fixtures").relative_to(root)
+            fixture_alias_text = fixture_alias.as_posix()
+            require(
+                tracked_symlinks.get(fixture_alias_text) == "../../tests/fixtures",
+                f"{relative_manifest}: package-fixtures must be a tracked symlink "
+                "to ../../tests/fixtures",
+            )
+            require(
+                (root / "tests/fixtures").is_dir(),
+                "the package fixture source must exist at tests/fixtures",
+            )
 
     unused_dependencies = sorted(
         set(workspace_dependencies) - used_workspace_dependencies
@@ -323,7 +390,6 @@ def validate(root: Path) -> list[str]:
             label = f"{path.relative_to(root)}:{'.'.join(keys)}"
             require(value == version, f"{label} must equal workspace version {version}")
 
-    tracked = tracked_files(root)
     cargo_locks = sorted(path for path in tracked if Path(path).name == "Cargo.lock")
     package_locks = sorted(
         path for path in tracked if Path(path).name == "package-lock.json"

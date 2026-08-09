@@ -2,10 +2,11 @@
 
 //! Valid stream, source, report and error types for the MacinMeter analyzer.
 //!
-//! The types here are constructors that refuse invalid state rather than
-//! containers that carry it: a [`StreamSpec`], [`PcmBlock`] or [`FiniteF64`]
-//! exists only if it was already checked. Layers above therefore do not
-//! re-validate, and an invalid combination has no representation to travel in.
+//! The types here use constructors that refuse invalid state rather than
+//! carrying it: a [`StreamSpec`], [`PcmBlock`] or [`FiniteF64`] exists only if
+//! its own invariants were already checked. Cross-object contracts remain the
+//! caller's responsibility; for example, a block's channel geometry must still
+//! match the stream it belongs to.
 //!
 //! This crate is a dependency of the [`macinmeter`](https://docs.rs/macinmeter)
 //! facade and is published so those public types resolve; most callers want the

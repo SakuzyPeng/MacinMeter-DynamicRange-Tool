@@ -676,9 +676,14 @@ mod tests {
     }
 
     fn fixture(relative: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures")
-            .join(relative)
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let packaged = manifest.join("package-fixtures");
+        let fixtures = if packaged.is_dir() {
+            packaged
+        } else {
+            manifest.join("../../tests/fixtures")
+        };
+        fixtures.join(relative)
     }
 
     /// The fixed test plan the runner splits for itself.

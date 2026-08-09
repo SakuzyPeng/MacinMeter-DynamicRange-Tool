@@ -13,9 +13,14 @@ use std::{
 };
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
-        .join(name)
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let packaged = manifest.join("package-fixtures");
+    let fixtures = if packaged.is_dir() {
+        packaged
+    } else {
+        manifest.join("../../tests/fixtures")
+    };
+    fixtures.join(name)
 }
 
 fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {

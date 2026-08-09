@@ -51,10 +51,18 @@ fn assert_block_geometry(block: &PcmBlock, expected_channels: ChannelCount) {
     );
 }
 
+fn fixture_root() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let packaged = manifest.join("package-fixtures");
+    if packaged.is_dir() {
+        packaged
+    } else {
+        manifest.join("../../tests/fixtures")
+    }
+}
+
 fn product_fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/native-pcm-v1")
-        .join(name)
+    fixture_root().join("native-pcm-v1").join(name)
 }
 
 fn product_fixture_pcm_sha256(name: &str) -> String {
@@ -74,9 +82,7 @@ fn product_fixture_pcm_sha256(name: &str) -> String {
 }
 
 fn extensible_fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/native-pcm-extensible-v1")
-        .join(name)
+    fixture_root().join("native-pcm-extensible-v1").join(name)
 }
 
 fn extensible_fixture_manifest() -> Value {
@@ -98,9 +104,7 @@ fn extensible_fixture_entry(name: &str) -> Value {
 }
 
 fn alac_fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/native-alac-v1")
-        .join(name)
+    fixture_root().join("native-alac-v1").join(name)
 }
 
 fn alac_fixture_manifest() -> Value {
@@ -112,9 +116,7 @@ fn alac_fixture_manifest() -> Value {
 }
 
 fn malformed_fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/malformed-media-v1")
-        .join(name)
+    fixture_root().join("malformed-media-v1").join(name)
 }
 
 fn manifest_pcm_samples(fixture: &Value) -> Vec<f64> {
@@ -2598,9 +2600,7 @@ fn only_graduated_routes_create_packet_workers() {
             "native-pcm-v1/wav-float64-stereo.wav",
             "native-pcm-v1/aiff-pcm-s24-stereo.aiff",
         ] {
-            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../tests/fixtures")
-                .join(name);
+            let path = fixture_root().join(name);
             let (oracle_source, oracle_samples) = decode_all_samples(&path);
             let (source, samples) = decode_all_samples_with(&path, reservation);
             assert_eq!(raw_bits(&samples), raw_bits(&oracle_samples), "{name}");
@@ -2616,8 +2616,7 @@ fn only_graduated_routes_create_packet_workers() {
 #[test]
 fn decoder_factory_reports_the_engine_selected_after_content_probe() {
     let alac = alac_fixture_path("alac16-stereo-48000-multipacket.m4a");
-    let wav = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/native-pcm-v1/wav-pcm-s16-stereo.wav");
+    let wav = fixture_root().join("native-pcm-v1/wav-pcm-s16-stereo.wav");
 
     let (_, execution) = DecoderFactory::new().open_with_execution(&alac).unwrap();
     assert_eq!(execution.engine(), DecodeEngineKind::Serial);
@@ -2654,9 +2653,7 @@ fn every_stable_route_proves_a_bound_for_each_decoded_pcm_block() {
         "native-pcm-v1/flac-pcm-s16-stereo-multiblock.flac",
         "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
     ] {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures")
-            .join(name);
+        let path = fixture_root().join(name);
         let (mut opened, execution) = DecoderFactory::new()
             .open_with_execution(&path)
             .unwrap_or_else(|error| panic!("{name} must open: {error}"));

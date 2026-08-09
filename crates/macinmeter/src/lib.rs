@@ -3,9 +3,10 @@
 //! Offline audio dynamic-range (DR) analysis.
 //!
 //! [`Application`] is the only public entry point for analyzing a file, running
-//! a batch, and discovering inputs. Clones share one execution domain, so a
-//! process runs one job at a time with a bounded queue behind it rather than
-//! spawning work per call.
+//! a batch, and discovering inputs. Clones share one execution domain, which
+//! runs one job at a time with a bounded queue behind it rather than spawning
+//! work per call. Separately constructed `Application` values are independent;
+//! adapters should therefore retain one per process or runtime.
 //!
 //! ```no_run
 //! use macinmeter::{AnalyzeRequest, Application};

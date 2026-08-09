@@ -8,9 +8,14 @@ use macinmeter::{
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
-        .join(name)
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let packaged = manifest.join("package-fixtures");
+    let fixtures = if packaged.is_dir() {
+        packaged
+    } else {
+        manifest.join("../../tests/fixtures")
+    };
+    fixtures.join(name)
 }
 
 fn track(dr_bits: u32, decoded_frames: u64, sample_rate: u32) -> AlbumTrackMetrics {

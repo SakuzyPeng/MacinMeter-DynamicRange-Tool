@@ -54,6 +54,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Test GUI"
+publish = false
 
 [dependencies]
 serde.workspace = true
@@ -176,6 +177,7 @@ jobs:
 """,
         )
         self.write("Cargo.lock", "")
+        self.write("LICENSE", "MIT License\n")
 
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
@@ -236,6 +238,51 @@ description = "Test library"
 test-gui = {dependency} }}
 """.lstrip(),
         )
+        self.write("crates/test-lib/LICENSE", "MIT License\n")
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.root),
+                "add",
+                "crates/test-lib/Cargo.toml",
+                "crates/test-lib/LICENSE",
+            ],
+            check=True,
+        )
+
+    def make_package_fixture_member(self) -> None:
+        self.add_library_member("0.2.0")
+        manifest = self.root / "crates/test-lib/Cargo.toml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                'name = "test-lib"', 'name = "macinmeter-codecs"'
+            ),
+            encoding="utf-8",
+        )
+        (self.root / "tests/fixtures").mkdir(parents=True)
+
+    def stage_symlink(self, relative: str, target: str) -> None:
+        object_id = subprocess.run(
+            ["git", "-C", str(self.root), "hash-object", "-w", "--stdin"],
+            input=target.encode("utf-8"),
+            check=True,
+            capture_output=True,
+        ).stdout.decode("ascii").strip()
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.root),
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                "120000",
+                object_id,
+                relative,
+            ],
+            check=True,
+        )
 
     def test_accepts_an_internal_dependency_pinned_to_the_workspace_version(self) -> None:
         self.add_library_member("0.2.0")
@@ -280,6 +327,71 @@ test-gui = {dependency} }}
         self.assertTrue(
             any(
                 "package.description must be a non-empty string" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_publishable_member_without_a_packaged_license(self) -> None:
+        self.add_library_member("0.2.0")
+        (self.root / "crates/test-lib/LICENSE").unlink()
+
+        self.assertTrue(
+            any(
+                "publishable packages must include LICENSE" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_packaged_license_that_drifted_from_the_workspace(self) -> None:
+        self.add_library_member("0.2.0")
+        self.write("crates/test-lib/LICENSE", "a different license\n")
+
+        self.assertTrue(
+            any(
+                "packaged LICENSE must match" in error for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_missing_workspace_license_file(self) -> None:
+        (self.root / "LICENSE").unlink()
+
+        self.assertTrue(
+            any(
+                "workspace license file must exist" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_accepts_the_package_fixture_alias(self) -> None:
+        self.make_package_fixture_member()
+        self.stage_symlink(
+            "crates/test-lib/package-fixtures", "../../tests/fixtures"
+        )
+
+        self.assertEqual(self.errors(), [])
+
+    def test_rejects_a_missing_package_fixture_alias(self) -> None:
+        self.make_package_fixture_member()
+
+        self.assertTrue(
+            any(
+                "package-fixtures must be a tracked symlink" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_package_fixture_alias_with_the_wrong_target(self) -> None:
+        self.make_package_fixture_member()
+        self.stage_symlink("crates/test-lib/package-fixtures", "../wrong")
+
+        self.assertTrue(
+            any(
+                "package-fixtures must be a tracked symlink" in error
                 for error in self.errors()
             ),
             self.errors(),
