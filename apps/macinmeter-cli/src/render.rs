@@ -7,7 +7,14 @@ const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
 const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
 const SECONDS_PER_WEEK: u64 = 7 * SECONDS_PER_DAY;
+const NANOS_PER_MILLISECOND: u128 = 1_000_000;
 const LLROUND_UPPER_BOUND_EXCLUSIVE: f64 = 9_223_372_036_854_775_808.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PhaseTimingScope {
+    SingleFile,
+    Batch,
+}
 
 pub(crate) fn format_duration_token(duration: DecodedDuration) -> Result<String, AnalysisError> {
     // Keep the observed operation order: binary64 frames/rate, then C llround
@@ -36,6 +43,7 @@ pub(crate) fn format_elapsed_line(
     elapsed: Duration,
     audio_seconds: f64,
     phases: Option<PhaseTimings>,
+    phase_scope: PhaseTimingScope,
 ) -> String {
     let elapsed_seconds = elapsed.as_secs_f64();
     // A ratio needs both terms to be real. Zero-length audio, an unmeasurably
@@ -49,40 +57,70 @@ pub(crate) fn format_elapsed_line(
     } else {
         format!("\nElapsed: {elapsed_seconds:.3} s\n")
     };
-    // Each role gets its own line because each line partitions that role's own
-    // span exactly, which is the strongest claim these numbers support. What
-    // they cannot give is how much the two spans overlap each other: the sum of
-    // two interval sets does not determine their intersection.
+    // One file gets one span per role. A batch gets the sum of its item spans,
+    // because item windows on separate lanes may overlap even within one role.
+    // Keep those two meanings explicit instead of letting a server-width batch
+    // look like one first-to-last interval.
     if let Some(phases) = phases {
         line.push_str(&format_role_line(
             "decode  ",
             phases.decode(),
             phases.decode_span(),
+            phase_scope,
         ));
         line.push_str(&format_role_line(
             "analysis",
             phases.analysis(),
             phases.analysis_span(),
+            phase_scope,
         ));
-        line.push_str(
-            "  each line splits that role's own span; the two spans may overlap each other\n",
-        );
+        line.push_str(match phase_scope {
+            PhaseTimingScope::SingleFile => {
+                "  each line splits that role's own span; the two spans may overlap each other\n"
+            }
+            PhaseTimingScope::Batch => {
+                "  each line sums per-item spans; item spans and the two roles may overlap\n"
+            }
+        });
     }
     line
 }
 
-fn format_role_line(role: &str, active: Duration, span: Duration) -> String {
+fn format_role_line(
+    role: &str,
+    active: Duration,
+    span: Duration,
+    scope: PhaseTimingScope,
+) -> String {
     // `other` is what the role's window held besides the role: hand-off,
     // progress, and on a route that never overlapped, the other role's work.
-    // Saturate rather than assume, so a clock that did not advance monotonically
-    // cannot produce a nonsense remainder.
-    let other = span.saturating_sub(active);
+    // Round the endpoints of the displayed partition first, then derive its
+    // remainder. Independently rounding all three values can print 1 + 1 = 1
+    // millisecond even though the exact durations close perfectly.
+    let active_ms = rounded_millis(active);
+    let span_ms = rounded_millis(span);
+    let other_ms = span_ms.saturating_sub(active_ms);
+    let (active_label, other_label, span_label) = match scope {
+        PhaseTimingScope::SingleFile => ("active", "other", "span"),
+        PhaseTimingScope::Batch => ("active total", "other total", "item spans"),
+    };
     format!(
-        "  {role} active {:.3} s · other {:.3} s (span {:.3} s)\n",
-        active.as_secs_f64(),
-        other.as_secs_f64(),
-        span.as_secs_f64()
+        "  {role} {active_label} {} s · {other_label} {} s ({span_label} {} s)\n",
+        format_millis(active_ms),
+        format_millis(other_ms),
+        format_millis(span_ms),
     )
+}
+
+fn rounded_millis(duration: Duration) -> u128 {
+    duration
+        .as_nanos()
+        .saturating_add(NANOS_PER_MILLISECOND / 2)
+        / NANOS_PER_MILLISECOND
+}
+
+fn format_millis(milliseconds: u128) -> String {
+    format!("{}.{:03}", milliseconds / 1_000, milliseconds % 1_000)
 }
 
 fn format_whole_seconds(total_seconds: u64) -> String {
@@ -192,5 +230,36 @@ mod tests {
         assert_eq!(format_dbfs(Some(FiniteF32::new(0.01).unwrap())), "0.01");
         assert_eq!(format_dbfs(Some(FiniteF32::new(-0.01).unwrap())), "-0.01");
         assert_eq!(format_dbfs(None), "-inf");
+    }
+
+    #[test]
+    fn phase_timing_rounding_keeps_the_displayed_partition_exact() {
+        // Independently rounding these exact values would print
+        // 0.001 + 0.001 = 0.001. Presentation instead derives `other` from the
+        // two rounded endpoints, so the equation the user sees stays true.
+        let line = format_role_line(
+            "decode",
+            Duration::from_micros(600),
+            Duration::from_micros(1_200),
+            PhaseTimingScope::SingleFile,
+        );
+        assert_eq!(
+            line,
+            "  decode active 0.001 s · other 0.000 s (span 0.001 s)\n"
+        );
+    }
+
+    #[test]
+    fn batch_phase_timing_names_summed_item_spans() {
+        let line = format_role_line(
+            "analysis",
+            Duration::from_millis(2),
+            Duration::from_millis(3),
+            PhaseTimingScope::Batch,
+        );
+        assert_eq!(
+            line,
+            "  analysis active total 0.002 s · other total 0.001 s (item spans 0.003 s)\n"
+        );
     }
 }

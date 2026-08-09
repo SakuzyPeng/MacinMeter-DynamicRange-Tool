@@ -8,7 +8,7 @@ use macinmeter::{
     BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
     PhaseTimings, ProgressSink, WireEnvelope,
 };
-use render::{format_dbfs, format_duration_token, format_elapsed_line};
+use render::{PhaseTimingScope, format_dbfs, format_duration_token, format_elapsed_line};
 use std::{
     fs::OpenOptions,
     io::{self, Write},
@@ -306,6 +306,7 @@ fn render_analysis(
         elapsed,
         report_metrics.duration.seconds(),
         phases,
+        PhaseTimingScope::SingleFile,
     ));
     Ok(output)
 }
@@ -358,7 +359,12 @@ fn render_batch(
             BatchItemOutcome::Failure { .. } => None,
         })
         .sum();
-    output.push_str(&format_elapsed_line(elapsed, audio_seconds, phases));
+    output.push_str(&format_elapsed_line(
+        elapsed,
+        audio_seconds,
+        phases,
+        PhaseTimingScope::Batch,
+    ));
     Ok(output)
 }
 

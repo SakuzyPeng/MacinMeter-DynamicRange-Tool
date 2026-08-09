@@ -147,7 +147,7 @@ fn parse_role_seconds(line: &str, label: &str) -> u64 {
 }
 
 #[test]
-fn timing_is_opt_in_and_never_presented_as_a_partition() {
+fn timing_is_opt_in_and_partitions_only_each_role_span() {
     let input = fixture("edge_cases.wav");
     let plain = run(["analyze".as_ref(), input.as_os_str()]);
     let timed = run(["analyze".as_ref(), "--timing".as_ref(), input.as_os_str()]);
@@ -171,14 +171,11 @@ fn timing_is_opt_in_and_never_presented_as_a_partition() {
         assert!(line.contains("active "), "{line}");
         assert!(line.contains("other "), "{line}");
         assert!(line.contains("(span "), "{line}");
-        // Each value is rounded independently, so the printed sum may miss the
-        // printed span by one millisecond. The exact identity is asserted where
-        // the durations are still exact, in the application contract.
         let reconstructed =
             parse_role_seconds(&line, "active ") + parse_role_seconds(&line, "other ");
         let span = parse_role_seconds(&line, "(span ");
-        assert!(
-            reconstructed.abs_diff(span) <= 1,
+        assert_eq!(
+            reconstructed, span,
             "a role's active and other time must reconstruct its span: {line}"
         );
     }
@@ -210,6 +207,41 @@ fn timing_is_opt_in_and_never_presented_as_a_partition() {
     ]);
     assert_eq!(stdout(&plain_json), stdout(&timed_json));
     assert!(!stdout(&timed_json).contains("decode "));
+}
+
+#[test]
+fn batch_timing_labels_summed_item_spans_and_keeps_them_closed() {
+    let first = fixture("edge_cases.wav");
+    let second = fixture("tiny_duration.wav");
+    let output = run([
+        "batch".as_ref(),
+        "--timing".as_ref(),
+        first.as_os_str(),
+        second.as_os_str(),
+    ]);
+
+    assert_code(&output, 0);
+    let output = stdout(&output);
+    for role in ["decode ", "analysis "] {
+        let line = output
+            .lines()
+            .find(|line| line.trim_start().starts_with(role))
+            .unwrap_or_else(|| panic!("timed batch should report {role}: {output}"));
+        assert!(line.contains("active total "), "{line}");
+        assert!(line.contains("other total "), "{line}");
+        assert!(line.contains("(item spans "), "{line}");
+        assert_eq!(
+            parse_role_seconds(line, "active total ") + parse_role_seconds(line, "other total "),
+            parse_role_seconds(line, "(item spans "),
+            "the displayed aggregate must close at its printed precision: {line}"
+        );
+    }
+    assert!(output.contains("each line sums per-item spans"), "{output}");
+    assert!(
+        output.contains("item spans and the two roles may overlap"),
+        "{output}"
+    );
+    assert!(!output.contains("each line splits that role's own span"));
 }
 
 #[test]

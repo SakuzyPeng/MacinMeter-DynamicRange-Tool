@@ -308,8 +308,10 @@ impl Application {
     /// Run one batch and also report the totals its lanes accumulated.
     ///
     /// File lanes and decode/analysis roles may overlap when the granted plan
-    /// and selected routes permit it. The totals also omit other work, so they
-    /// do not partition the batch's own elapsed time.
+    /// and selected routes permit it. `PhaseTimings` therefore contains sums of
+    /// item-level spans, not batch-global first-to-last windows. Same-role item
+    /// spans may overlap as well, and the totals omit other work, so they do not
+    /// partition the batch's own elapsed time.
     pub fn run_batch_timed(
         &self,
         request: BatchRequest,

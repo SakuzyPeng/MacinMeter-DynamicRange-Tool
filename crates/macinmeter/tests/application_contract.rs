@@ -63,6 +63,8 @@ fn timing_is_opt_in_and_leaves_the_report_untouched() {
         .expect("the fixture should batch timed");
     assert!(batch_phases.decode() > std::time::Duration::ZERO);
     assert!(batch_phases.analysis() > std::time::Duration::ZERO);
+    assert!(batch_phases.decode_span() >= batch_phases.decode());
+    assert!(batch_phases.analysis_span() >= batch_phases.analysis());
 }
 
 #[test]
@@ -90,6 +92,8 @@ fn timed_batch_keeps_phase_work_from_a_failed_item() {
         phases.analysis() > std::time::Duration::ZERO,
         "the analyzed prefix before the integrity failure must be retained: {phases:?}"
     );
+    assert!(phases.decode_span() >= phases.decode(), "{phases:?}");
+    assert!(phases.analysis_span() >= phases.analysis(), "{phases:?}");
 }
 
 fn assert_only_partial_window_warning(warnings: &[String]) {

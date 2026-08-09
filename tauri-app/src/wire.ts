@@ -214,6 +214,7 @@ export type AnalysisEvent =
 /// cannot be part of a document two runs must serialize identically.
 export type JobTiming = {
   jobId: string;
+  batch: boolean;
   decodeMs: number;
   decodeSpanMs: number;
   analysisMs: number;

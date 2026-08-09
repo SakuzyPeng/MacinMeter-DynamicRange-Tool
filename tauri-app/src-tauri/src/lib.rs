@@ -128,17 +128,24 @@ struct JobEvent {
 #[serde(rename_all = "camelCase")]
 struct JobTiming {
     job_id: String,
+    batch: bool,
     decode_ms: f64,
     decode_span_ms: f64,
     analysis_ms: f64,
     analysis_span_ms: f64,
 }
 
-fn emit_timing(window: &tauri::Window, job_id: &str, timings: macinmeter::PhaseTimings) {
+fn emit_timing(
+    window: &tauri::Window,
+    job_id: &str,
+    batch: bool,
+    timings: macinmeter::PhaseTimings,
+) {
     let _ = window.emit(
         "analysis-timing",
         JobTiming {
             job_id: job_id.to_owned(),
+            batch,
             decode_ms: timings.decode().as_secs_f64() * 1_000.0,
             decode_span_ms: timings.decode_span().as_secs_f64() * 1_000.0,
             analysis_ms: timings.analysis().as_secs_f64() * 1_000.0,
@@ -183,7 +190,7 @@ async fn run_analysis(
         let (envelope, timings) =
             execute_analysis(application_job, request.path, request.timing, &sink);
         if let Some(timings) = timings {
-            emit_timing(&window, &job_id, timings);
+            emit_timing(&window, &job_id, false, timings);
         }
         drop(active_job);
         envelope
@@ -260,7 +267,7 @@ async fn run_batch(
         let envelope = if request.timing {
             match application_job.run_batch_timed(batch_request, &sink) {
                 Ok((report, timings)) => {
-                    emit_timing(&window, &job_id, timings);
+                    emit_timing(&window, &job_id, true, timings);
                     WireEnvelope::batch(report)
                 }
                 Err(error) => WireEnvelope::error(error),

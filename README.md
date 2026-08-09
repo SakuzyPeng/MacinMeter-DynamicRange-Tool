@@ -130,14 +130,21 @@ Progress for that command is written separately to stderr.
   analysis active 0.203 s · other 0.032 s (span 0.235 s)
   ```
 
-  A role's span runs from its first activity to its last, and `active + other`
-  reconstructs exactly that span. **That single span is all these numbers
-  partition.** `other` is whatever else filled the role's window: handing blocks
-  off, emitting progress, and on a route where the two never overlapped, the
-  other role's work. **The two spans may overlap each other, and by how much is
-  not recoverable from these numbers** — the total length of two sets of
-  intervals does not determine their intersection. So they may not be added
-  together, read as percentages of elapsed, or inverted into a serial fraction.
+  For one file, a role's span runs from its first activity to its last, and
+  `active + other` reconstructs exactly that span, including at the displayed
+  millisecond precision. **That single span is all these numbers partition.**
+  `other` is unclassified time outside that role's measured calls: it can
+  include block hand-off, progress, the other role on a serial route, and host
+  scheduling. It does not by itself identify a bottleneck. **The two spans may
+  overlap each other, and by how much is not recoverable from these numbers** —
+  the total length of two sets of intervals does not determine their
+  intersection. So they may not be added together, read as percentages of
+  elapsed, or inverted into a serial fraction.
+
+  Batch output instead labels `active total`, `other total`, and `item spans`.
+  These are sums of the per-item values, not one batch-global first-to-last
+  span. File lanes can make item spans overlap even within the same role, so the
+  item-span total may exceed batch elapsed time.
 
   Every measured interval reads the clock at its start and stop: an ordinary
   data block costs two reads for decode and two for analysis. That is why timing

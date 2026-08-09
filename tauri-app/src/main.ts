@@ -606,24 +606,35 @@ const renderPhaseTimings = (): void => {
     phaseTimings.textContent = "";
     return;
   }
-  const seconds = (ms: number): string => (ms / 1000).toFixed(3);
-  // `other` is the rest of that role's own window: the hand-off, progress, and
-  // on a route that never overlapped, the other role's work.
-  const other = (activeMs: number, spanMs: number): string =>
-    seconds(Math.max(0, spanMs - activeMs));
+  const seconds = (roundedMs: number): string =>
+    (roundedMs / 1000).toFixed(3);
+  // Round the two displayed endpoints before deriving `other`. Rounding all
+  // three independently can visibly turn an exact 1 + 1 = 2 partition into
+  // 1 + 1 = 1 at millisecond precision.
+  const roleValues = (
+    activeMs: number,
+    spanMs: number,
+  ): Record<string, string> => {
+    const active = Math.round(activeMs);
+    const span = Math.round(spanMs);
+    return {
+      active: seconds(active),
+      other: seconds(Math.max(0, span - active)),
+      span: seconds(span),
+    };
+  };
+  const batch = lastPhaseTimings.batch;
   phaseTimings.hidden = false;
   phaseTimings.textContent = [
-    t("status.phaseDecode", {
-      active: seconds(lastPhaseTimings.decodeMs),
-      other: other(lastPhaseTimings.decodeMs, lastPhaseTimings.decodeSpanMs),
-      span: seconds(lastPhaseTimings.decodeSpanMs),
-    }),
-    t("status.phaseAnalysis", {
-      active: seconds(lastPhaseTimings.analysisMs),
-      other: other(lastPhaseTimings.analysisMs, lastPhaseTimings.analysisSpanMs),
-      span: seconds(lastPhaseTimings.analysisSpanMs),
-    }),
-    t("status.phaseCaveat"),
+    t(
+      batch ? "status.phaseBatchDecode" : "status.phaseDecode",
+      roleValues(lastPhaseTimings.decodeMs, lastPhaseTimings.decodeSpanMs),
+    ),
+    t(
+      batch ? "status.phaseBatchAnalysis" : "status.phaseAnalysis",
+      roleValues(lastPhaseTimings.analysisMs, lastPhaseTimings.analysisSpanMs),
+    ),
+    t(batch ? "status.phaseBatchCaveat" : "status.phaseCaveat"),
   ].join("\n");
 };
 

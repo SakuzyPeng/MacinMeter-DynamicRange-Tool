@@ -130,18 +130,24 @@ impl ApplicationPerformanceProbe {
 /// How long decode and analysis each occupied, for a caller that asked.
 ///
 /// These are accumulated wall intervals for two roles. Depending on the route
-/// and the granted plan, those roles may run serially or overlap. They also
-/// omit setup, probing, hand-off, progress, and report construction, so they do
-/// **not** partition elapsed time: their sum may fall below or exceed it. A
-/// caller that has not opted in receives zeroes, because collection is what
-/// costs something, not reporting.
+/// and the granted plan, those roles may run serially or overlap. The active
+/// totals omit setup, probing, hand-off, progress, and report construction, so
+/// they do **not** partition elapsed time: their sum may fall below or exceed
+/// it. A caller that has not opted in receives zeroes, because collection is
+/// what costs something, not reporting.
 ///
-/// Each role additionally reports its own span, from its first activity to its
-/// last. `span - active` **is** an exact partition of that one span, which is
-/// the strongest statement these measurements support: how much of one role's
-/// window it spent working. Two roles' spans may still overlap each other, and
-/// the intersection is not recoverable from these totals — the sum of two
-/// interval sets does not determine their intersection.
+/// For one file, each role additionally reports its own span, from its first
+/// activity to its last. `span - active` **is** an exact partition of that one
+/// span, which is the strongest statement these measurements support: how much
+/// of one role's window it spent inside the measured operation. Two roles'
+/// spans may still overlap each other, and the intersection is not recoverable
+/// from these totals — the sum of two interval sets does not determine their
+/// intersection.
+///
+/// A timed batch returns saturating sums of its item-level active times and
+/// item-level spans. Those span totals preserve the same arithmetic per item,
+/// but they are not batch-global first-to-last windows: items on different
+/// lanes may overlap even within the same role.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PhaseTimings {
     decode: Duration,
@@ -158,9 +164,11 @@ impl PhaseTimings {
         self.decode
     }
 
-    /// From the first block read to the last, including whatever the producing
-    /// thread did in between: handing blocks off, emitting progress, and on a
-    /// route that never overlapped, the analysis itself.
+    /// For one file, from the first block read to the last, including whatever
+    /// the producing thread did in between: handing blocks off, emitting
+    /// progress, and on a route that never overlapped, the analysis itself. A
+    /// batch returns the sum of these item-level spans, not one batch-global
+    /// span.
     pub const fn decode_span(self) -> Duration {
         self.decode_span
     }
@@ -170,9 +178,12 @@ impl PhaseTimings {
         self.analysis
     }
 
-    /// From the first push to the end of the final drain. On the overlapped
-    /// hand-off the remainder of this span is time the analyzer had no block to
-    /// work on, which is what makes decode the limit rather than analysis.
+    /// For one file, from the first analyzer operation to the last recorded
+    /// analyzer operation. A successful stream normally ends at the final
+    /// drain; a failed batch item may end at its last push or failed operation.
+    /// The remainder is unclassified wall time outside analyzer calls and does
+    /// not by itself identify a bottleneck. A batch returns the sum of these
+    /// item-level spans, not one batch-global span.
     pub const fn analysis_span(self) -> Duration {
         self.analysis_span
     }
@@ -181,9 +192,10 @@ impl PhaseTimings {
 /// Cross-lane totals for a batch.
 ///
 /// Lanes add once per item, not once per block, so the shared counters stay
-/// off the hot path even while collection is on. Items on different lanes may
-/// overlap, which is one more reason these totals do not partition the batch's
-/// elapsed time.
+/// off the hot path even while collection is on. The span counters are sums of
+/// item-level spans rather than batch-global first-to-last windows. Items on
+/// different lanes may overlap even within one role, which is one more reason
+/// these totals do not partition the batch's elapsed time.
 #[derive(Debug, Default)]
 pub(crate) struct SharedPhaseTimings {
     decode_ns: AtomicU64,
