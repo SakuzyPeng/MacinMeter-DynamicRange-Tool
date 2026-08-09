@@ -1,77 +1,110 @@
 # MacinMeter 0.3.0 release draft / 发布草案
 
-> Draft only. No tag, GitHub Release, signed artifact, or notarized build has
-> been created. / 仅为草案；尚未创建 tag、GitHub Release、签名制品或公证构建。
+> Source for the GitHub release description. Keep it readable by someone who
+> has just found this page and wants to measure a file. /
+> GitHub release 说明的来源。写给刚找到这个页面、只想测一个文件的人。
 
 ## English
 
-MacinMeter 0.3.0 adds a constrained, stable in-process MP4/M4A + ALAC route.
+MacinMeter measures the dynamic range (DR) of audio files, entirely on your own
+machine.
 
-Highlights:
+**New in 0.3.0: Apple Lossless.** `.m4a` and `.mp4` files containing Apple
+Lossless audio can now be analyzed, alongside the existing WAV, FLAC, and AIFF
+support. This release is also the first to publish Windows builds.
 
-- analyzes non-fragmented, audio-only `.m4a` and `.mp4` files containing one
-  ALAC compatible-version-0 track;
-- supports 16- and 24-bit ALAC with 1–8 standard-layout channels;
-- probes ISO BMFF structures before decoder creation and cross-checks the ALAC
-  cookie, sample entry, media timing, sample tables, backend codec identity,
-  sample rate, and exact decoded frame count;
-- adds `.m4a` and `.mp4` to capability-driven directory discovery;
-- adds bounded packet-level decoding for the ALAC route and for FLAC streams
-  whose packet geometry fits the granted reservation, under a single
-  application-owned worker and memory plan; a report and
-  its decoded PCM are identical whatever worker count a host grants, and
-  decode and analysis overlap on a permit the route left unspent, and a batch
-  runs its items across file lanes derived from that same plan while a single
-  file keeps the whole decoder; window-level parallelism remains unimplemented.
-  Batch progress lines now interleave across lanes, each naming the item it
-  belongs to;
-- retains the in-process Symphonia implementation, finite interleaved `f64`,
-  the single `Application` façade, and the fixed analysis rules;
-- upgrades the shared CLI/Tauri `WireEnvelope` to schema v4 for the new
-  `mp4` container and `alac` codec identifiers.
+### Download
 
-The first stable slice does not include AAC, fragmented MP4, video or extra
-tracks, multiple audio tracks, cropped edit lists, ALAC 20/32-bit, nonstandard
-channel layouts, CAF/raw ALAC, AIFC, resampling, or an FFmpeg runtime. FFmpeg
-8.0.1 is used only to regenerate the committed synthetic ALAC corpus.
+| Your system | File |
+| --- | --- |
+| macOS on Apple Silicon (M1 or newer), macOS 11 or later | `macinmeter-gui-0.3.0-aarch64-apple-darwin.dmg` |
+| Windows, 64-bit | `macinmeter-gui-0.3.0-x86_64-pc-windows-msvc-setup.exe` |
 
-The 0.3.0 release contains Apple Silicon macOS 11.0+ and Windows x64 slices,
-each with a CLI archive and GUI installer (DMG on macOS, NSIS on Windows). Both
-GUI artifacts are unsigned; the macOS build is also unnotarized. Gatekeeper may
-require an explicit open, and SmartScreen may show an unknown-publisher
-warning. There is no Intel/universal macOS, Windows ARM64/32-bit, or Linux GUI
-artifact. Checksums and artifact identities will be added only after both
-platform candidates are staged from the same source commit and verified.
+The `macinmeter-cli-0.3.0-…` archives contain the command-line tool on its own.
+Its command is `mdrmeter`.
+
+### Your system will warn you the first time
+
+**This is expected.** These files are not code-signed:
+
+- **macOS** may refuse to open the app. Right-click it, choose **Open**, and
+  confirm. Once is enough.
+- **Windows** may show "Windows protected your PC". Click **More info**, then
+  **Run anyway**.
+
+Signing requires a certificate issued to a named individual, and that name is
+then embedded in every published file. This project is maintained by one person
+who would rather not attach their legal name to every download, so neither
+platform is signed. Building from source avoids this entirely.
+
+### Also in this release
+
+- The command-line tool is now called `mdrmeter` (it was `macinmeter`), so the
+  name says what it measures. Shell completions are included for bash, zsh,
+  fish, PowerShell, and elvish: `mdrmeter completions zsh`.
+- Reports show how long the run took and how much faster than real time it was,
+  and `--timing` breaks that into decoding and analysis.
+- Reports now warn — without changing any number — when a file is shorter than
+  one analysis window, when a multichannel file's speaker layout is unknown so
+  the track value may include an LFE channel, and when silent channels count as
+  DR0.
+- Several files that were previously rejected with an unhelpful message now
+  either work or explain themselves: RF64/BW64 files are named rather than
+  called "not a WAV", files with more channels than the decoder supports say so,
+  and non-Apple-Lossless `.mp4` files report the actual codec instead of blaming
+  their edit list.
+- The desktop app supports zooming, and its text is larger and more consistent.
+
+### Not included
+
+AAC, MP3, Ogg, Opus, DSD, and several less common variants of the supported
+formats are still unsupported, and MacinMeter says so rather than converting or
+resampling. There are no Intel Mac, ARM64 Windows, or Linux packages. The
+[format guide](https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool/blob/v0.3.0/docs/SUPPORTED_FORMATS.md)
+lists the exact rules.
 
 ## 中文
 
-MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路径。
+MacinMeter 用来测量音频文件的动态范围（DR），完全在你自己的机器上运行。
 
-主要变化：
+**0.3.0 新增：Apple Lossless。** 现在可以分析包含 Apple Lossless 音频的 `.m4a` 与
+`.mp4` 文件，此外原有的 WAV、FLAC、AIFF 支持不变。本版本也是第一个提供 Windows
+构建的版本。
 
-- 分析仅包含一条 ALAC compatible-version-0 音轨的非 fragmented、纯音频 `.m4a`
-  与 `.mp4` 文件；
-- 支持 16/24-bit、1–8 个标准布局声道；
-- 在创建 decoder 前首检 ISO BMFF，并交叉核对 ALAC cookie、sample entry、媒体
-  时序、sample tables、backend codec 身份、采样率和最终精确解码帧数；
-- capability 驱动的目录发现新增 `.m4a` 与 `.mp4`；
-- 在唯一一份 application 自有 worker 与内存计划下，为 ALAC route 以及 packet 几何能落入已授予
-  reservation 的 FLAC 流启用有界 packet 级解码；无论宿主授予多少 worker，报告与
-  解码 PCM 完全相同；解码与分析在 route 未花掉的 permit 上重叠；批量按同一 plan
-  推导的 file lane 并行处理条目，而单个文件仍独占整个解码器；窗口级并行仍未实现。
-  批量进度行现在跨 lane 交错，每行标明所属条目；
-- 保持进程内 Symphonia 实现、有限交错 `f64`、唯一 `Application` façade 和固定
-  分析规则；
-- 共享 CLI/Tauri `WireEnvelope` 因新增 `mp4` container 与 `alac` codec 标识升级
-  到 schema v4。
+### 下载
 
-首批稳定范围不包含 AAC、fragmented MP4、视频或额外 track、多音轨、裁剪 edit
-list、ALAC 20/32-bit、非标准声道布局、CAF/raw ALAC、AIFC、重采样或 FFmpeg
-runtime。FFmpeg 8.0.1 只用于再生成仓库提交的合成 ALAC 语料。
+| 你的系统 | 文件 |
+| --- | --- |
+| macOS，Apple Silicon（M1 及更新），macOS 11 或更高 | `macinmeter-gui-0.3.0-aarch64-apple-darwin.dmg` |
+| Windows 64 位 | `macinmeter-gui-0.3.0-x86_64-pc-windows-msvc-setup.exe` |
 
-0.3.0 同时包含 Apple Silicon macOS 11.0+ 与 Windows x64 slice，每个平台各有 CLI
-archive 与 GUI installer（macOS 为 DMG，Windows 为 NSIS）。两个 GUI 制品都未签名，
-macOS 构建也未公证；Gatekeeper 可能要求显式打开，SmartScreen 可能显示未知发布者。
-不提供 Intel/universal macOS、Windows ARM64/32-bit 或 Linux GUI 制品。只有两个平台
-从同一个 source commit 完成 candidate staging 与验证后，才会把校验和及制品身份补入
-正式发布材料。
+`macinmeter-cli-0.3.0-…` 压缩包里是单独的命令行工具，命令名为 `mdrmeter`。
+
+### 首次打开时系统会拦一下
+
+**这是正常的。** 这些文件没有做代码签名：
+
+- **macOS** 可能拒绝打开。在应用上点右键，选择**打开**，再确认一次即可。
+- **Windows** 可能出现「Windows 已保护你的电脑」。点**更多信息**，再点**仍要运行**。
+
+做签名需要一张颁发给具体个人的证书，而那个姓名会被嵌进每一个发布的文件。本项目由
+一个人维护，不希望把法定姓名附在每份下载上，所以两个平台都不签名。从源码构建则完全
+不涉及这个问题。
+
+### 本版本的其他变化
+
+- 命令行工具改名为 `mdrmeter`（原为 `macinmeter`），让名字说明它测的是什么。附带
+  bash、zsh、fish、PowerShell、elvish 的补全：`mdrmeter completions zsh`。
+- 报告会显示本次运行耗时以及相当于实时的多少倍；`--timing` 可进一步拆出解码与分析。
+- 报告会在**不改变任何数字**的前提下给出提示：文件短于一个分析窗口、多声道文件的
+  声道布局未知因而整轨数值可能包含 LFE、以及静音声道按 DR0 计入。
+- 一些此前被无用信息拒绝的文件，现在要么可用、要么说清了原因：RF64/BW64 会被点名，
+  而不是被说成「不是 WAV」；声道数超出解码器支持范围会直接说明；非 Apple Lossless
+  的 `.mp4` 会报出真正的编码格式，而不是归咎于 edit list。
+- 桌面应用支持缩放，文字更大也更统一。
+
+### 不包含
+
+AAC、MP3、Ogg、Opus、DSD，以及上述格式中一些较少见的变体仍然不支持；MacinMeter 会
+直接说明，而不会转换或重采样。不提供 Intel Mac、ARM64 Windows 或 Linux 的安装包。
+完整规则见[格式指南](https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool/blob/v0.3.0/docs/SUPPORTED_FORMATS_CN.md)。

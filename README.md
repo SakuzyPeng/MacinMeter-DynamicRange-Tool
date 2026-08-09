@@ -2,100 +2,60 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-MacinMeter is an offline, local-first audio dynamic-range (DR) analyzer. It
-reports per-channel and per-track DR values for supported WAV, FLAC, AIFF, and
-MP4/M4A ALAC files. The command-line tool, Tauri desktop frontend, and Rust API
-all use the same streaming analysis engine.
+MacinMeter measures the **dynamic range (DR)** of audio files. It runs entirely
+on your machine — nothing is uploaded, and no network connection is used.
 
-The analysis algorithm was reconstructed from one fixed `foo_dr_meter 1.0.8
-x64` target. Recorded projections have zero differences on the fixed
-conformance corpus; the exact inputs, fields, and runtime boundary are listed
-in the accuracy section below.
+It reads WAV, FLAC, AIFF, and Apple Lossless (`.m4a` / `.mp4`) files and reports
+a DR value for each channel and one for the track as a whole. There is a
+command-line tool and a desktop app; both give the same numbers.
 
-## Supported files
+## Download
 
-| Container | Current stable support |
+Get the latest build from the [releases page](../../releases/latest).
+
+| Your system | File |
 | --- | --- |
-| RIFF/WAVE, classic or constrained WAVE_FORMAT_EXTENSIBLE | 8/16/24/32-bit integer PCM; IEEE 32/64-bit float |
-| native FLAC | FLAC with a declared nonzero total sample count |
-| AIFF | 8/16/24/32-bit integer PCM |
-| non-fragmented MP4/M4A | ALAC version 0, 16/24-bit, 1–8 standard-layout channels |
+| macOS on Apple Silicon (M1 or newer), macOS 11 or later | `macinmeter-gui-…-aarch64-apple-darwin.dmg` |
+| Windows, 64-bit | `macinmeter-gui-…-x86_64-pc-windows-msvc-setup.exe` |
 
-An explicit file path is probed by content and may use any extension. Folder
-scans look for `.wav`, `.wave`, `.flac`, `.aif`, `.aiff`, `.m4a`, and `.mp4`;
-a supported file with another extension can still be analyzed by passing its
-path directly.
-Product analysis accepts up to 64 channels, while the current Symphonia WAV
-backend represents 1–26 channels for both classic and WAVE_FORMAT_EXTENSIBLE
-input. The constrained Extensible route retains an unknown channel layout; the
-format guide records its exact valid-bit and mask rules.
+The `macinmeter-cli-…` archives contain the command-line tool on its own.
 
-Some files with familiar extensions use variants that are not available yet,
-including padded or unspecified-valid-bit WAVE_FORMAT_EXTENSIBLE, Extensible
-streams above 26 channels, RF64/BW64, AIFC, Ogg FLAC, fragmented MP4, and MP4
-with video or extra tracks. AAC, MP3, ALAC 20/32-bit or nonstandard-layout
-variants, Vorbis, Opus, and DSD are unavailable. MacinMeter reports these as
-unsupported; it does not invoke FFmpeg or silently resample or preprocess them.
-The [format guide](docs/SUPPORTED_FORMATS.md) contains the exact route details.
+### Your system will warn you the first time
 
-## Installation
+**This is expected.** The downloads are not code-signed, so:
 
-Building from source currently uses Rust 1.88 or later and Cargo:
+- **macOS** may refuse to open the app. Right-click it and choose **Open**, then
+  confirm. You only need to do this once.
+- **Windows** may show a blue "Windows protected your PC" screen. Click **More
+  info**, then **Run anyway**.
 
-```bash
-cargo build --locked --release -p macinmeter-cli
-```
+Signing would require a certificate issued to a named individual, and that name
+would then be embedded in every file published here. This project is maintained
+by one person who would rather not attach their legal name to every download, so
+neither platform is signed. If you would rather not accept that trade, you can
+[build from source](docs/INTERNALS.md#building-from-source) instead.
 
-The CLI is written to `target/release/mdrmeter` on Unix-like hosts and
-`target/release/mdrmeter.exe` on Windows.
+You can check that a download is intact using the `SHA256SUMS` file on the
+release page.
 
-## Command-line use
+## Using the desktop app
 
-The CLI is organized around explicit commands:
+Drag files or a folder onto the window, or use the buttons to pick them, then
+press Analyze. Results can be copied as Markdown or exported as JSON, PNG, or
+SVG. The interface is available in English and Chinese.
 
-```text
-mdrmeter analyze FILE [--format human|json] [--output PATH]
-mdrmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
-mdrmeter completions SHELL
-```
-
-For example:
+## Using the command line
 
 ```bash
 mdrmeter analyze "01 - Song.flac"
 mdrmeter batch "My Album/" --recursive
 ```
 
-`batch` reports files in stable input order, whatever order they finish in. A
-failed item does not prevent later items from running. It produces independent
-track reports and does not implicitly calculate an album DR. Progress lines on
-stderr interleave across items and each one names the item it belongs to.
+`batch` always lists files in the order you gave them, whatever order they
+finish in, and one unreadable file does not stop the rest. It reports each track
+on its own and does not compute an album DR.
 
-Shell completions are generated from the parser itself, so they always match the
-build that printed them:
-
-```bash
-mdrmeter completions zsh > "${fpath[1]}/_mdrmeter"          # zsh
-mdrmeter completions bash > ~/.local/share/bash-completion/completions/mdrmeter
-mdrmeter completions fish > ~/.config/fish/completions/mdrmeter.fish
-```
-
-`bash`, `zsh`, `fish`, `powershell` and `elvish` are available. The command only
-writes to stdout; where a shell reads completions from is left to the caller.
-
-Some work runs in parallel internally, each axis enabled only after passing its
-own correctness, resource, and performance gates. Route-specific packet
-decoding, decode-analysis overlap, and batch file lanes are enabled in 0.3.0;
-window-level parallelism is not implemented. **A report and its decoded audio do
-not depend on any of this**, so results are identical whichever path runs. There
-is no public thread, batch-size, or queue control, and no throughput figure is
-published.
-
-The following is real stdout generated from a committed synthetic fixture:
-
-```bash
-target/release/mdrmeter analyze tests/fixtures/edge_cases.wav
-```
+Real output from a test file included in this repository:
 
 ```text
 MacinMeter
@@ -112,260 +72,98 @@ Report levels: peak 0.00 dBFS, RMS -2.43 dBFS
 Elapsed: 0.002 s (2929.6x realtime)
 ```
 
-Progress for that command is written separately to stderr.
+That file is a synthetic test fixture, not an example of a real music release.
 
-### Reading the result
+Useful options:
 
-- `DR2` is the rounded track aggregate. Within this metric, a larger value
-  represents a larger ratio
-  between the selected peak and loud-window RMS. A high DR value does not by
-  itself mean that a recording sounds good. A very low value, however, is
-  often a warning sign of aggressive compression and is more likely to go
-  with a compromised master, even though genre and artistic intent still
-  matter.
-- Each `CH` line contains that channel's DR result, overall RMS, and the peak
-  selected by the DR state machine.
-- `Report levels` are whole-track report metrics. The report peak is distinct
-  from the selected DR peak.
-- dBFS uses normalized amplitude `1.0` as the 0 dB reference. Supported IEEE
-  float PCM may contain finite samples above that reference, so 0 dBFS is not a
-  universal clipping boundary.
-- Silent channels remain visible and contribute numeric DR0; channels with
-  insufficient data are explicitly excluded.
-- `Elapsed` is what this run cost on this machine, and the realtime multiple is
-  decoded audio seconds over that wall time. Both describe the host and the
-  moment rather than the analysis, so they appear only in human output; JSON
-  stays a pure function of the input and is byte-identical between runs.
-- `--timing` adds a line per role:
+| Option | Effect |
+| --- | --- |
+| `--format json` | machine-readable output instead of text |
+| `--output PATH` | write the report to a file instead of the screen |
+| `--recursive` | with `batch`, also search inside subfolders |
+| `--timing` | also show how long decoding and analysis each took |
 
-  ```text
-  decode   active 0.230 s · other 0.005 s (span 0.235 s)
-  analysis active 0.203 s · other 0.032 s (span 0.235 s)
-  ```
+Shell completions are available for bash, zsh, fish, PowerShell, and elvish:
 
-  For one file, a role's span runs from its first activity to its last, and
-  `active + other` reconstructs exactly that span, including at the displayed
-  millisecond precision. **That single span is all these numbers partition.**
-  `other` is unclassified time outside that role's measured calls: it can
-  include block hand-off, progress, the other role on a serial route, and host
-  scheduling. It does not by itself identify a bottleneck. **The two spans may
-  overlap each other, and by how much is not recoverable from these numbers** —
-  the total length of two sets of intervals does not determine their
-  intersection. So they may not be added together, read as percentages of
-  elapsed, or inverted into a serial fraction.
+```bash
+mdrmeter completions zsh > "${fpath[1]}/_mdrmeter"
+```
 
-  Batch output instead labels `active total`, `other total`, and `item spans`.
-  These are sums of the per-item values, not one batch-global first-to-last
-  span. File lanes can make item spans overlap even within the same role, so the
-  item-span total may exceed batch elapsed time.
+## Reading the result
 
-  Every measured interval reads the clock at its start and stop: an ordinary
-  data block costs two reads for decode and two for analysis. That is why timing
-  is opt-in; without the flag the analyzer performs none of these per-block
-  clock reads. The result is identical either way.
+- **`DR2`** is the track's DR value. A larger number means a larger gap between
+  the peaks and the loud parts' average level. A high DR value does not by
+  itself mean a recording sounds good, but a very low one often indicates heavy
+  compression and a more likely compromised master. Genre and artistic intent
+  still matter.
+- Each **`CH`** line is one channel's own DR, its overall RMS, and the peak the
+  DR calculation selected.
+- **`Report levels`** are whole-track measurements. The peak reported there is a
+  different quantity from the selected DR peak above.
+- **dBFS** treats amplitude `1.0` as 0 dB. Floating-point audio can legitimately
+  contain samples above that, so 0 dBFS is not always a clipping point.
+- **Silent channels** stay visible and count as DR0. Channels with too little
+  data to measure are excluded and said to be excluded.
+- **`Elapsed`** and the realtime multiple describe this run on this machine, not
+  the analysis itself, so they appear only in the text output. JSON stays
+  identical between runs of the same file.
 
-The fixture above is designed for deterministic automated tests, not as an
-example of a typical music release.
+Some reports add warnings — for example when a file is shorter than one analysis
+window, or when a multichannel file's speaker layout is unknown and the track
+value may therefore include an LFE channel. These never change the numbers.
 
 ### Exit codes
 
 | Code | Meaning |
 | ---: | --- |
-| `0` | all requested analyses succeeded |
-| `1` | failure, no input, all batch items failed, or output-write failure |
-| `2` | invalid CLI arguments |
-| `3` | batch completed with both successes and failures |
+| `0` | everything analyzed successfully |
+| `1` | failure, no input, every batch item failed, or the report could not be written |
+| `2` | invalid command-line arguments |
+| `3` | batch finished with both successes and failures |
 | `130` | cancelled |
 
-### Saving and JSON
+## Which files work
 
-Without `--output`, the result stays on stdout and no report file is created.
-With an output path, the completed report atomically replaces that file.
-
-```bash
-mdrmeter analyze track.flac --format json
-mdrmeter analyze track.flac --format json --output track.json
-```
-
-JSON and Tauri use the same versioned schema-v4 `WireEnvelope`. The envelope
-contains `schemaVersion`, `toolVersion`, `kind`, and `data`, with no timestamp.
-Successful numeric fields are finite; values such as zero-amplitude dBFS are
-represented explicitly as `null` where appropriate. Stdout contains only the
-requested result while progress and diagnostics go to stderr.
-
-## Desktop GUI
-
-The repository includes a Tauri 2 desktop frontend:
-
-```bash
-cd tauri-app
-npm install
-npm run tauri dev
-```
-
-It calls the same `Application` façade and consumes the same wire schema as the
-CLI. Each job has its own cancellation token, while the shared application
-budget keeps top-level work bounded, with one active job at a time.
-
-The desktop interface supports whole-window file and directory drag-and-drop,
-multi-file and recursive directory discovery, bilingual Chinese/English UI,
-result search and precise-DR sorting, path hiding, and Markdown, JSON, PNG, or
-SVG export. Exported JSON is the exact shared `WireEnvelope`; presentation-only
-preferences never alter the analysis request or report.
-
-0.3.0 packages the CLI and the GUI for two platforms: Apple Silicon Macs
-running macOS 11.0 or newer, and Windows x64. Each platform is staged on its
-own host — a DMG on macOS, an NSIS installer on Windows — and both local
-staging and the bounded CI gate build and structurally verify the final
-artifact by opening it: the DMG is mounted and its `.app` inspected, and the
-installer is extracted outside the candidate directory and its
-`macinmeter-gui.exe` checked for an observed x86_64 PE machine, matching version
-resource, and unsigned Authenticode state. The outer installer must also be an
-unsigned PE.
-
-Neither package is signed. macOS has no Developer ID signature and no
-notarization, so it may require an explicit Open/Open Anyway confirmation;
-Windows has no Authenticode signature, so SmartScreen reports an unknown
-publisher. This is the same decision on both platforms rather than an omission
-on one: an individual code-signing certificate embeds the maintainer's legal
-name in every published artifact.
-
-Intel/universal macOS, ARM64 Windows, and Linux GUI packages are not part of
-the 0.3.0 release. The current packaging picture is summarized in
-[release and artifact status](docs/RELEASE.md).
-
-## Rust API
-
-The workspace's public façade is the `macinmeter` crate. It is not on crates.io
-yet, so depend on it by tag:
-
-```toml
-[dependencies]
-macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.0" }
-```
-
-The manifests are prepared for a registry release — the four library crates
-carry descriptions and pin their siblings to the workspace version — but
-publishing is deliberately deferred while the public surface is still settling.
-Releasing means uploading `macinmeter-domain`, `macinmeter-analysis`,
-`macinmeter-codecs`, then `macinmeter`, in that order: each one's dependencies
-must already be on the registry, so no dry run can verify the chain in advance.
-
-```rust
-use macinmeter::{AnalyzeRequest, Application};
-
-fn main() -> Result<(), macinmeter::AnalysisError> {
-    let application = Application::new();
-    let report = application.analyze_file(AnalyzeRequest::new("track.flac"))?;
-
-    if let Some(dr) = report.analysis().aggregates().track.rounded_dr {
-        println!("DR{dr}");
-    }
-    Ok(())
-}
-```
-
-Clones of one `Application` share a bounded top-level execution queue, which
-currently admits one active job; separately constructed `Application` values
-remain independent. Queue sizing is available through
-`Application::with_budget`. Internal workers stay inside that
-application-owned execution domain.
-
-`AnalyzerSession` is available for callers that already have finite,
-frame-aligned, interleaved `f64` PCM. `AlbumAggregator` is a separate numeric
-operation over track reports, with unweighted and decoded-duration weighting.
-Playlist grouping, metadata, footer rendering, and the rest of the album
-subsystem sit outside that numeric API.
-
-## Accuracy
-
-The current target is the fixed `foo_dr_meter 1.0.8 x64` binary identified by
-the `ff3556ad…` hash prefix. Against fixed recorded inputs, the repository
-contains the following bounded results:
-
-| Evidence | Recorded result |
+| Format | Supported |
 | --- | --- |
-| schema-v3 safe-master track DR, overall peak, overall RMS, and rendered duration | 39/39 each |
-| same run: channel DR and channel RMS | 62/62 each |
-| decoder-independent direct-PCM final-field projection | 0 differences on 39 fixed inputs |
-| isolated x64 analyzer-core run | all preregistered assertions met on 39 inputs |
-| numeric-boundary vectors for duration, weighting, and histogram endpoints | 24/24, 8/8, and 6/6 |
+| WAV | 8/16/24/32-bit integer, 32/64-bit floating point |
+| FLAC | native FLAC files |
+| AIFF | 8/16/24/32-bit integer |
+| Apple Lossless in `.m4a` / `.mp4` | 16/24-bit, 1–8 channels |
 
-The table describes one named target, corpus, set of fields, and runtime
-boundary. Arbitrary audio, x86 and other plugin versions, foobar2000 decoding,
-host and playlist behavior, metadata provenance, complete text rendering, and
-internal implementation-state identity all remain outside those observations.
+Folder scans look for `.wav`, `.wave`, `.flac`, `.aif`, `.aiff`, `.m4a`, and
+`.mp4`. A supported file with some other extension still works if you pass its
+path directly, because files are identified by content rather than by name.
 
-The supporting records are the
-[M4 evidence matrix](docs/M4_X64_NUMERIC_CLAIM_MATRIX.md),
-[M4 numeric-alignment report](docs/M4_X64_NUMERIC_ALIGNMENT_REPORT.md), and
-[algorithm specification](reference/specs/foo-dr-meter-1.0.8-candidate-v1.md).
+Not every file with these extensions will work. AAC, MP3, Ogg, Opus, and DSD are
+not supported at all, and some less common variants of the formats above are not
+either. MacinMeter says so plainly instead of guessing: it never converts,
+resamples, or falls back to another decoder. The [format
+guide](docs/SUPPORTED_FORMATS.md) lists the exact rules and every excluded
+variant.
 
-## Performance
+## How accurate is it
 
-Analysis is streaming: its analysis-state memory grows with channel count, not
-track duration. The published performance material is a set of local
-measurements rather than a universal throughput or memory figure.
+The DR algorithm was reconstructed from one specific program, `foo_dr_meter
+1.0.8 x64`, with the original author's permission. On a fixed set of recorded
+test inputs, MacinMeter's results match that program's exactly — 39 of 39 tracks
+and 62 of 62 channels, with no differences.
 
-M6 recorded release-worker measurements on one fixed Apple M4 Pro host,
-toolchain, generated corpus, and synthetic workload. The audio cases ran faster
-than real time on that host, and the accepted optimization reduced fixed
-8-/64-channel analyzer medians while preserving result fingerprints. Actual
-speed and memory use still vary with the machine, format, channel count, and
-input; the recorded figures are a local baseline rather than a prediction for
-another environment.
+That is a precise claim about a specific test set, not a promise about every
+file in the world. What was compared, and what was not, is listed in the
+[accuracy record](docs/INTERNALS.md#accuracy).
 
-The reproducible measurement scripts and their interpretation are documented
-in the [performance notes](docs/BENCHMARKS.md) and
-[M6 records](docs/performance/README.md).
+## More
 
-## Under the hood
+- [Format guide](docs/SUPPORTED_FORMATS.md) — exactly which files work and why
+- [Technical notes](docs/INTERNALS.md) — architecture, Rust API, accuracy
+  evidence, performance measurements
+- [Release and packaging status](docs/RELEASE.md)
+- [Legal notes](docs/LEGAL.md) and [third-party notices](THIRD_PARTY_NOTICES.md)
 
-MacinMeter 0.3.0 is a virtual Cargo workspace with one-way dependencies:
+MacinMeter is released under the [MIT License](LICENSE).
 
-```text
-macinmeter-domain
-├── macinmeter-analysis
-├── macinmeter-codecs
-└── macinmeter
-    ├── macinmeter-cli
-    └── macinmeter-gui
-```
-
-Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The current product
-has one analyzer implementation. Under one application-owned worker and memory
-plan it decodes the ALAC route and provably bounded FLAC streams with packet
-workers, overlaps decoding with analysis on a permit the route leaves unspent,
-and runs batch items across file lanes derived from that same plan; a single
-file receives the whole decoder, and window-level parallelism is not
-implemented. Results are identical whichever path runs: internal parallelism is
-bounded and deterministic, and is enabled one route and one axis at a time only
-after that axis has been shown not to change a result.
-
-Design history and deeper technical material live in:
-
-- [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
-- [architecture decision records](docs/adr/)
-- [supported formats](docs/SUPPORTED_FORMATS.md)
-- [performance notes](docs/BENCHMARKS.md)
-- [release and packaging notes](docs/RELEASE.md)
-
-## Reference work and attribution
-
-The current reference target is Janne Hyvärinen's `foo_dr_meter 1.0.8
-x64` component. Reverse-engineering that fixed target was performed with the
-author's permission. Private correspondence is not stored in the repository;
-only a [minimal public authorization summary](reference/authorization/README.md)
-is retained.
-
-Permission and attribution provide the legal and historical context for the
-research. Numerical claims come from the bounded records above. Historical
-M0/1.0.3 material is kept as a superseded archive, separate from the current
-target. Target identities, experiments, observations, specifications, and
-their limits are indexed under [`reference/`](reference/README.md).
-
-## License
-
-MacinMeter is released under the [MIT License](LICENSE). Related material is
-collected in the [legal notes](docs/LEGAL.md) and
-[third-party notices](THIRD_PARTY_NOTICES.md).
+The reference target is Janne Hyvärinen's `foo_dr_meter 1.0.8 x64` component.
+Reverse-engineering it was done with the author's permission; only a [minimal
+public authorization summary](reference/authorization/README.md) is kept in this
+repository.
