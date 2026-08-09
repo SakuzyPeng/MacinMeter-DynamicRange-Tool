@@ -1,5 +1,16 @@
 #![forbid(unsafe_code)]
 
+//! Valid stream, source, report and error types for the MacinMeter analyzer.
+//!
+//! The types here are constructors that refuse invalid state rather than
+//! containers that carry it: a [`StreamSpec`], [`PcmBlock`] or [`FiniteF64`]
+//! exists only if it was already checked. Layers above therefore do not
+//! re-validate, and an invalid combination has no representation to travel in.
+//!
+//! This crate is a dependency of the [`macinmeter`](https://docs.rs/macinmeter)
+//! facade and is published so those public types resolve; most callers want the
+//! facade instead.
+
 mod concurrency;
 mod error;
 mod model;

@@ -6,9 +6,12 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Streaming, format-independent dynamic-range analysis for MacinMeter."
+keywords = ["audio", "dynamic-range", "dr", "loudness", "dsp"]
+categories = ["multimedia::audio"]
 
 [dependencies]
-macinmeter-domain = { path = "../macinmeter-domain" }
+macinmeter-domain = { path = "../macinmeter-domain", version = "0.3.0" }
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -6,6 +6,9 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Command-line offline audio dynamic-range (DR) analyzer."
+keywords = ["audio", "dynamic-range", "dr", "loudness", "cli"]
+categories = ["multimedia::audio", "command-line-utilities"]
 
 [[bin]]
 name = "macinmeter"
@@ -14,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 ctrlc.workspace = true
-macinmeter = { path = "../../crates/macinmeter" }
+macinmeter = { path = "../../crates/macinmeter", version = "0.3.0" }
 serde_json.workspace = true
 
 [dev-dependencies]

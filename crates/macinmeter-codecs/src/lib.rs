@@ -1,5 +1,21 @@
 #![forbid(unsafe_code)]
 
+//! Content probing and the strict PCM source contract behind the stable routes.
+//!
+//! Every route is identified by content rather than by file extension, and each
+//! one is a decode path the product has explicitly accepted: WAV linear
+//! integer/IEEE float PCM, FLAC, AIFF integer PCM, and a constrained MP4/M4A
+//! ALAC route. Anything outside those is refused with a structured reason, not
+//! approximated.
+//!
+//! All routes present the same `Data / Eof / Error` boundary, deliver finite
+//! interleaved `f64`, and commit in input order, whether the route decodes
+//! serially or across bounded packet workers.
+//!
+//! This crate is a dependency of the [`macinmeter`](https://docs.rs/macinmeter)
+//! facade and is published so those public types resolve; most callers want the
+//! facade instead.
+
 mod capability;
 mod codec;
 mod container;

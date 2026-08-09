@@ -6,6 +6,9 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Valid stream, source, report and error types shared by the MacinMeter dynamic-range analyzer."
+keywords = ["audio", "dynamic-range", "dr", "loudness"]
+categories = ["multimedia::audio"]
 
 [dependencies]
 serde.workspace = true

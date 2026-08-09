@@ -193,6 +193,15 @@ def validate(root: Path) -> list[str]:
                         dependency_manifest in member_manifests,
                         f"{location} must point to another workspace member",
                     )
+                    # A registry refuses a path dependency without a version, so
+                    # publishing requires the version to be repeated here. That
+                    # duplicate is only safe while it cannot drift: a stale one
+                    # would resolve a released crate against the wrong sibling.
+                    require(
+                        specification.get("version") == version,
+                        f"{location} must carry `version = \"{version}\"` "
+                        "so a published crate resolves its workspace sibling",
+                    )
                     continue
 
                 require(
@@ -209,6 +218,15 @@ def validate(root: Path) -> list[str]:
         require(
             isinstance(package_name, str) and package_name,
             f"{relative_manifest}: package.name must be non-empty",
+        )
+        # A registry rejects an upload without one, and the field is the only
+        # description a consumer sees before reading any code. Requiring it of
+        # every member keeps a new crate from becoming the one that blocks a
+        # release at upload time.
+        description = package.get("description")
+        require(
+            isinstance(description, str) and description.strip(),
+            f"{relative_manifest}: package.description must be a non-empty string",
         )
 
     unused_dependencies = sorted(

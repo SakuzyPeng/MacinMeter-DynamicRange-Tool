@@ -6,6 +6,9 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Content probing and the strict PCM source contract behind MacinMeter's stable decode routes."
+keywords = ["audio", "wav", "flac", "aiff", "alac"]
+categories = ["multimedia::audio", "multimedia::encoding"]
 
 [features]
 # Hidden dev-only seam for local fuzz runners; never enabled by the product.
@@ -15,7 +18,7 @@ malformed-dev = []
 performance-probes = []
 
 [dependencies]
-macinmeter-domain = { path = "../macinmeter-domain" }
+macinmeter-domain = { path = "../macinmeter-domain", version = "0.3.0" }
 symphonia.workspace = true
 
 [dev-dependencies]

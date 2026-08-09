@@ -7,6 +7,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MacinMeter Dynamic Range GUI"
+# A Tauri application shell, not a reusable library. It bundles web assets
+# and platform webview glue, so it has nothing to offer a registry consumer.
+publish = false
 
 [lib]
 # Distinct from the binary target so Windows does not collide their debug
@@ -19,7 +22,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
-macinmeter = { path = "../../crates/macinmeter" }
+macinmeter = { path = "../../crates/macinmeter", version = "0.3.0" }
 serde.workspace = true
 tauri.workspace = true
 tauri-plugin-clipboard-manager.workspace = true

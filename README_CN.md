@@ -179,7 +179,18 @@ Developer ID 签名，也未经过 Apple 公证，因此 macOS 可能要求用�
 
 ## Rust API
 
-workspace 的公共门面是 `macinmeter` crate：
+workspace 的公共门面是 `macinmeter` crate。它尚未发布到 crates.io，请按 tag 依赖：
+
+```toml
+[dependencies]
+macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.0" }
+```
+
+manifest 已经为注册表发布做好准备 —— 四个库 crate 都带 description，并把同 workspace
+的兄弟依赖钉在 workspace 版本上 —— 但在公开面稳定之前，发布是刻意推迟的。真要发布时
+必须按 `macinmeter-domain`、`macinmeter-analysis`、`macinmeter-codecs`、`macinmeter`
+的顺序上传：每个 crate 的依赖都必须已经在注册表上，因此没有任何 dry run 能提前验证
+整条链路。
 
 ```rust
 use macinmeter::{AnalyzeRequest, Application};

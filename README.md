@@ -210,7 +210,20 @@ of the 0.3.0 release. The current packaging picture is summarized in
 
 ## Rust API
 
-The workspace's public façade is the `macinmeter` crate:
+The workspace's public façade is the `macinmeter` crate. It is not on crates.io
+yet, so depend on it by tag:
+
+```toml
+[dependencies]
+macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.0" }
+```
+
+The manifests are prepared for a registry release — the four library crates
+carry descriptions and pin their siblings to the workspace version — but
+publishing is deliberately deferred while the public surface is still settling.
+Releasing means uploading `macinmeter-domain`, `macinmeter-analysis`,
+`macinmeter-codecs`, then `macinmeter`, in that order: each one's dependencies
+must already be on the registry, so no dry run can verify the chain in advance.
 
 ```rust
 use macinmeter::{AnalyzeRequest, Application};

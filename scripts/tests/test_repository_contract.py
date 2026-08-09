@@ -53,6 +53,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Test GUI"
 
 [dependencies]
 serde.workspace = true
@@ -204,6 +205,84 @@ jobs:
 
         self.assertTrue(
             any("dependencies.serde must use" in error for error in self.errors())
+        )
+
+    def add_library_member(self, version: str | None) -> None:
+        """Give the fixture a second member that path-depends on the first."""
+        root_manifest = self.root / "Cargo.toml"
+        root_manifest.write_text(
+            root_manifest.read_text(encoding="utf-8").replace(
+                'members = ["tauri-app/src-tauri"]',
+                'members = ["tauri-app/src-tauri", "crates/test-lib"]',
+            ),
+            encoding="utf-8",
+        )
+        dependency = '{ path = "../../tauri-app/src-tauri"'
+        dependency += "" if version is None else f', version = "{version}"'
+        self.write(
+            "crates/test-lib/Cargo.toml",
+            f"""
+[package]
+name = "test-lib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Test library"
+
+[dependencies]
+test-gui = {dependency} }}
+""".lstrip(),
+        )
+
+    def test_accepts_an_internal_dependency_pinned_to_the_workspace_version(self) -> None:
+        self.add_library_member("0.2.0")
+
+        self.assertEqual(self.errors(), [])
+
+    def test_rejects_a_stale_internal_dependency_version(self) -> None:
+        # A registry refuses a path dependency with no version, so publishing
+        # forces the workspace version to be repeated here. That duplicate is
+        # only safe while it cannot drift: a stale one would make a published
+        # crate resolve an older sibling than it was built and tested against.
+        self.add_library_member("0.1.0")
+
+        self.assertTrue(
+            any(
+                "dependencies.test-gui must carry" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_an_internal_dependency_without_a_version(self) -> None:
+        self.add_library_member(None)
+
+        self.assertTrue(
+            any(
+                "dependencies.test-gui must carry" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_member_without_a_description(self) -> None:
+        manifest = self.root / "tauri-app/src-tauri/Cargo.toml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                'description = "Test GUI"\n', ""
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertTrue(
+            any(
+                "package.description must be a non-empty string" in error
+                for error in self.errors()
+            ),
+            self.errors(),
         )
 
     def test_rejects_mutating_builds_and_unsupported_workflow_triggers(self) -> None:

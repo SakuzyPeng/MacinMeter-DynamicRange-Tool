@@ -6,6 +6,9 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Offline audio dynamic-range (DR) analysis: the public file, batch and discovery facade."
+keywords = ["audio", "dynamic-range", "dr", "loudness", "analysis"]
+categories = ["multimedia::audio", "command-line-utilities"]
 
 [features]
 # Enable the non-default ADR-0014 measurement seams: codec attribution and the
@@ -14,9 +17,9 @@ repository.workspace = true
 performance-probes = ["macinmeter-codecs/performance-probes"]
 
 [dependencies]
-macinmeter-analysis = { path = "../macinmeter-analysis" }
-macinmeter-codecs = { path = "../macinmeter-codecs" }
-macinmeter-domain = { path = "../macinmeter-domain" }
+macinmeter-analysis = { path = "../macinmeter-analysis", version = "0.3.0" }
+macinmeter-codecs = { path = "../macinmeter-codecs", version = "0.3.0" }
+macinmeter-domain = { path = "../macinmeter-domain", version = "0.3.0" }
 serde.workspace = true
 walkdir.workspace = true
 
