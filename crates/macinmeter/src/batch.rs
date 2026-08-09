@@ -232,7 +232,7 @@ impl BatchRunner {
         } else {
             analyzer
         };
-        let timings = SharedPhaseTimings::default();
+        let timings = self.collect_timings.then(SharedPhaseTimings::default);
 
         // Discovery already fixed the input order, so an item's index names one
         // file no matter which lane produces it. Lanes claim by index rather
@@ -247,7 +247,7 @@ impl BatchRunner {
             claim: &claim,
             outcomes: &outcomes,
             stop: &stop,
-            timings: &timings,
+            timings: timings.as_ref(),
         };
 
         thread::scope(|scope| -> Result<(), AnalysisError> {
@@ -389,7 +389,9 @@ impl BatchRunner {
                 items,
                 summary,
             },
-            timings: timings.total(),
+            timings: timings
+                .as_ref()
+                .map_or_else(PhaseTimings::default, SharedPhaseTimings::total),
             #[cfg(feature = "performance-probes")]
             allocation,
         })
@@ -429,13 +431,16 @@ impl BatchRunner {
                 return;
             }
             let request = AnalyzeRequest { path: path.clone() };
-            let outcome = match analyzer.analyze_file_at_timed(request, index, control) {
-                Ok((report, item_timings)) => {
-                    shared.timings.add(item_timings);
-                    LaneOutcome::Finished(BatchItemOutcome::Success {
-                        report: Box::new(report),
-                    })
+            let analyzed = match shared.timings {
+                Some(timings) => {
+                    analyzer.analyze_file_at_with_timing_sink(request, index, control, timings)
                 }
+                None => analyzer.analyze_file_at(request, index, control),
+            };
+            let outcome = match analyzed {
+                Ok(report) => LaneOutcome::Finished(BatchItemOutcome::Success {
+                    report: Box::new(report),
+                }),
                 Err(error) if error.code == ErrorCode::Cancelled => LaneOutcome::Cancelled(error),
                 Err(error) => LaneOutcome::Finished(BatchItemOutcome::Failure { error }),
             };
@@ -479,7 +484,7 @@ struct LaneShared<'a> {
     claim: &'a AtomicUsize,
     outcomes: &'a [Mutex<Option<LaneOutcome>>],
     stop: &'a AtomicBool,
-    timings: &'a SharedPhaseTimings,
+    timings: Option<&'a SharedPhaseTimings>,
 }
 
 /// One item's result as its lane left it.

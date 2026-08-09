@@ -281,10 +281,11 @@ impl Application {
 
     /// Analyze one file and also report how long decode and analysis occupied.
     ///
-    /// Timing is opt-in per call because collecting it reads the clock once
-    /// per block on each side. An ordinary `analyze_file_with_control` reads no
-    /// clock at all, which keeps measurement runs observing the product rather
-    /// than the observation. The report itself is identical either way:
+    /// Timing is opt-in per call because every measured interval reads the
+    /// clock at its start and stop: an ordinary data block costs two reads for
+    /// decode and two for analysis. An ordinary `analyze_file_with_control`
+    /// reads no phase clock, which keeps measurement runs observing the product
+    /// rather than the observation. The report itself is identical either way:
     /// [`PhaseTimings`] never enters it or the wire schema.
     pub fn analyze_file_timed(
         &self,
@@ -306,9 +307,9 @@ impl Application {
 
     /// Run one batch and also report the totals its lanes accumulated.
     ///
-    /// Lanes decode concurrently with each other as well as with analysis, so
-    /// these totals may exceed the batch's own elapsed time by more than the
-    /// single-file case.
+    /// File lanes and decode/analysis roles may overlap when the granted plan
+    /// and selected routes permit it. The totals also omit other work, so they
+    /// do not partition the batch's own elapsed time.
     pub fn run_batch_timed(
         &self,
         request: BatchRequest,

@@ -82,5 +82,5 @@
   "md.error": "Error",
   "md.warnings": "Warnings",
   "btn.timing": "Timing",
-  "status.phases": "decode {{decode}} s · analysis {{analysis}} s — concurrent, so they overlap rather than partition the elapsed time"
+  "status.phases": "decode {{decode}} s · analysis {{analysis}} s — may overlap and omit other work, so they do not partition elapsed time"
 }

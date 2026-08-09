@@ -142,12 +142,13 @@ fn timing_is_opt_in_and_never_presented_as_a_partition() {
         .find(|line| line.trim_start().starts_with("decode "))
         .expect("--timing should report both roles")
         .to_owned();
-    // The wording is the load-bearing part. Two concurrent occupancies printed
-    // without it invite exactly the sum, percentage, and serial-fraction
-    // readings the intervals do not support.
+    // The wording is the load-bearing part. Two occupancies printed without it
+    // invite exactly the sum, percentage, and serial-fraction readings the
+    // intervals do not support, including on routes that stay serial.
     assert!(line.contains("analysis "), "{line}");
-    assert!(line.contains("concurrent"), "{line}");
-    assert!(line.contains("rather than partition"), "{line}");
+    assert!(line.contains("may overlap"), "{line}");
+    assert!(line.contains("omit other work"), "{line}");
+    assert!(line.contains("do not partition"), "{line}");
 
     // The result is the same document either way, and stays out of JSON.
     let plain_json = run([

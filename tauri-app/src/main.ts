@@ -92,8 +92,8 @@ let activeTotal = 1;
 const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
 let hidePath = false;
-// Off by default: collecting the split reads the clock once per block on each
-// side, and an ordinary run should not pay for observation it did not ask for.
+// Off by default: each interval reads the clock at both start and stop, and an
+// ordinary run should not pay for observation it did not ask for.
 let showTiming = false;
 let lastPhaseTimings: JobTiming | null = null;
 let sortMode: SortMode = "none";
@@ -189,6 +189,7 @@ const updateControls = (): void => {
   scanDirectoryButton.disabled = running;
   deepScanButton.disabled = running;
   clearButton.disabled = running;
+  showTimingButton.disabled = running;
   analyzeButton.disabled = !running && selectedInputs.length === 0;
   analyzeButton.classList.toggle("cancel-mode", running);
   analyzeButton.textContent = t(running ? "btn.cancel" : "btn.analyze");
@@ -310,6 +311,8 @@ const selectInputs = (
 
 const clearResults = (): void => {
   lastEnvelope = null;
+  lastPhaseTimings = null;
+  renderPhaseTimings();
   resultsElement.innerHTML = "";
   batchSummary.classList.add("hidden");
   batchSummary.textContent = "";
@@ -594,9 +597,9 @@ const renderEnvelope = (envelope: WireEnvelope, elapsedMs: number): void => {
   renderPhaseTimings();
 };
 
-// A second line rather than more of the status sentence, because these two are
-// concurrent occupancies: printed next to the elapsed time without the caveat,
-// they read as a split of it.
+// A second line rather than more of the status sentence: the roles may overlap
+// and omit other work, so printing them without the caveat makes them look like
+// a split of elapsed time.
 const renderPhaseTimings = (): void => {
   if (!lastPhaseTimings) {
     phaseTimings.hidden = true;
@@ -906,8 +909,6 @@ const runAnalysis = async (): Promise<void> => {
   status("status.running", {}, { progress: 0 });
 
   const startedAt = performance.now();
-  lastPhaseTimings = null;
-  renderPhaseTimings();
   try {
     const envelope =
       selectionKind === "files" && selectedInputs.length === 1

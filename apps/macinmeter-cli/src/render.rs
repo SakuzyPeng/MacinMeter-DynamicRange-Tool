@@ -49,14 +49,13 @@ pub(crate) fn format_elapsed_line(
     } else {
         format!("\nElapsed: {elapsed_seconds:.3} s\n")
     };
-    // Say what these two are before showing them. They are the occupancies of
-    // roles the pipeline runs at the same time, so a reader who adds them or
-    // reads one as a percentage of elapsed draws a conclusion the numbers do
-    // not support.
+    // Say what these two are before showing them. The roles may overlap, and
+    // setup/probe/report work is absent, so a reader who adds them or reads one
+    // as a percentage of elapsed draws a conclusion the numbers do not support.
     if let Some(phases) = phases {
         line.push_str(&format!(
-            "  decode {:.3} s · analysis {:.3} s (concurrent, so they overlap rather than \
-             partition the elapsed time)\n",
+            "  decode {:.3} s · analysis {:.3} s (may overlap and omit other work, so they do \
+             not partition the elapsed time)\n",
             phases.decode().as_secs_f64(),
             phases.analysis().as_secs_f64()
         ));

@@ -34,8 +34,8 @@ enum Command {
         format: OutputFormat,
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Also report how long decode and analysis each occupied. They run
-        /// concurrently, so the two do not partition the elapsed time.
+        /// Also report how long decode and analysis each occupied. They may
+        /// overlap and omit other work, so they do not partition elapsed time.
         #[arg(long)]
         timing: bool,
     },
@@ -49,8 +49,8 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Also report the decode and analysis totals the lanes accumulated.
-        /// Lanes are concurrent with each other, so these exceed elapsed by
-        /// more than a single file's do.
+        /// Lanes may overlap and the totals omit other work, so they do not
+        /// partition elapsed time.
         #[arg(long)]
         timing: bool,
     },

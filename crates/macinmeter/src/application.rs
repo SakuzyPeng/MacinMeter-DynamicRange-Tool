@@ -129,11 +129,12 @@ impl ApplicationPerformanceProbe {
 
 /// How long decode and analysis each occupied, for a caller that asked.
 ///
-/// These are the wall intervals of two roles that the graduated hand-off runs
-/// concurrently. They therefore do **not** partition elapsed time: their sum
-/// may exceed it, and neither may be inverted into a serial fraction. A caller
-/// that has not opted in receives zeroes, because collection is what costs
-/// something, not reporting.
+/// These are accumulated wall intervals for two roles. Depending on the route
+/// and the granted plan, those roles may run serially or overlap. They also
+/// omit setup, probing, hand-off, progress, and report construction, so they do
+/// **not** partition elapsed time: their sum may fall below or exceed it. A
+/// caller that has not opted in receives zeroes, because collection is what
+/// costs something, not reporting.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PhaseTimings {
     decode: Duration,
@@ -157,9 +158,9 @@ impl PhaseTimings {
 /// Cross-lane totals for a batch.
 ///
 /// Lanes add once per item, not once per block, so the shared counters stay
-/// off the hot path even while collection is on. Items decoded on different
-/// lanes are concurrent with each other as well, which is one more reason
-/// these totals do not partition the batch's elapsed time.
+/// off the hot path even while collection is on. Items on different lanes may
+/// overlap, which is one more reason these totals do not partition the batch's
+/// elapsed time.
 #[derive(Debug, Default)]
 pub(crate) struct SharedPhaseTimings {
     decode_ns: AtomicU64,
@@ -168,10 +169,8 @@ pub(crate) struct SharedPhaseTimings {
 
 impl SharedPhaseTimings {
     pub(crate) fn add(&self, timings: PhaseTimings) {
-        self.decode_ns
-            .fetch_add(saturating_nanos(timings.decode), Ordering::Relaxed);
-        self.analysis_ns
-            .fetch_add(saturating_nanos(timings.analysis), Ordering::Relaxed);
+        add_saturating(&self.decode_ns, saturating_nanos(timings.decode));
+        add_saturating(&self.analysis_ns, saturating_nanos(timings.analysis));
     }
 
     pub(crate) fn total(&self) -> PhaseTimings {
@@ -186,22 +185,33 @@ fn saturating_nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
+fn add_saturating(total: &AtomicU64, value: u64) {
+    let _ = total.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+        Some(current.saturating_add(value))
+    });
+}
+
 /// Everything one run observes about itself without changing what it produces.
 ///
 /// Grouping these keeps observation a single parameter that a call site either
 /// threads through or does not, rather than a growing tail of them.
-struct RunObservation {
+struct RunObservation<'a> {
     decode: RoleClock,
     analysis: RoleClock,
+    /// A timed batch owns the cross-lane sink. Dropping the observation writes
+    /// one item total on success, failure, or cancellation; untimed runs carry
+    /// no sink and therefore perform no shared atomic update.
+    timing_sink: Option<&'a SharedPhaseTimings>,
     #[cfg(feature = "performance-probes")]
     geometry: DecodeBlockGeometry,
 }
 
-impl RunObservation {
-    fn new(collect_timings: bool) -> Self {
+impl<'a> RunObservation<'a> {
+    fn new(collect_timings: bool, timing_sink: Option<&'a SharedPhaseTimings>) -> Self {
         Self {
             decode: RoleClock::new(collect_timings),
             analysis: RoleClock::new(collect_timings),
+            timing_sink,
             #[cfg(feature = "performance-probes")]
             geometry: DecodeBlockGeometry::default(),
         }
@@ -223,6 +233,14 @@ impl RunObservation {
         {
             let _ = block;
             Ok(())
+        }
+    }
+}
+
+impl Drop for RunObservation<'_> {
+    fn drop(&mut self) {
+        if let Some(timing_sink) = self.timing_sink {
+            timing_sink.add(self.timings());
         }
     }
 }
@@ -360,7 +378,7 @@ impl Analyzer {
         request: AnalyzeRequest,
         control: &ExecutionControl<'_>,
     ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
-        self.analyze_file_at_run(request, 0, control)
+        self.analyze_file_at_run(request, 0, control, None)
             .map(|analyzed| (analyzed.report, analyzed.timings))
     }
 
@@ -370,7 +388,7 @@ impl Analyzer {
         request: AnalyzeRequest,
         control: &ExecutionControl<'_>,
     ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
-        self.analyze_file_at_run(request, 0, control)
+        self.analyze_file_at_run(request, 0, control, None)
             .map(|analyzed| (analyzed.report, analyzed.probe))
     }
 
@@ -380,18 +398,19 @@ impl Analyzer {
         item_index: usize,
         control: &ExecutionControl<'_>,
     ) -> Result<AnalysisReport, AnalysisError> {
-        self.analyze_file_at_run(request, item_index, control)
+        self.analyze_file_at_run(request, item_index, control, None)
             .map(|analyzed| analyzed.report)
     }
 
-    pub(crate) fn analyze_file_at_timed(
+    pub(crate) fn analyze_file_at_with_timing_sink(
         &self,
         request: AnalyzeRequest,
         item_index: usize,
         control: &ExecutionControl<'_>,
-    ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
-        self.analyze_file_at_run(request, item_index, control)
-            .map(|analyzed| (analyzed.report, analyzed.timings))
+        timing_sink: &SharedPhaseTimings,
+    ) -> Result<AnalysisReport, AnalysisError> {
+        self.analyze_file_at_run(request, item_index, control, Some(timing_sink))
+            .map(|analyzed| analyzed.report)
     }
 
     fn analyze_file_at_run(
@@ -399,6 +418,7 @@ impl Analyzer {
         request: AnalyzeRequest,
         item_index: usize,
         control: &ExecutionControl<'_>,
+        timing_sink: Option<&SharedPhaseTimings>,
     ) -> Result<AnalyzedFile, AnalysisError> {
         ensure_not_cancelled(control)?;
         let display_path = request.path.display().to_string();
@@ -407,7 +427,7 @@ impl Analyzer {
             display_path: display_path.clone(),
         });
 
-        let result = self.analyze_started(request, item_index, control, &display_path);
+        let result = self.analyze_started(request, item_index, control, &display_path, timing_sink);
         control.progress.emit(AnalysisEvent::FileFinished {
             index: item_index,
             display_path,
@@ -422,6 +442,7 @@ impl Analyzer {
         item_index: usize,
         control: &ExecutionControl<'_>,
         display_path: &str,
+        timing_sink: Option<&SharedPhaseTimings>,
     ) -> Result<AnalyzedFile, AnalysisError> {
         // The selected engine, not the requested reservation, decides what is
         // left for the overlap: every route that has not graduated falls back
@@ -451,6 +472,7 @@ impl Analyzer {
             control,
             display_path,
             self.collect_timings,
+            timing_sink,
         )?;
         #[cfg(feature = "performance-probes")]
         let probe = ApplicationPerformanceProbe::new(self.reservation, execution, shape, &opened);
@@ -470,8 +492,16 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
-        Self::analyze_opened_run(opened, budget, item_index, control, display_path, false)
-            .map(|analyzed| analyzed.report)
+        Self::analyze_opened_run(
+            opened,
+            budget,
+            item_index,
+            control,
+            display_path,
+            false,
+            None,
+        )
+        .map(|analyzed| analyzed.report)
     }
 
     fn analyze_opened_run(
@@ -481,10 +511,11 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
         collect_timings: bool,
+        timing_sink: Option<&SharedPhaseTimings>,
     ) -> Result<OpenedAnalysis, AnalysisError> {
         #[cfg(test)]
         LAST_ANALYSIS_OVERLAP.with(|last| last.set(false));
-        let mut observation = RunObservation::new(collect_timings);
+        let mut observation = RunObservation::new(collect_timings, timing_sink);
         let pcm = opened.reader.stream_info().clone();
         let mut session = AnalyzerSession::new(pcm.spec.clone())?;
         let full_window_frames = session.window_frames() as u64;
@@ -495,8 +526,9 @@ impl Analyzer {
         // thread exists, exactly as an over-wide FLAC reorder window does.
         ensure_not_cancelled(control)?;
         let started = observation.decode.start();
-        let first = read_checked(&mut opened, &pcm, display_path)?;
+        let first = read_checked(&mut opened, &pcm, display_path);
         observation.decode.stop(started);
+        let first = first?;
 
         let (analysis, _overlapped) = match first {
             None => {
@@ -505,7 +537,10 @@ impl Analyzer {
                 // zero-frame report is finalized.
                 emit_decode_progress(&opened, item_index, control, display_path);
                 ensure_not_cancelled(control)?;
-                (session.finish()?, false)
+                let started = observation.analysis.start();
+                let analysis = session.finish();
+                observation.analysis.stop(started);
+                (analysis?, false)
             }
             Some(block) if budget.admits(&block) => {
                 observation.record_block(&block)?;
@@ -513,8 +548,9 @@ impl Analyzer {
                 // as the serial path. Overlap begins with the next decode, so
                 // analysis failures still precede this block's progress event.
                 let started = observation.analysis.start();
-                session.push_interleaved(block.samples())?;
+                let pushed = session.push_interleaved(block.samples());
                 observation.analysis.stop(started);
+                pushed?;
                 emit_decode_progress(&opened, item_index, control, display_path);
                 ensure_not_cancelled(control)?;
                 let analysis = analyze_overlapped(
@@ -531,8 +567,9 @@ impl Analyzer {
             Some(block) => {
                 observation.record_block(&block)?;
                 let started = observation.analysis.start();
-                session.push_interleaved(block.samples())?;
+                let pushed = session.push_interleaved(block.samples());
                 observation.analysis.stop(started);
+                pushed?;
                 emit_decode_progress(&opened, item_index, control, display_path);
                 let analysis = analyze_serially(
                     session,
@@ -856,7 +893,7 @@ fn analyze_overlapped(
     control: &ExecutionControl<'_>,
     display_path: &str,
     budget: &OverlapBudget,
-    observation: &mut RunObservation,
+    observation: &mut RunObservation<'_>,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     // Two stages, so no depth buys parallelism. Depth only trades retained PCM
     // against how often the producer parks, and `admits` already refused any
@@ -1006,21 +1043,23 @@ fn analyze_serially(
     item_index: usize,
     control: &ExecutionControl<'_>,
     display_path: &str,
-    observation: &mut RunObservation,
+    observation: &mut RunObservation<'_>,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     loop {
         ensure_not_cancelled(control)?;
         let started = observation.decode.start();
-        let block = read_checked(opened, pcm, display_path)?;
+        let block = read_checked(opened, pcm, display_path);
         observation.decode.stop(started);
+        let block = block?;
         let Some(block) = block else {
             emit_decode_progress(opened, item_index, control, display_path);
             break;
         };
         observation.record_block(&block)?;
         let started = observation.analysis.start();
-        session.push_interleaved(block.samples())?;
+        let pushed = session.push_interleaved(block.samples());
         observation.analysis.stop(started);
+        pushed?;
         emit_decode_progress(opened, item_index, control, display_path);
     }
 
@@ -1969,6 +2008,48 @@ mod tests {
         .expect_err("EOF cancellation must win before an empty report is finalized");
 
         assert_eq!(error.code, ErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn zero_frame_finish_is_counted_as_analysis_time() {
+        let channels = ChannelCount::new(1).unwrap();
+        let analyzed = Analyzer::analyze_opened_run(
+            opened_audio(channels, channels, Vec::new()),
+            OverlapBudget::default(),
+            0,
+            &ExecutionControl::new(&CancellationToken::new(), &NoopProgressSink),
+            "empty.fake",
+            true,
+            None,
+        )
+        .expect("an empty stream should still produce its fixed empty report");
+
+        assert_eq!(analyzed.report.analysis().frames_seen(), 0);
+        assert!(
+            analyzed.timings.analysis() > Duration::ZERO,
+            "zero-frame finish must be inside the analysis interval"
+        );
+    }
+
+    #[test]
+    fn shared_phase_timing_totals_saturate() {
+        let timings = SharedPhaseTimings::default();
+        timings.add(PhaseTimings {
+            decode: Duration::from_nanos(u64::MAX),
+            analysis: Duration::from_nanos(u64::MAX),
+        });
+        timings.add(PhaseTimings {
+            decode: Duration::from_nanos(1),
+            analysis: Duration::from_nanos(1),
+        });
+
+        assert_eq!(
+            timings.total(),
+            PhaseTimings {
+                decode: Duration::from_nanos(u64::MAX),
+                analysis: Duration::from_nanos(u64::MAX),
+            }
+        );
     }
 
     /// Blocks whose first sample is the block index, so a recorded push order

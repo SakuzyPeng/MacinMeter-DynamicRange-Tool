@@ -60,6 +60,33 @@ fn timing_is_opt_in_and_leaves_the_report_untouched() {
     assert!(batch_phases.analysis() > std::time::Duration::ZERO);
 }
 
+#[test]
+fn timed_batch_keeps_phase_work_from_a_failed_item() {
+    let path = fixture("malformed-media-v1/flac-frame-byte-flip.flac");
+    let cancellation = CancellationToken::new();
+    let progress = NoopProgressSink;
+    let control = ExecutionControl::new(&cancellation, &progress);
+
+    let (report, phases) = Application::new()
+        .run_batch_timed(BatchRequest::new(vec![path], false), &control)
+        .expect("an ordinary decode failure should remain a batch item outcome");
+
+    assert_eq!(report.status, BatchStatus::Failed);
+    assert_eq!((report.summary.succeeded, report.summary.failed), (0, 1));
+    assert!(matches!(
+        report.items[0].outcome,
+        BatchItemOutcome::Failure { .. }
+    ));
+    assert!(
+        phases.decode() > std::time::Duration::ZERO,
+        "the decoder work before the integrity failure must be retained: {phases:?}"
+    );
+    assert!(
+        phases.analysis() > std::time::Duration::ZERO,
+        "the analyzed prefix before the integrity failure must be retained: {phases:?}"
+    );
+}
+
 fn assert_only_partial_window_warning(warnings: &[String]) {
     assert_eq!(
         warnings.len(),
