@@ -102,6 +102,11 @@ let activeJobId: string | null = null;
 let activeTotal = 1;
 const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
+const streamedBatchItems = new Map<number, BatchItem>();
+const pendingStreamedBatchItems = new Map<number, BatchItem>();
+const renderedStreamedBatchNodes = new Map<number, HTMLElement>();
+const renderedStreamedBatchIndexes: number[] = [];
+let streamedBatchRenderFrame: number | null = null;
 let hidePath = false;
 // Off by default: each interval reads the clock at both start and stop, and an
 // ordinary run should not pay for observation it did not ask for.
@@ -223,7 +228,7 @@ const updateControls = (): void => {
   searchInput.disabled = interactionLocked || !hasResult;
   searchNextButton.disabled =
     interactionLocked || !hasResult || visibleEntries().length === 0;
-  resultsElement.toggleAttribute("inert", exportInProgress);
+  resultsElement.toggleAttribute("inert", interactionLocked);
 };
 
 const selectionLabel = (): string => {
@@ -333,13 +338,26 @@ const selectInputs = (
   void previewSelection(selectionRevision);
 };
 
+const resetStreamedBatch = (): void => {
+  if (streamedBatchRenderFrame !== null) {
+    cancelAnimationFrame(streamedBatchRenderFrame);
+    streamedBatchRenderFrame = null;
+  }
+  streamedBatchItems.clear();
+  pendingStreamedBatchItems.clear();
+  renderedStreamedBatchNodes.clear();
+  renderedStreamedBatchIndexes.length = 0;
+};
+
 const clearResults = (): void => {
+  resetStreamedBatch();
   lastEnvelope = null;
   lastPhaseTimings = null;
   renderPhaseTimings();
   resultsElement.innerHTML = "";
   batchSummary.classList.add("hidden");
   batchSummary.textContent = "";
+  rawPanel.open = false;
   rawPanel.hidden = true;
   rawJson.textContent = "";
   sortMode = "none";
@@ -468,8 +486,19 @@ const renderErrorEntry = (entry: DisplayEntry): string => {
   </article>`;
 };
 
+const batchDisplayEntry = (item: BatchItem, key: number): DisplayEntry => ({
+  key,
+  displayPath: item.displayPath,
+  report: item.outcome.status === "success" ? item.outcome.report : null,
+  error: item.outcome.status === "failure" ? item.outcome.error : null,
+});
+
 const displayEntries = (): DisplayEntry[] => {
-  if (!lastEnvelope) return [];
+  if (!lastEnvelope) {
+    return [...streamedBatchItems.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([key, item]) => batchDisplayEntry(item, key));
+  }
   if (lastEnvelope.kind === "analysis") {
     return [
       {
@@ -490,12 +519,7 @@ const displayEntries = (): DisplayEntry[] => {
       },
     ];
   }
-  return lastEnvelope.data.items.map((item: BatchItem, key) => ({
-    key,
-    displayPath: item.displayPath,
-    report: item.outcome.status === "success" ? item.outcome.report : null,
-    error: item.outcome.status === "failure" ? item.outcome.error : null,
-  }));
+  return lastEnvelope.data.items.map(batchDisplayEntry);
 };
 
 const visibleEntries = (): DisplayEntry[] =>
@@ -517,10 +541,13 @@ const sortedEntries = (): DisplayEntry[] => {
   });
 };
 
-const bindEntryActions = (): void => {
-  resultsElement
-    .querySelectorAll<HTMLButtonElement>(".copy-entry-md")
+const bindEntryActions = (root: ParentNode = resultsElement): void => {
+  root
+    .querySelectorAll<HTMLButtonElement>(
+      ".copy-entry-md:not([data-actions-bound])",
+    )
     .forEach((button) => {
+      button.dataset.actionsBound = "true";
       button.addEventListener("click", () => {
         const entry = displayEntries().find(
           (candidate) => candidate.key === Number(button.dataset.entry),
@@ -528,15 +555,136 @@ const bindEntryActions = (): void => {
         if (entry) void copyText(formatEntryMarkdown(entry), button);
       });
     });
-  resultsElement
-    .querySelectorAll<HTMLButtonElement>(".copy-entry-png")
+  root
+    .querySelectorAll<HTMLButtonElement>(
+      ".copy-entry-png:not([data-actions-bound])",
+    )
     .forEach((button) => {
+      button.dataset.actionsBound = "true";
       button.addEventListener("click", () => {
         const key = Number(button.dataset.entry);
         const target = document.getElementById(`entry-${key}`);
         if (target) void copyPngToClipboard(target, button);
       });
     });
+};
+
+// Keep each paint bounded even when many tiny files finish between two WebView
+// frames. This makes a backlog appear page by page instead of parsing hundreds
+// of result cards in one long main-thread task.
+const STREAMED_RENDER_ITEMS_PER_FRAME = 12;
+
+const renderStreamedBatchSummary = (): void => {
+  let succeeded = 0;
+  let failed = 0;
+  for (const item of streamedBatchItems.values()) {
+    if (item.outcome.status === "success") succeeded += 1;
+    else failed += 1;
+  }
+  batchSummary.textContent = t("result.summary", {
+    total: activeTotal,
+    succeeded,
+    failed,
+  });
+  batchSummary.classList.remove("hidden");
+};
+
+const streamedInsertionIndex = (key: number): number => {
+  let low = 0;
+  let high = renderedStreamedBatchIndexes.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (renderedStreamedBatchIndexes[middle] < key) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+};
+
+const flushStreamedBatchItems = (): void => {
+  const entries = [...pendingStreamedBatchItems.entries()]
+    .sort(([left], [right]) => left - right)
+    .slice(0, STREAMED_RENDER_ITEMS_PER_FRAME);
+  if (entries.length === 0) return;
+  for (const [key] of entries) pendingStreamedBatchItems.delete(key);
+
+  const template = document.createElement("template");
+  template.innerHTML = entries
+    .map(([key, item]) => renderReportEntry(batchDisplayEntry(item, key)))
+    .join("");
+  bindEntryActions(template.content);
+  const nodes = Array.from(template.content.children) as HTMLElement[];
+  for (let offset = 0; offset < entries.length; offset += 1) {
+    const [key] = entries[offset];
+    const node = nodes[offset];
+    if (!node || renderedStreamedBatchNodes.has(key)) continue;
+    const insertion = streamedInsertionIndex(key);
+    const followingKey = renderedStreamedBatchIndexes[insertion];
+    const following =
+      followingKey === undefined
+        ? null
+        : (renderedStreamedBatchNodes.get(followingKey) ?? null);
+    resultsElement.insertBefore(node, following);
+    renderedStreamedBatchIndexes.splice(insertion, 0, key);
+    renderedStreamedBatchNodes.set(key, node);
+  }
+  renderStreamedBatchSummary();
+};
+
+const scheduleStreamedBatchRender = (): void => {
+  if (streamedBatchRenderFrame !== null) return;
+  streamedBatchRenderFrame = requestAnimationFrame(() => {
+    streamedBatchRenderFrame = null;
+    flushStreamedBatchItems();
+    if (pendingStreamedBatchItems.size > 0) scheduleStreamedBatchRender();
+  });
+};
+
+const queueStreamedBatchItem = (index: number, item: BatchItem): void => {
+  if (
+    lastEnvelope !== null ||
+    !Number.isInteger(index) ||
+    index < 0 ||
+    streamedBatchItems.has(index)
+  ) {
+    return;
+  }
+  streamedBatchItems.set(index, item);
+  pendingStreamedBatchItems.set(index, item);
+  scheduleStreamedBatchRender();
+};
+
+const renderFinalBatchIncrementally = async (
+  items: readonly BatchItem[],
+): Promise<void> => {
+  if (streamedBatchRenderFrame !== null) {
+    cancelAnimationFrame(streamedBatchRenderFrame);
+    streamedBatchRenderFrame = null;
+  }
+  items.forEach((item, index) => {
+    streamedBatchItems.set(index, item);
+    if (!renderedStreamedBatchNodes.has(index)) {
+      pendingStreamedBatchItems.set(index, item);
+    }
+  });
+
+  while (pendingStreamedBatchItems.size > 0) {
+    status(
+      "status.renderingResults",
+      {
+        current: renderedStreamedBatchNodes.size,
+        total: items.length,
+      },
+      { progress: (renderedStreamedBatchNodes.size / items.length) * 100 },
+    );
+    await nextPaint();
+    flushStreamedBatchItems();
+  }
+
+  const complete = items.every((_, index) =>
+    renderedStreamedBatchNodes.has(index),
+  );
+  if (!complete) renderResults();
+  resetStreamedBatch();
 };
 
 const renderResults = (): void => {
@@ -592,11 +740,28 @@ const elapsedValues = (
   };
 };
 
-const renderEnvelope = (envelope: WireEnvelope, elapsedMs: number): void => {
+const populateRawJson = (): void => {
+  if (!lastEnvelope || rawJson.textContent) return;
+  rawJson.textContent = JSON.stringify(lastEnvelope, null, 2);
+};
+
+const renderEnvelope = async (
+  envelope: WireEnvelope,
+  elapsedMs: number,
+): Promise<void> => {
   lastEnvelope = envelope;
-  rawJson.textContent = JSON.stringify(envelope, null, 2);
+  rawJson.textContent = "";
   rawPanel.hidden = false;
-  renderResults();
+  if (rawPanel.open) populateRawJson();
+  if (envelope.kind === "batch") {
+    await renderFinalBatchIncrementally(envelope.data.items);
+    batchSummary.textContent = t("result.summary", envelope.data.summary);
+    batchSummary.classList.remove("hidden");
+    updateControls();
+  } else {
+    resetStreamedBatch();
+    renderResults();
+  }
   if (envelope.kind === "error") {
     status(
       envelope.data.code === "cancelled" ? "status.cancelled" : "status.failed",
@@ -1154,7 +1319,7 @@ const runAnalysis = async (): Promise<void> => {
               timing: showTiming,
             },
           });
-    renderEnvelope(envelope, performance.now() - startedAt);
+    await renderEnvelope(envelope, performance.now() - startedAt);
   } catch (error) {
     status(
       "status.discoveryFailed",
@@ -1256,6 +1421,9 @@ searchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") highlightSearch(true);
 });
 searchNextButton.addEventListener("click", () => highlightSearch(true));
+rawPanel.addEventListener("toggle", () => {
+  if (rawPanel.open) populateRawJson();
+});
 
 const setLanguage = (language: SupportedLanguage): void => {
   changeLanguage(language);
@@ -1265,7 +1433,7 @@ const setLanguage = (language: SupportedLanguage): void => {
   renderSelection();
   renderStatus();
   renderPhaseTimings();
-  if (lastEnvelope) renderResults();
+  if (lastEnvelope && activeJobId === null) renderResults();
 };
 
 element<HTMLButtonElement>("lang-zh").addEventListener("click", () =>
@@ -1322,6 +1490,8 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
       },
       { progress: activeProgress.update(event.index, 1) },
     );
+  } else if (event.type === "batch_item_finished") {
+    queueStreamedBatchItem(event.index, event.item);
   } else if (event.type === "batch_finished") {
     status(
       "status.batchComplete",

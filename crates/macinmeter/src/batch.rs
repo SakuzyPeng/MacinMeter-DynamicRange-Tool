@@ -346,26 +346,19 @@ impl BatchRunner {
         let mut items = Vec::with_capacity(files.len());
         let mut succeeded = 0;
         let mut failed = 0;
-        for (path, slot) in files.iter().zip(outcomes) {
+        for slot in outcomes {
             let outcome = slot
                 .into_inner()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .ok_or_else(unclaimed_item_error)?;
             match outcome {
                 LaneOutcome::Cancelled(error) => return Err(error),
-                LaneOutcome::Finished(BatchItemOutcome::Success { report }) => {
-                    succeeded += 1;
-                    items.push(BatchItem {
-                        display_path: path.display().to_string(),
-                        outcome: BatchItemOutcome::Success { report },
-                    });
-                }
-                LaneOutcome::Finished(outcome) => {
-                    failed += 1;
-                    items.push(BatchItem {
-                        display_path: path.display().to_string(),
-                        outcome,
-                    });
+                LaneOutcome::Finished(item) => {
+                    match item.outcome {
+                        BatchItemOutcome::Success { .. } => succeeded += 1,
+                        BatchItemOutcome::Failure { .. } => failed += 1,
+                    }
+                    items.push(item);
                 }
             }
         }
@@ -438,13 +431,25 @@ impl BatchRunner {
                 None => analyzer.analyze_file_at(request, index, control),
             };
             let outcome = match analyzed {
-                Ok(report) => LaneOutcome::Finished(BatchItemOutcome::Success {
-                    report: Box::new(report),
+                Ok(report) => LaneOutcome::Finished(BatchItem {
+                    display_path: path.display().to_string(),
+                    outcome: BatchItemOutcome::Success {
+                        report: Box::new(report),
+                    },
                 }),
                 Err(error) if error.code == ErrorCode::Cancelled => LaneOutcome::Cancelled(error),
-                Err(error) => LaneOutcome::Finished(BatchItemOutcome::Failure { error }),
+                Err(error) => LaneOutcome::Finished(BatchItem {
+                    display_path: path.display().to_string(),
+                    outcome: BatchItemOutcome::Failure { error },
+                }),
             };
             let cancelled = matches!(outcome, LaneOutcome::Cancelled(_));
+            if let LaneOutcome::Finished(item) = &outcome {
+                control.progress.emit(AnalysisEvent::BatchItemFinished {
+                    index,
+                    item: item.clone(),
+                });
+            }
             Self::store(&shared.outcomes[index], outcome);
             if cancelled {
                 return;
@@ -492,7 +497,7 @@ struct LaneShared<'a> {
 /// Cancellation travels beside the ordinary outcomes rather than short-circuiting
 /// a lane's siblings, so the whole batch still joins before anything is reported.
 enum LaneOutcome {
-    Finished(BatchItemOutcome),
+    Finished(BatchItem),
     Cancelled(AnalysisError),
 }
 
@@ -804,6 +809,9 @@ mod tests {
                         display_path,
                         ..
                     } => Some((index, display_path, "finished")),
+                    AnalysisEvent::BatchItemFinished { index, item } => {
+                        Some((index, item.display_path, "published"))
+                    }
                     _ => None,
                 };
                 if let Some(entry) = entry {
@@ -818,7 +826,8 @@ mod tests {
             let seen = seen.into_inner().unwrap();
             // Events may interleave across lanes, so order proves nothing. What
             // must hold is that each event's index still names its own file and
-            // that every item reported both of its boundaries exactly once.
+            // that every item reported both lifecycle boundaries and its
+            // renderable outcome exactly once.
             for (index, display_path, _) in &seen {
                 let expected = inputs
                     .get(*index)
@@ -830,7 +839,7 @@ mod tests {
                 );
             }
             for (index, _) in inputs.iter().enumerate() {
-                for kind in ["started", "finished"] {
+                for kind in ["started", "finished", "published"] {
                     let count = seen
                         .iter()
                         .filter(|(seen_index, _, seen_kind)| {

@@ -28,6 +28,7 @@
   "status.discoveryFailed": "Input discovery failed: {{message}}",
   "status.running": "Analyzing…",
   "status.file": "Analyzing {{name}} ({{current}}/{{total}})",
+  "status.renderingResults": "Rendering results in batches ({{current}}/{{total}})…",
   "status.complete": "Analysis complete.",
   "status.batchComplete": "Batch complete: {{succeeded}} succeeded, {{failed}} failed.",
   "status.completeTimed": "Analysis complete · {{elapsed}} s · {{realtime}}× realtime",

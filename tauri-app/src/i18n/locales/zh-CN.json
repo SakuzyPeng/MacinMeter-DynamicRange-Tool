@@ -28,6 +28,7 @@
   "status.discoveryFailed": "发现输入失败：{{message}}",
   "status.running": "正在分析…",
   "status.file": "正在分析 {{name}}（{{current}}/{{total}}）",
+  "status.renderingResults": "正在分批渲染结果 {{current}}/{{total}}…",
   "status.complete": "分析完成。",
   "status.batchComplete": "批量完成：{{succeeded}} 成功，{{failed}} 失败。",
   "status.completeTimed": "分析完成 · 耗时 {{elapsed}} s · {{realtime}}× 实时",

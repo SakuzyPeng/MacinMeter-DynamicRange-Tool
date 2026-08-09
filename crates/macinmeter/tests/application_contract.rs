@@ -379,6 +379,49 @@ fn product_batch_preserves_explicit_input_order_across_file_lanes() {
 }
 
 #[test]
+fn batch_publishes_each_final_item_before_the_terminal_event() {
+    let inputs = vec![fixture("tiny_duration.wav"), fixture("fake_audio.wav")];
+    let cancellation = CancellationToken::new();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let events_for_sink = Arc::clone(&events);
+    let progress = move |event: AnalysisEvent| {
+        events_for_sink.lock().unwrap().push(event);
+    };
+    let report = Application::new()
+        .run_batch(
+            BatchRequest::new(inputs, false),
+            &ExecutionControl::new(&cancellation, &progress),
+        )
+        .expect("ordinary item failures must still produce a batch report");
+
+    let events = events.lock().unwrap();
+    let terminal = events
+        .iter()
+        .position(|event| matches!(event, AnalysisEvent::BatchFinished { .. }))
+        .expect("a completed batch must publish its terminal event");
+    let mut published = events
+        .iter()
+        .enumerate()
+        .filter_map(|(position, event)| match event {
+            AnalysisEvent::BatchItemFinished { index, item } => {
+                Some((position, *index, item.clone()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    published.sort_by_key(|(_, index, _)| *index);
+
+    assert_eq!(published.len(), report.items.len());
+    for (position, index, item) in published {
+        assert!(
+            position < terminal,
+            "item {index} was published after the batch terminal event"
+        );
+        assert_eq!(item, report.items[index]);
+    }
+}
+
+#[test]
 fn batch_reports_full_partial_and_zero_success_without_short_circuiting() {
     let valid = fixture("tiny_duration.wav");
     let unsupported = fixture("fake_audio.wav");
@@ -634,6 +677,7 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
         fixture("tiny_duration.wav"),
         fixture("fake_audio.wav"),
     ]);
+    let published_item = batch.items[0].clone();
     let batch_value =
         serde_json::to_value(WireEnvelope::batch(batch)).expect("wire batch should serialize");
     let items = batch_value["data"]["items"]
@@ -667,6 +711,15 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     assert_eq!(progress_event["progress"]["expectedFrames"], 10);
     assert_eq!(progress_event["progress"]["fraction"], 0.5);
     assert_eq!(progress_event["progress"]["eof"], false);
+
+    let item_event = serde_json::to_value(AnalysisEvent::BatchItemFinished {
+        index: 3,
+        item: published_item,
+    })
+    .unwrap();
+    assert_eq!(item_event["type"], "batch_item_finished");
+    assert_eq!(item_event["index"], 3);
+    assert_eq!(item_event["item"]["outcome"]["status"], "success");
 
     let silent = serde_json::to_value(macinmeter::ChannelOutcome::Silent {
         frames: 12,
