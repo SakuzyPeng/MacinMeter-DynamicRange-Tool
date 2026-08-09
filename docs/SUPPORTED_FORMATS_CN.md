@@ -64,9 +64,8 @@ list 只能缺失或是一条 identity mapping。报告中的 channel layout 仍
 - FFmpeg 回退或任何外部解码进程；
 - 重采样、增益、滤波、边缘裁切和静音预处理。
 
-并行属于执行策略，不是 codec 能力。已接受的
-[`ADR-0014`](adr/0014-deterministic-decode-analysis-pipeline.md) 解除有界 packet、
-文件与窗口级并行的永久禁令，各条路径在独立毕业前都不是稳定功能。0.3.0 中，ALAC
+并行属于执行策略，不是 codec 能力。有界的 packet、文件与窗口级并行是允许的，但
+任何一条路径在独立证明不改变结果之前都不算稳定功能。0.3.0 中，ALAC
 route 与可证明有界的 FLAC 流以 packet worker 解码，解码在未花掉的 permit 上与分析
 重叠，批量条目跨 file lane 运行，三者同出于一份 application 自有的计划；窗口级并行
 尚未实现。走哪条路径由该计划逐 route 决定，因此既不扩张上面的格式矩阵，也不增加

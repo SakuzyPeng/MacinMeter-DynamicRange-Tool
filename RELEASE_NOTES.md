@@ -5,29 +5,26 @@
 > Status: development release contract; no signed/notarized public artifact has
 > been created. / 状态：开发线发行契约；尚未创建已签名、公证的公开制品。
 >
-> Concurrency note: 0.3.0 ships the bounded packet-level, decode-analysis and
-> file-lane axes of accepted
-> [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md), all under
-> one application-owned worker and memory plan; window-level parallelism is not
-> implemented. A report and its decoded PCM do not depend on how many workers a
-> host grants, and there is no public thread, batch-size or queue control. This
-> release publishes no throughput figure. The v0.2.0 exclusions below are
-> historical release boundaries, not a permanent post-M6 ban. / 并发说明：0.3.0
-> 交付已接受的 ADR-0014 中 packet 级、解码-分析与 file lane 三条轴，全部受同一
-> application 自有 worker 与内存计划约束；窗口级并行未实现。报告与其解码 PCM 不依赖
-> 宿主授予多少 worker，也不提供公开的线程、batch size 或队列控制。本版本不发布任何
-> 吞吐数字。下方 v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
+> Concurrency note: 0.3.0 ships bounded packet-level, decode-analysis and
+> file-lane parallelism, all under one application-owned worker and memory
+> plan; window-level parallelism is not implemented. A report and its decoded
+> PCM do not depend on how many workers a host grants, and there is no public
+> thread, batch-size or queue control. This release publishes no throughput
+> figure. The v0.2.0 exclusions below are historical release boundaries, not
+> permanent ones. / 并发说明：0.3.0 交付有界的 packet 级、解码-分析与 file lane
+> 并行，全部受同一 application 自有 worker 与内存计划约束；窗口级并行未实现。报告
+> 与其解码 PCM 不依赖宿主授予多少 worker，也不提供公开的线程、batch size 或队列
+> 控制。本版本不发布任何吞吐数字。下方 v0.2.0 的排除项是历史发行边界，不是永久禁令。
 
 - Expanded the release scope to two platforms: Windows x64 now ships a staged
   and verified CLI archive and NSIS installer alongside the Apple Silicon macOS
-  archive and DMG, under [ADR-0015](docs/adr/0015-unsigned-windows-x64-release-scope.md).
-  Neither platform is signed, for the same reason. Windows staging opens the
+  archive and DMG. Neither platform is signed, for the same reason. Windows staging opens the
   installer and checks the executable inside it, so "verified" means the same
   thing on both.
   发行范围扩展到两个平台：Windows x64 现在与 Apple Silicon macOS 的 archive 和 DMG
-  一同提供经 staging 与验证的 CLI archive 与 NSIS 安装包，依据 ADR-0015。两个平台
-  都不签名，理由相同。Windows staging 会打开安装包并核对其中的可执行文件，因此两边
-  的“已验证”含义一致。
+  一同提供经 staging 与验证的 CLI archive 与 NSIS 安装包。两个平台都不签名，理由
+  相同：面向个人的代码签名证书会把维护者的法定姓名嵌入每一份公开制品。Windows
+  staging 会打开安装包并核对其中的可执行文件，因此两边的“已验证”含义一致。
 - Renamed the CLI binary to `mdrmeter`; the product, crates, repository and
   GUI remain MacinMeter. The old name said "meter" without saying what it
   measures, and a command name is the one place that has to state it. Added

@@ -83,13 +83,13 @@ mdrmeter completions fish > ~/.config/fish/completions/mdrmeter.fish
 `bash`, `zsh`, `fish`, `powershell` and `elvish` are available. The command only
 writes to stdout; where a shell reads completions from is left to the caller.
 
-[ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) has accepted
-bounded packet-, file-, and window-level parallelism, each enabled only after
-passing its own correctness, resource, and performance gates. Route-specific
-packet decoding, decode-analysis overlap, and batch file lanes have passed
-theirs and are enabled in 0.3.0; window-level parallelism has not been
-implemented. There is no public thread, batch-size, or queue control, and no
-throughput figure is published.
+Some work runs in parallel internally, each axis enabled only after passing its
+own correctness, resource, and performance gates. Route-specific packet
+decoding, decode-analysis overlap, and batch file lanes are enabled in 0.3.0;
+window-level parallelism is not implemented. **A report and its decoded audio do
+not depend on any of this**, so results are identical whichever path runs. There
+is no public thread, batch-size, or queue control, and no throughput figure is
+published.
 
 The following is real stdout generated from a committed synthetic fixture:
 
@@ -268,8 +268,8 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 Clones of one `Application` share a bounded top-level execution queue, which
 currently admits one active job; separately constructed `Application` values
 remain independent. Queue sizing is available through
-`Application::with_budget`. Future ADR-0014 internal workers must remain inside
-that application-owned execution domain.
+`Application::with_budget`. Internal workers stay inside that
+application-owned execution domain.
 
 `AnalyzerSession` is available for callers that already have finite,
 frame-aligned, interleaved `f64` PCM. `AlbumAggregator` is a separate numeric
@@ -334,13 +334,15 @@ macinmeter-domain
 
 Every first-party Rust crate uses `#![forbid(unsafe_code)]`. The current product
 has one analyzer implementation. Under one application-owned worker and memory
-plan it decodes the ADR-0013 ALAC route and provably bounded FLAC streams with
-packet workers, overlaps decoding with analysis on a permit the route leaves
-unspent, and runs batch items across file lanes derived from that same plan; a
-single file receives the whole decoder, and window-level parallelism is not
-implemented. Results are identical whichever path runs. ADR-0014 permits only
-bounded, deterministic internal parallelism after per-route/per-axis
-graduation; it does not restore the removed 0.1.x parallel decoder. Design history and deeper technical material live in:
+plan it decodes the ALAC route and provably bounded FLAC streams with packet
+workers, overlaps decoding with analysis on a permit the route leaves unspent,
+and runs batch items across file lanes derived from that same plan; a single
+file receives the whole decoder, and window-level parallelism is not
+implemented. Results are identical whichever path runs: internal parallelism is
+bounded and deterministic, and is enabled one route and one axis at a time only
+after that axis has been shown not to change a result.
+
+Design history and deeper technical material live in:
 
 - [architecture and reference-alignment roadmap](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [architecture decision records](docs/adr/)

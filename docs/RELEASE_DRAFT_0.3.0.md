@@ -17,9 +17,8 @@ Highlights:
   sample rate, and exact decoded frame count;
 - adds `.m4a` and `.mp4` to capability-driven directory discovery;
 - adds bounded packet-level decoding for the ALAC route and for FLAC streams
-  whose packet geometry fits the granted reservation, under the single
-  application-owned worker and memory plan accepted by
-  [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md); a report and
+  whose packet geometry fits the granted reservation, under a single
+  application-owned worker and memory plan; a report and
   its decoded PCM are identical whatever worker count a host grants, and
   decode and analysis overlap on a permit the route left unspent, and a batch
   runs its items across file lanes derived from that same plan while a single
@@ -56,8 +55,7 @@ MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路�
 - 在创建 decoder 前首检 ISO BMFF，并交叉核对 ALAC cookie、sample entry、媒体
   时序、sample tables、backend codec 身份、采样率和最终精确解码帧数；
 - capability 驱动的目录发现新增 `.m4a` 与 `.mp4`；
-- 在 [ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) 接受的唯一
-  application 自有 worker 与内存计划下，为 ALAC route 以及 packet 几何能落入已授予
+- 在唯一一份 application 自有 worker 与内存计划下，为 ALAC route 以及 packet 几何能落入已授予
   reservation 的 FLAC 流启用有界 packet 级解码；无论宿主授予多少 worker，报告与
   解码 PCM 完全相同；解码与分析在 route 未花掉的 permit 上重叠；批量按同一 plan
   推导的 file lane 并行处理条目，而单个文件仍独占整个解码器；窗口级并行仍未实现。

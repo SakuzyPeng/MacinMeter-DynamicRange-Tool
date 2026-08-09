@@ -76,11 +76,10 @@ The following routes are not built into the current stable surface:
 - FFmpeg fallback or external decoder processes;
 - resampling, gain, filters, edge trimming, and silence preprocessing.
 
-Parallelism is an execution policy, not a codec capability. Accepted
-[ADR-0014](adr/0014-deterministic-decode-analysis-pipeline.md) removes the
-permanent ban on bounded packet-, file-, and window-level parallelism, and no
-parallel path becomes a stable feature until its independent graduation gates
-pass. In 0.3.0 the ALAC route and provably bounded FLAC streams decode with
+Parallelism is an execution policy, not a codec capability. Bounded packet-,
+file-, and window-level parallelism are allowed, and no parallel path becomes a
+stable feature until it has independently been shown not to change a result.
+In 0.3.0 the ALAC route and provably bounded FLAC streams decode with
 packet workers, decoding overlaps analysis on an unspent permit, and batch
 items run across file lanes, all from one application-owned plan; window-level
 parallelism is not implemented. Which path runs is decided per route from that

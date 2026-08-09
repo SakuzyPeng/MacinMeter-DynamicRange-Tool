@@ -77,10 +77,10 @@ mdrmeter completions fish > ~/.config/fish/completions/mdrmeter.fish
 支持 `bash`、`zsh`、`fish`、`powershell` 与 `elvish`。该命令只写 stdout；补全脚本
 装到哪里由调用方决定。
 
-[`ADR-0014`](docs/adr/0014-deterministic-decode-analysis-pipeline.md) 已接受有界的
-packet、文件与窗口级并行，每条轴都必须各自通过正确性、资源与性能门禁后才启用。
-route-specific packet 解码、解码-分析重叠与批量 file lane 已通过并在 0.3.0 中启用；
-窗口级并行尚未实现。不提供公开的线程、batch size 或队列控制，也不发布任何吞吐数字。
+内部有一部分工作是并行的，每条轴都必须各自通过正确性、资源与性能门禁后才启用。
+route-specific packet 解码、解码-分析重叠与批量 file lane 已在 0.3.0 中启用；窗口级
+并行尚未实现。**报告与其解码音频不依赖这些**，无论走哪条路径结果都相同。不提供
+公开的线程、batch size 或队列控制，也不发布任何吞吐数字。
 
 下面是仓库内固定合成 fixture 实际产生的 stdout：
 
@@ -229,8 +229,7 @@ fn main() -> Result<(), macinmeter::AnalysisError> {
 
 同一个 `Application` 的 clone 共享有界顶层执行队列，当前只准入一个 active job；
 分别构造的 `Application` 彼此独立，队列大小可以通过
-`Application::with_budget` 配置。未来 ADR-0014 内部 worker 仍必须受该
-application 执行域统一管理。
+`Application::with_budget` 配置。内部 worker 始终受该 application 执行域统一管理。
 
 已经持有有限、帧对齐、交错 `f64` PCM 的调用者可以直接使用
 `AnalyzerSession`。`AlbumAggregator` 是针对逐轨报告的独立数值操作，支持
@@ -286,12 +285,13 @@ macinmeter-domain
 ```
 
 所有第一方 Rust crate 都使用 `#![forbid(unsafe_code)]`。当前产品只有一个分析器
-实现。在同一份 application 自有的 worker 与内存计划下，它以 packet worker 解码
-ADR-0013 的 ALAC route 与可证明有界的 FLAC 流，在 route 未花掉的 permit 上重叠
-解码与分析，并按同一 plan 推导的 file lane 运行批量条目；单个文件独占整个 decoder，
-窗口级并行尚未实现。无论走哪条路径结果都相同。ADR-0014 只允许通过逐 route/逐轴
-毕业的有界确定性内部并行，不恢复已删除的 0.1.x 并行 decoder。设计历史与进一步技术
-资料集中在：
+实现。在同一份 application 自有的 worker 与内存计划下，它以 packet worker 解码 ALAC
+route 与可证明有界的 FLAC 流，在 route 未花掉的 permit 上重叠解码与分析，并按同一
+plan 推导的 file lane 运行批量条目；单个文件独占整个 decoder，窗口级并行尚未实现。
+无论走哪条路径结果都相同：内部并行是有界且确定的，并且只有在某条轴被证明不改变
+结果之后，才逐 route、逐轴地启用。
+
+设计历史与进一步技术资料集中在：
 
 - [架构与参考对齐路线图](docs/ARCHITECTURE_AND_REFERENCE_ALIGNMENT.md)
 - [架构决策记录](docs/adr/)
