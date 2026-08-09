@@ -41,6 +41,7 @@
   "status.searchNotFound": "No result contains “{{query}}”.",
   "status.copied": "Copied",
   "status.copyFailed": "Copy failed: {{message}}",
+  "status.preparingExport": "Opening export options…",
   "status.exportingJson": "Writing JSON in chunks…",
   "status.exportingImage": "Exporting image {{current}}/{{total}}…",
   "status.exported": "Exported {{name}}.",

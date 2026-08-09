@@ -41,6 +41,7 @@
   "status.searchNotFound": "未找到包含“{{query}}”的结果。",
   "status.copied": "已复制",
   "status.copyFailed": "复制失败：{{message}}",
+  "status.preparingExport": "正在打开导出选项…",
   "status.exportingJson": "正在分块写入 JSON…",
   "status.exportingImage": "正在导出图片 {{current}}/{{total}}…",
   "status.exported": "已导出 {{name}}。",

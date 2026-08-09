@@ -211,6 +211,13 @@ export type AnalysisEvent =
   | { type: "batch_item_finished"; index: number; item: BatchItem }
   | { type: "batch_finished"; succeeded: number; failed: number };
 
+export type FrontendMessage =
+  | { type: "event"; event: AnalysisEvent }
+  | {
+      type: "batch_items";
+      items: { index: number; item: BatchItem }[];
+    };
+
 /// Delivered on its own event, never inside the exported envelope: wall time
 /// cannot be part of a document two runs must serialize identically.
 export type JobTiming = {
@@ -220,11 +227,6 @@ export type JobTiming = {
   decodeSpanMs: number;
   analysisMs: number;
   analysisSpanMs: number;
-};
-
-export type JobEvent = {
-  jobId: string;
-  event: AnalysisEvent;
 };
 
 export type DiscoveryResponse = {

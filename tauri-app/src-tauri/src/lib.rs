@@ -2,15 +2,20 @@
 
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisStage, AnalyzeRequest, Application, ApplicationJob,
-    BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink, WireEnvelope,
+    BatchItem, BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink,
+    WireEnvelope,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
-use tauri::Emitter;
+use tauri::{Emitter, ipc::Channel};
+
+const FRONTEND_DECODE_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
+const FRONTEND_BATCH_ITEM_CHUNK: usize = 8;
 
 #[derive(Debug, Clone, Default)]
 struct JobRegistry {
@@ -112,11 +117,128 @@ struct DiscoveryResponse {
     files: Vec<String>,
 }
 
+#[derive(Debug, Default)]
+struct FrontendProgressState {
+    last_decode_progress: Option<Instant>,
+    batch_items: Vec<FrontendBatchItem>,
+}
+
+impl FrontendProgressState {
+    fn should_emit_decode_progress(&mut self, now: Instant, eof: bool) -> bool {
+        let elapsed = self
+            .last_decode_progress
+            .map(|previous| now.saturating_duration_since(previous));
+        if !eof && elapsed.is_some_and(|elapsed| elapsed < FRONTEND_DECODE_PROGRESS_INTERVAL) {
+            return false;
+        }
+        self.last_decode_progress = Some(now);
+        true
+    }
+
+    fn push_batch_item(&mut self, item: FrontendBatchItem) -> Option<Vec<FrontendBatchItem>> {
+        self.batch_items.push(item);
+        (self.batch_items.len() >= FRONTEND_BATCH_ITEM_CHUNK)
+            .then(|| std::mem::take(&mut self.batch_items))
+    }
+
+    fn take_batch_items(&mut self) -> Vec<FrontendBatchItem> {
+        std::mem::take(&mut self.batch_items)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JobEvent {
-    job_id: String,
-    event: AnalysisEvent,
+struct FrontendBatchItem {
+    index: usize,
+    item: BatchItem,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum FrontendMessage {
+    Event { event: AnalysisEvent },
+    BatchItems { items: Vec<FrontendBatchItem> },
+}
+
+/// Bridges core progress into one invocation-scoped IPC channel.
+///
+/// Decode progress is intentionally sampled across the whole job. The core can
+/// produce one update per PCM block from several file lanes; forwarding every
+/// block overwhelms WebView input/IPC on large Windows batches. Completed-item
+/// reports are grouped as well, preserving incremental rendering with far fewer
+/// WebView callbacks.
+struct FrontendProgressSink {
+    channel: Channel<FrontendMessage>,
+    state: Mutex<FrontendProgressState>,
+}
+
+impl FrontendProgressSink {
+    fn new(channel: Channel<FrontendMessage>) -> Self {
+        Self {
+            channel,
+            state: Mutex::new(FrontendProgressState::default()),
+        }
+    }
+
+    fn send_batch_items(&self, items: Vec<FrontendBatchItem>) {
+        if !items.is_empty() {
+            let _ = self.channel.send(FrontendMessage::BatchItems { items });
+        }
+    }
+
+    fn flush_batch_items(&self) {
+        let items = self
+            .state
+            .lock()
+            .map(|mut state| state.take_batch_items())
+            .unwrap_or_default();
+        self.send_batch_items(items);
+    }
+}
+
+impl macinmeter::ProgressSink for FrontendProgressSink {
+    fn emit(&self, event: AnalysisEvent) {
+        match event {
+            AnalysisEvent::BatchItemFinished { index, item } => {
+                let items =
+                    self.state.lock().ok().and_then(|mut state| {
+                        state.push_batch_item(FrontendBatchItem { index, item })
+                    });
+                if let Some(items) = items {
+                    self.send_batch_items(items);
+                }
+            }
+            AnalysisEvent::DecodeProgress {
+                index,
+                display_path,
+                progress,
+            } => {
+                let should_emit = self
+                    .state
+                    .lock()
+                    .map(|mut state| {
+                        state.should_emit_decode_progress(Instant::now(), progress.is_eof())
+                    })
+                    .unwrap_or(true);
+                if should_emit {
+                    let _ = self.channel.send(FrontendMessage::Event {
+                        event: AnalysisEvent::DecodeProgress {
+                            index,
+                            display_path,
+                            progress,
+                        },
+                    });
+                }
+            }
+            event @ AnalysisEvent::BatchFinished { .. } => {
+                self.flush_batch_items();
+                let _ = self.channel.send(FrontendMessage::Event { event });
+            }
+            event => {
+                let _ = self.channel.send(FrontendMessage::Event { event });
+            }
+        }
+    }
 }
 
 /// How long decode and analysis occupied, delivered beside the result.
@@ -160,6 +282,7 @@ async fn run_analysis(
     registry: tauri::State<'_, JobRegistry>,
     application: tauri::State<'_, Application>,
     request: RunAnalysisRequest,
+    on_event: Channel<FrontendMessage>,
 ) -> Result<WireEnvelope, AnalysisError> {
     if let Err(error) = validate_job_id(&request.job_id) {
         return Ok(WireEnvelope::error(error));
@@ -176,19 +299,10 @@ async fn run_analysis(
 
     let job_id = request.job_id;
     let envelope = match tauri::async_runtime::spawn_blocking(move || {
-        let event_window = window.clone();
-        let event_job_id = job_id.clone();
-        let sink = move |event: AnalysisEvent| {
-            let _ = event_window.emit(
-                "analysis-event",
-                JobEvent {
-                    job_id: event_job_id.clone(),
-                    event,
-                },
-            );
-        };
+        let sink = FrontendProgressSink::new(on_event);
         let (envelope, timings) =
             execute_analysis(application_job, request.path, request.timing, &sink);
+        sink.flush_batch_items();
         if let Some(timings) = timings {
             emit_timing(&window, &job_id, false, timings);
         }
@@ -233,6 +347,7 @@ async fn run_batch(
     registry: tauri::State<'_, JobRegistry>,
     application: tauri::State<'_, Application>,
     request: RunBatchRequest,
+    on_event: Channel<FrontendMessage>,
 ) -> Result<WireEnvelope, AnalysisError> {
     if let Err(error) = validate_job_id(&request.job_id) {
         return Ok(WireEnvelope::error(error));
@@ -249,17 +364,7 @@ async fn run_batch(
 
     let job_id = request.job_id;
     let envelope = match tauri::async_runtime::spawn_blocking(move || {
-        let event_window = window.clone();
-        let event_job_id = job_id.clone();
-        let sink = move |event: AnalysisEvent| {
-            let _ = event_window.emit(
-                "analysis-event",
-                JobEvent {
-                    job_id: event_job_id.clone(),
-                    event,
-                },
-            );
-        };
+        let sink = FrontendProgressSink::new(on_event);
         let batch_request = BatchRequest {
             inputs: request.inputs,
             recursive: request.recursive,
@@ -278,6 +383,7 @@ async fn run_batch(
                 .map(WireEnvelope::batch)
                 .unwrap_or_else(WireEnvelope::error)
         };
+        sink.flush_batch_items();
         drop(active_job);
         envelope
     })
@@ -389,6 +495,57 @@ mod tests {
         assert!(registry.cancel("first").unwrap());
         assert!(first.is_cancelled());
         assert!(!second.is_cancelled());
+    }
+
+    #[test]
+    fn frontend_decode_progress_is_sampled_but_eof_is_immediate() {
+        let start = Instant::now();
+        let mut state = FrontendProgressState::default();
+
+        assert!(state.should_emit_decode_progress(start, false));
+        assert!(
+            !state
+                .should_emit_decode_progress(start + FRONTEND_DECODE_PROGRESS_INTERVAL / 2, false)
+        );
+        assert!(
+            state.should_emit_decode_progress(start + FRONTEND_DECODE_PROGRESS_INTERVAL / 2, true)
+        );
+        assert!(
+            state.should_emit_decode_progress(start + FRONTEND_DECODE_PROGRESS_INTERVAL * 2, false)
+        );
+    }
+
+    #[test]
+    fn frontend_batch_items_are_grouped_and_the_tail_can_be_flushed() {
+        let mut state = FrontendProgressState::default();
+        let item = |index| FrontendBatchItem {
+            index,
+            item: BatchItem {
+                display_path: format!("item-{index}"),
+                outcome: macinmeter::BatchItemOutcome::Failure {
+                    error: internal_error("test failure"),
+                },
+            },
+        };
+
+        for index in 0..FRONTEND_BATCH_ITEM_CHUNK - 1 {
+            assert!(state.push_batch_item(item(index)).is_none());
+        }
+        let chunk = state
+            .push_batch_item(item(FRONTEND_BATCH_ITEM_CHUNK - 1))
+            .expect("the configured chunk size must flush");
+        assert_eq!(chunk.len(), FRONTEND_BATCH_ITEM_CHUNK);
+        assert_eq!(chunk[0].index, 0);
+        assert_eq!(chunk.last().unwrap().index, FRONTEND_BATCH_ITEM_CHUNK - 1);
+
+        assert!(
+            state
+                .push_batch_item(item(FRONTEND_BATCH_ITEM_CHUNK))
+                .is_none()
+        );
+        let tail = state.take_batch_items();
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0].index, FRONTEND_BATCH_ITEM_CHUNK);
     }
 
     #[test]

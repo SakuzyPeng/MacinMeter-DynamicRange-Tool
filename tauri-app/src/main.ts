@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { join } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -25,12 +25,13 @@ import {
   type SupportedLanguage,
 } from "./i18n";
 import type {
+  AnalysisEvent,
   AnalysisReport,
   BatchItem,
   CapabilitySnapshot,
   ChannelResult,
   DiscoveryResponse,
-  JobEvent,
+  FrontendMessage,
   JobTiming,
   PublicError,
   WireEnvelope,
@@ -99,6 +100,7 @@ let discoveredFiles: string[] | null = null;
 let selectionRevision = 0;
 let previewJobId: string | null = null;
 let activeJobId: string | null = null;
+let cancellingJobId: string | null = null;
 let activeTotal = 1;
 const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
@@ -204,8 +206,15 @@ const renderStatus = (): void => {
   progressFill.style.width = `${progress}%`;
 };
 
+const restoreStatus = (previous: StatusState, wasHidden: boolean): void => {
+  statusState = previous;
+  statusElement.hidden = wasHidden;
+  renderStatus();
+};
+
 const updateControls = (): void => {
   const running = activeJobId !== null;
+  const cancelling = running && cancellingJobId === activeJobId;
   const interactionLocked = running || exportInProgress;
   pickFilesButton.disabled = interactionLocked;
   scanDirectoryButton.disabled = interactionLocked;
@@ -213,7 +222,7 @@ const updateControls = (): void => {
   clearButton.disabled = interactionLocked;
   showTimingButton.disabled = interactionLocked;
   analyzeButton.disabled =
-    exportInProgress || (!running && selectedInputs.length === 0);
+    exportInProgress || cancelling || (!running && selectedInputs.length === 0);
   analyzeButton.classList.toggle("cancel-mode", running);
   analyzeButton.textContent = t(running ? "btn.cancel" : "btn.analyze");
 
@@ -1102,9 +1111,18 @@ const exportImage = async (): Promise<void> => {
     return;
   }
   const envelope = lastEnvelope;
+  const previousStatus = statusState;
+  const statusWasHidden = statusElement.hidden;
+  exportInProgress = true;
+  updateControls();
   try {
+    status("status.preparingExport", {}, { progress: 0 });
+    await nextPaint();
     const format = await showFormatDialog();
-    if (!format) return;
+    if (!format) {
+      restoreStatus(previousStatus, statusWasHidden);
+      return;
+    }
     const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.${format}`;
     const pages = imageCapturePages(
       resultsElement,
@@ -1112,7 +1130,10 @@ const exportImage = async (): Promise<void> => {
         ? PNG_PAGE_MAX_CONTENT_HEIGHT
         : SVG_PAGE_MAX_CONTENT_HEIGHT,
     );
-    if (pages.length === 0) return;
+    if (pages.length === 0) {
+      restoreStatus(previousStatus, statusWasHidden);
+      return;
+    }
     let outputPaths: string[];
     if (pages.length === 1) {
       const path = await save({
@@ -1124,7 +1145,10 @@ const exportImage = async (): Promise<void> => {
           },
         ],
       });
-      if (!path) return;
+      if (!path) {
+        restoreStatus(previousStatus, statusWasHidden);
+        return;
+      }
       outputPaths = [path];
     } else {
       const directory = await open({
@@ -1133,16 +1157,16 @@ const exportImage = async (): Promise<void> => {
         multiple: false,
         recursive: false,
       });
-      if (!directory || Array.isArray(directory)) return;
+      if (!directory || Array.isArray(directory)) {
+        restoreStatus(previousStatus, statusWasHidden);
+        return;
+      }
       outputPaths = await Promise.all(
         pages.map((_, index) =>
           join(directory, numberedExportPath(name, index, pages.length)),
         ),
       );
     }
-
-    exportInProgress = true;
-    updateControls();
     for (let index = 0; index < pages.length; index += 1) {
       status(
         "status.exportingImage",
@@ -1178,16 +1202,23 @@ const exportImage = async (): Promise<void> => {
 const exportJson = async (): Promise<void> => {
   if (!lastEnvelope || exportInProgress) return;
   const envelope = lastEnvelope;
+  const previousStatus = statusState;
+  const statusWasHidden = statusElement.hidden;
+  exportInProgress = true;
+  updateControls();
   try {
+    status("status.preparingExport", {}, { progress: 0 });
+    await nextPaint();
     const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.json`;
     const path = await save({
       defaultPath: name,
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
-    if (!path) return;
+    if (!path) {
+      restoreStatus(previousStatus, statusWasHidden);
+      return;
+    }
 
-    exportInProgress = true;
-    updateControls();
     status("status.exportingJson", {}, { progress: 0 });
     await nextPaint();
     const bytes = new TextEncoder().encode(JSON.stringify(envelope, null, 2));
@@ -1275,11 +1306,15 @@ const setDropOverlay = (visible: boolean): void => {
 const cancelActiveJob = async (): Promise<void> => {
   if (!activeJobId) return;
   const jobId = activeJobId;
+  if (cancellingJobId === jobId) return;
+  cancellingJobId = jobId;
+  updateControls();
   status("status.cancelling");
   try {
-    const accepted = await invoke<boolean>("cancel_job", { jobId });
-    if (activeJobId === jobId && !accepted) status("status.complete");
+    await invoke<boolean>("cancel_job", { jobId });
   } catch (error) {
+    if (cancellingJobId === jobId) cancellingJobId = null;
+    updateControls();
     status(
       "status.discoveryFailed",
       { message: describeInvokeError(error) },
@@ -1305,11 +1340,14 @@ const runAnalysis = async (): Promise<void> => {
   status("status.running", {}, { progress: 0 });
 
   const startedAt = performance.now();
+  const onEvent = new Channel<FrontendMessage>();
+  onEvent.onmessage = (message) => handleFrontendMessage(jobId, message);
   try {
     const envelope =
       selectionKind === "files" && selectedInputs.length === 1
         ? await invoke<WireEnvelope>("run_analysis", {
             request: { jobId, path: selectedInputs[0], timing: showTiming },
+            onEvent,
           })
         : await invoke<WireEnvelope>("run_batch", {
             request: {
@@ -1318,6 +1356,7 @@ const runAnalysis = async (): Promise<void> => {
               recursive,
               timing: showTiming,
             },
+            onEvent,
           });
     await renderEnvelope(envelope, performance.now() - startedAt);
   } catch (error) {
@@ -1328,6 +1367,7 @@ const runAnalysis = async (): Promise<void> => {
     );
   } finally {
     if (activeJobId === jobId) activeJobId = null;
+    if (cancellingJobId === jobId) cancellingJobId = null;
     updateControls();
   }
 };
@@ -1450,9 +1490,8 @@ void listen<JobTiming>("analysis-timing", ({ payload }) => {
   lastPhaseTimings = payload;
 });
 
-void listen<JobEvent>("analysis-event", ({ payload }) => {
-  if (payload.jobId !== activeJobId) return;
-  const event = payload.event;
+const handleAnalysisEvent = (jobId: string, event: AnalysisEvent): void => {
+  if (jobId !== activeJobId || cancellingJobId === jobId) return;
   if (event.type === "discovery_started") {
     status("status.discovering", {}, { progress: 0 });
   } else if (event.type === "discovery_finished") {
@@ -1499,13 +1538,21 @@ void listen<JobEvent>("analysis-event", ({ payload }) => {
       { error: event.failed > 0, progress: 100 },
     );
   }
-}).catch((error: unknown) => {
-  status(
-    "status.discoveryFailed",
-    { message: describeInvokeError(error) },
-    { error: true },
-  );
-});
+};
+
+const handleFrontendMessage = (
+  jobId: string,
+  message: FrontendMessage,
+): void => {
+  if (message.type === "event") {
+    handleAnalysisEvent(jobId, message.event);
+    return;
+  }
+  if (jobId !== activeJobId || cancellingJobId === jobId) return;
+  for (const { index, item } of message.items) {
+    queueStreamedBatchItem(index, item);
+  }
+};
 
 void getCurrentWebview()
   .onDragDropEvent(({ payload }) => {
