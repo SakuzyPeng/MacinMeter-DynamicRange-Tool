@@ -79,14 +79,19 @@ dependencies into lower layers.
 - Ordinary GUI build/dev commands only check version mirrors. Version changes
   are written only by the explicit `npm run sync-version` command.
 - Release staging must start clean unless it is explicitly marked dirty. It
-  verifies the extracted CLI and current-host DMG bytes plus SHA-256. The
-  macOS arm64 main CI gate may run the same contract as ephemeral validation.
-  Manual dispatch may retain one clean unsigned Apple Silicon candidate for
-  14 days, but it never signs, notarizes, creates a tag/Release, or implies
-  Gatekeeper readiness.
-- The 0.3.0 packaged GUI targets only `aarch64-apple-darwin` with macOS 11.0 as
-  its minimum system version. Do not add Intel, universal, Windows, or Linux
-  GUI artifacts without a separate target-bound decision.
+  verifies the extracted CLI and current-host GUI bytes plus SHA-256: DMG on
+  macOS, NSIS on Windows. Windows verification must inspect actual PE machine
+  fields and Authenticode absence for both installer and payload, with NSIS
+  extraction outside the candidate directory. The Windows x64 and macOS arm64
+  main CI gates may run the same contract as ephemeral validation. Manual
+  dispatch may retain one clean unsigned candidate per platform for 14 days,
+  but it never signs, notarizes, creates a tag/Release, or implies Gatekeeper
+  or SmartScreen readiness.
+- The 0.3.0 packaged GUI targets are `aarch64-apple-darwin` with macOS 11.0 as
+  its minimum system version and `x86_64-pc-windows-msvc` with NSIS. Do not add
+  Intel/universal macOS, Windows ARM64/32-bit, or Linux GUI artifacts without a
+  separate target-bound decision. Final candidates must name the same source
+  commit.
 - M6 performance evidence uses the release `m6_baseline_worker` and
   `scripts/run-performance-baseline.py`. Formal runs start clean, bind source,
   binary, suite, corpus, toolchain, environment, and raw samples, and require
@@ -116,10 +121,10 @@ npm run tauri dev
 ```
 
 Remote CI runs bounded Ubuntu 24.04, Windows Server 2025 x64, and macOS 26
-arm64 jobs for pull requests and pushes to `main`. Main/manual runs add the
-Windows release CLI smoke; main runs ephemeral macOS staging, while manual
-dispatch from `main` retains the unsigned Apple Silicon candidate for 14 days
-and adds the Linux release build. No CI path creates a tag or GitHub Release.
+arm64 jobs for pull requests and pushes to `main`. Main runs ephemeral Windows
+and macOS staging. Manual dispatch from `main` retains the unsigned Windows x64
+and Apple Silicon candidates for 14 days and adds the Linux release build. No
+CI path creates a tag or GitHub Release.
 Do not trigger, rerun, or wait for remote CI as part of ordinary development
 unless the user requests it or its result is required for the current GitHub
 operation.
@@ -128,7 +133,7 @@ Local artifact staging is separate from ordinary verification:
 
 ```bash
 python3 scripts/stage-release.py stage
-# macOS current-host GUI, still unsigned/unnotarized:
+# Supported current-host GUI: unsigned/unnotarized DMG or unsigned NSIS:
 python3 scripts/stage-release.py stage --include-gui
 ```
 

@@ -36,10 +36,13 @@ tracks, multiple audio tracks, cropped edit lists, ALAC 20/32-bit, nonstandard
 channel layouts, CAF/raw ALAC, AIFC, resampling, or an FFmpeg runtime. FFmpeg
 8.0.1 is used only to regenerate the committed synthetic ALAC corpus.
 
-The GUI release boundary is unchanged: unsigned and unnotarized Apple Silicon
-macOS 11.0+, with no Intel/universal, Windows, or Linux GUI artifact. CLI
-source builds remain available on supported Rust hosts. Checksums and artifact
-identities will be added only after an explicit release-staging operation.
+The 0.3.0 release contains Apple Silicon macOS 11.0+ and Windows x64 slices,
+each with a CLI archive and GUI installer (DMG on macOS, NSIS on Windows). Both
+GUI artifacts are unsigned; the macOS build is also unnotarized. Gatekeeper may
+require an explicit open, and SmartScreen may show an unknown-publisher
+warning. There is no Intel/universal macOS, Windows ARM64/32-bit, or Linux GUI
+artifact. Checksums and artifact identities will be added only after both
+platform candidates are staged from the same source commit and verified.
 
 ## 中文
 
@@ -68,6 +71,9 @@ MacinMeter 0.3.0 新增一条受限、稳定、进程内的 MP4/M4A + ALAC 路�
 list、ALAC 20/32-bit、非标准声道布局、CAF/raw ALAC、AIFC、重采样或 FFmpeg
 runtime。FFmpeg 8.0.1 只用于再生成仓库提交的合成 ALAC 语料。
 
-GUI 发行边界不变：仅面向 Apple Silicon macOS 11.0+，仍未签名、未公证；不提供
-Intel/universal、Windows 或 Linux GUI 制品。只有显式执行 release staging 后，才会
-把校验和及制品身份补入正式发布材料。
+0.3.0 同时包含 Apple Silicon macOS 11.0+ 与 Windows x64 slice，每个平台各有 CLI
+archive 与 GUI installer（macOS 为 DMG，Windows 为 NSIS）。两个 GUI 制品都未签名，
+macOS 构建也未公证；Gatekeeper 可能要求显式打开，SmartScreen 可能显示未知发布者。
+不提供 Intel/universal macOS、Windows ARM64/32-bit 或 Linux GUI 制品。只有两个平台
+从同一个 source commit 完成 candidate staging 与验证后，才会把校验和及制品身份补入
+正式发布材料。

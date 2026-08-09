@@ -131,12 +131,12 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
 The matching GitHub Actions workflow runs the full standard gate on Ubuntu and
 the Rust/CLI/Tauri gate on Windows Server 2025 x64 and macOS 26 arm64 for pull
-requests and pushes to `main`. Main/manual Windows runs also smoke-test a
-release CLI; main/manual macOS runs stage and verify the final CLI archive plus
-current-host Tauri DMG. A main push discards those bytes; manual dispatch from
-`main` retains the stricter unsigned Apple Silicon candidate for 14 days.
-Manual dispatch also adds the Linux release build. Performance, hostile-corpus,
-signing, notarization, and publishing remain explicitly outside that workflow.
+requests and pushes to `main`. Main/manual Windows and macOS runs stage and
+verify their final CLI archive plus current-host GUI installer. A main push
+discards those bytes; manual dispatch from `main` retains one stricter unsigned
+candidate per platform for 14 days. Manual dispatch also adds the Linux release
+build. Performance, hostile-corpus, signing, notarization, and publishing
+remain explicitly outside that workflow.
 
 ## M6 performance baseline
 
@@ -191,27 +191,36 @@ From a clean worktree, build and verify the current-host CLI artifact:
 python3 scripts/stage-release.py stage
 ```
 
-On macOS, explicitly include the current-host Tauri DMG:
+On a supported macOS or Windows host, explicitly include its Tauri installer:
 
 ```bash
 python3 scripts/stage-release.py stage --include-gui
 ```
 
-The clean, immutable Apple Silicon candidate has its own explicit mode:
+Each clean, immutable platform candidate has its own explicit mode:
 
 ```bash
 python3 scripts/stage-release.py stage \
   --include-gui \
   --unsigned-macos-arm64-candidate
+
+python scripts/stage-release.py stage \
+  --include-gui \
+  --unsigned-windows-x64-candidate
 ```
 
-Both commands create `RELEASE_MANIFEST.json` and `SHA256SUMS`, then verify the
-final files. CLI verification extracts and runs the distributed binary. GUI
-verification checks and mounts the DMG, validates its bundle identity and
-architecture, records strict code-signature status, and does not launch it.
-No staging command uploads, signs, notarizes, or creates a GitHub release.
-The manual workflow may retain a verified candidate after this script exits;
-that external retention does not change the manifest into a published release.
+All modes create `RELEASE_MANIFEST.json` and `SHA256SUMS`, then verify the final
+files. CLI verification extracts and runs the distributed binary. macOS GUI
+verification checks and mounts the DMG, validates bundle identity and
+architecture, and records code-signature observations. Windows GUI verification
+requires 7-Zip, extracts NSIS outside the candidate directory, validates one
+x86_64 PE payload and its version, and requires the installer and payload to be
+Authenticode `NotSigned` with no signer certificate. Neither route launches the
+GUI. No staging command uploads, signs, notarizes, or creates a GitHub release.
+The manual workflow may retain verified candidates after this script exits;
+that external retention does not change either manifest into a published
+release. Final 0.3.0 review requires both candidates to record the same source
+commit.
 
 See [`docs/RELEASE.md`](../docs/RELEASE.md) for the exact artifact and dirty-tree
 contracts.

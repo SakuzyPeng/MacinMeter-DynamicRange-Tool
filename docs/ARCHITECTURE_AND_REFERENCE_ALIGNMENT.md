@@ -226,10 +226,11 @@ host、playlist/grouping、metadata 来源、完整文本以及 production/refer
 | CI-003 | DONE | 隔离 GUI release 链 | M5 改为显式本地 current-host DMG staging 与实际制品验证；按 opt-in CI 决策不上传、不自动发布 |
 | CI-004 | TODO | 管理安全 advisory | 忽略项记录原因、负责人和到期日 |
 | CI-005 | DONE | 恢复有界自动验证 | PR 与 `main` push 自动执行单 Ubuntu 正确性门禁；同 ref 取消过时运行，release build 仅手动，性能/hostile/release/publish 仍排除 |
-| CI-006 | DONE | 增加 Windows x64 门禁 | Windows Server 2025 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 额外 smoke release CLI，但不上传、不声明 GUI 包 |
+| CI-006 | DONE | 增加 Windows x64 门禁 | Windows Server 2025 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；最初只 smoke release CLI，后由 ADR-0015 升级为实际 NSIS staging 与候选保留 |
 | CI-007 | DONE | 增加 macOS arm64 与 GUI staging 门禁 | macOS 26 arm64 在 PR/main/manual 上执行 strict Clippy 与 workspace tests；main/manual 复用 clean staging 验证 CLI archive 与 Tauri DMG，但不上传、签名、公证或发布 |
-| RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
+| RELEASE-001 | DONE | 增加制品验证 | 解包 CLI JSON/profile smoke、DMG 挂载/bundle/architecture smoke、NSIS 解包/PE/version/Authenticode smoke 与 SHA-256 反向验证；签名、notarization、SBOM、provenance 仍为独立后续事项 |
 | RELEASE-002 | DONE | 固定未签名 Apple Silicon 首发候选 | 0.2.0 只保留 macOS 11.0+ arm64 CLI/GUI；manual CI 生成 clean immutable candidate 并保留 14 天，不自动 tag、签名、公证或发布 |
+| RELEASE-003 | DONE | 扩展 0.3.0 双平台发行面 | ADR-0015 加入未签名 Windows x64 CLI/NSIS candidate；Windows 与 macOS 候选各自在对应 runner 验证并短期保留，最终必须来自同一 source commit |
 | PERF-001 | DONE | 删除伪性能指标 | M0 不再输出推导吞吐或理论加速比 |
 | PERF-002 | DONE | 重建 benchmark 方法 | ADR-0007 固定 deterministic corpus、15-scope release worker、随机/交错 A/B、结果/PCM oracle、进程树监控及 source/environment/binary hash；clean 9239609 scalar baseline 的 105 个 measured sample 与报告已保存 |
 | DOC-001 | DONE | 修正过度兼容性声明 | 用户文档只陈述有记录支持的数值范围，不在逐项结果上附加项目状态标签 |
@@ -888,6 +889,10 @@ ADR-0012 随后完成首个后 M6 的既有 codec 封装扩展：受限
 ADR-0013 再以独立毕业证据加入受限 MP4/M4A + ALAC，并将当前开发线转换到
 schema v4 / 0.3.0。历史 0.2.0 记录保持原样。
 
+ADR-0015 把 0.3.0 发行面扩展为 Apple Silicon macOS 与 Windows x64。两个平台各自
+产出 CLI 与 GUI candidate；Windows NSIS 必须实际解包并核对 x86_64 PE、版本资源与
+installer/payload 的 Authenticode absence。两份候选最终必须绑定同一 source commit。
+
 每项后续提交应包含对应测试、证据链接和验收说明。
 
 ## 10. 小项清理清单
@@ -899,8 +904,8 @@ schema v4 / 0.3.0。历史 0.2.0 记录保持原样。
 - [x] CI 使用根 lockfile 与 `--locked`；M0–M6 的纯手动阶段完成后，按 ADR-0008
   恢复有界的 PR/`main` 自动门禁，按 ADR-0009 加入 Windows x64，再按 ADR-0010
   加入 macOS 26 arm64 与 main/manual GUI staging；
-- [x] 0.3.0 继续沿用 macOS 11.0+ Apple Silicon GUI 发行面；manual CI 只保留短期
-  unsigned candidate，不自动创建 tag 或 Release；
+- [x] 0.3.0 同时发行 macOS 11.0+ Apple Silicon 与 Windows x64 GUI；manual CI 为
+  两个平台各保留一份短期 unsigned candidate，不自动创建 tag 或 Release；
 - [x] 删除旧 `panic = "abort"` / `catch_unwind` 组合；
 - [x] 删除非测试代码中的无保护 `expect`；
 - [x] 删除线程优先级控制；

@@ -52,13 +52,19 @@ subject 就是法定姓名，并在文件属性与 SmartScreen 发布者提示�
 `hdiutil` 在 Windows 上没有对应物，但“只确认安装包是一个合法 PE”与 macOS 侧挂载
 DMG 后检查 `.app` 不对等，会让两个平台的同一句“已验证”含义不同。
 
-因此 Windows GUI 候选必须用 `7z` 把 NSIS 安装包解到临时目录，并在其中：
+因此 Windows GUI 候选必须先验证外层 installer 的 DOS/PE header，再用 `7z` 把
+NSIS 安装包解到 candidate 目录之外的临时目录，并在其中：
 
 1. 找到唯一的 `macinmeter-gui.exe`；
-2. 确认它是 PE 可执行文件；
+2. 验证其 DOS/PE header，并从 COFF `Machine` 字段实测为 x86_64；
 3. 确认其版本资源等于 workspace 版本；
-4. 记录安装包与内层 executable 各自的 SHA-256；
-5. 无论成功失败都清理临时目录。
+4. 分别查询 installer 与内层 executable 的 Authenticode 状态，要求两者均为
+   `NotSigned` 且没有 signer certificate；
+5. 记录 installer 与内层 executable 各自的 SHA-256；
+6. 无论成功失败都清理临时目录，清理失败则整个 staging 失败。
+
+PowerShell 检查所需的路径只能经环境变量作为数据传入，不得插入命令源码；这样含
+单引号等字符的合法路径不会破坏命令，也不会变成代码。
 
 `7z` 因此成为 Windows staging 的显式前置依赖，与 macOS 侧依赖 `hdiutil` 同级。
 缺失时必须直接失败，不得降级为较浅的检查后仍标记为候选。

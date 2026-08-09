@@ -83,10 +83,13 @@
   `analysis-event` 与 CLI stderr 跨 file lane 交错。每个事件仍标明所属条目，报告内
   的条目顺序不变；消费方必须读取 item index，不能再把事件顺序当作已完成的串行
   前缀，GUI 会聚合逐条目进度。
-- The GUI release boundary remains unsigned/unnotarized Apple Silicon macOS
-  11.0+, without Intel/universal, Windows, or Linux GUI artifacts.
-  GUI 发行边界仍为未签名、未公证的 Apple Silicon macOS 11.0+，不增加
-  Intel/universal、Windows 或 Linux GUI 制品。
+- The GUI release boundary contains unsigned Apple Silicon macOS 11.0+ and
+  Windows x64 installers. macOS remains unnotarized; Windows has no
+  Authenticode signature. There are no Intel/universal macOS, Windows
+  ARM64/32-bit, or Linux GUI artifacts.
+  GUI 发行边界包含未签名的 Apple Silicon macOS 11.0+ 与 Windows x64 installer；
+  macOS 仍未公证，Windows 不含 Authenticode 签名。不提供 Intel/universal macOS、
+  Windows ARM64/32-bit 或 Linux GUI 制品。
 
 ## v0.2.0 – Trusted trunk rebuild / 可信主干重建
 

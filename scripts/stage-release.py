@@ -3,9 +3,9 @@
 
 The default `stage` command builds the host CLI from locked sources, packages
 the actual distributed bytes, runs smoke checks after extraction, and writes a
-SHA-256 manifest. macOS GUI staging is explicit through `--include-gui`.
-Unsigned Apple Silicon release candidates require the additional explicit
-`--unsigned-macos-arm64-candidate` flag and a clean source tree.
+SHA-256 manifest. macOS and Windows GUI staging is explicit through
+`--include-gui`. Unsigned release candidates require the matching platform flag
+and a clean source tree.
 
 This script never uploads, signs, or creates a GitHub release.
 """
@@ -43,6 +43,10 @@ UNSIGNED_MACOS_ARM64_SCOPE = "unsigned_macos_arm64_release_candidate"
 UNSIGNED_WINDOWS_X64_SCOPE = "unsigned_windows_x64_release_candidate"
 WINDOWS_GUI_EXECUTABLE = "macinmeter-gui.exe"
 PE_MAGIC = b"MZ"
+PE_SIGNATURE = b"PE\0\0"
+PE_POINTER_OFFSET = 0x3C
+PE_MACHINE_AMD64 = 0x8664
+WINDOWS_INSPECT_PATH_ENV = "MACINMETER_WINDOWS_FILE"
 CHECKSUM_FILE = "SHA256SUMS"
 RELEASE_MANIFEST = "RELEASE_MANIFEST.json"
 ARTIFACT_MANIFEST = "ARTIFACT_MANIFEST.json"
@@ -83,6 +87,7 @@ def run(
     cwd: Path,
     capture: bool = False,
     timeout: float | None = None,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(
@@ -92,6 +97,7 @@ def run(
             capture_output=capture,
             text=capture,
             timeout=timeout,
+            env=environment,
         )
     except subprocess.CalledProcessError as error:
         detail = ""
@@ -678,21 +684,95 @@ def seven_zip(command: list[str], root: Path):
         ) from error
 
 
-def windows_executable_version(path: Path, root: Path) -> str:
-    """Read a PE version resource without adding a Python dependency."""
-    result = run(
-        [
-            "powershell.exe",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            f"(Get-Item -LiteralPath '{path}').VersionInfo.FileVersion",
-        ],
-        cwd=root,
-        capture=True,
-        timeout=60,
+def windows_pe_machine(path: Path) -> int:
+    """Read and validate the COFF Machine field from a PE executable."""
+    with path.open("rb") as file:
+        dos_header = file.read(PE_POINTER_OFFSET + 4)
+        if len(dos_header) < PE_POINTER_OFFSET + 4 or dos_header[:2] != PE_MAGIC:
+            raise ReleaseError(f"{path.name} does not have a valid DOS header")
+        pe_offset = int.from_bytes(
+            dos_header[PE_POINTER_OFFSET : PE_POINTER_OFFSET + 4], "little"
+        )
+        file.seek(pe_offset)
+        pe_header = file.read(6)
+    if len(pe_header) != 6 or pe_header[:4] != PE_SIGNATURE:
+        raise ReleaseError(f"{path.name} does not have a valid PE header")
+    return int.from_bytes(pe_header[4:6], "little")
+
+
+def windows_machine_name(machine: int) -> str:
+    return {
+        0x014C: "x86",
+        PE_MACHINE_AMD64: "x86_64",
+        0xAA64: "arm64",
+    }.get(machine, f"unknown_0x{machine:04x}")
+
+
+def windows_executable_info(path: Path, root: Path) -> dict:
+    """Read version and Authenticode status without interpolating the path."""
+    environment = os.environ.copy()
+    environment[WINDOWS_INSPECT_PATH_ENV] = str(path)
+    command = (
+        f"$item = Get-Item -LiteralPath $env:{WINDOWS_INSPECT_PATH_ENV}; "
+        f"$signature = Get-AuthenticodeSignature -LiteralPath "
+        f"$env:{WINDOWS_INSPECT_PATH_ENV}; "
+        "$signerSubject = $null; "
+        "if ($null -ne $signature.SignerCertificate) { "
+        "$signerSubject = $signature.SignerCertificate.Subject }; "
+        "[ordered]@{ "
+        "fileVersion = $item.VersionInfo.FileVersion; "
+        "authenticodeStatus = [string]$signature.Status; "
+        "signerSubject = $signerSubject "
+        "} | ConvertTo-Json -Compress"
     )
-    return result.stdout.strip()
+    try:
+        result = run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                command,
+            ],
+            cwd=root,
+            capture=True,
+            timeout=60,
+            environment=environment,
+        )
+    except ReleaseError as error:
+        raise ReleaseError(
+            f"failed to inspect Windows executable {path}: {error}"
+        ) from error
+    try:
+        document = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ReleaseError(
+            f"Windows executable inspection returned invalid JSON for {path}"
+        ) from error
+    if not isinstance(document, dict):
+        raise ReleaseError(
+            f"Windows executable inspection returned no object for {path}"
+        )
+    file_version = document.get("fileVersion")
+    status = document.get("authenticodeStatus")
+    signer = document.get("signerSubject")
+    if file_version is not None and not isinstance(file_version, str):
+        raise ReleaseError(f"Windows executable version is invalid for {path}")
+    if not isinstance(status, str) or (
+        signer is not None and not isinstance(signer, str)
+    ):
+        raise ReleaseError(f"Windows Authenticode status is invalid for {path}")
+    return document
+
+
+def require_unsigned_authenticode(info: dict, label: str) -> None:
+    status = info["authenticodeStatus"]
+    signer = info["signerSubject"]
+    if status != "NotSigned" or signer is not None:
+        raise ReleaseError(
+            f"{label} must be unsigned; Authenticode status is {status!r}, "
+            f"signer is {signer!r}"
+        )
 
 
 def smoke_windows_installer(
@@ -712,12 +792,15 @@ def smoke_windows_installer(
         raise ReleaseError(
             f"Windows GUI staging supports {WINDOWS_X64_TARGET} only; found {target}"
         )
-    with installer.open("rb") as file:
-        if file.read(2) != PE_MAGIC:
-            raise ReleaseError(f"{installer.name} is not a PE executable")
+    installer_machine = windows_pe_machine(installer)
+    installer_info = windows_executable_info(installer, root)
+    require_unsigned_authenticode(installer_info, "Windows installer")
 
-    extracted = Path(tempfile.mkdtemp(prefix=".mdrmeter-nsis-", dir=installer.parent))
-    try:
+    # Extraction is deliberately outside the candidate directory. Even if the
+    # host prevents cleanup, unmanifested payload bytes can never be moved into
+    # or uploaded with a successfully staged release.
+    with tempfile.TemporaryDirectory(prefix="mdrmeter-nsis-") as temporary:
+        extracted = Path(temporary)
         seven_zip(["x", str(installer), f"-o{extracted}", "-y"], root)
         payloads = sorted(
             path
@@ -727,15 +810,25 @@ def smoke_windows_installer(
         if len(payloads) != 1:
             raise ReleaseError(
                 f"the installer must carry exactly one {WINDOWS_GUI_EXECUTABLE}; found "
-                + (", ".join(str(path.relative_to(extracted)) for path in payloads) or "none")
+                + (
+                    ", ".join(
+                        str(path.relative_to(extracted)) for path in payloads
+                    )
+                    or "none"
+                )
             )
         payload = payloads[0]
-        with payload.open("rb") as file:
-            if file.read(2) != PE_MAGIC:
-                raise ReleaseError(
-                    f"{WINDOWS_GUI_EXECUTABLE} inside the installer is not a PE executable"
-                )
-        payload_version = windows_executable_version(payload, root)
+        payload_machine = windows_pe_machine(payload)
+        if payload_machine != PE_MACHINE_AMD64:
+            raise ReleaseError(
+                f"installer payload architecture is "
+                f"{windows_machine_name(payload_machine)!r}; expected 'x86_64'"
+            )
+        payload_info = windows_executable_info(payload, root)
+        require_unsigned_authenticode(payload_info, "Windows installer payload")
+        payload_version = payload_info["fileVersion"]
+        if not payload_version:
+            raise ReleaseError("installer payload has no file version resource")
         if version_tuple(payload_version) != version_tuple(version):
             raise ReleaseError(
                 f"installer payload reports version {payload_version!r}; "
@@ -746,12 +839,13 @@ def smoke_windows_installer(
             "payload": WINDOWS_GUI_EXECUTABLE,
             "payloadVersion": payload_version,
             "payloadSha256": sha256_file(payload),
-            "architecture": "x86_64",
-            "authenticodeSigned": False,
+            "installerMachine": windows_machine_name(installer_machine),
+            "payloadMachine": windows_machine_name(payload_machine),
+            "architecture": windows_machine_name(payload_machine),
+            "installerAuthenticodeStatus": installer_info["authenticodeStatus"],
+            "payloadAuthenticodeStatus": payload_info["authenticodeStatus"],
             "launch": "not_performed",
         }
-    finally:
-        shutil.rmtree(extracted, ignore_errors=True)
     return smoke
 
 
@@ -1225,13 +1319,18 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
                     "publicationStatus": (
                         "unsigned_release_candidate"
                         if unsigned_candidate
-                        else "local_unnotarized"
+                        else (
+                            "local_unsigned" if windows_gui else "local_unnotarized"
+                        )
                     ),
                     "smokeContract": [
-                        "installer_pe_header",
+                        "installer_pe_identity",
+                        "installer_authenticode_absence",
                         "extracted_payload_identity",
-                        "payload_pe_header",
+                        "payload_x86_64_pe_identity",
                         "payload_version_resource",
+                        "payload_authenticode_absence",
+                        "extracted_payload_sha256",
                     ]
                     if windows_gui
                     else [

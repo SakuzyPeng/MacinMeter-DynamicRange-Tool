@@ -218,8 +218,10 @@ running macOS 11.0 or newer, and Windows x64. Each platform is staged on its
 own host — a DMG on macOS, an NSIS installer on Windows — and both local
 staging and the bounded CI gate build and structurally verify the final
 artifact by opening it: the DMG is mounted and its `.app` inspected, and the
-installer is extracted and its `macinmeter-gui.exe` checked for a matching
-version resource.
+installer is extracted outside the candidate directory and its
+`macinmeter-gui.exe` checked for an observed x86_64 PE machine, matching version
+resource, and unsigned Authenticode state. The outer installer must also be an
+unsigned PE.
 
 Neither package is signed. macOS has no Developer ID signature and no
 notarization, so it may require an explicit Open/Open Anyway confirmation;

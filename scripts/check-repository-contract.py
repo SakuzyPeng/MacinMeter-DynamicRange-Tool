@@ -589,14 +589,13 @@ def validate(root: Path) -> list[str]:
             f"{path.relative_to(root)} local staging and unsigned candidate staging "
             "must appear only inside the macOS arm64 job",
         )
-        # Two uploads, and each job may hold only its own. The macOS one is the
-        # release candidate ADR-0011 defines; the Windows one is a test build
-        # outside that scope. Counting them separately keeps a future edit from
-        # turning the Windows path into a second candidate by accident.
+        # ADR-0015 defines two candidates, and each job may retain only its own.
+        # Counting them separately prevents either host from claiming that it
+        # produced the other platform's GUI.
         require(
             workflow_text.count("actions/upload-artifact@") == 2,
-            f"{path.relative_to(root)} must retain exactly the macOS candidate upload "
-            "and the Windows test-build upload",
+            f"{path.relative_to(root)} must retain exactly the macOS and Windows "
+            "candidate uploads",
         )
         require(
             macos_job is not None

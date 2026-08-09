@@ -6,30 +6,32 @@ MacinMeter 0.3.0 具有一套显式的制品契约。staging 只在
 `target/release-staging` 下构建和验证字节，不上传、不签名、不公证，也不创建
 GitHub Release。
 
-有界 GitHub Actions 会在 `main` push 或手动触发后，于 macOS 26 arm64 job 中运行
-clean staging。`main` push 产生的 CLI archive 与 DMG 通过验证后会随 runner 丢弃；
-显式手动触发则使用下文的 unsigned candidate 契约，并将结果保留 14 天。两条路径都
-不会创建 tag 或 GitHub Release。
+有界 GitHub Actions 会在 `main` push 后，于 Windows Server 2025 x64 与 macOS 26
+arm64 job 中运行相同的 clean staging 契约。每个 job 的 CLI archive 与 GUI installer
+通过验证后会随 runner 丢弃；显式手动触发则使用下文的 unsigned candidate 契约，并
+将两份结果保留 14 天。两条路径都不会创建 tag 或 GitHub Release。
 
 ## 0.3.0 发行范围
 
-0.3.0 只面向 Apple Silicon macOS：
+0.3.0 包含两个平台 slice：
 
-- target：`aarch64-apple-darwin`；
-- 最低系统：macOS 11.0；
-- 制品：arm64 CLI archive 与 arm64 Tauri DMG；
-- 不执行 Developer ID 签名、notarization 或 stapling。
+- Apple Silicon macOS：target 为 `aarch64-apple-darwin`，最低 macOS 11.0，包含
+  arm64 CLI archive 与 arm64 Tauri DMG；
+- Windows x64：target 为 `x86_64-pc-windows-msvc`，包含 x64 CLI archive 与承载
+  x64 Tauri GUI 的 NSIS installer。
 
-0.3.0 不提供 Intel/universal macOS 构建，也不提供 Windows/Linux GUI 包。“未签名”
-表示没有 Developer ID 身份；编译器或链接器产生的 ad-hoc metadata 不构成开发者
-签名或 Gatekeeper 声明。
+两个 slice 都未签名：macOS 不执行 Developer ID 签名、notarization 或 stapling，
+Windows 不执行 Authenticode 签名。因此用户可能需要在 macOS 上显式“打开”，或在
+Windows 上通过 SmartScreen 的未知发布者提示。0.3.0 不提供 Intel/universal macOS、
+Windows ARM64/32-bit 或 Linux GUI 制品。
 
 ## 环境要求
 
 - release candidate 必须来自干净的 Git 工作树；
 - Python 3.11 或更新版本；
 - Rust 1.88 或更新版本，以及 locked Cargo graph；
-- 共享版本契约需要 Node.js；纳入 GUI 时还需要当前平台的 Tauri prerequisites。
+- 共享版本契约需要 Node.js；纳入 GUI 时还需要当前平台的 Tauri prerequisites；
+- 在 Windows 上 staging 或验证 NSIS installer 时需要 7-Zip。
 
 脚本会记录准确 source commit/state、host target、Rust/Cargo 版本及两个 lockfile
 hash；默认拒绝脏工作树。
@@ -59,19 +61,19 @@ cargo build --locked --release -p macinmeter-cli
 
 验证器会安全解包、核对准确 member 集合与 payload hash，再运行解包后的 executable：
 
-- `macinmeter --version` 必须报告 workspace version；
+- `mdrmeter --version` 必须报告 workspace version；
 - 仓库内 WAV fixture 必须产生唯一的 schema-v4 JSON document；
 - smoke document 必须走 WAV integer-PCM route，包含固定算法参数，且不暴露内部 profile 或状态字段。
 
-## 当前 host 的 macOS GUI 制品
+## 当前 host 的 GUI 制品
 
-在 macOS 上显式纳入 Tauri DMG：
+在受支持的 macOS 或 Windows host 上，显式纳入当前平台的 Tauri installer：
 
 ```bash
 python3 scripts/stage-release.py stage --include-gui
 ```
 
-GUI staging 只支持 `aarch64-apple-darwin` Rust host。验证器会：
+macOS 路径只支持 `aarch64-apple-darwin`。验证器会：
 
 - 使用 `hdiutil` 校验 DMG 结构；
 - 只读挂载，并要求恰好一个顶层 `.app`；
@@ -82,32 +84,48 @@ GUI staging 只支持 `aarch64-apple-darwin` Rust host。验证器会：
   不把 ad-hoc metadata 当作开发者身份；
 - 在不启动 GUI 的情况下卸载镜像。
 
-当前未签名、未 notarize 的构建，无论来自本地还是临时 CI 门禁，都会明确标记为
-`local_staging_only` / `local_unnotarized`。结构 smoke 成功不等于已经通过
-Gatekeeper、Developer ID、公证或公开分发要求。Windows/Linux GUI，以及 macOS
-x86_64/universal 制品不属于 0.3.0 发行范围。
+Windows 路径只支持 `x86_64-pc-windows-msvc`。它要求 7-Zip，并会：
 
-## 未签名 Apple Silicon release candidate
+- 验证外层 installer 的 DOS/PE header，并记录其 COFF machine type；
+- 把 NSIS 解到 candidate 目录之外的临时目录，并要求恰好一个
+  `macinmeter-gui.exe` payload；
+- 验证 payload 的 DOS/PE header，并要求实测 COFF machine type 为 x86_64；
+- 读取其 file-version resource，并要求与 workspace version 相同；
+- 查询 installer 与 payload 的 Authenticode，要求两者均报告 `NotSigned` 且没有
+  signer certificate；
+- 记录解包后 payload 的 SHA-256，清理临时目录，不启动也不安装程序。
 
-面向发布的 candidate mode 与本地 staging 分离：
+本地 GUI 构建都会标记为 `local_staging_only`；macOS 另标记
+`local_unnotarized`，Windows 另标记 `local_unsigned`。结构 smoke 成功不等于已经
+具备 Gatekeeper、Developer ID、公证、SmartScreen 声誉或公开分发条件。
+
+## 未签名 release candidate
+
+面向发布的两个 candidate mode 与本地 staging 分离，且必须在对应 host 上运行：
 
 ```bash
 python3 scripts/stage-release.py stage \
   --include-gui \
   --unsigned-macos-arm64-candidate
+
+python scripts/stage-release.py stage \
+  --include-gui \
+  --unsigned-windows-x64-candidate
 ```
 
-它写入 `target/release-candidates/0.3.0/aarch64-apple-darwin`，并拒绝脏 source、
-非 arm64 host、Rust 1.88/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
-`--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并标记为
-`unsigned_macos_arm64_release_candidate`，不会声称已经签名、公证、通过 Gatekeeper
-或完成发布。
+它们分别写入 `target/release-candidates/0.3.0/aarch64-apple-darwin` 与
+`target/release-candidates/0.3.0/x86_64-pc-windows-msvc`。每个 mode 都拒绝脏 source、
+不匹配的 host、Rust 1.88/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
+`--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并分别标记为
+`unsigned_macos_arm64_release_candidate` 或
+`unsigned_windows_x64_release_candidate`；两者都不会声称已经签名、公证、具备
+Gatekeeper/SmartScreen 条件或完成发布。
 
-手动触发 **Workspace validation** 时必须选择 `main`。macOS job 会构建这份准确
-candidate，并保留一个 14 天有效的 workflow artifact。workflow 继续只有只读仓库
-权限，不能创建 tag 或 Release；candidate 是最终人工确认的输入，不是公开资产。
-只有整次三平台 workflow 成功时，这份 candidate 才能进入最终复核；失败 run 中保留
-的字节不构成发行证据。
+手动触发 **Workspace validation** 时必须选择 `main`。Windows 与 macOS job 会分别
+构建自己的 candidate，并各保留一个 14 天有效的 workflow artifact。workflow 继续
+只有只读仓库权限，不能创建 tag 或 Release。只有整次 workflow 成功，且两份 manifest
+记录同一个 source commit 时，两份 candidate 才能进入最终人工复核；失败 run 中保留
+的字节不构成发行证据，也不是公开资产。
 
 拟用于 GitHub Release 的双语文案保存在
 [`RELEASE_DRAFT_0.3.0.md`](RELEASE_DRAFT_0.3.0.md)。
@@ -125,6 +143,9 @@ candidate，并保留一个 14 天有效的 workflow artifact。workflow 继续�
 ```bash
 python3 scripts/stage-release.py verify \
   target/release-staging/0.3.0/aarch64-apple-darwin
+
+python scripts/stage-release.py verify \
+  target/release-staging/0.3.0/x86_64-pc-windows-msvc
 ```
 
 同一 verifier 也接受 unsigned candidate 目录，并额外核对 clean source、target、
@@ -134,7 +155,8 @@ python3 scripts/stage-release.py verify \
 字节身份，不是签名。
 
 在 payload 字节与记录身份相同的条件下，CLI tar container 是确定性的；本流程不
-声称 Rust binary 或 Tauri DMG 能跨 toolchain、SDK、机器或签名环境复现。
+声称 Rust binary、Tauri DMG 或 NSIS installer 能跨 toolchain、SDK、机器或签名
+环境复现。
 
 ## 仅供开发的 staging
 

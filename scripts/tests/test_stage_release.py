@@ -8,6 +8,8 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "stage-release.py"
@@ -15,6 +17,18 @@ SPEC = importlib.util.spec_from_file_location("stage_release", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 stage_release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(stage_release)
+
+
+def write_pe(path: Path, machine: int) -> None:
+    contents = bytearray(0x86)
+    contents[:2] = stage_release.PE_MAGIC
+    contents[stage_release.PE_POINTER_OFFSET : stage_release.PE_POINTER_OFFSET + 4] = (
+        0x80
+    ).to_bytes(4, "little")
+    contents[0x80:0x84] = stage_release.PE_SIGNATURE
+    contents[0x84:0x86] = machine.to_bytes(2, "little")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(contents)
 
 
 class StageReleaseTests(unittest.TestCase):
@@ -128,6 +142,173 @@ class StageReleaseTests(unittest.TestCase):
                 stage_release.ReleaseError, "Apple Silicon only"
             ):
                 stage_release.macos_binary_arch(target)
+
+    def test_windows_pe_machine_validates_the_headers(self) -> None:
+        executable = self.root / "gui.exe"
+        write_pe(executable, stage_release.PE_MACHINE_AMD64)
+        self.assertEqual(
+            stage_release.windows_pe_machine(executable),
+            stage_release.PE_MACHINE_AMD64,
+        )
+        self.assertEqual(
+            stage_release.windows_machine_name(stage_release.PE_MACHINE_AMD64),
+            "x86_64",
+        )
+
+        executable.write_bytes(b"not a PE")
+        with self.assertRaisesRegex(stage_release.ReleaseError, "DOS header"):
+            stage_release.windows_pe_machine(executable)
+
+        write_pe(executable, stage_release.PE_MACHINE_AMD64)
+        contents = bytearray(executable.read_bytes())
+        contents[0x80:0x84] = b"nope"
+        executable.write_bytes(contents)
+        with self.assertRaisesRegex(stage_release.ReleaseError, "PE header"):
+            stage_release.windows_pe_machine(executable)
+
+    def test_windows_executable_info_passes_path_through_environment(self) -> None:
+        executable = self.root / "O'Brien.exe"
+        response = {
+            "fileVersion": "0.3.0.0",
+            "authenticodeStatus": "NotSigned",
+            "signerSubject": None,
+        }
+        with mock.patch.object(
+            stage_release,
+            "run",
+            return_value=SimpleNamespace(stdout=json.dumps(response)),
+        ) as mocked_run:
+            self.assertEqual(
+                stage_release.windows_executable_info(executable, self.root),
+                response,
+            )
+
+        command = mocked_run.call_args.args[0]
+        self.assertNotIn(str(executable), " ".join(command))
+        self.assertIn(stage_release.WINDOWS_INSPECT_PATH_ENV, command[-1])
+        self.assertEqual(
+            mocked_run.call_args.kwargs["environment"][
+                stage_release.WINDOWS_INSPECT_PATH_ENV
+            ],
+            str(executable),
+        )
+
+    def test_windows_installer_smoke_observes_payload_and_unsigned_state(self) -> None:
+        installer = self.root / "candidate" / "MacinMeter-setup.exe"
+        write_pe(installer, 0x014C)
+        extraction_paths: list[Path] = []
+
+        def extract(command: list[str], _root: Path) -> SimpleNamespace:
+            extraction = Path(
+                next(part[2:] for part in command if part.startswith("-o"))
+            )
+            extraction_paths.append(extraction)
+            self.assertFalse(extraction.is_relative_to(installer.parent))
+            write_pe(
+                extraction / "nested" / stage_release.WINDOWS_GUI_EXECUTABLE,
+                stage_release.PE_MACHINE_AMD64,
+            )
+            return SimpleNamespace(stdout="")
+
+        def inspect(path: Path, _root: Path) -> dict:
+            return {
+                "fileVersion": "0.3.0.0" if path != installer else None,
+                "authenticodeStatus": "NotSigned",
+                "signerSubject": None,
+            }
+
+        with (
+            mock.patch.object(stage_release, "seven_zip", side_effect=extract),
+            mock.patch.object(
+                stage_release, "windows_executable_info", side_effect=inspect
+            ),
+        ):
+            smoke = stage_release.smoke_windows_installer(
+                installer,
+                version="0.3.0",
+                target=stage_release.WINDOWS_X64_TARGET,
+                root=self.root,
+            )
+
+        self.assertEqual(smoke["installerMachine"], "x86")
+        self.assertEqual(smoke["payloadMachine"], "x86_64")
+        self.assertEqual(smoke["architecture"], "x86_64")
+        self.assertEqual(smoke["installerAuthenticodeStatus"], "NotSigned")
+        self.assertEqual(smoke["payloadAuthenticodeStatus"], "NotSigned")
+        self.assertEqual(len(extraction_paths), 1)
+        self.assertFalse(extraction_paths[0].exists())
+
+    def test_windows_installer_smoke_rejects_non_x64_or_signed_bytes(self) -> None:
+        installer = self.root / "candidate" / "MacinMeter-setup.exe"
+        write_pe(installer, 0x014C)
+        unsigned = {
+            "fileVersion": None,
+            "authenticodeStatus": "NotSigned",
+            "signerSubject": None,
+        }
+
+        with mock.patch.object(
+            stage_release, "windows_executable_info", return_value=unsigned
+        ):
+            with mock.patch.object(stage_release, "seven_zip") as mocked_seven_zip:
+                mocked_seven_zip.side_effect = lambda command, _root: write_pe(
+                    Path(next(part[2:] for part in command if part.startswith("-o")))
+                    / stage_release.WINDOWS_GUI_EXECUTABLE,
+                    0xAA64,
+                )
+                with self.assertRaisesRegex(
+                    stage_release.ReleaseError, "expected 'x86_64'"
+                ):
+                    stage_release.smoke_windows_installer(
+                        installer,
+                        version="0.3.0",
+                        target=stage_release.WINDOWS_X64_TARGET,
+                        root=self.root,
+                    )
+
+        signed = {
+            "fileVersion": None,
+            "authenticodeStatus": "Valid",
+            "signerSubject": "CN=Unexpected Signer",
+        }
+        with mock.patch.object(
+            stage_release, "windows_executable_info", return_value=signed
+        ):
+            with self.assertRaisesRegex(stage_release.ReleaseError, "must be unsigned"):
+                stage_release.smoke_windows_installer(
+                    installer,
+                    version="0.3.0",
+                    target=stage_release.WINDOWS_X64_TARGET,
+                    root=self.root,
+                )
+
+        def extract_x64(command: list[str], _root: Path) -> None:
+            write_pe(
+                Path(next(part[2:] for part in command if part.startswith("-o")))
+                / stage_release.WINDOWS_GUI_EXECUTABLE,
+                stage_release.PE_MACHINE_AMD64,
+            )
+
+        def signed_payload(path: Path, _root: Path) -> dict:
+            return signed if path != installer else unsigned
+
+        with (
+            mock.patch.object(stage_release, "seven_zip", side_effect=extract_x64),
+            mock.patch.object(
+                stage_release,
+                "windows_executable_info",
+                side_effect=signed_payload,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                stage_release.ReleaseError, "payload must be unsigned"
+            ):
+                stage_release.smoke_windows_installer(
+                    installer,
+                    version="0.3.0",
+                    target=stage_release.WINDOWS_X64_TARGET,
+                    root=self.root,
+                )
 
     def test_unsigned_candidate_scope_requires_clean_immutable_arm64_gui(self) -> None:
         valid = {

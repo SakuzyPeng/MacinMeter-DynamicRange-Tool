@@ -187,7 +187,8 @@ job 拥有独立取消 token，共享 application 预算则保证顶层工作有
 以及 Windows x64。两个平台各自在自己的主机上 staging —— macOS 产出 DMG，Windows
 产出 NSIS 安装包 —— 本地 staging 与有界 CI 门禁都会构建并**打开**最终制品做结构化
 验证：DMG 会被挂载并检查其中的 `.app`，安装包会被解包并核对内层
-`macinmeter-gui.exe` 的版本资源。
+`macinmeter-gui.exe` 实测为 x86_64 PE、版本资源匹配且没有 Authenticode 签名；
+外层 installer 也必须是未签名 PE。解包目录位于 candidate 目录之外。
 
 两个安装包都不签名。macOS 没有 Developer ID 签名也未经公证，因此可能要求用户显式
 选择“打开”或“仍要打开”；Windows 没有 Authenticode 签名，因此 SmartScreen 会提示
