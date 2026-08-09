@@ -210,6 +210,14 @@ export type AnalysisEvent =
     }
   | { type: "batch_finished"; succeeded: number; failed: number };
 
+/// Delivered on its own event, never inside the exported envelope: wall time
+/// cannot be part of a document two runs must serialize identically.
+export type JobTiming = {
+  jobId: string;
+  decodeMs: number;
+  analysisMs: number;
+};
+
 export type JobEvent = {
   jobId: string;
   event: AnalysisEvent;

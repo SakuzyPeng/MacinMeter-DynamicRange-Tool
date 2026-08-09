@@ -22,6 +22,7 @@ import type {
   ChannelResult,
   DiscoveryResponse,
   JobEvent,
+  JobTiming,
   PublicError,
   WireEnvelope,
 } from "./wire";
@@ -63,6 +64,8 @@ const progressFill = element<HTMLDivElement>("progress-fill");
 const batchSummary = element<HTMLDivElement>("batch-summary");
 const resultsElement = element<HTMLDivElement>("results");
 const hidePathButton = element<HTMLButtonElement>("hide-path");
+const showTimingButton = element<HTMLButtonElement>("show-timing");
+const phaseTimings = element<HTMLDivElement>("phase-timings");
 const copyMarkdownButton = element<HTMLButtonElement>("copy-md");
 const exportJsonButton = element<HTMLButtonElement>("export-json");
 const exportImageButton = element<HTMLButtonElement>("export-image");
@@ -89,6 +92,10 @@ let activeTotal = 1;
 const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
 let hidePath = false;
+// Off by default: collecting the split reads the clock once per block on each
+// side, and an ordinary run should not pay for observation it did not ask for.
+let showTiming = false;
+let lastPhaseTimings: JobTiming | null = null;
 let sortMode: SortMode = "none";
 let searchQuery = "";
 let searchIndex = -1;
@@ -584,6 +591,23 @@ const renderEnvelope = (envelope: WireEnvelope, elapsedMs: number): void => {
       { error: envelope.data.summary.failed > 0, progress: 100 },
     );
   }
+  renderPhaseTimings();
+};
+
+// A second line rather than more of the status sentence, because these two are
+// concurrent occupancies: printed next to the elapsed time without the caveat,
+// they read as a split of it.
+const renderPhaseTimings = (): void => {
+  if (!lastPhaseTimings) {
+    phaseTimings.hidden = true;
+    phaseTimings.textContent = "";
+    return;
+  }
+  phaseTimings.hidden = false;
+  phaseTimings.textContent = t("status.phases", {
+    decode: (lastPhaseTimings.decodeMs / 1000).toFixed(3),
+    analysis: (lastPhaseTimings.analysisMs / 1000).toFixed(3),
+  });
 };
 
 const channelMarkdown = (channel: ChannelResult): string => {
@@ -882,17 +906,20 @@ const runAnalysis = async (): Promise<void> => {
   status("status.running", {}, { progress: 0 });
 
   const startedAt = performance.now();
+  lastPhaseTimings = null;
+  renderPhaseTimings();
   try {
     const envelope =
       selectionKind === "files" && selectedInputs.length === 1
         ? await invoke<WireEnvelope>("run_analysis", {
-            request: { jobId, path: selectedInputs[0] },
+            request: { jobId, path: selectedInputs[0], timing: showTiming },
           })
         : await invoke<WireEnvelope>("run_batch", {
             request: {
               jobId,
               inputs: selectedInputs,
               recursive,
+              timing: showTiming,
             },
           });
     renderEnvelope(envelope, performance.now() - startedAt);
@@ -956,6 +983,15 @@ hidePathButton.addEventListener("click", () => {
   renderResults();
 });
 
+showTimingButton.addEventListener("click", () => {
+  showTiming = !showTiming;
+  showTimingButton.classList.toggle("active", showTiming);
+  if (!showTiming) {
+    lastPhaseTimings = null;
+    renderPhaseTimings();
+  }
+});
+
 copyMarkdownButton.addEventListener("click", () => {
   void copyText(formatAllMarkdown(), copyMarkdownButton);
 });
@@ -1000,6 +1036,7 @@ const setLanguage = (language: SupportedLanguage): void => {
   document.title = t("title");
   renderSelection();
   renderStatus();
+  renderPhaseTimings();
   if (lastEnvelope) renderResults();
 };
 
@@ -1009,6 +1046,13 @@ element<HTMLButtonElement>("lang-zh").addEventListener("click", () =>
 element<HTMLButtonElement>("lang-en").addEventListener("click", () =>
   setLanguage("en-US"),
 );
+
+// The timing event arrives before the command resolves, so the status line the
+// envelope produces already has the split available.
+void listen<JobTiming>("analysis-timing", ({ payload }) => {
+  if (payload.jobId !== activeJobId) return;
+  lastPhaseTimings = payload;
+});
 
 void listen<JobEvent>("analysis-event", ({ payload }) => {
   if (payload.jobId !== activeJobId) return;

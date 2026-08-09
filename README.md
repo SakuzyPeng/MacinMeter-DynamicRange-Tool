@@ -123,6 +123,12 @@ Progress for that command is written separately to stderr.
   decoded audio seconds over that wall time. Both describe the host and the
   moment rather than the analysis, so they appear only in human output; JSON
   stays a pure function of the input and is byte-identical between runs.
+- `--timing` adds how long decode and analysis each occupied. **The two run
+  concurrently, so they are overlapping intervals rather than a split of the
+  elapsed time**: they may not be added together, read as percentages of it, or
+  inverted into a serial fraction. Collecting them reads the clock once per
+  block on each side, which is why it is opt-in; without the flag no clock is
+  read at all. The result is identical either way.
 
 The fixture above is designed for deterministic automated tests, not as an
 example of a typical music release.

@@ -5,7 +5,7 @@ use crate::batch::BatchPerformanceProbe;
 use crate::{
     AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchReport, BatchRequest,
     CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
-    application::{Analyzer, OverlapShape},
+    application::{Analyzer, OverlapShape, PhaseTimings},
     batch::{BatchRunner, discover_inputs_with_control},
     concurrency::{ConcurrencyPlan, PlanAllocation},
 };
@@ -279,6 +279,22 @@ impl Application {
             .analyze_file(request, control.progress)
     }
 
+    /// Analyze one file and also report how long decode and analysis occupied.
+    ///
+    /// Timing is opt-in per call because collecting it reads the clock once
+    /// per block on each side. An ordinary `analyze_file_with_control` reads no
+    /// clock at all, which keeps measurement runs observing the product rather
+    /// than the observation. The report itself is identical either way:
+    /// [`PhaseTimings`] never enters it or the wire schema.
+    pub fn analyze_file_timed(
+        &self,
+        request: AnalyzeRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
+        self.reserve(control.cancellation)?
+            .analyze_file_timed(request, control.progress)
+    }
+
     pub fn run_batch(
         &self,
         request: BatchRequest,
@@ -286,6 +302,20 @@ impl Application {
     ) -> Result<BatchReport, AnalysisError> {
         self.reserve(control.cancellation)?
             .run_batch(request, control.progress)
+    }
+
+    /// Run one batch and also report the totals its lanes accumulated.
+    ///
+    /// Lanes decode concurrently with each other as well as with analysis, so
+    /// these totals may exceed the batch's own elapsed time by more than the
+    /// single-file case.
+    pub fn run_batch_timed(
+        &self,
+        request: BatchRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
+        self.reserve(control.cancellation)?
+            .run_batch_timed(request, control.progress)
     }
 
     /// Run one batch and return the exact non-default allocation topology.
@@ -386,6 +416,23 @@ impl ApplicationJob {
         })
     }
 
+    pub fn analyze_file_timed(
+        self,
+        request: AnalyzeRequest,
+        progress: &dyn ProgressSink,
+    ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
+        let decode = match self.single_file_allocation() {
+            Ok(allocation) => allocation.decode(),
+            Err(error) => return Err(error),
+        };
+        let shape = self.overlap_shape;
+        self.execute(progress, |control| {
+            Analyzer::with_overlap_shape(decode, shape)
+                .collecting_timings()
+                .analyze_file_timed(request, control)
+        })
+    }
+
     #[cfg(feature = "performance-probes")]
     #[doc(hidden)]
     pub fn analyze_file_with_performance_probe(
@@ -412,6 +459,19 @@ impl ApplicationJob {
         let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
             BatchRunner::with_overlap_shape(plan, lanes, shape).run(request, control)
+        })
+    }
+
+    pub fn run_batch_timed(
+        self,
+        request: BatchRequest,
+        progress: &dyn ProgressSink,
+    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
+        let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
+        self.execute(progress, |control| {
+            BatchRunner::with_overlap_shape(plan, lanes, shape)
+                .collecting_timings()
+                .run_timed(request, control)
         })
     }
 

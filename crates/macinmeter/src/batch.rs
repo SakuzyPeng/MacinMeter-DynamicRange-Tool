@@ -3,7 +3,7 @@ use crate::concurrency::PlanAllocation;
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
     ErrorCode, ExecutionControl,
-    application::{Analyzer, OverlapShape},
+    application::{Analyzer, OverlapShape, PhaseTimings, SharedPhaseTimings},
     concurrency::ConcurrencyPlan,
 };
 use serde::{Deserialize, Serialize};
@@ -112,6 +112,7 @@ impl BatchPerformanceProbe {
 
 struct BatchExecution {
     report: BatchReport,
+    timings: PhaseTimings,
     #[cfg(feature = "performance-probes")]
     allocation: PlanAllocation,
 }
@@ -121,6 +122,7 @@ pub(crate) struct BatchRunner {
     plan: ConcurrencyPlan,
     requested_file_lanes: NonZeroUsize,
     overlap_shape: OverlapShape,
+    collect_timings: bool,
     #[cfg(test)]
     fault: Option<LaneFault>,
 }
@@ -131,6 +133,7 @@ impl Default for BatchRunner {
             plan: ConcurrencyPlan::serial(),
             requested_file_lanes: NonZeroUsize::MIN,
             overlap_shape: OverlapShape::DEFAULT,
+            collect_timings: false,
             #[cfg(test)]
             fault: None,
         }
@@ -156,9 +159,16 @@ impl BatchRunner {
             plan,
             requested_file_lanes,
             overlap_shape,
+            collect_timings: false,
             #[cfg(test)]
             fault: None,
         }
+    }
+
+    /// Turn on the per-block clocks in every lane's analyzer.
+    pub(crate) const fn collecting_timings(mut self) -> Self {
+        self.collect_timings = true;
+        self
     }
 
     #[cfg(test)]
@@ -174,6 +184,15 @@ impl BatchRunner {
     ) -> Result<BatchReport, AnalysisError> {
         self.run_execution(request, control)
             .map(|execution| execution.report)
+    }
+
+    pub(crate) fn run_timed(
+        &self,
+        request: BatchRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
+        self.run_execution(request, control)
+            .map(|execution| (execution.report, execution.timings))
     }
 
     #[cfg(feature = "performance-probes")]
@@ -208,6 +227,12 @@ impl BatchRunner {
             .unwrap_or(NonZeroUsize::MIN);
         let allocation = self.plan.allocate(lanes)?;
         let analyzer = Analyzer::with_overlap_shape(allocation.decode(), self.overlap_shape);
+        let analyzer = if self.collect_timings {
+            analyzer.collecting_timings()
+        } else {
+            analyzer
+        };
+        let timings = SharedPhaseTimings::default();
 
         // Discovery already fixed the input order, so an item's index names one
         // file no matter which lane produces it. Lanes claim by index rather
@@ -218,6 +243,12 @@ impl BatchRunner {
         let outcomes: Vec<Mutex<Option<LaneOutcome>>> =
             files.iter().map(|_| Mutex::new(None)).collect();
         let lanes = allocation.file_lanes().get();
+        let shared = LaneShared {
+            claim: &claim,
+            outcomes: &outcomes,
+            stop: &stop,
+            timings: &timings,
+        };
 
         thread::scope(|scope| -> Result<(), AnalysisError> {
             let mut starts = Vec::with_capacity(lanes.saturating_sub(1));
@@ -232,21 +263,12 @@ impl BatchRunner {
                 let runner = self;
                 let lane_analyzer = &analyzer;
                 let lane_files = &files;
-                let lane_claim = &claim;
-                let lane_outcomes = &outcomes;
-                let lane_stop = &stop;
+                let lane_shared = &shared;
                 let operation = move || {
                     if start_gate.recv().is_err() {
                         return false;
                     }
-                    runner.run_lane_catching(
-                        lane_analyzer,
-                        lane_files,
-                        lane_claim,
-                        lane_outcomes,
-                        lane_stop,
-                        control,
-                    )
+                    runner.run_lane_catching(lane_analyzer, lane_files, lane_shared, control)
                 };
                 let builder = thread::Builder::new().name(format!("macinmeter-file-lane-{lane}"));
                 #[cfg(test)]
@@ -288,7 +310,7 @@ impl BatchRunner {
             // structured failure contract as the spawned lanes.
             if spawn_error.is_none()
                 && !lane_panicked
-                && self.run_lane_catching(&analyzer, &files, &claim, &outcomes, &stop, control)
+                && self.run_lane_catching(&analyzer, &files, &shared, control)
             {
                 lane_panicked = true;
             }
@@ -367,6 +389,7 @@ impl BatchRunner {
                 items,
                 summary,
             },
+            timings: timings.total(),
             #[cfg(feature = "performance-probes")]
             allocation,
         })
@@ -383,20 +406,18 @@ impl BatchRunner {
         &self,
         analyzer: &Analyzer,
         files: &[PathBuf],
-        claim: &AtomicUsize,
-        outcomes: &[Mutex<Option<LaneOutcome>>],
-        stop: &AtomicBool,
+        shared: &LaneShared<'_>,
         control: &ExecutionControl<'_>,
     ) {
         loop {
-            if stop.load(Ordering::Acquire) {
+            if shared.stop.load(Ordering::Acquire) {
                 return;
             }
-            let index = claim.fetch_add(1, Ordering::Relaxed);
+            let index = shared.claim.fetch_add(1, Ordering::Relaxed);
             let Some(path) = files.get(index) else {
                 return;
             };
-            if stop.load(Ordering::Acquire) {
+            if shared.stop.load(Ordering::Acquire) {
                 return;
             }
             #[cfg(test)]
@@ -404,19 +425,22 @@ impl BatchRunner {
                 panic!("injected batch file-lane panic at item {index}");
             }
             if control.cancellation.is_cancelled() {
-                Self::store(&outcomes[index], LaneOutcome::Cancelled(cancelled()));
+                Self::store(&shared.outcomes[index], LaneOutcome::Cancelled(cancelled()));
                 return;
             }
             let request = AnalyzeRequest { path: path.clone() };
-            let outcome = match analyzer.analyze_file_at(request, index, control) {
-                Ok(report) => LaneOutcome::Finished(BatchItemOutcome::Success {
-                    report: Box::new(report),
-                }),
+            let outcome = match analyzer.analyze_file_at_timed(request, index, control) {
+                Ok((report, item_timings)) => {
+                    shared.timings.add(item_timings);
+                    LaneOutcome::Finished(BatchItemOutcome::Success {
+                        report: Box::new(report),
+                    })
+                }
                 Err(error) if error.code == ErrorCode::Cancelled => LaneOutcome::Cancelled(error),
                 Err(error) => LaneOutcome::Finished(BatchItemOutcome::Failure { error }),
             };
             let cancelled = matches!(outcome, LaneOutcome::Cancelled(_));
-            Self::store(&outcomes[index], outcome);
+            Self::store(&shared.outcomes[index], outcome);
             if cancelled {
                 return;
             }
@@ -429,17 +453,15 @@ impl BatchRunner {
         &self,
         analyzer: &Analyzer,
         files: &[PathBuf],
-        claim: &AtomicUsize,
-        outcomes: &[Mutex<Option<LaneOutcome>>],
-        stop: &AtomicBool,
+        shared: &LaneShared<'_>,
         control: &ExecutionControl<'_>,
     ) -> bool {
         let panicked = catch_unwind(AssertUnwindSafe(|| {
-            self.run_lane(analyzer, files, claim, outcomes, stop, control);
+            self.run_lane(analyzer, files, shared, control);
         }))
         .is_err();
         if panicked {
-            stop.store(true, Ordering::Release);
+            shared.stop.store(true, Ordering::Release);
         }
         panicked
     }
@@ -447,6 +469,17 @@ impl BatchRunner {
     fn store(slot: &Mutex<Option<LaneOutcome>>, outcome: LaneOutcome) {
         *slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(outcome);
     }
+}
+
+/// What every lane in one batch shares while claiming items.
+///
+/// One parameter rather than four keeps a lane's signature stable as shared
+/// state is added, and makes it obvious that all of it is shared.
+struct LaneShared<'a> {
+    claim: &'a AtomicUsize,
+    outcomes: &'a [Mutex<Option<LaneOutcome>>],
+    stop: &'a AtomicBool,
+    timings: &'a SharedPhaseTimings,
 }
 
 /// One item's result as its lane left it.

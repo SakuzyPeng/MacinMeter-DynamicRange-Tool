@@ -11,8 +11,12 @@ use std::{
     io,
     num::NonZeroUsize,
     path::PathBuf,
-    sync::mpsc::{SyncSender, sync_channel},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc::{SyncSender, sync_channel},
+    },
     thread,
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,14 +127,146 @@ impl ApplicationPerformanceProbe {
     }
 }
 
+/// How long decode and analysis each occupied, for a caller that asked.
+///
+/// These are the wall intervals of two roles that the graduated hand-off runs
+/// concurrently. They therefore do **not** partition elapsed time: their sum
+/// may exceed it, and neither may be inverted into a serial fraction. A caller
+/// that has not opted in receives zeroes, because collection is what costs
+/// something, not reporting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PhaseTimings {
+    decode: Duration,
+    analysis: Duration,
+}
+
+impl PhaseTimings {
+    /// Time spent producing PCM, whatever the selected route did internally.
+    /// On a packet route this includes waiting for the workers' ordered
+    /// results, which is what the pipeline really cost the consumer.
+    pub const fn decode(self) -> Duration {
+        self.decode
+    }
+
+    /// Time spent inside the analyzer.
+    pub const fn analysis(self) -> Duration {
+        self.analysis
+    }
+}
+
+/// Cross-lane totals for a batch.
+///
+/// Lanes add once per item, not once per block, so the shared counters stay
+/// off the hot path even while collection is on. Items decoded on different
+/// lanes are concurrent with each other as well, which is one more reason
+/// these totals do not partition the batch's elapsed time.
+#[derive(Debug, Default)]
+pub(crate) struct SharedPhaseTimings {
+    decode_ns: AtomicU64,
+    analysis_ns: AtomicU64,
+}
+
+impl SharedPhaseTimings {
+    pub(crate) fn add(&self, timings: PhaseTimings) {
+        self.decode_ns
+            .fetch_add(saturating_nanos(timings.decode), Ordering::Relaxed);
+        self.analysis_ns
+            .fetch_add(saturating_nanos(timings.analysis), Ordering::Relaxed);
+    }
+
+    pub(crate) fn total(&self) -> PhaseTimings {
+        PhaseTimings {
+            decode: Duration::from_nanos(self.decode_ns.load(Ordering::Relaxed)),
+            analysis: Duration::from_nanos(self.analysis_ns.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+fn saturating_nanos(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+/// Everything one run observes about itself without changing what it produces.
+///
+/// Grouping these keeps observation a single parameter that a call site either
+/// threads through or does not, rather than a growing tail of them.
+struct RunObservation {
+    decode: RoleClock,
+    analysis: RoleClock,
+    #[cfg(feature = "performance-probes")]
+    geometry: DecodeBlockGeometry,
+}
+
+impl RunObservation {
+    fn new(collect_timings: bool) -> Self {
+        Self {
+            decode: RoleClock::new(collect_timings),
+            analysis: RoleClock::new(collect_timings),
+            #[cfg(feature = "performance-probes")]
+            geometry: DecodeBlockGeometry::default(),
+        }
+    }
+
+    const fn timings(&self) -> PhaseTimings {
+        PhaseTimings {
+            decode: self.decode.total,
+            analysis: self.analysis.total,
+        }
+    }
+
+    /// Record a block's geometry where probe builds track it, and nothing at
+    /// all where they do not.
+    fn record_block(&mut self, block: &PcmBlock) -> Result<(), AnalysisError> {
+        #[cfg(feature = "performance-probes")]
+        return self.geometry.record(block);
+        #[cfg(not(feature = "performance-probes"))]
+        {
+            let _ = block;
+            Ok(())
+        }
+    }
+}
+
+/// One role's accumulated occupancy.
+///
+/// A disabled clock never reads the time: it costs one predictable branch per
+/// block. That is what keeps the default build free of the per-block timing
+/// ADR-0014 measurement runs depend on not being present.
+#[derive(Debug, Clone, Copy)]
+struct RoleClock {
+    enabled: bool,
+    total: Duration,
+}
+
+impl RoleClock {
+    const fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            total: Duration::ZERO,
+        }
+    }
+
+    fn start(&self) -> Option<Instant> {
+        self.enabled.then(Instant::now)
+    }
+
+    fn stop(&mut self, started: Option<Instant>) {
+        if let Some(started) = started {
+            self.total = self.total.saturating_add(started.elapsed());
+        }
+    }
+}
+
 struct AnalyzedFile {
     report: AnalysisReport,
+    timings: PhaseTimings,
     #[cfg(feature = "performance-probes")]
     probe: ApplicationPerformanceProbe,
 }
 
 struct OpenedAnalysis {
     report: AnalysisReport,
+    timings: PhaseTimings,
     #[cfg(feature = "performance-probes")]
     overlapped: bool,
     #[cfg(feature = "performance-probes")]
@@ -182,6 +318,9 @@ pub(crate) struct Analyzer {
     reservation: DecodeReservation,
     /// Default unless an explicit measurement asked for another shape.
     overlap_shape: OverlapShape,
+    /// Off unless a caller asked for the decode/analysis split, so an ordinary
+    /// run reads no clock per block.
+    collect_timings: bool,
 }
 
 impl Analyzer {
@@ -198,7 +337,14 @@ impl Analyzer {
             decoder_factory: DecoderFactory::with_application_reservation(decode),
             reservation: decode,
             overlap_shape: shape,
+            collect_timings: false,
         }
+    }
+
+    /// Turn on the per-block clocks for this analyzer's runs.
+    pub(crate) const fn collecting_timings(mut self) -> Self {
+        self.collect_timings = true;
+        self
     }
 
     pub(crate) fn analyze_file_with_control(
@@ -207,6 +353,15 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
     ) -> Result<AnalysisReport, AnalysisError> {
         self.analyze_file_at(request, 0, control)
+    }
+
+    pub(crate) fn analyze_file_timed(
+        &self,
+        request: AnalyzeRequest,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
+        self.analyze_file_at_run(request, 0, control)
+            .map(|analyzed| (analyzed.report, analyzed.timings))
     }
 
     #[cfg(feature = "performance-probes")]
@@ -227,6 +382,16 @@ impl Analyzer {
     ) -> Result<AnalysisReport, AnalysisError> {
         self.analyze_file_at_run(request, item_index, control)
             .map(|analyzed| analyzed.report)
+    }
+
+    pub(crate) fn analyze_file_at_timed(
+        &self,
+        request: AnalyzeRequest,
+        item_index: usize,
+        control: &ExecutionControl<'_>,
+    ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
+        self.analyze_file_at_run(request, item_index, control)
+            .map(|analyzed| (analyzed.report, analyzed.timings))
     }
 
     fn analyze_file_at_run(
@@ -279,11 +444,19 @@ impl Analyzer {
             inject_spawn_failure: false,
             schedule: OverlapSchedule::default(),
         };
-        let opened = Self::analyze_opened_run(opened, overlap, item_index, control, display_path)?;
+        let opened = Self::analyze_opened_run(
+            opened,
+            overlap,
+            item_index,
+            control,
+            display_path,
+            self.collect_timings,
+        )?;
         #[cfg(feature = "performance-probes")]
         let probe = ApplicationPerformanceProbe::new(self.reservation, execution, shape, &opened);
         Ok(AnalyzedFile {
             report: opened.report,
+            timings: opened.timings,
             #[cfg(feature = "performance-probes")]
             probe,
         })
@@ -297,7 +470,7 @@ impl Analyzer {
         control: &ExecutionControl<'_>,
         display_path: &str,
     ) -> Result<AnalysisReport, AnalysisError> {
-        Self::analyze_opened_run(opened, budget, item_index, control, display_path)
+        Self::analyze_opened_run(opened, budget, item_index, control, display_path, false)
             .map(|analyzed| analyzed.report)
     }
 
@@ -307,11 +480,11 @@ impl Analyzer {
         item_index: usize,
         control: &ExecutionControl<'_>,
         display_path: &str,
+        collect_timings: bool,
     ) -> Result<OpenedAnalysis, AnalysisError> {
         #[cfg(test)]
         LAST_ANALYSIS_OVERLAP.with(|last| last.set(false));
-        #[cfg(feature = "performance-probes")]
-        let mut block_geometry = DecodeBlockGeometry::default();
+        let mut observation = RunObservation::new(collect_timings);
         let pcm = opened.reader.stream_info().clone();
         let mut session = AnalyzerSession::new(pcm.spec.clone())?;
         let full_window_frames = session.window_frames() as u64;
@@ -321,7 +494,9 @@ impl Analyzer {
         // so a stream that cannot prove that bound stays serial before any
         // thread exists, exactly as an over-wide FLAC reorder window does.
         ensure_not_cancelled(control)?;
+        let started = observation.decode.start();
         let first = read_checked(&mut opened, &pcm, display_path)?;
+        observation.decode.stop(started);
 
         let (analysis, _overlapped) = match first {
             None => {
@@ -333,12 +508,13 @@ impl Analyzer {
                 (session.finish()?, false)
             }
             Some(block) if budget.admits(&block) => {
-                #[cfg(feature = "performance-probes")]
-                block_geometry.record(&block)?;
+                observation.record_block(&block)?;
                 // The first block establishes the same public commit boundary
                 // as the serial path. Overlap begins with the next decode, so
                 // analysis failures still precede this block's progress event.
+                let started = observation.analysis.start();
                 session.push_interleaved(block.samples())?;
+                observation.analysis.stop(started);
                 emit_decode_progress(&opened, item_index, control, display_path);
                 ensure_not_cancelled(control)?;
                 let analysis = analyze_overlapped(
@@ -348,15 +524,15 @@ impl Analyzer {
                     control,
                     display_path,
                     &budget,
-                    #[cfg(feature = "performance-probes")]
-                    &mut block_geometry,
+                    &mut observation,
                 )?;
                 (analysis, true)
             }
             Some(block) => {
-                #[cfg(feature = "performance-probes")]
-                block_geometry.record(&block)?;
+                observation.record_block(&block)?;
+                let started = observation.analysis.start();
                 session.push_interleaved(block.samples())?;
+                observation.analysis.stop(started);
                 emit_decode_progress(&opened, item_index, control, display_path);
                 let analysis = analyze_serially(
                     session,
@@ -365,8 +541,7 @@ impl Analyzer {
                     item_index,
                     control,
                     display_path,
-                    #[cfg(feature = "performance-probes")]
-                    &mut block_geometry,
+                    &mut observation,
                 )?;
                 (analysis, false)
             }
@@ -383,12 +558,13 @@ impl Analyzer {
         ) {
             Ok(report) => Ok(OpenedAnalysis {
                 report,
+                timings: observation.timings(),
                 #[cfg(feature = "performance-probes")]
                 overlapped: _overlapped,
                 #[cfg(feature = "performance-probes")]
-                decoded_blocks: block_geometry.blocks,
+                decoded_blocks: observation.geometry.blocks,
                 #[cfg(feature = "performance-probes")]
-                final_block_frames: block_geometry.final_block_frames,
+                final_block_frames: observation.geometry.final_block_frames,
             }),
             Err(error) => Err(error
                 .with_display_path(display_path)
@@ -680,7 +856,7 @@ fn analyze_overlapped(
     control: &ExecutionControl<'_>,
     display_path: &str,
     budget: &OverlapBudget,
-    #[cfg(feature = "performance-probes")] block_geometry: &mut DecodeBlockGeometry,
+    observation: &mut RunObservation,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     // Two stages, so no depth buys parallelism. Depth only trades retained PCM
     // against how often the producer parks, and `admits` already refused any
@@ -690,13 +866,16 @@ fn analyze_overlapped(
     let analyst_schedule = budget.schedule();
     #[cfg(test)]
     let producer_schedule = analyst_schedule.clone();
-    thread::scope(|scope| {
-        let operation = move || -> Result<Option<_>, AnalysisError> {
+    // The analyst owns its own clock and hands the total back at the join, so
+    // the two roles never share a counter across the thread boundary.
+    let mut analyst_clock = RoleClock::new(observation.analysis.enabled);
+    let (analysis, analyst_total) = thread::scope(|scope| {
+        let operation = move || -> (Result<Option<_>, AnalysisError>, Duration) {
             // The caller thread already pushed block 0, so the first block this
             // thread sees is block 1 of the stream.
             #[cfg(test)]
             let mut block_index = 1_usize;
-            loop {
+            let analysed = loop {
                 match incoming.recv() {
                     Ok(AnalysisInput::Block(block)) => {
                         analyst_schedule.before_push(
@@ -708,19 +887,30 @@ fn analyze_overlapped(
                         {
                             block_index = block_index.saturating_add(1);
                         }
-                        session.push_interleaved(block.samples())?;
+                        let started = analyst_clock.start();
+                        let pushed = session.push_interleaved(block.samples());
+                        analyst_clock.stop(started);
+                        if let Err(error) = pushed {
+                            break Err(error);
+                        }
                     }
                     Ok(AnalysisInput::Finish) => {
                         // This is the serial pre-finish cancellation boundary,
                         // after every accepted block has reached the analyzer.
-                        ensure_not_cancelled(control)?;
-                        return session.finish().map(Some);
+                        if let Err(error) = ensure_not_cancelled(control) {
+                            break Err(error);
+                        }
+                        let started = analyst_clock.start();
+                        let finished = session.finish().map(Some);
+                        analyst_clock.stop(started);
+                        break finished;
                     }
                     // Decode failure and cancellation deliberately disconnect
                     // without sending Finish. Do not finalize a partial prefix.
-                    Err(_) => return Ok(None),
+                    Err(_) => break Ok(None),
                 }
-            }
+            };
+            (analysed, analyst_clock.total)
         };
         let builder = thread::Builder::new().name("macinmeter-analysis".to_owned());
         let spawned = if budget.inject_spawn_failure {
@@ -730,7 +920,9 @@ fn analyze_overlapped(
         } else {
             builder.spawn_scoped(scope, operation)
         };
-        let analyst = spawned.map_err(|error| analyst_spawn_error(display_path, error))?;
+        let analyst = spawned
+            .map_err(|error| analyst_spawn_error(display_path, error))
+            .map_err(|error| (error, Duration::ZERO))?;
         #[cfg(test)]
         LAST_ANALYSIS_OVERLAP.with(|last| last.set(true));
         let pcm = opened.reader.stream_info().clone();
@@ -740,7 +932,10 @@ fn analyze_overlapped(
             let mut block_index = 1_usize;
             loop {
                 ensure_not_cancelled(control)?;
-                let Some(block) = read_checked(opened, &pcm, display_path)? else {
+                let started = observation.decode.start();
+                let block = read_checked(opened, &pcm, display_path);
+                observation.decode.stop(started);
+                let Some(block) = block? else {
                     emit_decode_progress(opened, item_index, control, display_path);
                     // A progress observer can cancel at EOF. The analysis
                     // thread performs the authoritative pre-finish check after
@@ -750,8 +945,7 @@ fn analyze_overlapped(
                     }
                     return Ok(());
                 };
-                #[cfg(feature = "performance-probes")]
-                block_geometry.record(&block)?;
+                observation.record_block(&block)?;
                 emit_decode_progress(opened, item_index, control, display_path);
                 if !send_analysis_block(
                     &blocks,
@@ -776,26 +970,32 @@ fn analyze_overlapped(
 
         // Join before deciding anything: the analyzer thread must be finished
         // before its session or its error can be read.
-        let analysed = match analyst.join() {
-            Ok(analysed) => analysed,
-            Err(_) => return Err(analyst_panic_error(display_path)),
+        let (analysed, analyst_total) = match analyst.join() {
+            Ok(joined) => joined,
+            Err(_) => return Err((analyst_panic_error(display_path), Duration::ZERO)),
         };
 
         // An analysis failure is always the earlier one. The analyzer only sees
         // blocks decode already produced, so a failure at block J means decode
         // got at least to J, and any decode failure is at a later block.
-        match analysed {
+        let analysis = match analysed {
             Err(error) => Err(error),
-            Ok(Some(analysis)) => {
-                decoded?;
-                Ok(analysis)
-            }
+            Ok(Some(analysis)) => decoded.map(|()| analysis),
             Ok(None) => match decoded {
                 Err(error) => Err(error),
                 Ok(()) => Err(analysis_channel_error(display_path)),
             },
-        }
+        };
+        analysis
+            .map(|analysis| (analysis, analyst_total))
+            .map_err(|error| (error, analyst_total))
     })
+    .map_err(|(error, analyst_total)| {
+        observation.analysis.total = observation.analysis.total.saturating_add(analyst_total);
+        error
+    })?;
+    observation.analysis.total = observation.analysis.total.saturating_add(analyst_total);
+    Ok(analysis)
 }
 
 /// Drive decode and analysis on the calling thread alone.
@@ -806,22 +1006,30 @@ fn analyze_serially(
     item_index: usize,
     control: &ExecutionControl<'_>,
     display_path: &str,
-    #[cfg(feature = "performance-probes")] block_geometry: &mut DecodeBlockGeometry,
+    observation: &mut RunObservation,
 ) -> Result<macinmeter_domain::AnalysisResult, AnalysisError> {
     loop {
         ensure_not_cancelled(control)?;
-        let Some(block) = read_checked(opened, pcm, display_path)? else {
+        let started = observation.decode.start();
+        let block = read_checked(opened, pcm, display_path)?;
+        observation.decode.stop(started);
+        let Some(block) = block else {
             emit_decode_progress(opened, item_index, control, display_path);
             break;
         };
-        #[cfg(feature = "performance-probes")]
-        block_geometry.record(&block)?;
+        observation.record_block(&block)?;
+        let started = observation.analysis.start();
         session.push_interleaved(block.samples())?;
+        observation.analysis.stop(started);
         emit_decode_progress(opened, item_index, control, display_path);
     }
 
     ensure_not_cancelled(control)?;
-    session.finish()
+    // `finish` drains the analyzer's own state, so it belongs to analysis.
+    let started = observation.analysis.start();
+    let analysis = session.finish();
+    observation.analysis.stop(started);
+    analysis
 }
 
 /// Read the next block, rejecting one whose geometry contradicts the stream.

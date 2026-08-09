@@ -1,4 +1,6 @@
-use macinmeter::{AnalysisError, AnalysisStage, DecodedDuration, ErrorCode, FiniteF32};
+use macinmeter::{
+    AnalysisError, AnalysisStage, DecodedDuration, ErrorCode, FiniteF32, PhaseTimings,
+};
 use std::time::Duration;
 
 const SECONDS_PER_MINUTE: u64 = 60;
@@ -30,19 +32,36 @@ pub(crate) fn format_duration_token(duration: DecodedDuration) -> Result<String,
 /// stated per run. It is still a property of the host and the moment, not of
 /// the analysis, so it stays out of the report and the wire envelope: those
 /// remain a pure function of the input.
-pub(crate) fn format_elapsed_line(elapsed: Duration, audio_seconds: f64) -> String {
+pub(crate) fn format_elapsed_line(
+    elapsed: Duration,
+    audio_seconds: f64,
+    phases: Option<PhaseTimings>,
+) -> String {
     let elapsed_seconds = elapsed.as_secs_f64();
     // A ratio needs both terms to be real. Zero-length audio, an unmeasurably
     // fast run, or a clock that did not advance yield no multiple rather than
     // an infinity or a fabricated one.
-    if elapsed_seconds > 0.0 && audio_seconds > 0.0 {
+    let mut line = if elapsed_seconds > 0.0 && audio_seconds > 0.0 {
         format!(
             "\nElapsed: {elapsed_seconds:.3} s ({:.1}x realtime)\n",
             audio_seconds / elapsed_seconds
         )
     } else {
         format!("\nElapsed: {elapsed_seconds:.3} s\n")
+    };
+    // Say what these two are before showing them. They are the occupancies of
+    // roles the pipeline runs at the same time, so a reader who adds them or
+    // reads one as a percentage of elapsed draws a conclusion the numbers do
+    // not support.
+    if let Some(phases) = phases {
+        line.push_str(&format!(
+            "  decode {:.3} s · analysis {:.3} s (concurrent, so they overlap rather than \
+             partition the elapsed time)\n",
+            phases.decode().as_secs_f64(),
+            phases.analysis().as_secs_f64()
+        ));
     }
+    line
 }
 
 fn format_whole_seconds(total_seconds: u64) -> String {

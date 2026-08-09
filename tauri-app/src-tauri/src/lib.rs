@@ -84,6 +84,8 @@ impl Drop for ActiveJob {
 struct RunAnalysisRequest {
     job_id: String,
     path: PathBuf,
+    #[serde(default)]
+    timing: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +94,8 @@ struct RunBatchRequest {
     job_id: String,
     inputs: Vec<PathBuf>,
     recursive: bool,
+    #[serde(default)]
+    timing: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +117,30 @@ struct DiscoveryResponse {
 struct JobEvent {
     job_id: String,
     event: AnalysisEvent,
+}
+
+/// How long decode and analysis occupied, delivered beside the result.
+///
+/// This rides its own event rather than the envelope because the envelope is
+/// the exported, byte-reproducible document: two runs of one file must still
+/// serialize identically, and wall time cannot.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobTiming {
+    job_id: String,
+    decode_ms: f64,
+    analysis_ms: f64,
+}
+
+fn emit_timing(window: &tauri::Window, job_id: &str, timings: macinmeter::PhaseTimings) {
+    let _ = window.emit(
+        "analysis-timing",
+        JobTiming {
+            job_id: job_id.to_owned(),
+            decode_ms: timings.decode().as_secs_f64() * 1_000.0,
+            analysis_ms: timings.analysis().as_secs_f64() * 1_000.0,
+        },
+    );
 }
 
 #[tauri::command]
@@ -148,7 +176,11 @@ async fn run_analysis(
                 },
             );
         };
-        let envelope = execute_analysis(application_job, request.path, &sink);
+        let (envelope, timings) =
+            execute_analysis(application_job, request.path, request.timing, &sink);
+        if let Some(timings) = timings {
+            emit_timing(&window, &job_id, timings);
+        }
         drop(active_job);
         envelope
     })
@@ -162,14 +194,26 @@ async fn run_analysis(
     Ok(envelope)
 }
 
+/// Returns the timings beside the envelope rather than emitting them here, so
+/// the analysis path does not need a window and stays directly testable.
 fn execute_analysis(
     job: ApplicationJob,
     path: PathBuf,
+    timing: bool,
     progress: &dyn macinmeter::ProgressSink,
-) -> WireEnvelope {
-    job.analyze_file(AnalyzeRequest::new(path), progress)
-        .map(WireEnvelope::analysis)
-        .unwrap_or_else(WireEnvelope::error)
+) -> (WireEnvelope, Option<macinmeter::PhaseTimings>) {
+    let request = AnalyzeRequest::new(path);
+    if !timing {
+        let envelope = job
+            .analyze_file(request, progress)
+            .map(WireEnvelope::analysis)
+            .unwrap_or_else(WireEnvelope::error);
+        return (envelope, None);
+    }
+    match job.analyze_file_timed(request, progress) {
+        Ok((report, timings)) => (WireEnvelope::analysis(report), Some(timings)),
+        Err(error) => (WireEnvelope::error(error), None),
+    }
 }
 
 #[tauri::command]
@@ -209,10 +253,20 @@ async fn run_batch(
             inputs: request.inputs,
             recursive: request.recursive,
         };
-        let envelope = application_job
-            .run_batch(batch_request, &sink)
-            .map(WireEnvelope::batch)
-            .unwrap_or_else(WireEnvelope::error);
+        let envelope = if request.timing {
+            match application_job.run_batch_timed(batch_request, &sink) {
+                Ok((report, timings)) => {
+                    emit_timing(&window, &job_id, timings);
+                    WireEnvelope::batch(report)
+                }
+                Err(error) => WireEnvelope::error(error),
+            }
+        } else {
+            application_job
+                .run_batch(batch_request, &sink)
+                .map(WireEnvelope::batch)
+                .unwrap_or_else(WireEnvelope::error)
+        };
         drop(active_job);
         envelope
     })
@@ -370,7 +424,7 @@ mod tests {
         let application = Application::new();
         let job = application.reserve(&cancellation).unwrap();
 
-        let from_tauri_adapter = execute_analysis(job, path.clone(), &progress);
+        let from_tauri_adapter = execute_analysis(job, path.clone(), false, &progress).0;
         let from_application = Application::new()
             .analyze_file(AnalyzeRequest::new(path))
             .map(WireEnvelope::analysis)
@@ -411,7 +465,7 @@ mod tests {
                     drop(changed.wait_while(guard, |released| !*released).unwrap());
                 }
             };
-            let envelope = execute_analysis(first_job, first_path, &sink);
+            let envelope = execute_analysis(first_job, first_path, false, &sink).0;
             drop(first_active);
             envelope
         });
@@ -425,7 +479,7 @@ mod tests {
                     second_started_tx.send(()).unwrap();
                 }
             };
-            let envelope = execute_analysis(second_job, path, &sink);
+            let envelope = execute_analysis(second_job, path, false, &sink).0;
             drop(second_active);
             envelope
         });

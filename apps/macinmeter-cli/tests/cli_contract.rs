@@ -128,6 +128,46 @@ fn json_output_stays_free_of_the_per_run_elapsed_footer() {
 }
 
 #[test]
+fn timing_is_opt_in_and_never_presented_as_a_partition() {
+    let input = fixture("edge_cases.wav");
+    let plain = run(["analyze".as_ref(), input.as_os_str()]);
+    let timed = run(["analyze".as_ref(), "--timing".as_ref(), input.as_os_str()]);
+
+    assert_code(&plain, 0);
+    assert_code(&timed, 0);
+    assert!(!stdout(&plain).contains("decode "), "{}", stdout(&plain));
+
+    let line = stdout(&timed)
+        .lines()
+        .find(|line| line.trim_start().starts_with("decode "))
+        .expect("--timing should report both roles")
+        .to_owned();
+    // The wording is the load-bearing part. Two concurrent occupancies printed
+    // without it invite exactly the sum, percentage, and serial-fraction
+    // readings the intervals do not support.
+    assert!(line.contains("analysis "), "{line}");
+    assert!(line.contains("concurrent"), "{line}");
+    assert!(line.contains("rather than partition"), "{line}");
+
+    // The result is the same document either way, and stays out of JSON.
+    let plain_json = run([
+        "analyze".as_ref(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        input.as_os_str(),
+    ]);
+    let timed_json = run([
+        "analyze".as_ref(),
+        "--timing".as_ref(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        input.as_os_str(),
+    ]);
+    assert_eq!(stdout(&plain_json), stdout(&timed_json));
+    assert!(!stdout(&timed_json).contains("decode "));
+}
+
+#[test]
 fn batch_human_output_reports_elapsed_over_analyzed_audio() {
     let input = fixture("tiny_duration.wav");
     let output = run(["batch".as_ref(), input.as_os_str()]);

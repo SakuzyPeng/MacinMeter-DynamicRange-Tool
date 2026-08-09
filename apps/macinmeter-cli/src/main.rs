@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisReport, Application, BatchItemOutcome, BatchReport,
     BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
-    ProgressSink, WireEnvelope,
+    PhaseTimings, ProgressSink, WireEnvelope,
 };
 use render::{format_dbfs, format_duration_token, format_elapsed_line};
 use std::{
@@ -34,6 +34,10 @@ enum Command {
         format: OutputFormat,
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Also report how long decode and analysis each occupied. They run
+        /// concurrently, so the two do not partition the elapsed time.
+        #[arg(long)]
+        timing: bool,
     },
     /// Analyze files and directories, reporting them in stable input order.
     Batch {
@@ -44,6 +48,11 @@ enum Command {
         format: OutputFormat,
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Also report the decode and analysis totals the lanes accumulated.
+        /// Lanes are concurrent with each other, so these exceed elapsed by
+        /// more than a single file's do.
+        #[arg(long)]
+        timing: bool,
     },
 }
 
@@ -94,18 +103,28 @@ fn main() {
             file,
             format,
             output,
-        } => run_analyze(&application, file, format, output.as_deref(), &control),
+            timing,
+        } => run_analyze(
+            &application,
+            file,
+            format,
+            output.as_deref(),
+            timing,
+            &control,
+        ),
         Command::Batch {
             inputs,
             recursive,
             format,
             output,
+            timing,
         } => run_batch(
             &application,
             inputs,
             recursive,
             format,
             output.as_deref(),
+            timing,
             &control,
         ),
     };
@@ -117,16 +136,26 @@ fn run_analyze(
     file: PathBuf,
     format: OutputFormat,
     output: Option<&Path>,
+    timing: bool,
     control: &ExecutionControl<'_>,
 ) -> i32 {
     let request = macinmeter::AnalyzeRequest { path: file };
 
     let started = Instant::now();
-    match application.analyze_file_with_control(request, control) {
-        Ok(report) => {
+    // Two entries rather than a flag, so an ordinary run does not carry even a
+    // disabled clock's decision into the analyzer.
+    let analyzed = if timing {
+        application.analyze_file_timed(request, control)
+    } else {
+        application
+            .analyze_file_with_control(request, control)
+            .map(|report| (report, PhaseTimings::default()))
+    };
+    match analyzed {
+        Ok((report, phases)) => {
             let elapsed = started.elapsed();
             let rendered = match format {
-                OutputFormat::Human => render_analysis(&report, elapsed),
+                OutputFormat::Human => render_analysis(&report, elapsed, timing.then_some(phases)),
                 OutputFormat::Json => render_json(&WireEnvelope::analysis(report)),
             };
             finish_output(rendered, output)
@@ -141,16 +170,24 @@ fn run_batch(
     recursive: bool,
     format: OutputFormat,
     output: Option<&Path>,
+    timing: bool,
     control: &ExecutionControl<'_>,
 ) -> i32 {
     let request = BatchRequest { inputs, recursive };
     let started = Instant::now();
-    match application.run_batch(request, control) {
-        Ok(report) => {
+    let ran = if timing {
+        application.run_batch_timed(request, control)
+    } else {
+        application
+            .run_batch(request, control)
+            .map(|report| (report, PhaseTimings::default()))
+    };
+    match ran {
+        Ok((report, phases)) => {
             let elapsed = started.elapsed();
             let status = report.status;
             let rendered = match format {
-                OutputFormat::Human => render_batch(&report, elapsed),
+                OutputFormat::Human => render_batch(&report, elapsed, timing.then_some(phases)),
                 OutputFormat::Json => render_json(&WireEnvelope::batch(report)),
             };
             let output_code = finish_output(rendered, output);
@@ -204,7 +241,11 @@ fn render_json(envelope: &WireEnvelope) -> Result<String, AnalysisError> {
     })
 }
 
-fn render_analysis(report: &AnalysisReport, elapsed: Duration) -> Result<String, AnalysisError> {
+fn render_analysis(
+    report: &AnalysisReport,
+    elapsed: Duration,
+    phases: Option<PhaseTimings>,
+) -> Result<String, AnalysisError> {
     let analysis = report.analysis();
     let mut output = String::new();
     output.push_str("MacinMeter\n");
@@ -264,11 +305,16 @@ fn render_analysis(report: &AnalysisReport, elapsed: Duration) -> Result<String,
     output.push_str(&format_elapsed_line(
         elapsed,
         report_metrics.duration.seconds(),
+        phases,
     ));
     Ok(output)
 }
 
-fn render_batch(report: &BatchReport, elapsed: Duration) -> Result<String, AnalysisError> {
+fn render_batch(
+    report: &BatchReport,
+    elapsed: Duration,
+    phases: Option<PhaseTimings>,
+) -> Result<String, AnalysisError> {
     let mut output = String::from("MacinMeter batch\n\n");
     for item in &report.items {
         match &item.outcome {
@@ -312,7 +358,7 @@ fn render_batch(report: &BatchReport, elapsed: Duration) -> Result<String, Analy
             BatchItemOutcome::Failure { .. } => None,
         })
         .sum();
-    output.push_str(&format_elapsed_line(elapsed, audio_seconds));
+    output.push_str(&format_elapsed_line(elapsed, audio_seconds, phases));
     Ok(output)
 }
 

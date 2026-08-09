@@ -80,5 +80,7 @@
   "md.displayDr": "Display DR",
   "md.preciseDr": "Precise DR",
   "md.error": "Error",
-  "md.warnings": "Warnings"
+  "md.warnings": "Warnings",
+  "btn.timing": "计时",
+  "status.phases": "解码 {{decode}} s · 分析 {{analysis}} s —— 两者并发，是重叠区间，并不构成对总耗时的划分"
 }

@@ -29,6 +29,37 @@ fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {
         .expect("batch should produce an item outcome for ordinary media failures")
 }
 
+#[test]
+fn timing_is_opt_in_and_leaves_the_report_untouched() {
+    let path = fixture("edge_cases.wav");
+    let cancellation = CancellationToken::new();
+    let progress = NoopProgressSink;
+    let control = ExecutionControl::new(&cancellation, &progress);
+    let application = Application::new();
+
+    let plain = application
+        .analyze_file(AnalyzeRequest::new(&path))
+        .expect("the fixture should analyze untimed");
+    let (timed, phases) = application
+        .analyze_file_timed(AnalyzeRequest::new(&path), &control)
+        .expect("the fixture should analyze timed");
+
+    // Observation must not reach the result. Both entries produce the same
+    // wire document, so nothing downstream can tell which one ran.
+    assert_eq!(
+        serde_json::to_value(WireEnvelope::analysis(plain)).unwrap(),
+        serde_json::to_value(WireEnvelope::analysis(timed)).unwrap()
+    );
+    assert!(phases.decode() > std::time::Duration::ZERO, "{phases:?}");
+    assert!(phases.analysis() > std::time::Duration::ZERO, "{phases:?}");
+
+    let (_, batch_phases) = application
+        .run_batch_timed(BatchRequest::new(vec![path], false), &control)
+        .expect("the fixture should batch timed");
+    assert!(batch_phases.decode() > std::time::Duration::ZERO);
+    assert!(batch_phases.analysis() > std::time::Duration::ZERO);
+}
+
 fn assert_only_partial_window_warning(warnings: &[String]) {
     assert_eq!(
         warnings.len(),

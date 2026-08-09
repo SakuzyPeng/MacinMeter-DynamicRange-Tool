@@ -485,6 +485,21 @@ button.status-dismiss:active:not(:disabled) {
   transition: width 180ms ease;
 }
 
+.phase-timings {
+  margin: 0 0 10px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.phase-timings[hidden] {
+  display: none;
+}
+
 .batch-summary {
   margin: 0 0 10px;
   padding: 9px 11px;
