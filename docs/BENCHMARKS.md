@@ -2,7 +2,7 @@
 
 # Performance status
 
-MacinMeter 0.3.0 has no published performance guarantee. M6 completed
+MacinMeter 0.3.1 has no published performance guarantee. M6 completed
 reproducible local scalar-baseline, sampling-profile, and interleaved A/B
 protocols plus one bounded analyzer optimization chain, and ADR-0014 has since
 graduated three parallel axes against the same protocols, but every result
@@ -14,7 +14,7 @@ packet-parallel, file-parallel, SIMD, and FFmpeg/DSD paths. They do not describe
 the current architecture and cannot be used as a correctness or throughput
 commitment.
 
-Version 0.3.0 keeps a safe scalar product path with no SIMD, unsafe code, or
+Version 0.3.1 keeps a safe scalar product path with no SIMD, unsafe code, or
 external decoder. The M6 suite measures these scopes separately:
 
 - direct finite-f64 analysis at 2, 8, and 64 channels;

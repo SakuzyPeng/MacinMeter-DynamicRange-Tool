@@ -2,7 +2,7 @@
 
 # Release artifact staging
 
-MacinMeter 0.3.0 has an explicit artifact contract. Staging builds and verifies
+MacinMeter 0.3.1 has an explicit artifact contract. Staging builds and verifies
 bytes under `target/release-staging`; it never uploads, signs, notarizes, or
 creates a GitHub release.
 
@@ -13,9 +13,9 @@ An explicit manual dispatch uses the unsigned-candidate contracts below and
 retains both results for 14 days; it still does not create a tag or GitHub
 Release.
 
-## 0.3.0 release scope
+## 0.3.1 release scope
 
-The 0.3.0 release contains two platform slices:
+The 0.3.1 release contains two platform slices:
 
 - Apple Silicon macOS: target `aarch64-apple-darwin`, minimum macOS 11.0, an
   arm64 CLI archive, and an arm64 Tauri DMG;
@@ -25,7 +25,7 @@ The 0.3.0 release contains two platform slices:
 Both slices are unsigned. macOS receives no Developer ID signature,
 notarization, or stapling; Windows receives no Authenticode signature. Users
 may therefore need to explicitly open the macOS app or pass a Windows
-SmartScreen unknown-publisher warning. There is no 0.3.0 Intel/universal macOS,
+SmartScreen unknown-publisher warning. There is no 0.3.1 Intel/universal macOS,
 Windows ARM64/32-bit, or Linux GUI artifact.
 
 Unsigned is a standing position, not a pending task. A code-signing certificate
@@ -132,8 +132,8 @@ python scripts/stage-release.py stage \
 ```
 
 They write to
-`target/release-candidates/0.3.0/aarch64-apple-darwin` and
-`target/release-candidates/0.3.0/x86_64-pc-windows-msvc`. Each refuses a dirty
+`target/release-candidates/0.3.1/aarch64-apple-darwin` and
+`target/release-candidates/0.3.1/x86_64-pc-windows-msvc`. Each refuses a dirty
 source tree, a mismatched host, toolchains other than Rust 1.88 and Node.js 22,
 a missing GUI, `--allow-dirty`, or `--replace`. Their manifests record the full
 Rust/Cargo/Node/npm identity and use
@@ -150,7 +150,7 @@ source commit; retention from a failed run is not release evidence. They remain
 inputs to human approval, not public assets.
 
 The proposed bilingual GitHub Release body is
-[`RELEASE_DRAFT_0.3.0.md`](RELEASE_DRAFT_0.3.0.md).
+[`RELEASE_DRAFT_0.3.1.md`](RELEASE_DRAFT_0.3.1.md).
 
 ## Checksums and verification
 
@@ -164,10 +164,10 @@ Rerun verification against the final bytes:
 
 ```bash
 python3 scripts/stage-release.py verify \
-  target/release-staging/0.3.0/aarch64-apple-darwin
+  target/release-staging/0.3.1/aarch64-apple-darwin
 
 python scripts/stage-release.py verify \
-  target/release-staging/0.3.0/x86_64-pc-windows-msvc
+  target/release-staging/0.3.1/x86_64-pc-windows-msvc
 ```
 
 The same verifier accepts an unsigned candidate directory after checking its

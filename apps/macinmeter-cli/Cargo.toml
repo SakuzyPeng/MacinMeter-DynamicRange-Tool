@@ -18,7 +18,7 @@ path = "src/main.rs"
 clap.workspace = true
 clap_complete.workspace = true
 ctrlc.workspace = true
-macinmeter = { path = "../../crates/macinmeter", version = "0.3.0" }
+macinmeter = { path = "../../crates/macinmeter", version = "0.3.1" }
 serde_json.workspace = true
 
 [dev-dependencies]

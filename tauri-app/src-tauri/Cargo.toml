@@ -22,7 +22,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
-macinmeter = { path = "../../crates/macinmeter", version = "0.3.0" }
+macinmeter = { path = "../../crates/macinmeter", version = "0.3.1" }
 serde.workspace = true
 tauri.workspace = true
 tauri-plugin-clipboard-manager.workspace = true

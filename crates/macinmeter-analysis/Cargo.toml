@@ -11,7 +11,7 @@ keywords = ["audio", "dynamic-range", "dr", "loudness", "dsp"]
 categories = ["multimedia::audio"]
 
 [dependencies]
-macinmeter-domain = { path = "../macinmeter-domain", version = "0.3.0" }
+macinmeter-domain = { path = "../macinmeter-domain", version = "0.3.1" }
 
 [dev-dependencies]
 serde_json.workspace = true

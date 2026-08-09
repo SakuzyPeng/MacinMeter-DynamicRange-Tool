@@ -3,7 +3,7 @@
 MacinMeter depends on third-party Rust and JavaScript packages. Copyright and
 license terms remain with their respective authors.
 
-The 0.3.0 source tree directly uses projects including:
+The 0.3.1 source tree directly uses projects including:
 
 - Symphonia for native audio container/codec support. The locked graph now
   includes `symphonia-codec-alac` and `symphonia-format-isomp4` 0.5.5; these
@@ -31,7 +31,7 @@ Before distributing binaries or bundled frontend assets, generate a complete
 license/SBOM report from the exact locked graph and include all notices required
 by those licenses.
 
-The 0.3.0 product does not include Songbird, FFmpeg bindings, an FFmpeg runtime,
+The 0.3.1 product does not include Songbird, FFmpeg bindings, an FFmpeg runtime,
 or the former networking/TLS dependency chain used by the Opus route. FFmpeg
 8.0.1 is used only as the pinned, opt-in `native-alac-v1` fixture regeneration
 tool. It is not linked into MacinMeter, copied into artifacts, or required by
@@ -47,7 +47,7 @@ MacinMeter 使用第三方 Rust 与 JavaScript 软件包，各组件的著作权
 变化，因此本简表不能替代正式发行的许可证清单。分发二进制或前端 bundle 前，应针对
 准确的 locked graph 生成完整 license/SBOM 报告，并附带各许可证要求的声明。
 
-0.3.0 产品不包含 Songbird、FFmpeg binding、FFmpeg runtime，或旧 Opus 路径引入
+0.3.1 产品不包含 Songbird、FFmpeg binding、FFmpeg runtime，或旧 Opus 路径引入
 的网络/TLS 依赖链。FFmpeg 8.0.1 只用于可选的 `native-alac-v1` fixture 固定再生成，
 不会链接进 MacinMeter、复制进发行制品，也不是普通构建或测试的前置条件；仓库只
 提交合成生成的媒体，并记录生成命令和工具身份。新增的

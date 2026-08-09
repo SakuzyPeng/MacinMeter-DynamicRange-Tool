@@ -1,11 +1,11 @@
 # Historical changelog archive
 
-本目录只保存 0.1.x 时代的历史发布记录，不描述当前 0.3.0 产品契约，也不作为
+本目录只保存 0.1.x 时代的历史发布记录，不描述当前 0.3.1 产品契约，也不作为
 参考插件 conformance、正确性或兼容性证据。
 
 当前产品与参考研究入口分别是：
 
-- [`RELEASE_NOTES.md`](../RELEASE_NOTES.md)：当前 0.3.0 与历史 0.2.0 发布说明；
+- [`RELEASE_NOTES.md`](../RELEASE_NOTES.md)：当前 0.3.1 与历史 0.3.0/0.2.0 发布说明；
 - [`README_CN.md`](../README_CN.md)：当前产品能力与兼容性声明；
 - [`reference/README.md`](../reference/README.md)：当前固定 target、证据和规格；
 - [`reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`](../reference/specs/foo-dr-meter-1.0.8-candidate-v1.md)：

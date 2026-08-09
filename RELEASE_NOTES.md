@@ -1,5 +1,32 @@
 # Release Notes / 发布说明
 
+## v0.3.1 – Smoother large batches / 大批量分析更顺畅
+
+0.3.1 is a focused desktop-app reliability update. The DR calculation,
+supported audio formats, report values, and JSON schema are unchanged from
+0.3.0. / 0.3.1 是一次专注于桌面应用可靠性的小版本更新；DR 算法、支持的音频
+格式、报告数值与 JSON schema 均与 0.3.0 相同。
+
+- Completed tracks now appear while a folder is still being analyzed, instead
+  of waiting for the whole batch to finish. / 分析文件夹时，已完成曲目会陆续显示，
+  不必等到整个批次结束。
+- Cancelling now stops the whole analysis promptly and keeps a clear cancelling
+  status until it has stopped. / 取消操作会及时停止整个分析任务，并持续显示明确状态，
+  直到任务真正结束。
+- Large JSON, PNG, and SVG exports now give immediate feedback and complete
+  reliably on macOS and Windows. / 大型 JSON、PNG 与 SVG 导出会立即给出反馈，并能
+  在 macOS 与 Windows 上可靠完成。
+- Long image exports are split into numbered pages so text remains readable,
+  rather than shrinking one extremely tall image. / 很长的图片导出会自动拆成按顺序编号
+  的多页文件，文字不再因为挤进一张超长图片而变得模糊。
+- The Windows app remains responsive during batches containing hundreds of
+  files. / Windows 应用在一次处理数百个文件时仍能正常响应操作。
+
+The GUI packages remain unsigned, by the same standing privacy decision
+described below. The supported release targets remain Apple Silicon macOS 11.0+
+and Windows x64. / GUI 安装包仍未签名，原因与下文所述的长期隐私决定相同；发行目标
+仍为 Apple Silicon macOS 11.0+ 与 Windows x64。
+
 ## v0.3.0 – Stable MP4/M4A + ALAC / 稳定 MP4/M4A + ALAC
 
 > Status: development release contract; no signed/notarized public artifact has

@@ -1,6 +1,6 @@
 # MacinMeter contributor context
 
-MacinMeter 0.3.0 continues the correctness-first trunk rebuilt in 0.2.0. The former 0.1.x
+MacinMeter 0.3.1 continues the correctness-first trunk rebuilt in 0.2.0. The former 0.1.x
 decoder, dual DR engines, untrusted packet/file parallel implementations,
 SIMD/unsafe conversion, EdgeTrimmer, FFmpeg/DSD, Songbird, implicit CLI modes,
 and duplicate GUI DTOs have been removed. Do not reintroduce them as
@@ -63,7 +63,7 @@ domain
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.
 
-All first-party Rust code forbids unsafe code. The 0.3.0 stable surface supports
+All first-party Rust code forbids unsafe code. The 0.3.1 stable surface supports
 WAV linear integer/IEEE float PCM, FLAC, AIFF integer PCM, and the ADR-0013
 constrained MP4/M4A + ALAC route. Unknown layout stays unknown; it is never
 guessed from channel count.

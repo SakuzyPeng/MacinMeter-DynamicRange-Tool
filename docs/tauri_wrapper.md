@@ -1,4 +1,4 @@
-# MacinMeter 0.3.0 Tauri adapter
+# MacinMeter 0.3.1 Tauri adapter
 
 `tauri-app/` is a thin Tauri 2 adapter over the `macinmeter` application crate.
 Its Rust backend does not contain a second decoder, analyzer, batch scheduler,
@@ -75,7 +75,7 @@ npm run tauri dev
 Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
 Workspace Rust builds place artifacts under the root `target/` directory. The
-0.3.0 bundle targets are Apple Silicon macOS 11.0+ `.app`/`.dmg` and Windows
+0.3.1 bundle targets are Apple Silicon macOS 11.0+ `.app`/`.dmg` and Windows
 x64 NSIS. Intel/universal macOS, Windows ARM64/32-bit, and Linux GUI packaging
 are outside the release contract.
 

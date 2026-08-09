@@ -2,7 +2,7 @@
 
 ## Architecture
 
-This repository is a virtual Cargo workspace targeting version 0.3.0:
+This repository is a virtual Cargo workspace targeting version 0.3.1:
 
 - `crates/macinmeter-domain` — valid domain types, reports, and stable errors
 - `crates/macinmeter-analysis` — the sole fixed-rule streaming analyzer
@@ -87,7 +87,7 @@ dependencies into lower layers.
   dispatch may retain one clean unsigned candidate per platform for 14 days,
   but it never signs, notarizes, creates a tag/Release, or implies Gatekeeper
   or SmartScreen readiness.
-- The 0.3.0 packaged GUI targets are `aarch64-apple-darwin` with macOS 11.0 as
+- The 0.3.1 packaged GUI targets are `aarch64-apple-darwin` with macOS 11.0 as
   its minimum system version and `x86_64-pc-windows-msvc` with NSIS. Do not add
   Intel/universal macOS, Windows ARM64/32-bit, or Linux GUI artifacts without a
   separate target-bound decision. Final candidates must name the same source

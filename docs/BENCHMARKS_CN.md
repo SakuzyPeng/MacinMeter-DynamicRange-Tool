@@ -2,7 +2,7 @@
 
 # 性能状态
 
-MacinMeter 0.3.0 不发布性能保证。M6 已完成可复现的本地标量基线、
+MacinMeter 0.3.1 不发布性能保证。M6 已完成可复现的本地标量基线、
 sampling-profile、交错 A/B 协议与一条有界 analyzer 优化链，此后 ADR-0014 又按同一
 套协议毕业了三条并行轴；但所有结果仍只是绑定 source、binary、corpus 与
 environment 的证据，不是面向用户的吞吐承诺。
@@ -10,7 +10,7 @@ environment 的证据，不是面向用户的吞吐承诺。
 此前记录在这里的数字来自已经删除的 0.1.x 包级并行、文件级并行、SIMD 和
 FFmpeg/DSD 路径，不能代表当前架构，也不能作为正确性或吞吐承诺。
 
-0.3.0 保留安全标量的产品路径，不引入 SIMD、unsafe 或外部 decoder。M6 suite
+0.3.1 保留安全标量的产品路径，不引入 SIMD、unsafe 或外部 decoder。M6 suite
 分层测量：
 
 - 2、8、64 声道 direct finite-f64 analysis；

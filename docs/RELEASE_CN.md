@@ -2,7 +2,7 @@
 
 # 发行制品 staging
 
-MacinMeter 0.3.0 具有一套显式的制品契约。staging 只在
+MacinMeter 0.3.1 具有一套显式的制品契约。staging 只在
 `target/release-staging` 下构建和验证字节，不上传、不签名、不公证，也不创建
 GitHub Release。
 
@@ -11,9 +11,9 @@ arm64 job 中运行相同的 clean staging 契约。每个 job 的 CLI archive �
 通过验证后会随 runner 丢弃；显式手动触发则使用下文的 unsigned candidate 契约，并
 将两份结果保留 14 天。两条路径都不会创建 tag 或 GitHub Release。
 
-## 0.3.0 发行范围
+## 0.3.1 发行范围
 
-0.3.0 包含两个平台 slice：
+0.3.1 包含两个平台 slice：
 
 - Apple Silicon macOS：target 为 `aarch64-apple-darwin`，最低 macOS 11.0，包含
   arm64 CLI archive 与 arm64 Tauri DMG；
@@ -22,7 +22,7 @@ arm64 job 中运行相同的 clean staging 契约。每个 job 的 CLI archive �
 
 两个 slice 都未签名：macOS 不执行 Developer ID 签名、notarization 或 stapling，
 Windows 不执行 Authenticode 签名。因此用户可能需要在 macOS 上显式“打开”，或在
-Windows 上通过 SmartScreen 的未知发布者提示。0.3.0 不提供 Intel/universal macOS、
+Windows 上通过 SmartScreen 的未知发布者提示。0.3.1 不提供 Intel/universal macOS、
 Windows ARM64/32-bit 或 Linux GUI 制品。
 
 未签名是既定立场，不是待办项。代码签名证书颁发给具体个人，签名即等于把维护者的法定
@@ -118,8 +118,8 @@ python scripts/stage-release.py stage \
   --unsigned-windows-x64-candidate
 ```
 
-它们分别写入 `target/release-candidates/0.3.0/aarch64-apple-darwin` 与
-`target/release-candidates/0.3.0/x86_64-pc-windows-msvc`。每个 mode 都拒绝脏 source、
+它们分别写入 `target/release-candidates/0.3.1/aarch64-apple-darwin` 与
+`target/release-candidates/0.3.1/x86_64-pc-windows-msvc`。每个 mode 都拒绝脏 source、
 不匹配的 host、Rust 1.88/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
 `--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并分别标记为
 `unsigned_macos_arm64_release_candidate` 或
@@ -133,7 +133,7 @@ Gatekeeper/SmartScreen 条件或完成发布。
 的字节不构成发行证据，也不是公开资产。
 
 拟用于 GitHub Release 的双语文案保存在
-[`RELEASE_DRAFT_0.3.0.md`](RELEASE_DRAFT_0.3.0.md)。
+[`RELEASE_DRAFT_0.3.1.md`](RELEASE_DRAFT_0.3.1.md)。
 
 ## Checksum 与反向验证
 
@@ -147,10 +147,10 @@ Gatekeeper/SmartScreen 条件或完成发布。
 
 ```bash
 python3 scripts/stage-release.py verify \
-  target/release-staging/0.3.0/aarch64-apple-darwin
+  target/release-staging/0.3.1/aarch64-apple-darwin
 
 python scripts/stage-release.py verify \
-  target/release-staging/0.3.0/x86_64-pc-windows-msvc
+  target/release-staging/0.3.1/x86_64-pc-windows-msvc
 ```
 
 同一 verifier 也接受 unsigned candidate 目录，并额外核对 clean source、target、

@@ -325,7 +325,7 @@ fn analyze_json_stdout_is_machine_clean_and_schema_versioned() {
     assert_code(&output, 0);
     let value = parse_stdout_json(&output);
     assert_eq!(value["schemaVersion"], 4);
-    assert_eq!(value["toolVersion"], "0.3.0");
+    assert_eq!(value["toolVersion"], "0.3.1");
     assert_eq!(value["kind"], "analysis");
     let algorithm = &value["data"]["analysis"]["algorithm"];
     assert!(algorithm.get("profile").is_none());

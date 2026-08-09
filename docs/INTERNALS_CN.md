@@ -50,7 +50,7 @@ workspace 的公共门面是 `macinmeter` crate。它尚未发布到 crates.io�
 
 ```toml
 [dependencies]
-macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.0" }
+macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.1" }
 ```
 
 manifest 已经为注册表发布做好准备 —— 四个库 crate 都带 description，并把同 workspace
@@ -84,7 +84,7 @@ decoded-duration weighting。playlist 分组、metadata、footer 渲染和其他
 
 ## Workspace
 
-MacinMeter 0.3.0 是一个单向依赖的 virtual Cargo workspace：
+MacinMeter 0.3.1 是一个单向依赖的 virtual Cargo workspace：
 
 ```text
 macinmeter-domain
@@ -147,14 +147,14 @@ decoder，窗口级并行尚未实现。
 
 ## 打包
 
-0.3.0 为两个平台打包 CLI 与 GUI：运行 macOS 11.0 或更新系统的 Apple Silicon Mac，
+0.3.1 为两个平台打包 CLI 与 GUI：运行 macOS 11.0 或更新系统的 Apple Silicon Mac，
 以及 Windows x64。两个平台各自在自己的主机上 staging —— macOS 产出 DMG，Windows
 产出 NSIS 安装包 —— 本地 staging 与有界 CI 门禁都会构建并**打开**最终制品做结构化
 验证：DMG 会被挂载并检查其中的 `.app`；安装包会在候选目录之外解包，并核对内层
 `macinmeter-gui.exe` 的 PE machine 实测为 x86_64、版本资源匹配、Authenticode 为未
 签名。外层 installer 同样必须是未签名 PE。
 
-Intel/universal macOS、ARM64 Windows 与 Linux GUI 包不属于 0.3.0 发行范围。目前的
+Intel/universal macOS、ARM64 Windows 与 Linux GUI 包不属于 0.3.1 发行范围。目前的
 打包情况汇总在[发行与制品状态](RELEASE_CN.md)。
 
 ## 设计历史

@@ -55,7 +55,7 @@ yet, so depend on it by tag:
 
 ```toml
 [dependencies]
-macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.0" }
+macinmeter = { git = "https://github.com/SakuzyPeng/MacinMeter-DynamicRange-Tool", tag = "v0.3.1" }
 ```
 
 The manifests are prepared for a registry release — the four library crates
@@ -93,7 +93,7 @@ subsystem sit outside that numeric API.
 
 ## Workspace
 
-MacinMeter 0.3.0 is a virtual Cargo workspace with one-way dependencies:
+MacinMeter 0.3.1 is a virtual Cargo workspace with one-way dependencies:
 
 ```text
 macinmeter-domain
@@ -169,7 +169,7 @@ the [performance notes](BENCHMARKS.md) and [records](performance/README.md).
 
 ## Packaging
 
-0.3.0 packages the CLI and the GUI for two platforms: Apple Silicon Macs running
+0.3.1 packages the CLI and the GUI for two platforms: Apple Silicon Macs running
 macOS 11.0 or newer, and Windows x64. Each platform is staged on its own host — a
 DMG on macOS, an NSIS installer on Windows — and both local staging and the
 bounded CI gate build and structurally verify the final artifact by opening it:
@@ -179,7 +179,7 @@ observed x86_64 PE machine, matching version resource, and unsigned Authenticode
 state. The outer installer must also be an unsigned PE.
 
 Intel/universal macOS, ARM64 Windows, and Linux GUI packages are not part of the
-0.3.0 release. The current packaging picture is summarized in [release and
+0.3.1 release. The current packaging picture is summarized in [release and
 artifact status](RELEASE.md).
 
 ## Design history

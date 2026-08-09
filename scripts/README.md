@@ -219,7 +219,7 @@ Authenticode `NotSigned` with no signer certificate. Neither route launches the
 GUI. No staging command uploads, signs, notarizes, or creates a GitHub release.
 The manual workflow may retain verified candidates after this script exits;
 that external retention does not change either manifest into a published
-release. Final 0.3.0 review requires both candidates to record the same source
+release. Final 0.3.1 review requires both candidates to record the same source
 commit.
 
 See [`docs/RELEASE.md`](../docs/RELEASE.md) for the exact artifact and dirty-tree
