@@ -471,7 +471,9 @@ def validate(root: Path) -> list[str]:
             f"{path.relative_to(root)} must retain the macOS 26 arm64 gate",
         )
         macos_stage_command = "python3 scripts/stage-release.py stage --include-gui"
+        windows_stage_command = "python scripts/stage-release.py stage --include-gui"
         unsigned_candidate_flag = "--unsigned-macos-arm64-candidate"
+        windows_candidate_flag = "--unsigned-windows-x64-candidate"
         upload_action = (
             "actions/upload-artifact@"
             "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
@@ -489,36 +491,54 @@ def validate(root: Path) -> list[str]:
                     command in windows_text,
                     f"{path.relative_to(root)} Windows gate is missing: {command}",
                 )
-            require(
-                windows_text.count("if: github.event_name != 'pull_request'") == 2,
-                f"{path.relative_to(root)} Windows release build and smoke must remain "
-                "main/manual-only",
+            # ADR-0015 moved Windows into the release scope, so these guards
+            # moved with it rather than being removed: a Windows candidate must
+            # still be staged, verified, built from main, and named a candidate.
+            # What changed is which shape counts as verified, not whether one is
+            # required before bytes may be called a candidate.
+            required_windows_release_commands = (
+                windows_stage_command,
+                windows_candidate_flag,
+                "unsigned release candidates are built from main only",
             )
-            required_windows_gui_commands = (
-                "npm ci",
-                "npm run tauri -- build --bundles nsis",
-                "macinmeter-gui.exe",
-                "bundle\\nsis",
-            )
-            for command in required_windows_gui_commands:
+            for command in required_windows_release_commands:
                 require(
                     command in windows_text,
-                    f"{path.relative_to(root)} Windows GUI test build is missing: {command}",
+                    f"{path.relative_to(root)} Windows release path is missing: {command}",
                 )
             require(
-                windows_text.count("if: github.event_name == 'workflow_dispatch'") == 5,
-                f"{path.relative_to(root)} the Windows GUI test build, its verification "
+                upload_action in windows_text,
+                f"{path.relative_to(root)} Windows candidate retention must use the "
+                "pinned upload action",
+            )
+            require(
+                "name: macinmeter-unsigned-windows-x64-${{ github.sha }}" in windows_text,
+                f"{path.relative_to(root)} the Windows candidate artifact must name its "
+                "unsigned scope",
+            )
+            require(
+                "path: target/release-candidates/" in windows_text,
+                f"{path.relative_to(root)} the Windows candidate must be retained from "
+                "the immutable candidate directory",
+            )
+            require(
+                unsigned_candidate_flag not in windows_text,
+                f"{path.relative_to(root)} the Windows job may not produce the macOS "
+                "candidate; one stage yields one platform",
+            )
+            require(
+                windows_text.count("if: github.event_name == 'push'") == 1,
+                f"{path.relative_to(root)} Windows staging must run on push exactly once",
+            )
+            require(
+                windows_text.count("if: github.event_name == 'workflow_dispatch'") == 3,
+                f"{path.relative_to(root)} the Windows candidate, its main-ref assertion "
                 "and its retention must remain manual-only",
             )
             require(
-                "release-candidate" not in windows_text
-                and unsigned_candidate_flag not in windows_text,
-                f"{path.relative_to(root)} the Windows GUI build is a test build and may "
-                "not claim or produce a release candidate",
-            )
-            require(
-                "name: macinmeter-windows-test-build-${{ github.sha }}" in windows_text,
-                f"{path.relative_to(root)} the Windows artifact must be named a test build",
+                "macinmeter-windows-test-build" not in windows_text,
+                f"{path.relative_to(root)} the retired Windows test-build artifact name "
+                "must not return alongside the release path",
             )
 
         if macos_job is not None:

@@ -213,12 +213,23 @@ result search and precise-DR sorting, path hiding, and Markdown, JSON, PNG, or
 SVG export. Exported JSON is the exact shared `WireEnvelope`; presentation-only
 preferences never alter the analysis request or report.
 
-The 0.3.0 packaged GUI is scoped to Apple Silicon Macs running macOS 11.0 or
-newer. Local staging and the bounded macOS 26 arm64 CI gate both build and
-structurally verify the final DMG. The package has no Developer ID signature
-and is not notarized, so macOS may require an explicit Open/Open Anyway
-confirmation. Intel/universal macOS and Windows/Linux GUI packages are not part
-of the 0.3.0 release. The current packaging picture is summarized in
+0.3.0 packages the CLI and the GUI for two platforms: Apple Silicon Macs
+running macOS 11.0 or newer, and Windows x64. Each platform is staged on its
+own host — a DMG on macOS, an NSIS installer on Windows — and both local
+staging and the bounded CI gate build and structurally verify the final
+artifact by opening it: the DMG is mounted and its `.app` inspected, and the
+installer is extracted and its `macinmeter-gui.exe` checked for a matching
+version resource.
+
+Neither package is signed. macOS has no Developer ID signature and no
+notarization, so it may require an explicit Open/Open Anyway confirmation;
+Windows has no Authenticode signature, so SmartScreen reports an unknown
+publisher. This is the same decision on both platforms rather than an omission
+on one: an individual code-signing certificate embeds the maintainer's legal
+name in every published artifact.
+
+Intel/universal macOS, ARM64 Windows, and Linux GUI packages are not part of
+the 0.3.0 release. The current packaging picture is summarized in
 [release and artifact status](docs/RELEASE.md).
 
 ## Rust API

@@ -132,6 +132,7 @@ class StageReleaseTests(unittest.TestCase):
     def test_unsigned_candidate_scope_requires_clean_immutable_arm64_gui(self) -> None:
         valid = {
             "unsigned_macos_arm64_candidate": True,
+            "unsigned_windows_x64_candidate": False,
             "include_gui": True,
             "allow_dirty": False,
             "replace": False,
@@ -150,6 +151,38 @@ class StageReleaseTests(unittest.TestCase):
             changed[field] = value
             with self.assertRaisesRegex(stage_release.ReleaseError, message):
                 stage_release.validate_stage_scope(**changed)
+
+    def test_unsigned_windows_candidate_scope_mirrors_the_macos_conditions(self) -> None:
+        valid = {
+            "unsigned_macos_arm64_candidate": False,
+            "unsigned_windows_x64_candidate": True,
+            "include_gui": True,
+            "allow_dirty": False,
+            "replace": False,
+            "target": "x86_64-pc-windows-msvc",
+        }
+        stage_release.validate_stage_scope(**valid)
+
+        invalid = (
+            ("include_gui", False, "must include the GUI"),
+            ("allow_dirty", True, "clean source tree"),
+            ("replace", True, "cannot replace"),
+            ("target", "aarch64-apple-darwin", "x86_64-pc-windows-msvc only"),
+        )
+        for field, value, message in invalid:
+            changed = dict(valid)
+            changed[field] = value
+            with self.assertRaisesRegex(stage_release.ReleaseError, message):
+                stage_release.validate_stage_scope(**changed)
+
+        # One stage yields one platform. Accepting both flags would let a single
+        # host claim to have produced a GUI it cannot build.
+        both = dict(valid)
+        both["unsigned_macos_arm64_candidate"] = True
+        with self.assertRaisesRegex(
+            stage_release.ReleaseError, "one platform's candidate"
+        ):
+            stage_release.validate_stage_scope(**both)
 
     def test_distribution_manifest_distinguishes_local_and_unsigned_candidate(self) -> None:
         local = {
@@ -191,24 +224,78 @@ class StageReleaseTests(unittest.TestCase):
     def test_unsigned_candidate_requires_pinned_rust_and_node_toolchains(self) -> None:
         package = {"msrv": "1.88"}
         toolchain = {"rustc": "1.88.0", "node": "v22.18.0"}
+        # Both platforms are pinned to the same toolchain, so a candidate from
+        # either host is built with the versions the evidence names.
+        for macos, windows in ((True, False), (False, True)):
+            stage_release.validate_candidate_toolchain(
+                unsigned_macos_arm64_candidate=macos,
+                unsigned_windows_x64_candidate=windows,
+                package=package,
+                toolchain=toolchain,
+            )
+
+            for key, value, message in (
+                ("rustc", "1.89.0", "exact Rust 1.88"),
+                ("node", "v24.0.0", "Node.js 22"),
+            ):
+                changed = dict(toolchain)
+                changed[key] = value
+                with self.assertRaisesRegex(stage_release.ReleaseError, message):
+                    stage_release.validate_candidate_toolchain(
+                        unsigned_macos_arm64_candidate=macos,
+                        unsigned_windows_x64_candidate=windows,
+                        package=package,
+                        toolchain=changed,
+                    )
+
         stage_release.validate_candidate_toolchain(
-            unsigned_macos_arm64_candidate=True,
+            unsigned_macos_arm64_candidate=False,
+            unsigned_windows_x64_candidate=False,
             package=package,
-            toolchain=toolchain,
+            toolchain={"rustc": "1.99.0", "node": "v24.0.0"},
         )
 
-        for key, value, message in (
-            ("rustc", "1.89.0", "exact Rust 1.88"),
-            ("node", "v24.0.0", "Node.js 22"),
+    def test_windows_distribution_manifest_requires_its_own_contract(self) -> None:
+        candidate = {
+            "target": "x86_64-pc-windows-msvc",
+            "source": {"state": "clean"},
+            "distribution": stage_release.distribution_contract(False, True),
+        }
+        artifacts = [
+            {"kind": "cli"},
+            {
+                "kind": "gui_windows_nsis",
+                "publicationStatus": "unsigned_release_candidate",
+            },
+        ]
+        self.assertEqual(
+            stage_release.validate_distribution_manifest(candidate, artifacts),
+            "unsigned_windows_x64_release_candidate",
+        )
+
+        # A Windows manifest carrying the macOS GUI kind must not pass: the two
+        # scopes verify different things, so the artifact has to match the scope.
+        crossed = dict(candidate)
+        with self.assertRaisesRegex(
+            stage_release.ReleaseError, "must contain CLI and GUI"
         ):
-            changed = dict(toolchain)
-            changed[key] = value
-            with self.assertRaisesRegex(stage_release.ReleaseError, message):
-                stage_release.validate_candidate_toolchain(
-                    unsigned_macos_arm64_candidate=True,
-                    package=package,
-                    toolchain=changed,
-                )
+            stage_release.validate_distribution_manifest(
+                crossed,
+                [
+                    {"kind": "cli"},
+                    {
+                        "kind": "gui_macos_dmg",
+                        "publicationStatus": "unsigned_release_candidate",
+                    },
+                ],
+            )
+
+        mismatched_target = dict(candidate)
+        mismatched_target["target"] = "aarch64-apple-darwin"
+        with self.assertRaisesRegex(
+            stage_release.ReleaseError, "must be x86_64-pc-windows-msvc"
+        ):
+            stage_release.validate_distribution_manifest(mismatched_target, artifacts)
 
 
 if __name__ == "__main__":

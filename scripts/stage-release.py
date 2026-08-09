@@ -36,9 +36,13 @@ except ImportError:  # pragma: no cover - Python reports the actionable error.
 RELEASE_SCHEMA_VERSION = 1
 WIRE_SCHEMA_VERSION = 4
 APPLE_SILICON_TARGET = "aarch64-apple-darwin"
+WINDOWS_X64_TARGET = "x86_64-pc-windows-msvc"
 MACOS_MINIMUM_SYSTEM_VERSION = "11.0"
 LOCAL_STAGING_SCOPE = "local_staging_only"
 UNSIGNED_MACOS_ARM64_SCOPE = "unsigned_macos_arm64_release_candidate"
+UNSIGNED_WINDOWS_X64_SCOPE = "unsigned_windows_x64_release_candidate"
+WINDOWS_GUI_EXECUTABLE = "macinmeter-gui.exe"
+PE_MAGIC = b"MZ"
 CHECKSUM_FILE = "SHA256SUMS"
 RELEASE_MANIFEST = "RELEASE_MANIFEST.json"
 ARTIFACT_MANIFEST = "ARTIFACT_MANIFEST.json"
@@ -57,6 +61,20 @@ MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 
 class ReleaseError(RuntimeError):
     pass
+
+
+def npm_executable() -> str:
+    """Resolve npm to a launchable path.
+
+    On Windows npm ships as `npm.CMD`, which cannot be started by bare name:
+    Windows process creation runs executables, not batch files, so the same
+    argv that works everywhere else fails there. Resolving through PATH keeps
+    one call shape for both hosts.
+    """
+    resolved = shutil.which("npm")
+    if resolved is None:
+        raise ReleaseError("npm is required for release staging but was not found")
+    return resolved
 
 
 def run(
@@ -126,7 +144,7 @@ def toolchain_identity(root: Path) -> dict:
         raise ReleaseError("rustc -vV did not report host and release")
     cargo = run(["cargo", "-V"], cwd=root, capture=True).stdout.strip()
     node = run(["node", "--version"], cwd=root, capture=True).stdout.strip()
-    npm = run(["npm", "--version"], cwd=root, capture=True).stdout.strip()
+    npm = run([npm_executable(), "--version"], cwd=root, capture=True).stdout.strip()
     return {
         "host": host,
         "rustc": release,
@@ -182,7 +200,7 @@ def ensure_release_inputs(root: Path) -> None:
         cwd=root,
     )
     run(
-        ["npm", "--prefix", "tauri-app", "run", "check-version"],
+        [npm_executable(), "--prefix", "tauri-app", "run", "check-version"],
         cwd=root,
     )
 
@@ -645,6 +663,139 @@ def smoke_macos_dmg(
     return smoke
 
 
+def seven_zip(command: list[str], root: Path):
+    """Run 7-Zip, which ADR-0015 makes an explicit Windows staging dependency.
+
+    A missing 7-Zip fails the stage rather than silently degrading to a shallow
+    check, because the point of the extraction is that "verified" means the same
+    thing on both platforms.
+    """
+    try:
+        return run(["7z", *command], cwd=root, capture=True, timeout=180)
+    except FileNotFoundError as error:
+        raise ReleaseError(
+            "7z is required to verify the Windows installer; install 7-Zip"
+        ) from error
+
+
+def windows_executable_version(path: Path, root: Path) -> str:
+    """Read a PE version resource without adding a Python dependency."""
+    result = run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            f"(Get-Item -LiteralPath '{path}').VersionInfo.FileVersion",
+        ],
+        cwd=root,
+        capture=True,
+        timeout=60,
+    )
+    return result.stdout.strip()
+
+
+def smoke_windows_installer(
+    installer: Path,
+    *,
+    version: str,
+    target: str,
+    root: Path,
+) -> dict:
+    """Open the installer and inspect what it actually carries.
+
+    This is the Windows counterpart to mounting the DMG: confirming that the
+    file is a well-formed PE would not establish that the payload inside it is
+    the GUI that was built, which is exactly what the macOS side does establish.
+    """
+    if target != WINDOWS_X64_TARGET:
+        raise ReleaseError(
+            f"Windows GUI staging supports {WINDOWS_X64_TARGET} only; found {target}"
+        )
+    with installer.open("rb") as file:
+        if file.read(2) != PE_MAGIC:
+            raise ReleaseError(f"{installer.name} is not a PE executable")
+
+    extracted = Path(tempfile.mkdtemp(prefix=".mdrmeter-nsis-", dir=installer.parent))
+    try:
+        seven_zip(["x", str(installer), f"-o{extracted}", "-y"], root)
+        payloads = sorted(
+            path
+            for path in extracted.rglob(WINDOWS_GUI_EXECUTABLE)
+            if path.is_file() and not path.is_symlink()
+        )
+        if len(payloads) != 1:
+            raise ReleaseError(
+                f"the installer must carry exactly one {WINDOWS_GUI_EXECUTABLE}; found "
+                + (", ".join(str(path.relative_to(extracted)) for path in payloads) or "none")
+            )
+        payload = payloads[0]
+        with payload.open("rb") as file:
+            if file.read(2) != PE_MAGIC:
+                raise ReleaseError(
+                    f"{WINDOWS_GUI_EXECUTABLE} inside the installer is not a PE executable"
+                )
+        payload_version = windows_executable_version(payload, root)
+        if version_tuple(payload_version) != version_tuple(version):
+            raise ReleaseError(
+                f"installer payload reports version {payload_version!r}; "
+                f"expected {version}"
+            )
+        smoke = {
+            "container": "nsis",
+            "payload": WINDOWS_GUI_EXECUTABLE,
+            "payloadVersion": payload_version,
+            "payloadSha256": sha256_file(payload),
+            "architecture": "x86_64",
+            "authenticodeSigned": False,
+            "launch": "not_performed",
+        }
+    finally:
+        shutil.rmtree(extracted, ignore_errors=True)
+    return smoke
+
+
+def build_windows_installer(
+    root: Path,
+    working: Path,
+    *,
+    version: str,
+    version_label: str,
+    target: str,
+) -> tuple[Path, str]:
+    config = json.loads(
+        (root / "tauri-app/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+    )
+    identifier = config["identifier"]
+    run(
+        [
+            npm_executable(),
+            "--prefix",
+            "tauri-app",
+            "run",
+            "tauri",
+            "--",
+            "build",
+            "--bundles",
+            "nsis",
+        ],
+        cwd=root,
+    )
+    candidates = sorted(
+        path
+        for path in (root / "target/release/bundle/nsis").glob("*-setup.exe")
+        if version in path.name
+    )
+    if len(candidates) != 1:
+        raise ReleaseError(
+            "Tauri must produce exactly one NSIS installer; found "
+            + (", ".join(path.name for path in candidates) or "none")
+        )
+    destination = working / f"macinmeter-gui-{version_label}-{target}-setup.exe"
+    shutil.copyfile(candidates[0], destination)
+    return destination, identifier
+
+
 def build_gui_artifact(
     root: Path,
     working: Path,
@@ -653,15 +804,26 @@ def build_gui_artifact(
     version_label: str,
     target: str,
 ) -> tuple[Path, str]:
+    # The GUI is bundled by the host for the host: neither platform can produce
+    # the other's installer, so the split is on where this runs rather than on a
+    # requested target.
+    if sys.platform == "win32":
+        return build_windows_installer(
+            root,
+            working,
+            version=version,
+            version_label=version_label,
+            target=target,
+        )
     if sys.platform != "darwin":
-        raise ReleaseError("--include-gui currently supports macOS only")
+        raise ReleaseError("--include-gui supports macOS and Windows hosts only")
     arch = macos_bundle_arch(target)
     config = json.loads(
         (root / "tauri-app/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
     )
     identifier = config["identifier"]
     run(
-        ["npm", "--prefix", "tauri-app", "run", "tauri", "--", "build"],
+        [npm_executable(), "--prefix", "tauri-app", "run", "tauri", "--", "build"],
         cwd=root,
     )
     candidates = sorted(
@@ -700,7 +862,21 @@ def parse_checksums(path: Path) -> dict[str, str]:
     return checksums
 
 
-def distribution_contract(unsigned_macos_arm64_candidate: bool) -> dict:
+def distribution_contract(
+    unsigned_macos_arm64_candidate: bool,
+    unsigned_windows_x64_candidate: bool = False,
+) -> dict:
+    if unsigned_windows_x64_candidate:
+        return {
+            "scope": UNSIGNED_WINDOWS_X64_SCOPE,
+            "platform": "windows",
+            "architecture": "x86_64",
+            "signing": "authenticode_not_performed",
+            "notarization": "not_applicable",
+            "smartScreen": "not_claimed",
+            "upload": "permitted_after_verification",
+            "publication": "requires_explicit_confirmation",
+        }
     if unsigned_macos_arm64_candidate:
         return {
             "scope": UNSIGNED_MACOS_ARM64_SCOPE,
@@ -724,20 +900,33 @@ def distribution_contract(unsigned_macos_arm64_candidate: bool) -> dict:
 def validate_stage_scope(
     *,
     unsigned_macos_arm64_candidate: bool,
+    unsigned_windows_x64_candidate: bool,
     include_gui: bool,
     allow_dirty: bool,
     replace: bool,
     target: str,
 ) -> None:
-    if not unsigned_macos_arm64_candidate:
+    # One stage produces one platform's candidate. ADR-0015 merges the two into
+    # a single release by hand rather than letting either host claim to have
+    # produced the other's GUI.
+    if unsigned_macos_arm64_candidate and unsigned_windows_x64_candidate:
+        raise ReleaseError("a stage produces one platform's candidate, not both")
+    if unsigned_macos_arm64_candidate:
+        expected_target = APPLE_SILICON_TARGET
+        platform_label = "Apple Silicon"
+    elif unsigned_windows_x64_candidate:
+        expected_target = WINDOWS_X64_TARGET
+        platform_label = "Windows x64"
+    else:
         return
-    if target != APPLE_SILICON_TARGET:
+    if target != expected_target:
         raise ReleaseError(
-            "unsigned release candidates support aarch64-apple-darwin only"
+            f"unsigned {platform_label} release candidates support "
+            f"{expected_target} only; found {target}"
         )
     if not include_gui:
         raise ReleaseError(
-            "unsigned Apple Silicon release candidates must include the GUI"
+            f"unsigned {platform_label} release candidates must include the GUI"
         )
     if allow_dirty:
         raise ReleaseError("unsigned release candidates require a clean source tree")
@@ -748,10 +937,11 @@ def validate_stage_scope(
 def validate_candidate_toolchain(
     *,
     unsigned_macos_arm64_candidate: bool,
+    unsigned_windows_x64_candidate: bool,
     package: dict,
     toolchain: dict,
 ) -> None:
-    if not unsigned_macos_arm64_candidate:
+    if not (unsigned_macos_arm64_candidate or unsigned_windows_x64_candidate):
         return
     if version_tuple(toolchain["rustc"]) != version_tuple(package["msrv"]):
         raise ReleaseError(
@@ -772,21 +962,31 @@ def validate_distribution_manifest(manifest: dict, artifacts: list[dict]) -> str
         if distribution != distribution_contract(False):
             raise ReleaseError("local staging distribution contract drifted")
         return scope
-    if scope != UNSIGNED_MACOS_ARM64_SCOPE:
+    if scope == UNSIGNED_MACOS_ARM64_SCOPE:
+        expected_contract = distribution_contract(True)
+        expected_target = APPLE_SILICON_TARGET
+        gui_kind = "gui_macos_dmg"
+        platform_label = "Apple Silicon"
+    elif scope == UNSIGNED_WINDOWS_X64_SCOPE:
+        expected_contract = distribution_contract(False, True)
+        expected_target = WINDOWS_X64_TARGET
+        gui_kind = "gui_windows_nsis"
+        platform_label = "Windows x64"
+    else:
         raise ReleaseError("release manifest has an unknown distribution scope")
-    if distribution != distribution_contract(True):
-        raise ReleaseError("unsigned Apple Silicon distribution contract drifted")
-    if manifest.get("target") != APPLE_SILICON_TARGET:
-        raise ReleaseError("unsigned release candidate target must be Apple Silicon")
+    if distribution != expected_contract:
+        raise ReleaseError(f"unsigned {platform_label} distribution contract drifted")
+    if manifest.get("target") != expected_target:
+        raise ReleaseError(
+            f"unsigned release candidate target must be {expected_target}"
+        )
     if manifest.get("source", {}).get("state") != "clean":
         raise ReleaseError("unsigned release candidate source must be clean")
     if len(artifacts) != 2 or {
         artifact.get("kind") for artifact in artifacts
-    } != {"cli", "gui_macos_dmg"}:
+    } != {"cli", gui_kind}:
         raise ReleaseError("unsigned release candidate must contain CLI and GUI")
-    gui = next(
-        artifact for artifact in artifacts if artifact.get("kind") == "gui_macos_dmg"
-    )
+    gui = next(artifact for artifact in artifacts if artifact.get("kind") == gui_kind)
     if gui.get("publicationStatus") != "unsigned_release_candidate":
         raise ReleaseError("unsigned GUI publication status drifted")
     return scope
@@ -869,6 +1069,13 @@ def verify_release_dir(
                 fixture=fixture,
                 root=root,
             )
+        elif kind == "gui_windows_nsis":
+            smoke_results[path.name] = smoke_windows_installer(
+                path,
+                version=version,
+                target=target,
+                root=root,
+            )
         elif kind == "gui_macos_dmg":
             gui_smoke = smoke_macos_dmg(
                 path,
@@ -904,16 +1111,22 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
         f"{version}-dirty" if source["state"] == "dirty" else version
     )
     target = toolchain["host"]
-    unsigned_candidate = arguments.unsigned_macos_arm64_candidate
+    macos_candidate = arguments.unsigned_macos_arm64_candidate
+    windows_candidate = arguments.unsigned_windows_x64_candidate
+    # Either flag makes this an immutable candidate rather than local staging;
+    # which one decides the platform contract below.
+    unsigned_candidate = macos_candidate or windows_candidate
     validate_stage_scope(
-        unsigned_macos_arm64_candidate=unsigned_candidate,
+        unsigned_macos_arm64_candidate=macos_candidate,
+        unsigned_windows_x64_candidate=windows_candidate,
         include_gui=arguments.include_gui,
         allow_dirty=arguments.allow_dirty,
         replace=arguments.replace,
         target=target,
     )
     validate_candidate_toolchain(
-        unsigned_macos_arm64_candidate=unsigned_candidate,
+        unsigned_macos_arm64_candidate=macos_candidate,
+        unsigned_windows_x64_candidate=windows_candidate,
         package=package,
         toolchain=toolchain,
     )
@@ -1001,9 +1214,10 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
             )
             staged_gui = release_dir / gui.name
             shutil.move(gui, staged_gui)
+            windows_gui = sys.platform == "win32"
             artifacts.append(
                 {
-                    "kind": "gui_macos_dmg",
+                    "kind": "gui_windows_nsis" if windows_gui else "gui_macos_dmg",
                     "file": staged_gui.name,
                     "sha256": sha256_file(staged_gui),
                     "sizeBytes": staged_gui.stat().st_size,
@@ -1014,6 +1228,13 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
                         else "local_unnotarized"
                     ),
                     "smokeContract": [
+                        "installer_pe_header",
+                        "extracted_payload_identity",
+                        "payload_pe_header",
+                        "payload_version_resource",
+                    ]
+                    if windows_gui
+                    else [
                         "dmg_integrity",
                         "mounted_bundle_identity",
                         "bundle_executable",
@@ -1038,7 +1259,9 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
             "analysis": {
                 "wireSchemaVersion": WIRE_SCHEMA_VERSION,
             },
-            "distribution": distribution_contract(unsigned_candidate),
+            "distribution": distribution_contract(
+                macos_candidate, windows_candidate
+            ),
             "artifacts": artifacts,
         }
         write_json(release_dir / RELEASE_MANIFEST, release_manifest)
@@ -1069,7 +1292,10 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument(
         "--include-gui",
         action="store_true",
-        help="also build and verify the current-host macOS Tauri DMG",
+        help=(
+            "also build and verify the current-host Tauri bundle: a macOS DMG "
+            "or a Windows NSIS installer"
+        ),
     )
     stage.add_argument(
         "--unsigned-macos-arm64-candidate",
@@ -1077,6 +1303,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "stage a clean, unsigned Apple Silicon CLI and GUI release candidate"
         ),
+    )
+    stage.add_argument(
+        "--unsigned-windows-x64-candidate",
+        action="store_true",
+        help="stage a clean, unsigned Windows x64 CLI and GUI release candidate",
     )
     stage.add_argument(
         "--allow-dirty",

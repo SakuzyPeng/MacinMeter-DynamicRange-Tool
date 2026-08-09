@@ -18,6 +18,16 @@
 > 宿主授予多少 worker，也不提供公开的线程、batch size 或队列控制。本版本不发布任何
 > 吞吐数字。下方 v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
 
+- Expanded the release scope to two platforms: Windows x64 now ships a staged
+  and verified CLI archive and NSIS installer alongside the Apple Silicon macOS
+  archive and DMG, under [ADR-0015](docs/adr/0015-unsigned-windows-x64-release-scope.md).
+  Neither platform is signed, for the same reason. Windows staging opens the
+  installer and checks the executable inside it, so "verified" means the same
+  thing on both.
+  发行范围扩展到两个平台：Windows x64 现在与 Apple Silicon macOS 的 archive 和 DMG
+  一同提供经 staging 与验证的 CLI archive 与 NSIS 安装包，依据 ADR-0015。两个平台
+  都不签名，理由相同。Windows staging 会打开安装包并核对其中的可执行文件，因此两边
+  的“已验证”含义一致。
 - Renamed the CLI binary to `mdrmeter`; the product, crates, repository and
   GUI remain MacinMeter. The old name said "meter" without saying what it
   measures, and a command name is the one place that has to state it. Added

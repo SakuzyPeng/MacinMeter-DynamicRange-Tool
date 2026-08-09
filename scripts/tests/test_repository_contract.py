@@ -136,19 +136,26 @@ jobs:
         run: cargo build --locked --release -p macinmeter-cli
       - if: github.event_name != 'pull_request'
         run: .\\target\\release\\mdrmeter.exe analyze fixture.wav
-      - if: github.event_name == 'workflow_dispatch'
+      - if: github.event_name != 'pull_request'
         uses: actions/setup-node@node-sha
-      - if: github.event_name == 'workflow_dispatch'
+      - if: github.event_name != 'pull_request'
         run: npm ci
+      - if: github.event_name == 'push'
+        run: python scripts/stage-release.py stage --include-gui
       - if: github.event_name == 'workflow_dispatch'
-        run: npm run tauri -- build --bundles nsis
+        run: |
+          if ($env:GITHUB_REF -ne "refs/heads/main") {
+            throw "unsigned release candidates are built from main only"
+          }
       - if: github.event_name == 'workflow_dispatch'
-        run: dir .\\target\\release\\macinmeter-gui.exe .\\target\\release\\bundle\\nsis
+        run: >-
+          python scripts/stage-release.py stage --include-gui
+          --unsigned-windows-x64-candidate
       - if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: macinmeter-windows-test-build-${{ github.sha }}
-          path: target/release/bundle/nsis
+          name: macinmeter-unsigned-windows-x64-${{ github.sha }}
+          path: target/release-candidates/
   macos:
     runs-on: macos-26
     steps:
@@ -505,20 +512,54 @@ jobs: {}
             any("must be pinned and stay" in error for error in self.errors())
         )
 
-    def test_rejects_a_windows_build_that_claims_a_release_candidate(self) -> None:
-        # The Windows GUI is built to be exercised, not distributed: ADR-0011
-        # keeps the release scope on unsigned Apple Silicon macOS. The guard is
-        # on the claim, so that widening the scope has to be a decision rather
-        # than a workflow edit.
+    def test_rejects_a_windows_candidate_without_its_verification(self) -> None:
+        # ADR-0015 widened the scope, so the guard moved rather than lifted: a
+        # Windows candidate must still be staged and verified before it may be
+        # retained. Dropping the stage while keeping the upload is exactly the
+        # edit that would publish unverified bytes.
         workflow = self.root / ".github/workflows/workspace-validation.yml"
         contents = workflow.read_text(encoding="utf-8").replace(
-            "name: macinmeter-windows-test-build-${{ github.sha }}",
-            "name: macinmeter-windows-release-candidate-${{ github.sha }}",
+            "          python scripts/stage-release.py stage --include-gui\n"
+            "          --unsigned-windows-x64-candidate",
+            "          echo skip",
         )
         workflow.write_text(contents, encoding="utf-8")
 
         self.assertTrue(
-            any("must be named a test build" in error for error in self.errors())
+            any(
+                "Windows release path is missing" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_a_windows_candidate_built_off_main(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            'throw "unsigned release candidates are built from main only"',
+            'Write-Host "any ref"',
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any(
+                "Windows release path is missing" in error
+                for error in self.errors()
+            ),
+            self.errors(),
+        )
+
+    def test_rejects_one_job_producing_both_platform_candidates(self) -> None:
+        workflow = self.root / ".github/workflows/workspace-validation.yml"
+        contents = workflow.read_text(encoding="utf-8").replace(
+            "          --unsigned-windows-x64-candidate",
+            "          --unsigned-windows-x64-candidate --unsigned-macos-arm64-candidate",
+        )
+        workflow.write_text(contents, encoding="utf-8")
+
+        self.assertTrue(
+            any("one stage yields one platform" in error for error in self.errors()),
+            self.errors(),
         )
 
     def test_rejects_the_tauri_scaffold_icon(self) -> None:

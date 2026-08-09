@@ -183,10 +183,18 @@ npm run tauri dev
 GUI 调用与 CLI 相同的 `Application` façade，并消费相同的 wire schema。每个
 job 拥有独立取消 token，共享 application 预算则保证顶层工作有界且串行。
 
-0.3.0 的 GUI 安装包只面向运行 macOS 11.0 或更新系统的 Apple Silicon Mac。本地
-staging 与有界的 macOS 26 arm64 CI 门禁都会构建并结构化验证最终 DMG。安装包没有
-Developer ID 签名，也未经过 Apple 公证，因此 macOS 可能要求用户显式选择“打开”或
-“仍要打开”。Intel/universal macOS 与 Windows/Linux GUI 包不属于 0.3.0 发行范围。
+0.3.0 为两个平台打包 CLI 与 GUI：运行 macOS 11.0 或更新系统的 Apple Silicon Mac，
+以及 Windows x64。两个平台各自在自己的主机上 staging —— macOS 产出 DMG，Windows
+产出 NSIS 安装包 —— 本地 staging 与有界 CI 门禁都会构建并**打开**最终制品做结构化
+验证：DMG 会被挂载并检查其中的 `.app`，安装包会被解包并核对内层
+`macinmeter-gui.exe` 的版本资源。
+
+两个安装包都不签名。macOS 没有 Developer ID 签名也未经公证，因此可能要求用户显式
+选择“打开”或“仍要打开”；Windows 没有 Authenticode 签名，因此 SmartScreen 会提示
+未知发布者。这在两个平台上是同一个决定，而不是某一边的疏漏：面向个人的代码签名
+证书会把维护者的法定姓名嵌入每一份公开制品。
+
+Intel/universal macOS、ARM64 Windows 与 Linux GUI 包不属于 0.3.0 发行范围。
 目前的打包情况汇总在[发行与制品状态](docs/RELEASE_CN.md)。
 
 ## Rust API
