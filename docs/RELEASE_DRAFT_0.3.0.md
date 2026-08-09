@@ -32,10 +32,13 @@ Its command is `mdrmeter`.
 - **Windows** may show "Windows protected your PC". Click **More info**, then
   **Run anyway**.
 
-Signing requires a certificate issued to a named individual, and that name is
-then embedded in every published file. This project is maintained by one person
-who would rather not attach their legal name to every download, so neither
-platform is signed. Building from source avoids this entirely.
+**Expect this to stay the case.** Signing requires a certificate issued to a
+named individual, and that name is then embedded in every published file. This
+project is maintained by one person, so signing would mean publishing their
+legal name alongside every download. That is a privacy cost rather than a cost
+in money or effort, which is why it is unlikely to change in the foreseeable
+future — this is a decision, not a step that has yet to be done. Building from
+source avoids it entirely.
 
 ### Also in this release
 
@@ -90,9 +93,10 @@ MacinMeter 用来测量音频文件的动态范围（DR），完全在你自己�
 - **macOS** 可能拒绝打开。在应用上点右键，选择**打开**，再确认一次即可。
 - **Windows** 可能出现「Windows 已保护你的电脑」。点**更多信息**，再点**仍要运行**。
 
-做签名需要一张颁发给具体个人的证书，而那个姓名会被嵌进每一个发布的文件。本项目由
-一个人维护，不希望把法定姓名附在每份下载上，所以两个平台都不签名。从源码构建则完全
-不涉及这个问题。
+**这个状况大概率会长期保持。** 做签名需要一张颁发给具体个人的证书，而那个姓名会被
+嵌进每一个发布的文件。本项目由一个人维护，签名就意味着把维护者的法定姓名随每份下载
+一起公开。这是隐私上的代价，而不是钱或工作量上的代价，因此在可预见的未来里大概不会
+改变 —— 这是一个决定，不是一件还没做的事。从源码构建则完全不涉及这个问题。
 
 ### 本版本的其他变化
 

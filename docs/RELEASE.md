@@ -28,6 +28,13 @@ may therefore need to explicitly open the macOS app or pass a Windows
 SmartScreen unknown-publisher warning. There is no 0.3.0 Intel/universal macOS,
 Windows ARM64/32-bit, or Linux GUI artifact.
 
+Unsigned is a standing position, not a pending task. A code-signing certificate
+is issued to a named individual, so signing would publish the maintainer's legal
+name with every artifact; the obstacle is privacy rather than cost or effort,
+and it is not expected to change in the foreseeable future. User-facing material
+must say so plainly and must not use wording like "not signed yet", which
+invites readers to wait for a signed build that is not coming.
+
 ## Requirements
 
 - a clean Git worktree for a release candidate;

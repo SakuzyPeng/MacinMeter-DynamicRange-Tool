@@ -25,6 +25,11 @@ Windows 不执行 Authenticode 签名。因此用户可能需要在 macOS 上显
 Windows 上通过 SmartScreen 的未知发布者提示。0.3.0 不提供 Intel/universal macOS、
 Windows ARM64/32-bit 或 Linux GUI 制品。
 
+未签名是既定立场，不是待办项。代码签名证书颁发给具体个人，签名即等于把维护者的法定
+姓名随每一份制品一起公开；阻碍是隐私而非成本或工作量，可预见的未来内不会改变。用户
+向材料必须明确说明这一点，不得使用“尚未签名”一类措辞——那会让读者以为只要等一等就会
+有已签名的构建。
+
 ## 环境要求
 
 - release candidate 必须来自干净的 Git 工作树；

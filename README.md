@@ -29,11 +29,14 @@ The `macinmeter-cli-…` archives contain the command-line tool on its own.
 - **Windows** may show a blue "Windows protected your PC" screen. Click **More
   info**, then **Run anyway**.
 
-Signing would require a certificate issued to a named individual, and that name
-would then be embedded in every file published here. This project is maintained
-by one person who would rather not attach their legal name to every download, so
-neither platform is signed. If you would rather not accept that trade, you can
-[build from source](docs/INTERNALS.md#building-from-source) instead.
+**Expect this to stay the case.** Signing requires a certificate issued to a
+named individual, and that name is then embedded in every file published here.
+This project is maintained by one person, so signing would mean publishing their
+legal name alongside every download. That is a privacy cost rather than a cost
+in money or effort, which is why it is unlikely to change in the foreseeable
+future — this is a decision, not a step that has yet to be done. If you would
+rather not accept the trade, you can [build from
+source](docs/INTERNALS.md#building-from-source) instead.
 
 You can check that a download is intact using the `SHA256SUMS` file on the
 release page.
