@@ -77,5 +77,6 @@
   "md.channel": "Channel",
   "md.displayDr": "Display DR",
   "md.preciseDr": "Precise DR",
-  "md.error": "Error"
+  "md.error": "Error",
+  "md.warnings": "Warnings"
 }

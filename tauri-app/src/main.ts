@@ -562,6 +562,11 @@ const formatEntryMarkdown = (entry: DisplayEntry): string => {
   if (aggregate.roundedDr !== null && aggregate.drDb !== null) {
     markdown += `**Track DR${aggregate.roundedDr}** · ${aggregate.drDb.toFixed(4)} dB\n`;
   }
+  const { warnings } = entry.report.diagnostics;
+  if (warnings.length) {
+    markdown += `\n**${t("md.warnings")}**:\n`;
+    markdown += `${warnings.map((warning) => `- ${warning}`).join("\n")}\n`;
+  }
   return markdown;
 };
 
