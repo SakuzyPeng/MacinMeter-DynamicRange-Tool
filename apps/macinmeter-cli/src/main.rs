@@ -3,7 +3,7 @@
 mod render;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use clap_complete::Shell;
+use clap_complete::{Generator, Shell};
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisReport, Application, BatchItemOutcome, BatchReport,
     BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
@@ -147,8 +147,21 @@ fn run_completions(shell: Shell) -> i32 {
     // flag cannot exist without the completion knowing about it.
     let mut command = Cli::command();
     let name = command.get_name().to_string();
-    clap_complete::generate(shell, &mut command, name, &mut io::stdout().lock());
-    0
+    command.set_bin_name(name);
+    command.build();
+
+    let mut stdout = io::stdout().lock();
+    let generated = shell
+        .try_generate(&command, &mut stdout)
+        .and_then(|()| stdout.flush())
+        .map_err(completion_output_error);
+    match generated {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("error [{}]: {}", error_code_name(error.code), error);
+            1
+        }
+    }
 }
 
 fn run_analyze(
@@ -434,6 +447,15 @@ fn output_error(error: io::Error) -> AnalysisError {
         ErrorCode::OutputFailed,
         macinmeter::AnalysisStage::Output,
         "failed to write analysis output",
+    )
+    .with_details(error.to_string())
+}
+
+fn completion_output_error(error: io::Error) -> AnalysisError {
+    AnalysisError::new(
+        ErrorCode::OutputFailed,
+        macinmeter::AnalysisStage::Output,
+        "failed to write shell completion output",
     )
     .with_details(error.to_string())
 }

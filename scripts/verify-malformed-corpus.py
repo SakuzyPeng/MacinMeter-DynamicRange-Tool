@@ -40,6 +40,11 @@ def supports_memory_limit() -> bool:
     )
 
 
+def default_cli_path(repo_root: Path, platform: str = sys.platform) -> Path:
+    executable = "mdrmeter.exe" if platform == "win32" else "mdrmeter"
+    return repo_root / "target" / "debug" / executable
+
+
 def preexec_with_memory_limit(limit_bytes: int):
     def apply() -> None:
         resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))
@@ -93,8 +98,8 @@ def main() -> int:
     parser.add_argument(
         "--cli",
         type=Path,
-        default=repo_root / "target" / "debug" / "macinmeter",
-        help="path to a built macinmeter CLI binary",
+        default=default_cli_path(repo_root),
+        help="path to a built mdrmeter CLI binary",
     )
     parser.add_argument(
         "--corpus",

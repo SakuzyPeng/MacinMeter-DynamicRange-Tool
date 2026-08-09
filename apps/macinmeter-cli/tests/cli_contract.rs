@@ -10,6 +10,7 @@ use std::{
 #[cfg(unix)]
 use std::{
     io::{BufRead, BufReader, Read, Write},
+    os::{fd::OwnedFd, unix::net::UnixStream},
     process::Stdio,
 };
 
@@ -166,6 +167,29 @@ fn completions_are_generated_from_the_live_parser_for_every_supported_shell() {
     }
 
     assert_code(&run(["completions".as_ref(), "tcsh".as_ref() as &OsStr]), 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn completion_output_failure_is_reported_without_panicking() {
+    let (closed_peer, output) = UnixStream::pair().expect("socket pair should be created");
+    drop(closed_peer);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_mdrmeter"))
+        .args(["completions", "bash"])
+        .stdout(Stdio::from(OwnedFd::from(output)))
+        .stderr(Stdio::piped())
+        .output()
+        .expect("CLI process should start");
+
+    assert_code(&output, 1);
+    assert!(output.stdout.is_empty());
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("error [output_failed]: failed to write shell completion output"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "{stderr}");
 }
 
 #[test]
