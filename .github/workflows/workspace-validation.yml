@@ -124,12 +124,12 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
-          $version = & .\target\release\macinmeter.exe --version
-          if ($LASTEXITCODE -ne 0 -or -not $version.StartsWith("macinmeter ")) {
+          $version = & .\target\release\mdrmeter.exe --version
+          if ($LASTEXITCODE -ne 0 -or -not $version.StartsWith("mdrmeter ")) {
             throw "release CLI version smoke test failed"
           }
 
-          $document = & .\target\release\macinmeter.exe analyze `
+          $document = & .\target\release\mdrmeter.exe analyze `
             .\tests\fixtures\native-pcm-v1\wav-pcm-s16-stereo.wav `
             --format json | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $document.schemaVersion -ne 4 `
@@ -173,7 +173,7 @@ jobs:
           if ($exe.Length -le 0 -or $installer[0].Length -le 0) {
             throw "the Windows GUI build produced an empty artifact"
           }
-          $version = (Get-Item .\target\release\macinmeter.exe).VersionInfo
+          $version = (Get-Item .\target\release\mdrmeter.exe).VersionInfo
           Write-Host "gui exe:       $($exe.FullName) ($($exe.Length) bytes)"
           Write-Host "nsis installer: $($installer[0].Name) ($($installer[0].Length) bytes)"
           # Byte identity for whatever is handed to a tester, so a reported
@@ -189,7 +189,7 @@ jobs:
           # ADR-0011 release scope, and must not be mistaken for a release asset.
           name: macinmeter-windows-test-build-${{ github.sha }}
           path: |
-            target/release/macinmeter.exe
+            target/release/mdrmeter.exe
             target/release/macinmeter-gui.exe
             target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error

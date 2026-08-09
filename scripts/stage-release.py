@@ -335,7 +335,7 @@ def smoke_cli(binary: Path, version: str, fixture: Path, cwd: Path) -> dict:
     version_result = run(
         [str(binary), "--version"], cwd=cwd, capture=True, timeout=15
     )
-    expected_version = f"macinmeter {version}"
+    expected_version = f"mdrmeter {version}"
     if version_result.stdout.strip() != expected_version:
         raise ReleaseError(
             f"CLI version smoke returned {version_result.stdout.strip()!r}; "
@@ -439,7 +439,7 @@ def build_cli_payload(
         ["cargo", "build", "--locked", "--release", "-p", "macinmeter-cli"],
         cwd=root,
     )
-    executable_name = "macinmeter.exe" if target.endswith("-windows-msvc") else "macinmeter"
+    executable_name = "mdrmeter.exe" if target.endswith("-windows-msvc") else "mdrmeter"
     built_binary = root / "target/release" / executable_name
     if not built_binary.is_file():
         raise ReleaseError(f"release CLI was not produced at {built_binary}")

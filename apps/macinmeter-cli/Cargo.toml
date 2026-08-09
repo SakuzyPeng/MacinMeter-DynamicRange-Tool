@@ -11,11 +11,12 @@ keywords = ["audio", "dynamic-range", "dr", "loudness", "cli"]
 categories = ["multimedia::audio", "command-line-utilities"]
 
 [[bin]]
-name = "macinmeter"
+name = "mdrmeter"
 path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+clap_complete.workspace = true
 ctrlc.workspace = true
 macinmeter = { path = "../../crates/macinmeter", version = "0.3.0" }
 serde_json.workspace = true

@@ -42,28 +42,40 @@ MacinMeter 会把它们报告为不支持，不会调用 FFmpeg，也不会静�
 cargo build --locked --release -p macinmeter-cli
 ```
 
-Unix 类系统的 CLI 位于 `target/release/macinmeter`，Windows 上则是
-`target/release/macinmeter.exe`。
+Unix 类系统的 CLI 位于 `target/release/mdrmeter`，Windows 上则是
+`target/release/mdrmeter.exe`。
 
 ## 分析音频
 
-CLI 围绕两个显式命令组织：
+CLI 围绕显式命令组织：
 
 ```text
-macinmeter analyze FILE [--format human|json] [--output PATH]
-macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
+mdrmeter analyze FILE [--format human|json] [--output PATH]
+mdrmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
+mdrmeter completions SHELL
 ```
 
 例如：
 
 ```bash
-macinmeter analyze "01 - Song.flac"
-macinmeter batch "My Album/" --recursive
+mdrmeter analyze "01 - Song.flac"
+mdrmeter batch "My Album/" --recursive
 ```
 
 `batch` 无论文件以什么顺序完成，都按稳定输入顺序输出。某一项失败不会阻止后续项目
 继续运行。它返回相互独立的逐轨报告，不会隐式计算 album DR。stderr 上的进度行会跨
 条目交错，每行都标明所属条目。
+
+Shell 补全由解析器本身生成，因此永远与打印它的那个构建一致：
+
+```bash
+mdrmeter completions zsh > "${fpath[1]}/_mdrmeter"          # zsh
+mdrmeter completions bash > ~/.local/share/bash-completion/completions/mdrmeter
+mdrmeter completions fish > ~/.config/fish/completions/mdrmeter.fish
+```
+
+支持 `bash`、`zsh`、`fish`、`powershell` 与 `elvish`。该命令只写 stdout；补全脚本
+装到哪里由调用方决定。
 
 [`ADR-0014`](docs/adr/0014-deterministic-decode-analysis-pipeline.md) 已接受有界的
 packet、文件与窗口级并行，每条轴都必须各自通过正确性、资源与性能门禁后才启用。
@@ -73,7 +85,7 @@ route-specific packet 解码、解码-分析重叠与批量 file lane 已通过�
 下面是仓库内固定合成 fixture 实际产生的 stdout：
 
 ```bash
-target/release/macinmeter analyze tests/fixtures/edge_cases.wav
+target/release/mdrmeter analyze tests/fixtures/edge_cases.wav
 ```
 
 ```text
@@ -149,8 +161,8 @@ Elapsed: 0.002 s (2929.6x realtime)
 报告会原子替换该文件。
 
 ```bash
-macinmeter analyze track.flac --format json
-macinmeter analyze track.flac --format json --output track.json
+mdrmeter analyze track.flac --format json
+mdrmeter analyze track.flac --format json --output track.json
 ```
 
 JSON 与 Tauri 使用同一套带版本的 schema-v4 `WireEnvelope`。信封包含

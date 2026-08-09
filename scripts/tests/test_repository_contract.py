@@ -135,7 +135,7 @@ jobs:
       - if: github.event_name != 'pull_request'
         run: cargo build --locked --release -p macinmeter-cli
       - if: github.event_name != 'pull_request'
-        run: .\\target\\release\\macinmeter.exe analyze fixture.wav
+        run: .\\target\\release\\mdrmeter.exe analyze fixture.wav
       - if: github.event_name == 'workflow_dispatch'
         uses: actions/setup-node@node-sha
       - if: github.event_name == 'workflow_dispatch'

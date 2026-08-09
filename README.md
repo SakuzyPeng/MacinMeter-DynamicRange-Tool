@@ -46,29 +46,42 @@ Building from source currently uses Rust 1.88 or later and Cargo:
 cargo build --locked --release -p macinmeter-cli
 ```
 
-The CLI is written to `target/release/macinmeter` on Unix-like hosts and
-`target/release/macinmeter.exe` on Windows.
+The CLI is written to `target/release/mdrmeter` on Unix-like hosts and
+`target/release/mdrmeter.exe` on Windows.
 
 ## Command-line use
 
-The CLI is organized around two explicit commands:
+The CLI is organized around explicit commands:
 
 ```text
-macinmeter analyze FILE [--format human|json] [--output PATH]
-macinmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
+mdrmeter analyze FILE [--format human|json] [--output PATH]
+mdrmeter batch INPUT... [--recursive] [--format human|json] [--output PATH]
+mdrmeter completions SHELL
 ```
 
 For example:
 
 ```bash
-macinmeter analyze "01 - Song.flac"
-macinmeter batch "My Album/" --recursive
+mdrmeter analyze "01 - Song.flac"
+mdrmeter batch "My Album/" --recursive
 ```
 
 `batch` reports files in stable input order, whatever order they finish in. A
 failed item does not prevent later items from running. It produces independent
 track reports and does not implicitly calculate an album DR. Progress lines on
 stderr interleave across items and each one names the item it belongs to.
+
+Shell completions are generated from the parser itself, so they always match the
+build that printed them:
+
+```bash
+mdrmeter completions zsh > "${fpath[1]}/_mdrmeter"          # zsh
+mdrmeter completions bash > ~/.local/share/bash-completion/completions/mdrmeter
+mdrmeter completions fish > ~/.config/fish/completions/mdrmeter.fish
+```
+
+`bash`, `zsh`, `fish`, `powershell` and `elvish` are available. The command only
+writes to stdout; where a shell reads completions from is left to the caller.
 
 [ADR-0014](docs/adr/0014-deterministic-decode-analysis-pipeline.md) has accepted
 bounded packet-, file-, and window-level parallelism, each enabled only after
@@ -81,7 +94,7 @@ throughput figure is published.
 The following is real stdout generated from a committed synthetic fixture:
 
 ```bash
-target/release/macinmeter analyze tests/fixtures/edge_cases.wav
+target/release/mdrmeter analyze tests/fixtures/edge_cases.wav
 ```
 
 ```text
@@ -170,8 +183,8 @@ Without `--output`, the result stays on stdout and no report file is created.
 With an output path, the completed report atomically replaces that file.
 
 ```bash
-macinmeter analyze track.flac --format json
-macinmeter analyze track.flac --format json --output track.json
+mdrmeter analyze track.flac --format json
+mdrmeter analyze track.flac --format json --output track.json
 ```
 
 JSON and Tauri use the same versioned schema-v4 `WireEnvelope`. The envelope

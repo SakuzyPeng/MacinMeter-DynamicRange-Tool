@@ -26,7 +26,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    Command::new(env!("CARGO_BIN_EXE_macinmeter"))
+    Command::new(env!("CARGO_BIN_EXE_mdrmeter"))
         .args(args)
         .output()
         .expect("CLI process should start")
@@ -144,6 +144,28 @@ fn parse_role_seconds(line: &str, label: &str) -> u64 {
         .parse()
         .unwrap_or_else(|error| panic!("{token:?} should be seconds: {error}"));
     (seconds * 1_000.0).round() as u64
+}
+
+#[test]
+fn completions_are_generated_from_the_live_parser_for_every_supported_shell() {
+    for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+        let output = run(["completions".as_ref(), shell.as_ref() as &OsStr]);
+
+        assert_code(&output, 0);
+        let script = stdout(&output);
+        assert!(!script.is_empty(), "{shell} produced no script");
+        assert!(script.contains("mdrmeter"), "{shell}: {script}");
+        // Generated from the same `Command` the parser uses, so this is a
+        // regression on that wiring rather than on a hand-written list: a new
+        // subcommand or flag that never reached the completion would show up
+        // here instead of only in a user's shell.
+        for name in ["analyze", "batch", "completions", "timing"] {
+            assert!(script.contains(name), "{shell} completion lost {name}");
+        }
+        assert!(stderr(&output).is_empty(), "{shell}: {}", stderr(&output));
+    }
+
+    assert_code(&run(["completions".as_ref(), "tcsh".as_ref() as &OsStr]), 2);
 }
 
 #[test]
@@ -675,7 +697,7 @@ fn sigint_cancels_an_active_analysis_with_exit_130() {
     let input = directory.path().join("long-sparse.wav");
     write_sparse_zero_wave(&input, 256 * 1024 * 1024);
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_macinmeter"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mdrmeter"))
         .args(["analyze".as_ref(), input.as_os_str()])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -772,7 +794,7 @@ fn output_failure_is_exit_one_and_leaves_no_temporary_file() {
 fn stdout_mode_does_not_create_an_implicit_report_file() {
     let directory = tempfile::tempdir().expect("temporary working directory");
     let input = fixture("tiny_duration.wav");
-    let output = Command::new(env!("CARGO_BIN_EXE_macinmeter"))
+    let output = Command::new(env!("CARGO_BIN_EXE_mdrmeter"))
         .current_dir(directory.path())
         .args(["analyze".as_ref(), input.as_os_str()])
         .output()

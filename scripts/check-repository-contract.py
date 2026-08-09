@@ -482,7 +482,7 @@ def validate(root: Path) -> list[str]:
                 "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings",
                 "cargo test --locked --workspace --all-targets",
                 "cargo build --locked --release -p macinmeter-cli",
-                ".\\target\\release\\macinmeter.exe analyze",
+                ".\\target\\release\\mdrmeter.exe analyze",
             )
             for command in required_windows_commands:
                 require(

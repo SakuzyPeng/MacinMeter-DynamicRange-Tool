@@ -18,6 +18,15 @@
 > 宿主授予多少 worker，也不提供公开的线程、batch size 或队列控制。本版本不发布任何
 > 吞吐数字。下方 v0.2.0 的排除项是历史发行边界，不是 post-M6 永久禁令。
 
+- Renamed the CLI binary to `mdrmeter`; the product, crates, repository and
+  GUI remain MacinMeter. The old name said "meter" without saying what it
+  measures, and a command name is the one place that has to state it. Added
+  `mdrmeter completions SHELL` for bash, zsh, fish, powershell and elvish,
+  generated from the parser itself.
+  CLI 二进制更名为 `mdrmeter`；产品、crate、仓库与 GUI 仍为 MacinMeter。旧名
+  只说了 "meter"，没说测什么，而命令名恰恰是必须说清的地方。新增
+  `mdrmeter completions SHELL`，覆盖 bash、zsh、fish、powershell 与 elvish，
+  由解析器自身生成。
 - Added a constrained stable in-process MP4/M4A + ALAC route: compatible
   version 0, 16/24-bit, 1–8 standard-layout channels, one audio-only track,
   non-fragmented ISO BMFF, and exact declared frame counts.

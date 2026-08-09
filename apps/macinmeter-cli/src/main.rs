@@ -2,7 +2,8 @@
 
 mod render;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisReport, Application, BatchItemOutcome, BatchReport,
     BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
@@ -19,7 +20,7 @@ use std::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "macinmeter", version, about = "Offline dynamic-range analysis")]
+#[command(name = "mdrmeter", version, about = "Offline dynamic-range analysis")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -53,6 +54,15 @@ enum Command {
         /// partition elapsed time.
         #[arg(long)]
         timing: bool,
+    },
+    /// Write a shell completion script to stdout.
+    ///
+    /// This only prints; installing it is the caller's step, because where a
+    /// shell reads completions from is the caller's business and not something
+    /// an analyzer should be writing to on its own.
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
@@ -112,6 +122,7 @@ fn main() {
             timing,
             &control,
         ),
+        Command::Completions { shell } => run_completions(shell),
         Command::Batch {
             inputs,
             recursive,
@@ -129,6 +140,15 @@ fn main() {
         ),
     };
     process::exit(exit_code);
+}
+
+fn run_completions(shell: Shell) -> i32 {
+    // Generated from the same `Command` the parser uses, so a subcommand or
+    // flag cannot exist without the completion knowing about it.
+    let mut command = Cli::command();
+    let name = command.get_name().to_string();
+    clap_complete::generate(shell, &mut command, name, &mut io::stdout().lock());
+    0
 }
 
 fn run_analyze(
