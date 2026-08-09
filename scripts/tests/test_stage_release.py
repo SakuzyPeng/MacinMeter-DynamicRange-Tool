@@ -167,7 +167,11 @@ class StageReleaseTests(unittest.TestCase):
             stage_release.windows_pe_machine(executable)
 
     def test_windows_executable_info_passes_path_through_environment(self) -> None:
+        # A real file, because the inspection now refuses a missing one: an
+        # unreadable path used to arrive as an empty Authenticode status and be
+        # reported as a signing problem instead of a failed inspection.
         executable = self.root / "O'Brien.exe"
+        executable.write_bytes(b"MZ")
         response = {
             "fileVersion": "0.3.0.0",
             "authenticodeStatus": "NotSigned",
@@ -190,8 +194,32 @@ class StageReleaseTests(unittest.TestCase):
             mocked_run.call_args.kwargs["environment"][
                 stage_release.WINDOWS_INSPECT_PATH_ENV
             ],
-            str(executable),
+            str(executable.resolve()),
         )
+
+    def test_windows_executable_info_refuses_a_missing_file(self) -> None:
+        with self.assertRaisesRegex(
+            stage_release.ReleaseError, "missing Windows executable"
+        ):
+            stage_release.windows_executable_info(self.root / "absent.exe", self.root)
+
+    def test_windows_executable_info_refuses_an_empty_authenticode_status(self) -> None:
+        executable = self.root / "empty-status.exe"
+        executable.write_bytes(b"MZ")
+        response = {
+            "fileVersion": "0.3.0.0",
+            "authenticodeStatus": "",
+            "signerSubject": None,
+        }
+        with mock.patch.object(
+            stage_release,
+            "run",
+            return_value=SimpleNamespace(stdout=json.dumps(response)),
+        ):
+            with self.assertRaisesRegex(
+                stage_release.ReleaseError, "Authenticode status is missing"
+            ):
+                stage_release.windows_executable_info(executable, self.root)
 
     def test_windows_installer_smoke_observes_payload_and_unsigned_state(self) -> None:
         installer = self.root / "candidate" / "MacinMeter-setup.exe"

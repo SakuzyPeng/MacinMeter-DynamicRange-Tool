@@ -710,12 +710,24 @@ def windows_machine_name(machine: int) -> str:
 
 def windows_executable_info(path: Path, root: Path) -> dict:
     """Read version and Authenticode status without interpolating the path."""
+    resolved = path.resolve()
+    # PowerShell reports an unreadable file as a non-terminating error and still
+    # exits zero, so an inspection failure would otherwise arrive as an empty
+    # status and be reported as a signing problem. Establish the precondition
+    # here, where the message can name the file.
+    if not resolved.is_file():
+        raise ReleaseError(f"cannot inspect a missing Windows executable: {resolved}")
     environment = os.environ.copy()
-    environment[WINDOWS_INSPECT_PATH_ENV] = str(path)
+    environment[WINDOWS_INSPECT_PATH_ENV] = str(resolved)
     command = (
-        f"$item = Get-Item -LiteralPath $env:{WINDOWS_INSPECT_PATH_ENV}; "
-        f"$signature = Get-AuthenticodeSignature -LiteralPath "
-        f"$env:{WINDOWS_INSPECT_PATH_ENV}; "
+        "$ErrorActionPreference = 'Stop'; "
+        f"$target = $env:{WINDOWS_INSPECT_PATH_ENV}; "
+        "if ([string]::IsNullOrEmpty($target)) { "
+        "throw 'the inspection path did not reach PowerShell' }; "
+        "$item = Get-Item -LiteralPath $target; "
+        "$signature = Get-AuthenticodeSignature -LiteralPath $target; "
+        "if ($null -eq $signature) { "
+        "throw \"Get-AuthenticodeSignature returned nothing for $target\" }; "
         "$signerSubject = $null; "
         "if ($null -ne $signature.SignerCertificate) { "
         "$signerSubject = $signature.SignerCertificate.Subject }; "
@@ -758,10 +770,13 @@ def windows_executable_info(path: Path, root: Path) -> dict:
     signer = document.get("signerSubject")
     if file_version is not None and not isinstance(file_version, str):
         raise ReleaseError(f"Windows executable version is invalid for {path}")
-    if not isinstance(status, str) or (
-        signer is not None and not isinstance(signer, str)
-    ):
-        raise ReleaseError(f"Windows Authenticode status is invalid for {path}")
+    # An empty status is an inspection that did not happen, not a file that is
+    # unsigned. Refusing it here keeps a failed check from being read as a
+    # verified absence of a signature.
+    if not isinstance(status, str) or not status:
+        raise ReleaseError(f"Windows Authenticode status is missing for {path}")
+    if signer is not None and not isinstance(signer, str):
+        raise ReleaseError(f"Windows Authenticode signer is invalid for {path}")
     return document
 
 
