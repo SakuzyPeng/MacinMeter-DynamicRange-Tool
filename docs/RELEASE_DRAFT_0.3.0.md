@@ -54,6 +54,9 @@ platform is signed. Building from source avoids this entirely.
   and non-Apple-Lossless `.mp4` files report the actual codec instead of blaming
   their edit list.
 - The desktop app supports zooming, and its text is larger and more consistent.
+  Warnings and failed files can be hidden, Chinese text no longer mixes two
+  typefaces on Windows, and the search box keeps the same position on both
+  platforms.
 
 ### Not included
 
@@ -101,7 +104,8 @@ MacinMeter 用来测量音频文件的动态范围（DR），完全在你自己�
 - 一些此前被无用信息拒绝的文件，现在要么可用、要么说清了原因：RF64/BW64 会被点名，
   而不是被说成「不是 WAV」；声道数超出解码器支持范围会直接说明；非 Apple Lossless
   的 `.mp4` 会报出真正的编码格式，而不是归咎于 edit list。
-- 桌面应用支持缩放，文字更大也更统一。
+- 桌面应用支持缩放，文字更大也更统一。警告与失败项可以隐藏；Windows 上的中文不再
+  混用两套字体；搜索框在两个平台位置一致。
 
 ### 不包含
 
