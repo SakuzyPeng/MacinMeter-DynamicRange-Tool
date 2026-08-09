@@ -19,16 +19,96 @@ stage_release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(stage_release)
 
 
-def write_pe(path: Path, machine: int) -> None:
-    contents = bytearray(0x86)
+def version_resource(version: tuple[int, int, int, int]) -> bytes:
+    """A minimal VS_VERSIONINFO carrying only the fixed block the reader uses."""
+    most = (version[0] << 16) | version[1]
+    least = (version[2] << 16) | version[3]
+    return (
+        b"\x00" * 8
+        + stage_release.VS_FIXEDFILEINFO_SIGNATURE.to_bytes(4, "little")
+        + (0x00010000).to_bytes(4, "little")
+        + most.to_bytes(4, "little")
+        + least.to_bytes(4, "little")
+        + b"\x00" * 32
+    )
+
+
+def write_pe(
+    path: Path,
+    machine: int,
+    *,
+    signed: bool = False,
+    version: tuple[int, int, int, int] | None = None,
+) -> None:
+    """Build a PE with only the structures the release reader parses.
+
+    Synthetic rather than a recorded binary so every branch — architecture, an
+    embedded certificate table, and a version resource — can be exercised on any
+    host, which is the property that asking a shell did not have.
+    """
+    pe_offset = 0x80
+    directories = 16
+    optional_size = 112 + directories * 8
+    section_table = pe_offset + 24 + optional_size
+    rsrc_rva = 0x1000
+    rsrc_raw = section_table + 40
+
+    resource = b""
+    if version is not None:
+        blob = version_resource(version)
+        blob_offset = 0x58
+
+        def directory(entry_name: int, entry_offset: int, is_directory: bool) -> bytes:
+            flag = 0x80000000 if is_directory else 0
+            return (
+                b"\x00" * 12
+                + (0).to_bytes(2, "little")
+                + (1).to_bytes(2, "little")
+                + entry_name.to_bytes(4, "little")
+                + (entry_offset | flag).to_bytes(4, "little")
+            )
+
+        resource = (
+            directory(stage_release.PE_RESOURCE_TYPE_VERSION, 0x18, True)
+            + directory(1, 0x30, True)
+            + directory(0x409, 0x48, False)
+            + (rsrc_rva + blob_offset).to_bytes(4, "little")
+            + len(blob).to_bytes(4, "little")
+            + b"\x00" * 8
+            + blob
+        )
+
+    contents = bytearray(rsrc_raw + max(len(resource), 1))
     contents[:2] = stage_release.PE_MAGIC
-    contents[stage_release.PE_POINTER_OFFSET : stage_release.PE_POINTER_OFFSET + 4] = (
-        0x80
-    ).to_bytes(4, "little")
-    contents[0x80:0x84] = stage_release.PE_SIGNATURE
-    contents[0x84:0x86] = machine.to_bytes(2, "little")
+    contents[
+        stage_release.PE_POINTER_OFFSET : stage_release.PE_POINTER_OFFSET + 4
+    ] = pe_offset.to_bytes(4, "little")
+    contents[pe_offset : pe_offset + 4] = stage_release.PE_SIGNATURE
+    contents[pe_offset + 4 : pe_offset + 6] = machine.to_bytes(2, "little")
+    contents[pe_offset + 6 : pe_offset + 8] = (1).to_bytes(2, "little")
+    contents[pe_offset + 20 : pe_offset + 22] = optional_size.to_bytes(2, "little")
+    optional = pe_offset + 24
+    contents[optional : optional + 2] = stage_release.PE_OPTIONAL_MAGIC_PE32_PLUS.to_bytes(
+        2, "little"
+    )
+    directory_base = optional + 112
+    if version is not None:
+        entry = directory_base + stage_release.PE_DIRECTORY_RESOURCE * 8
+        contents[entry : entry + 4] = rsrc_rva.to_bytes(4, "little")
+        contents[entry + 4 : entry + 8] = len(resource).to_bytes(4, "little")
+    if signed:
+        entry = directory_base + stage_release.PE_DIRECTORY_SECURITY * 8
+        contents[entry : entry + 4] = (0x2000).to_bytes(4, "little")
+        contents[entry + 4 : entry + 8] = (0x40).to_bytes(4, "little")
+    contents[section_table : section_table + 8] = b".rsrc\x00\x00\x00"
+    contents[section_table + 8 : section_table + 12] = len(resource).to_bytes(4, "little")
+    contents[section_table + 12 : section_table + 16] = rsrc_rva.to_bytes(4, "little")
+    contents[section_table + 16 : section_table + 20] = len(resource).to_bytes(4, "little")
+    contents[section_table + 20 : section_table + 24] = rsrc_raw.to_bytes(4, "little")
+    if resource:
+        contents[rsrc_raw : rsrc_raw + len(resource)] = resource
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(contents)
+    path.write_bytes(bytes(contents))
 
 
 class StageReleaseTests(unittest.TestCase):
@@ -143,108 +223,39 @@ class StageReleaseTests(unittest.TestCase):
             ):
                 stage_release.macos_binary_arch(target)
 
-    def test_windows_pe_machine_validates_the_headers(self) -> None:
-        executable = self.root / "gui.exe"
-        write_pe(executable, stage_release.PE_MACHINE_AMD64)
-        self.assertEqual(
-            stage_release.windows_pe_machine(executable),
-            stage_release.PE_MACHINE_AMD64,
-        )
-        self.assertEqual(
-            stage_release.windows_machine_name(stage_release.PE_MACHINE_AMD64),
-            "x86_64",
-        )
+    def test_windows_pe_image_reads_machine_signature_and_version(self) -> None:
+        # Read from the file rather than asked of a shell: two CI failures came
+        # from PowerShell module resolution differing between hosts, while these
+        # three facts are in the bytes and answer the same on every machine.
+        unsigned = self.root / "unsigned.exe"
+        write_pe(unsigned, stage_release.PE_MACHINE_AMD64, version=(0, 3, 0, 0))
+        image = stage_release.windows_pe_image(unsigned)
+        self.assertEqual(image.machine, stage_release.PE_MACHINE_AMD64)
+        self.assertFalse(image.has_embedded_signature())
+        self.assertEqual(image.file_version(), "0.3.0.0")
 
-        executable.write_bytes(b"not a PE")
-        with self.assertRaisesRegex(stage_release.ReleaseError, "DOS header"):
-            stage_release.windows_pe_machine(executable)
-
-        write_pe(executable, stage_release.PE_MACHINE_AMD64)
-        contents = bytearray(executable.read_bytes())
-        contents[0x80:0x84] = b"nope"
-        executable.write_bytes(contents)
-        with self.assertRaisesRegex(stage_release.ReleaseError, "PE header"):
-            stage_release.windows_pe_machine(executable)
-
-    def test_windows_executable_info_passes_path_through_environment(self) -> None:
-        # A real file, because the inspection now refuses a missing one: an
-        # unreadable path used to arrive as an empty Authenticode status and be
-        # reported as a signing problem instead of a failed inspection.
-        executable = self.root / "O'Brien.exe"
-        executable.write_bytes(b"MZ")
-        response = {
-            "fileVersion": "0.3.0.0",
-            "authenticodeStatus": "NotSigned",
-            "signerSubject": None,
-        }
-        with mock.patch.object(
-            stage_release,
-            "run",
-            return_value=SimpleNamespace(stdout=json.dumps(response)),
-        ) as mocked_run:
-            self.assertEqual(
-                stage_release.windows_executable_info(executable, self.root),
-                response,
+        signed = self.root / "signed.exe"
+        write_pe(signed, stage_release.PE_MACHINE_AMD64, signed=True)
+        self.assertTrue(stage_release.windows_pe_image(signed).has_embedded_signature())
+        with self.assertRaisesRegex(stage_release.ReleaseError, "must be unsigned"):
+            stage_release.require_unsigned_pe(
+                stage_release.windows_pe_image(signed), "Windows installer"
             )
 
-        command = mocked_run.call_args.args[0]
-        self.assertNotIn(str(executable), " ".join(command))
-        self.assertIn(stage_release.WINDOWS_INSPECT_PATH_ENV, command[-1])
-        self.assertEqual(
-            mocked_run.call_args.kwargs["environment"][
-                stage_release.WINDOWS_INSPECT_PATH_ENV
-            ],
-            str(executable.resolve()),
-        )
-
-    def test_windows_executable_info_drops_an_inherited_module_path(self) -> None:
-        # Reproduced on Windows: with PSModulePath pointing at PowerShell 7's
-        # modules, 5.1 finds that copy of Microsoft.PowerShell.Security and
-        # cannot load it, so Get-AuthenticodeSignature never runs.
-        executable = self.root / "module-path.exe"
-        executable.write_bytes(b"MZ")
-        response = {
-            "fileVersion": "0.3.0.0",
-            "authenticodeStatus": "NotSigned",
-            "signerSubject": None,
-        }
-        with mock.patch.dict(
-            os.environ, {"PSModulePath": r"C:\Program Files\PowerShell\7\Modules"}
-        ):
-            with mock.patch.object(
-                stage_release,
-                "run",
-                return_value=SimpleNamespace(stdout=json.dumps(response)),
-            ) as mocked_run:
-                stage_release.windows_executable_info(executable, self.root)
-
-        self.assertNotIn(
-            "PSModulePath", mocked_run.call_args.kwargs["environment"]
-        )
-
-    def test_windows_executable_info_refuses_a_missing_file(self) -> None:
         with self.assertRaisesRegex(
             stage_release.ReleaseError, "missing Windows executable"
         ):
-            stage_release.windows_executable_info(self.root / "absent.exe", self.root)
+            stage_release.windows_pe_image(self.root / "absent.exe")
 
-    def test_windows_executable_info_refuses_an_empty_authenticode_status(self) -> None:
-        executable = self.root / "empty-status.exe"
-        executable.write_bytes(b"MZ")
-        response = {
-            "fileVersion": "0.3.0.0",
-            "authenticodeStatus": "",
-            "signerSubject": None,
-        }
-        with mock.patch.object(
-            stage_release,
-            "run",
-            return_value=SimpleNamespace(stdout=json.dumps(response)),
-        ):
-            with self.assertRaisesRegex(
-                stage_release.ReleaseError, "Authenticode status is missing"
-            ):
-                stage_release.windows_executable_info(executable, self.root)
+        truncated = self.root / "truncated.exe"
+        truncated.write_bytes(b"MZ" + b"\x00" * 8)
+        with self.assertRaisesRegex(stage_release.ReleaseError, "valid DOS header"):
+            stage_release.windows_pe_image(truncated)
+
+        without_version = self.root / "no-version.exe"
+        write_pe(without_version, stage_release.PE_MACHINE_AMD64)
+        with self.assertRaisesRegex(stage_release.ReleaseError, "no version resource"):
+            stage_release.windows_pe_image(without_version).file_version()
 
     def test_windows_installer_smoke_observes_payload_and_unsigned_state(self) -> None:
         installer = self.root / "candidate" / "MacinMeter-setup.exe"
@@ -256,26 +267,17 @@ class StageReleaseTests(unittest.TestCase):
                 next(part[2:] for part in command if part.startswith("-o"))
             )
             extraction_paths.append(extraction)
+            # Never under the staged release: a failed cleanup there would leave
+            # unmanifested payload bytes inside the tree that gets checksummed.
             self.assertFalse(extraction.is_relative_to(installer.parent))
             write_pe(
                 extraction / "nested" / stage_release.WINDOWS_GUI_EXECUTABLE,
                 stage_release.PE_MACHINE_AMD64,
+                version=(0, 3, 0, 0),
             )
             return SimpleNamespace(stdout="")
 
-        def inspect(path: Path, _root: Path) -> dict:
-            return {
-                "fileVersion": "0.3.0.0" if path != installer else None,
-                "authenticodeStatus": "NotSigned",
-                "signerSubject": None,
-            }
-
-        with (
-            mock.patch.object(stage_release, "seven_zip", side_effect=extract),
-            mock.patch.object(
-                stage_release, "windows_executable_info", side_effect=inspect
-            ),
-        ):
+        with mock.patch.object(stage_release, "seven_zip", side_effect=extract):
             smoke = stage_release.smoke_windows_installer(
                 installer,
                 version="0.3.0",
@@ -283,35 +285,42 @@ class StageReleaseTests(unittest.TestCase):
                 root=self.root,
             )
 
+        # An NSIS stub is a 32-bit executable carrying a 64-bit payload, so the
+        # two are reported apart rather than collapsed into one claim.
         self.assertEqual(smoke["installerMachine"], "x86")
         self.assertEqual(smoke["payloadMachine"], "x86_64")
         self.assertEqual(smoke["architecture"], "x86_64")
-        self.assertEqual(smoke["installerAuthenticodeStatus"], "NotSigned")
-        self.assertEqual(smoke["payloadAuthenticodeStatus"], "NotSigned")
+        self.assertFalse(smoke["installerEmbeddedSignature"])
+        self.assertFalse(smoke["payloadEmbeddedSignature"])
+        self.assertEqual(smoke["payloadVersion"], "0.3.0.0")
         self.assertEqual(len(extraction_paths), 1)
         self.assertFalse(extraction_paths[0].exists())
 
-    def test_windows_installer_smoke_rejects_non_x64_or_signed_bytes(self) -> None:
+    def test_windows_installer_smoke_rejects_the_states_it_exists_to_catch(self) -> None:
         installer = self.root / "candidate" / "MacinMeter-setup.exe"
-        write_pe(installer, 0x014C)
-        unsigned = {
-            "fileVersion": None,
-            "authenticodeStatus": "NotSigned",
-            "signerSubject": None,
-        }
 
-        with mock.patch.object(
-            stage_release, "windows_executable_info", return_value=unsigned
-        ):
-            with mock.patch.object(stage_release, "seven_zip") as mocked_seven_zip:
-                mocked_seven_zip.side_effect = lambda command, _root: write_pe(
+        def payload_writer(machine: int, version: tuple[int, int, int, int] | None):
+            def extract(command: list[str], _root: Path) -> SimpleNamespace:
+                write_pe(
                     Path(next(part[2:] for part in command if part.startswith("-o")))
                     / stage_release.WINDOWS_GUI_EXECUTABLE,
-                    0xAA64,
+                    machine,
+                    version=version,
                 )
-                with self.assertRaisesRegex(
-                    stage_release.ReleaseError, "expected 'x86_64'"
-                ):
+                return SimpleNamespace(stdout="")
+
+            return extract
+
+        write_pe(installer, 0x014C)
+        for machine, version, message in (
+            (0xAA64, (0, 3, 0, 0), "expected 'x86_64'"),
+            (stage_release.PE_MACHINE_AMD64, None, "no version resource"),
+            (stage_release.PE_MACHINE_AMD64, (0, 2, 0, 0), "expected 0.3.0"),
+        ):
+            with mock.patch.object(
+                stage_release, "seven_zip", side_effect=payload_writer(machine, version)
+            ):
+                with self.assertRaisesRegex(stage_release.ReleaseError, message):
                     stage_release.smoke_windows_installer(
                         installer,
                         version="0.3.0",
@@ -319,50 +328,16 @@ class StageReleaseTests(unittest.TestCase):
                         root=self.root,
                     )
 
-        signed = {
-            "fileVersion": None,
-            "authenticodeStatus": "Valid",
-            "signerSubject": "CN=Unexpected Signer",
-        }
-        with mock.patch.object(
-            stage_release, "windows_executable_info", return_value=signed
-        ):
-            with self.assertRaisesRegex(stage_release.ReleaseError, "must be unsigned"):
-                stage_release.smoke_windows_installer(
-                    installer,
-                    version="0.3.0",
-                    target=stage_release.WINDOWS_X64_TARGET,
-                    root=self.root,
-                )
-
-        def extract_x64(command: list[str], _root: Path) -> None:
-            write_pe(
-                Path(next(part[2:] for part in command if part.startswith("-o")))
-                / stage_release.WINDOWS_GUI_EXECUTABLE,
-                stage_release.PE_MACHINE_AMD64,
+        # A signed installer is refused before extraction: an unsigned release
+        # that quietly became signed is the state this check exists for.
+        write_pe(installer, 0x014C, signed=True)
+        with self.assertRaisesRegex(stage_release.ReleaseError, "must be unsigned"):
+            stage_release.smoke_windows_installer(
+                installer,
+                version="0.3.0",
+                target=stage_release.WINDOWS_X64_TARGET,
+                root=self.root,
             )
-
-        def signed_payload(path: Path, _root: Path) -> dict:
-            return signed if path != installer else unsigned
-
-        with (
-            mock.patch.object(stage_release, "seven_zip", side_effect=extract_x64),
-            mock.patch.object(
-                stage_release,
-                "windows_executable_info",
-                side_effect=signed_payload,
-            ),
-        ):
-            with self.assertRaisesRegex(
-                stage_release.ReleaseError, "payload must be unsigned"
-            ):
-                stage_release.smoke_windows_installer(
-                    installer,
-                    version="0.3.0",
-                    target=stage_release.WINDOWS_X64_TARGET,
-                    root=self.root,
-                )
-
     def test_unsigned_candidate_scope_requires_clean_immutable_arm64_gui(self) -> None:
         valid = {
             "unsigned_macos_arm64_candidate": True,

@@ -46,7 +46,12 @@ PE_MAGIC = b"MZ"
 PE_SIGNATURE = b"PE\0\0"
 PE_POINTER_OFFSET = 0x3C
 PE_MACHINE_AMD64 = 0x8664
-WINDOWS_INSPECT_PATH_ENV = "MACINMETER_WINDOWS_FILE"
+PE_OPTIONAL_MAGIC_PE32 = 0x010B
+PE_OPTIONAL_MAGIC_PE32_PLUS = 0x020B
+PE_DIRECTORY_RESOURCE = 2
+PE_DIRECTORY_SECURITY = 4
+PE_RESOURCE_TYPE_VERSION = 16
+VS_FIXEDFILEINFO_SIGNATURE = 0xFEEF04BD
 CHECKSUM_FILE = "SHA256SUMS"
 RELEASE_MANIFEST = "RELEASE_MANIFEST.json"
 ARTIFACT_MANIFEST = "ARTIFACT_MANIFEST.json"
@@ -684,20 +689,110 @@ def seven_zip(command: list[str], root: Path):
         ) from error
 
 
-def windows_pe_machine(path: Path) -> int:
-    """Read and validate the COFF Machine field from a PE executable."""
-    with path.open("rb") as file:
-        dos_header = file.read(PE_POINTER_OFFSET + 4)
-        if len(dos_header) < PE_POINTER_OFFSET + 4 or dos_header[:2] != PE_MAGIC:
-            raise ReleaseError(f"{path.name} does not have a valid DOS header")
-        pe_offset = int.from_bytes(
-            dos_header[PE_POINTER_OFFSET : PE_POINTER_OFFSET + 4], "little"
+def _u16(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset : offset + 2], "little")
+
+
+def _u32(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset : offset + 4], "little")
+
+
+class WindowsPeImage:
+    """The parts of a PE file this release check has to observe itself.
+
+    Asking a shell for these means the answer depends on which shell, which
+    module path, and which runtime the host offers; two CI failures came from
+    exactly that. The file already carries both facts, so read the file.
+    """
+
+    def __init__(self, path: Path, error=None):
+        self._path = path
+        self._error = error or ReleaseError
+        self._data = path.read_bytes()
+        if len(self._data) < 0x40 or self._data[:2] != b"MZ":
+            raise (error or ReleaseError)(f"{path.name} does not have a valid DOS header")
+        self._pe = _u32(self._data, 0x3C)
+        if self._data[self._pe : self._pe + 4] != b"PE\0\0":
+            raise (error or ReleaseError)(f"{path.name} does not have a valid PE header")
+        self.machine = _u16(self._data, self._pe + 4)
+        self._sections = _u16(self._data, self._pe + 6)
+        optional_size = _u16(self._data, self._pe + 20)
+        self._optional = self._pe + 24
+        magic = _u16(self._data, self._optional)
+        if magic == PE_OPTIONAL_MAGIC_PE32:
+            directories = self._optional + 96
+        elif magic == PE_OPTIONAL_MAGIC_PE32_PLUS:
+            directories = self._optional + 112
+        else:
+            raise (error or ReleaseError)(f"{path.name} has an unknown PE optional header magic")
+        self._directories = directories
+        self._section_table = self._optional + optional_size
+
+    def directory(self, index: int) -> tuple[int, int]:
+        entry = self._directories + index * 8
+        return _u32(self._data, entry), _u32(self._data, entry + 4)
+
+    def has_embedded_signature(self) -> bool:
+        """Whether the PE carries an Authenticode certificate table.
+
+        This observes an embedded signature, which is the form a signed build of
+        this application would carry. It does not speak to catalog signing.
+        """
+        address, size = self.directory(PE_DIRECTORY_SECURITY)
+        return address != 0 and size != 0
+
+    def _offset_for(self, rva: int) -> int:
+        for index in range(self._sections):
+            header = self._section_table + index * 40
+            virtual_size = _u32(self._data, header + 8)
+            virtual_address = _u32(self._data, header + 12)
+            raw_size = _u32(self._data, header + 16)
+            raw_pointer = _u32(self._data, header + 20)
+            span = max(virtual_size, raw_size)
+            if virtual_address <= rva < virtual_address + span:
+                return raw_pointer + (rva - virtual_address)
+        raise self._error(f"{self._path.name} has no section containing RVA {rva:#x}")
+
+    def _first_resource_entry(self, table: int, base: int, wanted: int | None) -> int:
+        named = _u16(self._data, table + 12)
+        identified = _u16(self._data, table + 14)
+        entries = table + 16
+        for index in range(named + identified):
+            entry = entries + index * 8
+            name = _u32(self._data, entry)
+            offset = _u32(self._data, entry + 4)
+            if wanted is not None and (name & 0x80000000 or name != wanted):
+                continue
+            return base + (offset & 0x7FFFFFFF), bool(offset & 0x80000000)
+        raise self._error(f"{self._path.name} has no matching resource entry")
+
+    def file_version(self) -> str:
+        """Read FileVersion out of the fixed part of the version resource."""
+        address, _ = self.directory(PE_DIRECTORY_RESOURCE)
+        if address == 0:
+            raise self._error(f"{self._path.name} has no version resource")
+        base = self._offset_for(address)
+        node, is_directory = self._first_resource_entry(
+            base, base, PE_RESOURCE_TYPE_VERSION
         )
-        file.seek(pe_offset)
-        pe_header = file.read(6)
-    if len(pe_header) != 6 or pe_header[:4] != PE_SIGNATURE:
-        raise ReleaseError(f"{path.name} does not have a valid PE header")
-    return int.from_bytes(pe_header[4:6], "little")
+        for _ in range(2):
+            if not is_directory:
+                break
+            node, is_directory = self._first_resource_entry(node, base, None)
+        data_rva = _u32(self._data, node)
+        data = self._offset_for(data_rva)
+        size = _u32(self._data, node + 4)
+        blob = self._data[data : data + size]
+        marker = blob.find(VS_FIXEDFILEINFO_SIGNATURE.to_bytes(4, "little"))
+        if marker < 0:
+            raise self._error(
+                f"{self._path.name} version resource has no VS_FIXEDFILEINFO"
+            )
+        most = _u32(blob, marker + 8)
+        least = _u32(blob, marker + 12)
+        return (
+            f"{most >> 16}.{most & 0xFFFF}.{least >> 16}.{least & 0xFFFF}"
+        )
 
 
 def windows_machine_name(machine: int) -> str:
@@ -708,90 +803,17 @@ def windows_machine_name(machine: int) -> str:
     }.get(machine, f"unknown_0x{machine:04x}")
 
 
-def windows_executable_info(path: Path, root: Path) -> dict:
-    """Read version and Authenticode status without interpolating the path."""
-    resolved = path.resolve()
-    # PowerShell reports an unreadable file as a non-terminating error and still
-    # exits zero, so an inspection failure would otherwise arrive as an empty
-    # status and be reported as a signing problem. Establish the precondition
-    # here, where the message can name the file.
-    if not resolved.is_file():
-        raise ReleaseError(f"cannot inspect a missing Windows executable: {resolved}")
-    environment = os.environ.copy()
-    environment[WINDOWS_INSPECT_PATH_ENV] = str(resolved)
-    # Windows PowerShell must compute its own module path. CI runs these steps
-    # under PowerShell 7, whose PSModulePath points at 7's module directory;
-    # inheriting it makes 5.1 find PowerShell 7's Microsoft.PowerShell.Security
-    # and fail to load it, because that copy targets a runtime 5.1 cannot host.
-    environment.pop("PSModulePath", None)
-    command = (
-        "$ErrorActionPreference = 'Stop'; "
-        f"$target = $env:{WINDOWS_INSPECT_PATH_ENV}; "
-        "if ([string]::IsNullOrEmpty($target)) { "
-        "throw 'the inspection path did not reach PowerShell' }; "
-        "$item = Get-Item -LiteralPath $target; "
-        "$signature = Get-AuthenticodeSignature -LiteralPath $target; "
-        "if ($null -eq $signature) { "
-        "throw \"Get-AuthenticodeSignature returned nothing for $target\" }; "
-        "$signerSubject = $null; "
-        "if ($null -ne $signature.SignerCertificate) { "
-        "$signerSubject = $signature.SignerCertificate.Subject }; "
-        "[ordered]@{ "
-        "fileVersion = $item.VersionInfo.FileVersion; "
-        "authenticodeStatus = [string]$signature.Status; "
-        "signerSubject = $signerSubject "
-        "} | ConvertTo-Json -Compress"
-    )
-    try:
-        result = run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                command,
-            ],
-            cwd=root,
-            capture=True,
-            timeout=60,
-            environment=environment,
-        )
-    except ReleaseError as error:
-        raise ReleaseError(
-            f"failed to inspect Windows executable {path}: {error}"
-        ) from error
-    try:
-        document = json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        raise ReleaseError(
-            f"Windows executable inspection returned invalid JSON for {path}"
-        ) from error
-    if not isinstance(document, dict):
-        raise ReleaseError(
-            f"Windows executable inspection returned no object for {path}"
-        )
-    file_version = document.get("fileVersion")
-    status = document.get("authenticodeStatus")
-    signer = document.get("signerSubject")
-    if file_version is not None and not isinstance(file_version, str):
-        raise ReleaseError(f"Windows executable version is invalid for {path}")
-    # An empty status is an inspection that did not happen, not a file that is
-    # unsigned. Refusing it here keeps a failed check from being read as a
-    # verified absence of a signature.
-    if not isinstance(status, str) or not status:
-        raise ReleaseError(f"Windows Authenticode status is missing for {path}")
-    if signer is not None and not isinstance(signer, str):
-        raise ReleaseError(f"Windows Authenticode signer is invalid for {path}")
-    return document
+def windows_pe_image(path: Path) -> WindowsPeImage:
+    """Open a PE file for the checks staging performs on it directly."""
+    if not path.is_file():
+        raise ReleaseError(f"cannot inspect a missing Windows executable: {path}")
+    return WindowsPeImage(path)
 
 
-def require_unsigned_authenticode(info: dict, label: str) -> None:
-    status = info["authenticodeStatus"]
-    signer = info["signerSubject"]
-    if status != "NotSigned" or signer is not None:
+def require_unsigned_pe(image: WindowsPeImage, label: str) -> None:
+    if image.has_embedded_signature():
         raise ReleaseError(
-            f"{label} must be unsigned; Authenticode status is {status!r}, "
-            f"signer is {signer!r}"
+            f"{label} must be unsigned but carries an Authenticode certificate table"
         )
 
 
@@ -812,9 +834,8 @@ def smoke_windows_installer(
         raise ReleaseError(
             f"Windows GUI staging supports {WINDOWS_X64_TARGET} only; found {target}"
         )
-    installer_machine = windows_pe_machine(installer)
-    installer_info = windows_executable_info(installer, root)
-    require_unsigned_authenticode(installer_info, "Windows installer")
+    installer_image = windows_pe_image(installer)
+    require_unsigned_pe(installer_image, "Windows installer")
 
     # Extraction is deliberately outside the candidate directory. Even if the
     # host prevents cleanup, unmanifested payload bytes can never be moved into
@@ -838,17 +859,14 @@ def smoke_windows_installer(
                 )
             )
         payload = payloads[0]
-        payload_machine = windows_pe_machine(payload)
-        if payload_machine != PE_MACHINE_AMD64:
+        payload_image = windows_pe_image(payload)
+        if payload_image.machine != PE_MACHINE_AMD64:
             raise ReleaseError(
                 f"installer payload architecture is "
-                f"{windows_machine_name(payload_machine)!r}; expected 'x86_64'"
+                f"{windows_machine_name(payload_image.machine)!r}; expected 'x86_64'"
             )
-        payload_info = windows_executable_info(payload, root)
-        require_unsigned_authenticode(payload_info, "Windows installer payload")
-        payload_version = payload_info["fileVersion"]
-        if not payload_version:
-            raise ReleaseError("installer payload has no file version resource")
+        require_unsigned_pe(payload_image, "Windows installer payload")
+        payload_version = payload_image.file_version()
         if version_tuple(payload_version) != version_tuple(version):
             raise ReleaseError(
                 f"installer payload reports version {payload_version!r}; "
@@ -859,11 +877,11 @@ def smoke_windows_installer(
             "payload": WINDOWS_GUI_EXECUTABLE,
             "payloadVersion": payload_version,
             "payloadSha256": sha256_file(payload),
-            "installerMachine": windows_machine_name(installer_machine),
-            "payloadMachine": windows_machine_name(payload_machine),
-            "architecture": windows_machine_name(payload_machine),
-            "installerAuthenticodeStatus": installer_info["authenticodeStatus"],
-            "payloadAuthenticodeStatus": payload_info["authenticodeStatus"],
+            "installerMachine": windows_machine_name(installer_image.machine),
+            "payloadMachine": windows_machine_name(payload_image.machine),
+            "architecture": windows_machine_name(payload_image.machine),
+            "installerEmbeddedSignature": installer_image.has_embedded_signature(),
+            "payloadEmbeddedSignature": payload_image.has_embedded_signature(),
             "launch": "not_performed",
         }
     return smoke
