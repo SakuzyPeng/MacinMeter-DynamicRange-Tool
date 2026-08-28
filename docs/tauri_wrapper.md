@@ -12,7 +12,7 @@ The backend exposes:
 | Command | Purpose |
 |---|---|
 | `run_analysis` | analyze one explicit file |
-| `run_batch` | analyze discovered inputs across bounded file lanes and report them in stable order |
+| `run_batch` | analyze discovered inputs across bounded file lanes, stream result chunks, and return the stable schema-4 batch envelope |
 | `discover_inputs` | expand files/directories in stable order under a cancellable `jobId` |
 | `cancel_job` | cancel exactly one caller-generated `jobId` |
 | `get_capabilities` | return the read-only native capability snapshot; the picker builds its extension filter from `stableDiscoveryExtensions` instead of a handwritten list |
@@ -26,9 +26,15 @@ shared `Application` execution domain, so Tauri remains an adapter and does not
 become a scheduler or own a pool.
 
 Progress events may interleave across file lanes. Every event carries its item
-index and path, the report remains in stable discovery order, and the frontend
-aggregates progress from the latest state of every item instead of treating an
-event index as a completed serial prefix.
+index and path, and the frontend aggregates progress from the latest state of
+every item instead of treating an event index as a completed serial prefix.
+Completed results use the core `BatchChunkSink` path: each non-empty chunk has
+at most eight owned items, may arrive out of order, and carries a stable
+discovery index for every item. The transitional Tauri adapter forwards each
+core chunk as one `batch_items` channel message and explicitly collects the
+same items only to preserve the final schema-4 envelope. The batch is complete
+only when the command returns successfully; earlier chunks can precede a later
+cancellation or output error.
 
 The frontend creates each `jobId`. Tauri state maps that ID to an independent
 `CancellationToken`; inserting a duplicate active ID is an error. Progress
@@ -55,6 +61,12 @@ Silent channels remain visibly silent while contributing DR0 to the track
 aggregate. A batch remains a list of independent reports: the library's
 explicit `AlbumAggregator` is not invoked by Tauri commands. Rendering
 preferences stay in TypeScript and never enter the analysis request.
+
+The application core no longer returns or retains a complete `BatchReport`.
+That type remains a wire-document compatibility boundary for CLI and this
+transitional adapter. A future egui adapter consumes result chunks directly;
+it does not need to preserve the Tauri channel or WebView result path. See
+[ADR-0016](adr/0016-chunked-batch-result-delivery.md).
 
 The product frontend accepts native whole-window drops of files, directories,
 or mixed inputs. Dropped and picker-selected paths share the same cancellable

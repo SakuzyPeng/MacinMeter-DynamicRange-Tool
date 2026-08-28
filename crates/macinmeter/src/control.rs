@@ -1,4 +1,3 @@
-use crate::batch::BatchItem;
 use macinmeter_domain::DecodeProgress;
 use serde::Serialize;
 use std::sync::{
@@ -49,16 +48,6 @@ pub enum AnalysisEvent {
         index: usize,
         display_path: String,
         success: bool,
-    },
-    /// One completed batch item, published as soon as its lane has produced
-    /// the same value that will later appear in the ordered batch report.
-    ///
-    /// This is a runtime event rather than a wire-envelope field: adapters can
-    /// render a large batch incrementally without changing the reproducible
-    /// final document.
-    BatchItemFinished {
-        index: usize,
-        item: BatchItem,
     },
     BatchFinished {
         succeeded: usize,

@@ -6,8 +6,8 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Generator, Shell};
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisReport, Application, BatchItemOutcome, BatchReport,
-    BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode, ExecutionControl,
-    PhaseTimings, ProgressSink, WireEnvelope,
+    BatchReportCollector, BatchRequest, BatchStatus, CancellationToken, ChannelOutcome, ErrorCode,
+    ExecutionControl, PhaseTimings, ProgressSink, WireEnvelope,
 };
 use render::{PhaseTimingScope, format_dbfs, format_duration_token, format_elapsed_line};
 use std::{
@@ -207,14 +207,16 @@ fn run_batch(
     control: &ExecutionControl<'_>,
 ) -> i32 {
     let request = BatchRequest { inputs, recursive };
+    let collector = BatchReportCollector::new();
     let started = Instant::now();
     let ran = if timing {
-        application.run_batch_timed(request, control)
+        application.run_batch_timed(request, &collector, control)
     } else {
         application
-            .run_batch(request, control)
-            .map(|report| (report, PhaseTimings::default()))
-    };
+            .run_batch(request, &collector, control)
+            .map(|completion| (completion, PhaseTimings::default()))
+    }
+    .and_then(|(completion, phases)| collector.finish(completion).map(|report| (report, phases)));
     match ran {
         Ok((report, phases)) => {
             let elapsed = started.elapsed();

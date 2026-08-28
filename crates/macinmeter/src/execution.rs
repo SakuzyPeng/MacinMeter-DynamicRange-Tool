@@ -3,8 +3,8 @@ use crate::application::ApplicationPerformanceProbe;
 #[cfg(feature = "performance-probes")]
 use crate::batch::BatchPerformanceProbe;
 use crate::{
-    AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchReport, BatchRequest,
-    CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
+    AnalysisError, AnalysisReport, AnalysisStage, AnalyzeRequest, BatchChunkSink, BatchCompletion,
+    BatchRequest, CancellationToken, ErrorCode, ExecutionControl, NoopProgressSink, ProgressSink,
     application::{Analyzer, OverlapShape, PhaseTimings},
     batch::{BatchRunner, discover_inputs_with_control},
     concurrency::{ConcurrencyPlan, PlanAllocation},
@@ -296,16 +296,23 @@ impl Application {
             .analyze_file_timed(request, control.progress)
     }
 
+    /// Run a batch and synchronously deliver bounded owned result chunks.
+    ///
+    /// Chunk arrival order may differ from discovery order; every item carries
+    /// its stable index. The returned completion contains only terminal status
+    /// and counts, so callers that require a complete document must opt into
+    /// collection at their adapter boundary.
     pub fn run_batch(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<BatchReport, AnalysisError> {
+    ) -> Result<BatchCompletion, AnalysisError> {
         self.reserve(control.cancellation)?
-            .run_batch(request, control.progress)
+            .run_batch(request, chunks, control.progress)
     }
 
-    /// Run one batch and also report the totals its lanes accumulated.
+    /// Run one chunked batch and also report the totals its lanes accumulated.
     ///
     /// File lanes and decode/analysis roles may overlap when the granted plan
     /// and selected routes permit it. `PhaseTimings` therefore contains sums of
@@ -315,25 +322,27 @@ impl Application {
     pub fn run_batch_timed(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
+    ) -> Result<(BatchCompletion, PhaseTimings), AnalysisError> {
         self.reserve(control.cancellation)?
-            .run_batch_timed(request, control.progress)
+            .run_batch_timed(request, chunks, control.progress)
     }
 
     /// Run one batch and return the exact non-default allocation topology.
     ///
     /// This measurement entry is absent from ordinary product builds and does
-    /// not add any field to `BatchReport` or the wire schema.
+    /// not add any field to result chunks, completion, or the wire schema.
     #[cfg(feature = "performance-probes")]
     #[doc(hidden)]
     pub fn run_batch_with_performance_probe(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
+    ) -> Result<(BatchCompletion, BatchPerformanceProbe), AnalysisError> {
         self.reserve(control.cancellation)?
-            .run_batch_with_performance_probe(request, control.progress)
+            .run_batch_with_performance_probe(request, chunks, control.progress)
     }
 
     pub fn discover_inputs_with_control(
@@ -454,27 +463,30 @@ impl ApplicationJob {
         })
     }
 
+    /// Execute one reserved batch through the caller's synchronous chunk sink.
     pub fn run_batch(
         self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         progress: &dyn ProgressSink,
-    ) -> Result<BatchReport, AnalysisError> {
+    ) -> Result<BatchCompletion, AnalysisError> {
         let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
-            BatchRunner::with_overlap_shape(plan, lanes, shape).run(request, control)
+            BatchRunner::with_overlap_shape(plan, lanes, shape).run(request, chunks, control)
         })
     }
 
     pub fn run_batch_timed(
         self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         progress: &dyn ProgressSink,
-    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
+    ) -> Result<(BatchCompletion, PhaseTimings), AnalysisError> {
         let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
             BatchRunner::with_overlap_shape(plan, lanes, shape)
                 .collecting_timings()
-                .run_timed(request, control)
+                .run_timed(request, chunks, control)
         })
     }
 
@@ -483,12 +495,13 @@ impl ApplicationJob {
     pub fn run_batch_with_performance_probe(
         self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         progress: &dyn ProgressSink,
-    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
+    ) -> Result<(BatchCompletion, BatchPerformanceProbe), AnalysisError> {
         let (plan, lanes, shape) = (self.plan, self.requested_file_lanes, self.overlap_shape);
         self.execute(progress, |control| {
             BatchRunner::with_overlap_shape(plan, lanes, shape)
-                .run_with_performance_probe(request, control)
+                .run_with_performance_probe(request, chunks, control)
         })
     }
 
@@ -838,7 +851,8 @@ mod tests {
         let application = Application::with_budget(bounded_budget(8));
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
-        let (report, probe) = application
+        let chunks = crate::NoopBatchChunkSink;
+        let (completion, probe) = application
             .run_batch_with_performance_probe(
                 BatchRequest::new(
                     vec![
@@ -848,12 +862,13 @@ mod tests {
                     ],
                     false,
                 ),
+                &chunks,
                 &ExecutionControl::new(&cancellation, &progress),
             )
             .expect("the explicit performance path must run the three-file batch");
 
-        assert_eq!(report.summary.total, 3);
-        assert_eq!(report.summary.failed, 0);
+        assert_eq!(completion.summary.total, 3);
+        assert_eq!(completion.summary.failed, 0);
         assert_eq!(probe.granted_plan_workers(), 8);
         assert_eq!(probe.allocated_file_lanes(), 3);
         assert_eq!(probe.decoder_workers_per_lane(), 2);
@@ -1095,7 +1110,8 @@ mod tests {
         let application = Application::with_budget(bounded_budget(8));
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
-        let report = application
+        let chunks = crate::NoopBatchChunkSink;
+        let completion = application
             .run_batch(
                 BatchRequest::new(
                     vec![fixture(
@@ -1103,11 +1119,12 @@ mod tests {
                     )],
                     false,
                 ),
+                &chunks,
                 &ExecutionControl::new(&cancellation, &progress),
             )
             .expect("a one-item batch must analyze its file");
 
-        assert_eq!(report.summary.total, 1);
+        assert_eq!(completion.summary.total, 1);
         assert_eq!(
             last_execution().workers().get(),
             TEST_HOST_WORKERS.get(),

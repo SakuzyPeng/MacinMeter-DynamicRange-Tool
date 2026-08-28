@@ -349,8 +349,9 @@ codecs
 └── Symphonia adapter（WAV/FLAC/AIFF + 受限 MP4/M4A ALAC）
 
 application
-├── Application::analyze_file / run_batch / discover_inputs
+├── Application::analyze_file / chunked run_batch / discover_inputs
 ├── bounded FIFO admission / request cancellation
+├── bounded BatchChunkSink delivery / BatchCompletion
 ├── explicit AlbumAggregator
 ├── progress
 └── versioned WireEnvelope
@@ -396,8 +397,10 @@ Error
   ALAC route；FLAC 必须先保存与现有 `verify: true` 等价的有序全流 MD5；
 - packet 允许乱序计算但只按输入序提交 PCM、错误与 progress；坏包不得变成空块、
   EOF 或 partial report，最早输入序错误胜出；
-- 文件级并行只在同一 batch `ApplicationJob` 内建立有界 lanes，最终 item 顺序和
-  既有部分失败语义不变；窗口级并行保持窗口内与跨窗口浮点归约的原始顺序；
+- 文件级并行只在同一 batch `ApplicationJob` 内建立有界 lanes；完成结果通过同步
+  `BatchChunkSink` 分块移交，chunk 可乱序而 item 的发现 index 稳定。核心不保留
+  完整 `BatchReport`，需要单文档的 adapter 显式收集并恢复最终顺序；既有部分失败
+  语义不变，窗口级并行保持窗口内与跨窗口浮点归约的原始顺序；
 - 一个 active 顶层 job 与最多 64 个 FIFO reservation 保持不变。file lane、decoder
   worker、window worker、队列和重排序内存共用 application-owned 资源计划，禁止
   `file × packet × window` 乘法并发或 adapter 自建 pool；

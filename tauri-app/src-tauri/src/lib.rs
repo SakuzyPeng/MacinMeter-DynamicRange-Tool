@@ -2,8 +2,8 @@
 
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisStage, AnalyzeRequest, Application, ApplicationJob,
-    BatchItem, BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink,
-    WireEnvelope,
+    BatchChunk, BatchChunkItem, BatchChunkSink, BatchCompletion, BatchReportCollector,
+    BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink, WireEnvelope,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,7 +15,6 @@ use std::{
 use tauri::{Emitter, ipc::Channel};
 
 const FRONTEND_DECODE_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
-const FRONTEND_BATCH_ITEM_CHUNK: usize = 8;
 
 #[derive(Debug, Clone, Default)]
 struct JobRegistry {
@@ -120,7 +119,6 @@ struct DiscoveryResponse {
 #[derive(Debug, Default)]
 struct FrontendProgressState {
     last_decode_progress: Option<Instant>,
-    batch_items: Vec<FrontendBatchItem>,
 }
 
 impl FrontendProgressState {
@@ -134,42 +132,25 @@ impl FrontendProgressState {
         self.last_decode_progress = Some(now);
         true
     }
-
-    fn push_batch_item(&mut self, item: FrontendBatchItem) -> Option<Vec<FrontendBatchItem>> {
-        self.batch_items.push(item);
-        (self.batch_items.len() >= FRONTEND_BATCH_ITEM_CHUNK)
-            .then(|| std::mem::take(&mut self.batch_items))
-    }
-
-    fn take_batch_items(&mut self) -> Vec<FrontendBatchItem> {
-        std::mem::take(&mut self.batch_items)
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FrontendBatchItem {
-    index: usize,
-    item: BatchItem,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum FrontendMessage {
     Event { event: AnalysisEvent },
-    BatchItems { items: Vec<FrontendBatchItem> },
+    BatchItems { items: Vec<BatchChunkItem> },
 }
 
 /// Bridges core progress into one invocation-scoped IPC channel.
 ///
 /// Decode progress is intentionally sampled across the whole job. The core can
 /// produce one update per PCM block from several file lanes; forwarding every
-/// block overwhelms WebView input/IPC on large Windows batches. Completed-item
-/// reports are grouped as well, preserving incremental rendering with far fewer
-/// WebView callbacks.
+/// block overwhelms WebView input/IPC on large Windows batches. The core's
+/// bounded chunk sink is the separate completed-result path.
 struct FrontendProgressSink {
     channel: Channel<FrontendMessage>,
     state: Mutex<FrontendProgressState>,
+    collector: BatchReportCollector,
 }
 
 impl FrontendProgressSink {
@@ -177,37 +158,34 @@ impl FrontendProgressSink {
         Self {
             channel,
             state: Mutex::new(FrontendProgressState::default()),
+            collector: BatchReportCollector::new(),
         }
     }
 
-    fn send_batch_items(&self, items: Vec<FrontendBatchItem>) {
-        if !items.is_empty() {
-            let _ = self.channel.send(FrontendMessage::BatchItems { items });
-        }
+    fn finish(self, completion: BatchCompletion) -> Result<macinmeter::BatchReport, AnalysisError> {
+        self.collector.finish(completion)
     }
+}
 
-    fn flush_batch_items(&self) {
-        let items = self
-            .state
-            .lock()
-            .map(|mut state| state.take_batch_items())
-            .unwrap_or_default();
-        self.send_batch_items(items);
+impl BatchChunkSink for FrontendProgressSink {
+    fn emit(&self, chunk: BatchChunk) -> Result<(), AnalysisError> {
+        self.collector.emit(chunk.clone())?;
+        self.channel
+            .send(FrontendMessage::BatchItems { items: chunk.items })
+            .map_err(|error| {
+                AnalysisError::new(
+                    ErrorCode::OutputFailed,
+                    AnalysisStage::Output,
+                    "failed to deliver a batch chunk to the frontend",
+                )
+                .with_details(error.to_string())
+            })
     }
 }
 
 impl macinmeter::ProgressSink for FrontendProgressSink {
     fn emit(&self, event: AnalysisEvent) {
         match event {
-            AnalysisEvent::BatchItemFinished { index, item } => {
-                let items =
-                    self.state.lock().ok().and_then(|mut state| {
-                        state.push_batch_item(FrontendBatchItem { index, item })
-                    });
-                if let Some(items) = items {
-                    self.send_batch_items(items);
-                }
-            }
             AnalysisEvent::DecodeProgress {
                 index,
                 display_path,
@@ -229,10 +207,6 @@ impl macinmeter::ProgressSink for FrontendProgressSink {
                         },
                     });
                 }
-            }
-            event @ AnalysisEvent::BatchFinished { .. } => {
-                self.flush_batch_items();
-                let _ = self.channel.send(FrontendMessage::Event { event });
             }
             event => {
                 let _ = self.channel.send(FrontendMessage::Event { event });
@@ -302,7 +276,6 @@ async fn run_analysis(
         let sink = FrontendProgressSink::new(on_event);
         let (envelope, timings) =
             execute_analysis(application_job, request.path, request.timing, &sink);
-        sink.flush_batch_items();
         if let Some(timings) = timings {
             emit_timing(&window, &job_id, false, timings);
         }
@@ -369,21 +342,27 @@ async fn run_batch(
             inputs: request.inputs,
             recursive: request.recursive,
         };
-        let envelope = if request.timing {
-            match application_job.run_batch_timed(batch_request, &sink) {
-                Ok((report, timings)) => {
-                    emit_timing(&window, &job_id, true, timings);
+        let ran = if request.timing {
+            application_job
+                .run_batch_timed(batch_request, &sink, &sink)
+                .map(|(completion, timings)| (completion, Some(timings)))
+        } else {
+            application_job
+                .run_batch(batch_request, &sink, &sink)
+                .map(|completion| (completion, None))
+        };
+        let envelope = match ran {
+            Ok((completion, timings)) => match sink.finish(completion) {
+                Ok(report) => {
+                    if let Some(timings) = timings {
+                        emit_timing(&window, &job_id, true, timings);
+                    }
                     WireEnvelope::batch(report)
                 }
                 Err(error) => WireEnvelope::error(error),
-            }
-        } else {
-            application_job
-                .run_batch(batch_request, &sink)
-                .map(WireEnvelope::batch)
-                .unwrap_or_else(WireEnvelope::error)
+            },
+            Err(error) => WireEnvelope::error(error),
         };
-        sink.flush_batch_items();
         drop(active_job);
         envelope
     })
@@ -513,39 +492,6 @@ mod tests {
         assert!(
             state.should_emit_decode_progress(start + FRONTEND_DECODE_PROGRESS_INTERVAL * 2, false)
         );
-    }
-
-    #[test]
-    fn frontend_batch_items_are_grouped_and_the_tail_can_be_flushed() {
-        let mut state = FrontendProgressState::default();
-        let item = |index| FrontendBatchItem {
-            index,
-            item: BatchItem {
-                display_path: format!("item-{index}"),
-                outcome: macinmeter::BatchItemOutcome::Failure {
-                    error: internal_error("test failure"),
-                },
-            },
-        };
-
-        for index in 0..FRONTEND_BATCH_ITEM_CHUNK - 1 {
-            assert!(state.push_batch_item(item(index)).is_none());
-        }
-        let chunk = state
-            .push_batch_item(item(FRONTEND_BATCH_ITEM_CHUNK - 1))
-            .expect("the configured chunk size must flush");
-        assert_eq!(chunk.len(), FRONTEND_BATCH_ITEM_CHUNK);
-        assert_eq!(chunk[0].index, 0);
-        assert_eq!(chunk.last().unwrap().index, FRONTEND_BATCH_ITEM_CHUNK - 1);
-
-        assert!(
-            state
-                .push_batch_item(item(FRONTEND_BATCH_ITEM_CHUNK))
-                .is_none()
-        );
-        let tail = state.take_batch_items();
-        assert_eq!(tail.len(), 1);
-        assert_eq!(tail[0].index, FRONTEND_BATCH_ITEM_CHUNK);
     }
 
     #[test]

@@ -1529,8 +1529,6 @@ const handleAnalysisEvent = (jobId: string, event: AnalysisEvent): void => {
       },
       { progress: activeProgress.update(event.index, 1) },
     );
-  } else if (event.type === "batch_item_finished") {
-    queueStreamedBatchItem(event.index, event.item);
   } else if (event.type === "batch_finished") {
     status(
       "status.batchComplete",

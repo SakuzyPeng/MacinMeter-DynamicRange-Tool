@@ -208,7 +208,6 @@ export type AnalysisEvent =
       displayPath: string;
       success: boolean;
     }
-  | { type: "batch_item_finished"; index: number; item: BatchItem }
   | { type: "batch_finished"; succeeded: number; failed: number };
 
 export type FrontendMessage =

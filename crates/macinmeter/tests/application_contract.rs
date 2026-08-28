@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisEvent, AnalyzeRequest, Application, BatchItemOutcome, BatchRequest, BatchStatus,
-    CancellationToken, ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl,
+    AnalysisEvent, AnalyzeRequest, Application, BatchChunk, BatchChunkItem, BatchChunkSink,
+    BatchItemOutcome, BatchReportCollector, BatchRequest, BatchStatus, CancellationToken,
+    ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl, NoopBatchChunkSink,
     NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
 };
 use serde_json::Value;
@@ -26,12 +27,17 @@ fn fixture(name: &str) -> PathBuf {
 fn run_batch(inputs: Vec<PathBuf>) -> macinmeter::BatchReport {
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
-    Application::new()
+    let collector = BatchReportCollector::new();
+    let completion = Application::new()
         .run_batch(
             BatchRequest::new(inputs, false),
+            &collector,
             &ExecutionControl::new(&cancellation, &progress),
         )
-        .expect("batch should produce an item outcome for ordinary media failures")
+        .expect("batch should produce item chunks for ordinary media failures");
+    collector
+        .finish(completion)
+        .expect("the test adapter must collect one stable batch report")
 }
 
 #[test]
@@ -63,8 +69,9 @@ fn timing_is_opt_in_and_leaves_the_report_untouched() {
     assert!(phases.decode_span() >= phases.decode(), "{phases:?}");
     assert!(phases.analysis_span() >= phases.analysis(), "{phases:?}");
 
+    let chunks = NoopBatchChunkSink;
     let (_, batch_phases) = application
-        .run_batch_timed(BatchRequest::new(vec![path], false), &control)
+        .run_batch_timed(BatchRequest::new(vec![path], false), &chunks, &control)
         .expect("the fixture should batch timed");
     assert!(batch_phases.decode() > std::time::Duration::ZERO);
     assert!(batch_phases.analysis() > std::time::Duration::ZERO);
@@ -79,9 +86,11 @@ fn timed_batch_keeps_phase_work_from_a_failed_item() {
     let progress = NoopProgressSink;
     let control = ExecutionControl::new(&cancellation, &progress);
 
-    let (report, phases) = Application::new()
-        .run_batch_timed(BatchRequest::new(vec![path], false), &control)
+    let collector = BatchReportCollector::new();
+    let (completion, phases) = Application::new()
+        .run_batch_timed(BatchRequest::new(vec![path], false), &collector, &control)
         .expect("an ordinary decode failure should remain a batch item outcome");
+    let report = collector.finish(completion).unwrap();
 
     assert_eq!(report.status, BatchStatus::Failed);
     assert_eq!((report.summary.succeeded, report.summary.failed), (0, 1));
@@ -380,32 +389,49 @@ fn product_batch_preserves_explicit_input_order_across_file_lanes() {
 
 #[test]
 fn batch_publishes_each_final_item_before_the_terminal_event() {
+    #[derive(Debug, Clone)]
+    enum Published {
+        Item(BatchChunkItem),
+        Terminal,
+    }
+
     let inputs = vec![fixture("tiny_duration.wav"), fixture("fake_audio.wav")];
     let cancellation = CancellationToken::new();
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let events_for_sink = Arc::clone(&events);
+    let timeline = Arc::new(Mutex::new(Vec::new()));
+    let events_for_sink = Arc::clone(&timeline);
     let progress = move |event: AnalysisEvent| {
-        events_for_sink.lock().unwrap().push(event);
+        if matches!(event, AnalysisEvent::BatchFinished { .. }) {
+            events_for_sink.lock().unwrap().push(Published::Terminal);
+        }
     };
-    let report = Application::new()
+    let collector = BatchReportCollector::new();
+    let chunks_for_sink = Arc::clone(&timeline);
+    let chunks = |chunk: BatchChunk| {
+        chunks_for_sink
+            .lock()
+            .unwrap()
+            .extend(chunk.items.iter().cloned().map(Published::Item));
+        collector.emit(chunk)
+    };
+    let completion = Application::new()
         .run_batch(
             BatchRequest::new(inputs, false),
+            &chunks,
             &ExecutionControl::new(&cancellation, &progress),
         )
-        .expect("ordinary item failures must still produce a batch report");
+        .expect("ordinary item failures must still complete a batch");
+    let report = collector.finish(completion).unwrap();
 
-    let events = events.lock().unwrap();
-    let terminal = events
+    let timeline = timeline.lock().unwrap();
+    let terminal = timeline
         .iter()
-        .position(|event| matches!(event, AnalysisEvent::BatchFinished { .. }))
+        .position(|event| matches!(event, Published::Terminal))
         .expect("a completed batch must publish its terminal event");
-    let mut published = events
+    let mut published = timeline
         .iter()
         .enumerate()
         .filter_map(|(position, event)| match event {
-            AnalysisEvent::BatchItemFinished { index, item } => {
-                Some((position, *index, item.clone()))
-            }
+            Published::Item(entry) => Some((position, entry.index, entry.item.clone())),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -461,9 +487,11 @@ fn batch_reports_full_partial_and_zero_success_without_short_circuiting() {
 fn batch_rejects_an_empty_request_before_processing() {
     let cancellation = CancellationToken::new();
     let progress = NoopProgressSink;
+    let chunks = NoopBatchChunkSink;
     let error = Application::new()
         .run_batch(
             BatchRequest::new(Vec::new(), false),
+            &chunks,
             &ExecutionControl::new(&cancellation, &progress),
         )
         .expect_err("an empty batch request must not report success");
@@ -487,10 +515,12 @@ fn request_cancellation_stops_batch_before_a_result_is_published() {
             .push(event);
     };
     let control = ExecutionControl::new(&cancellation, &progress);
+    let chunks = NoopBatchChunkSink;
 
     let error = Application::new()
         .run_batch(
             BatchRequest::new(vec![fixture("edge_cases.wav")], false),
+            &chunks,
             &control,
         )
         .expect_err("cancellation requested at file start must abort the batch");
@@ -526,10 +556,12 @@ fn cancellation_requested_at_discovery_start_stops_before_walking_inputs() {
             token_for_sink.cancel();
         }
     };
+    let chunks = NoopBatchChunkSink;
 
     let error = Application::new()
         .run_batch(
             BatchRequest::new(vec![fixture("tiny_duration.wav")], false),
+            &chunks,
             &ExecutionControl::new(&cancellation, &progress),
         )
         .expect_err("cancellation at discovery start must stop the batch");
@@ -712,14 +744,15 @@ fn wire_envelopes_have_a_stable_finite_timestamp_free_schema() {
     assert_eq!(progress_event["progress"]["fraction"], 0.5);
     assert_eq!(progress_event["progress"]["eof"], false);
 
-    let item_event = serde_json::to_value(AnalysisEvent::BatchItemFinished {
-        index: 3,
-        item: published_item,
+    let chunk = serde_json::to_value(BatchChunk {
+        items: vec![BatchChunkItem {
+            index: 3,
+            item: published_item,
+        }],
     })
     .unwrap();
-    assert_eq!(item_event["type"], "batch_item_finished");
-    assert_eq!(item_event["index"], 3);
-    assert_eq!(item_event["item"]["outcome"]["status"], "success");
+    assert_eq!(chunk["items"][0]["index"], 3);
+    assert_eq!(chunk["items"][0]["item"]["outcome"]["status"], "success");
 
     let silent = serde_json::to_value(macinmeter::ChannelOutcome::Silent {
         frames: 12,

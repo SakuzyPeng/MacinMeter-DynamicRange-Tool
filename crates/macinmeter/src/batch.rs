@@ -73,6 +73,129 @@ pub struct BatchReport {
     pub summary: BatchSummary,
 }
 
+/// One completed item delivered by a chunked batch execution.
+///
+/// File lanes may finish out of order, so `index` is the item's stable
+/// discovery-order identity. Consumers must use it rather than treating chunk
+/// arrival order as report order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchChunkItem {
+    pub index: usize,
+    pub item: BatchItem,
+}
+
+/// A bounded group of completed batch items.
+///
+/// Chunks are runtime delivery values, not wire envelopes. Every chunk is
+/// non-empty and contains at most [`BatchChunk::MAX_ITEMS`] items. Calls into a
+/// sink may come from different file lanes and chunks may therefore arrive out
+/// of discovery order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchChunk {
+    pub items: Vec<BatchChunkItem>,
+}
+
+impl BatchChunk {
+    /// The fixed maximum number of reports retained by the core chunk buffer.
+    pub const MAX_ITEMS: usize = 8;
+}
+
+/// Terminal metadata returned after every accepted chunk has been delivered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchCompletion {
+    pub status: BatchStatus,
+    pub summary: BatchSummary,
+}
+
+/// Receives owned result chunks from a batch execution.
+///
+/// `emit` is synchronous and may be called concurrently by the bounded file
+/// lanes. A slow sink therefore applies backpressure instead of allowing an
+/// unbounded application-owned result queue. Returning an error stops the
+/// whole batch after all in-flight lanes have joined.
+pub trait BatchChunkSink: Send + Sync {
+    fn emit(&self, chunk: BatchChunk) -> Result<(), AnalysisError>;
+}
+
+impl<F> BatchChunkSink for F
+where
+    F: Fn(BatchChunk) -> Result<(), AnalysisError> + Send + Sync,
+{
+    fn emit(&self, chunk: BatchChunk) -> Result<(), AnalysisError> {
+        self(chunk)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct NoopBatchChunkSink;
+
+impl BatchChunkSink for NoopBatchChunkSink {
+    fn emit(&self, _chunk: BatchChunk) -> Result<(), AnalysisError> {
+        Ok(())
+    }
+}
+
+/// Explicit adapter-side collector for formats that require one complete
+/// ordered document, such as the stable CLI JSON envelope.
+///
+/// Batch execution itself never constructs a [`BatchReport`]. Using this type
+/// is an adapter choice and intentionally restores O(items) result retention
+/// only for that caller.
+#[derive(Debug, Default)]
+pub struct BatchReportCollector {
+    items: Mutex<Vec<BatchChunkItem>>,
+}
+
+impl BatchReportCollector {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn finish(self, completion: BatchCompletion) -> Result<BatchReport, AnalysisError> {
+        let mut indexed = self
+            .items
+            .into_inner()
+            .map_err(|_| batch_collector_error("batch report collector is poisoned"))?;
+        indexed.sort_by_key(|entry| entry.index);
+        if indexed.len() != completion.summary.total {
+            return Err(batch_collector_error(format!(
+                "batch report collector received {} of {} items",
+                indexed.len(),
+                completion.summary.total
+            )));
+        }
+
+        let mut items = Vec::with_capacity(indexed.len());
+        for (expected, entry) in indexed.into_iter().enumerate() {
+            if entry.index != expected {
+                return Err(batch_collector_error(format!(
+                    "batch report collector expected index {expected}, found {}",
+                    entry.index
+                )));
+            }
+            items.push(entry.item);
+        }
+        Ok(BatchReport {
+            status: completion.status,
+            items,
+            summary: completion.summary,
+        })
+    }
+}
+
+impl BatchChunkSink for BatchReportCollector {
+    fn emit(&self, chunk: BatchChunk) -> Result<(), AnalysisError> {
+        self.items
+            .lock()
+            .map_err(|_| batch_collector_error("batch report collector is poisoned"))?
+            .extend(chunk.items);
+        Ok(())
+    }
+}
+
 /// The exact application allocation selected by a non-default batch performance run.
 ///
 /// This type is deliberately absent from ordinary builds and from every batch
@@ -111,7 +234,7 @@ impl BatchPerformanceProbe {
 }
 
 struct BatchExecution {
-    report: BatchReport,
+    completion: BatchCompletion,
     timings: PhaseTimings,
     #[cfg(feature = "performance-probes")]
     allocation: PlanAllocation,
@@ -180,35 +303,39 @@ impl BatchRunner {
     pub(crate) fn run(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<BatchReport, AnalysisError> {
-        self.run_execution(request, control)
-            .map(|execution| execution.report)
+    ) -> Result<BatchCompletion, AnalysisError> {
+        self.run_execution(request, chunks, control)
+            .map(|execution| execution.completion)
     }
 
     pub(crate) fn run_timed(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<(BatchReport, PhaseTimings), AnalysisError> {
-        self.run_execution(request, control)
-            .map(|execution| (execution.report, execution.timings))
+    ) -> Result<(BatchCompletion, PhaseTimings), AnalysisError> {
+        self.run_execution(request, chunks, control)
+            .map(|execution| (execution.completion, execution.timings))
     }
 
     #[cfg(feature = "performance-probes")]
     pub(crate) fn run_with_performance_probe(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
-    ) -> Result<(BatchReport, BatchPerformanceProbe), AnalysisError> {
-        let execution = self.run_execution(request, control)?;
+    ) -> Result<(BatchCompletion, BatchPerformanceProbe), AnalysisError> {
+        let execution = self.run_execution(request, chunks, control)?;
         let probe = BatchPerformanceProbe::new(self.plan, execution.allocation);
-        Ok((execution.report, probe))
+        Ok((execution.completion, probe))
     }
 
     fn run_execution(
         &self,
         request: BatchRequest,
+        chunks: &dyn BatchChunkSink,
         control: &ExecutionControl<'_>,
     ) -> Result<BatchExecution, AnalysisError> {
         if control.cancellation.is_cancelled() {
@@ -240,13 +367,14 @@ impl BatchRunner {
         // input order, and a batch's item costs are not known before decoding.
         let claim = AtomicUsize::new(0);
         let stop = AtomicBool::new(false);
-        let outcomes: Vec<Mutex<Option<LaneOutcome>>> =
-            files.iter().map(|_| Mutex::new(None)).collect();
+        let failure = Mutex::new(None);
+        let output = BatchChunkEmitter::new(chunks);
         let lanes = allocation.file_lanes().get();
         let shared = LaneShared {
             claim: &claim,
-            outcomes: &outcomes,
             stop: &stop,
+            failure: &failure,
+            output: &output,
             timings: timings.as_ref(),
         };
 
@@ -342,46 +470,22 @@ impl BatchRunner {
         if control.cancellation.is_cancelled() {
             return Err(AnalysisError::cancelled());
         }
-
-        let mut items = Vec::with_capacity(files.len());
-        let mut succeeded = 0;
-        let mut failed = 0;
-        for slot in outcomes {
-            let outcome = slot
-                .into_inner()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .ok_or_else(unclaimed_item_error)?;
-            match outcome {
-                LaneOutcome::Cancelled(error) => return Err(error),
-                LaneOutcome::Finished(item) => {
-                    match item.outcome {
-                        BatchItemOutcome::Success { .. } => succeeded += 1,
-                        BatchItemOutcome::Failure { .. } => failed += 1,
-                    }
-                    items.push(item);
-                }
-            }
+        if let Some(error) = failure
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        {
+            return Err(error);
         }
 
-        let status = match (succeeded, failed) {
-            (_, 0) => BatchStatus::Succeeded,
-            (0, _) => BatchStatus::Failed,
-            _ => BatchStatus::PartiallySucceeded,
-        };
-        let summary = BatchSummary {
-            total: items.len(),
-            succeeded,
-            failed,
-        };
+        let completion = output.finish(files.len())?;
+        let BatchSummary {
+            succeeded, failed, ..
+        } = completion.summary;
         control
             .progress
             .emit(AnalysisEvent::BatchFinished { succeeded, failed });
         Ok(BatchExecution {
-            report: BatchReport {
-                status,
-                items,
-                summary,
-            },
+            completion,
             timings: timings
                 .as_ref()
                 .map_or_else(PhaseTimings::default, SharedPhaseTimings::total),
@@ -392,11 +496,10 @@ impl BatchRunner {
 
     /// Claim and analyze items until the batch is exhausted or cancelled.
     ///
-    /// An ordinary item failure is recorded and the lane continues, which keeps
+    /// An ordinary item failure is published and the lane continues, which keeps
     /// one unreadable file from deciding the fate of items the user also asked
-    /// for. Cancellation is the one condition that stops every lane, and it is
-    /// stored rather than returned so the caller reports it once, after all
-    /// lanes have joined.
+    /// for. Cancellation is the one condition that stops every lane; the caller
+    /// reports it once, after all lanes have joined.
     fn run_lane(
         &self,
         analyzer: &Analyzer,
@@ -420,7 +523,6 @@ impl BatchRunner {
                 panic!("injected batch file-lane panic at item {index}");
             }
             if control.cancellation.is_cancelled() {
-                Self::store(&shared.outcomes[index], LaneOutcome::Cancelled(cancelled()));
                 return;
             }
             let request = AnalyzeRequest { path: path.clone() };
@@ -430,28 +532,24 @@ impl BatchRunner {
                 }
                 None => analyzer.analyze_file_at(request, index, control),
             };
-            let outcome = match analyzed {
-                Ok(report) => LaneOutcome::Finished(BatchItem {
+            let item = match analyzed {
+                Ok(report) => BatchItem {
                     display_path: path.display().to_string(),
                     outcome: BatchItemOutcome::Success {
                         report: Box::new(report),
                     },
-                }),
-                Err(error) if error.code == ErrorCode::Cancelled => LaneOutcome::Cancelled(error),
-                Err(error) => LaneOutcome::Finished(BatchItem {
+                },
+                Err(error) if error.code == ErrorCode::Cancelled => return,
+                Err(error) => BatchItem {
                     display_path: path.display().to_string(),
                     outcome: BatchItemOutcome::Failure { error },
-                }),
+                },
             };
-            let cancelled = matches!(outcome, LaneOutcome::Cancelled(_));
-            if let LaneOutcome::Finished(item) = &outcome {
-                control.progress.emit(AnalysisEvent::BatchItemFinished {
-                    index,
-                    item: item.clone(),
-                });
+            if shared.stop.load(Ordering::Acquire) {
+                return;
             }
-            Self::store(&shared.outcomes[index], outcome);
-            if cancelled {
+            if let Err(error) = shared.output.publish(BatchChunkItem { index, item }) {
+                shared.fail(error);
                 return;
             }
         }
@@ -475,10 +573,6 @@ impl BatchRunner {
         }
         panicked
     }
-
-    fn store(slot: &Mutex<Option<LaneOutcome>>, outcome: LaneOutcome) {
-        *slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(outcome);
-    }
 }
 
 /// What every lane in one batch shares while claiming items.
@@ -487,18 +581,100 @@ impl BatchRunner {
 /// state is added, and makes it obvious that all of it is shared.
 struct LaneShared<'a> {
     claim: &'a AtomicUsize,
-    outcomes: &'a [Mutex<Option<LaneOutcome>>],
     stop: &'a AtomicBool,
+    failure: &'a Mutex<Option<AnalysisError>>,
+    output: &'a BatchChunkEmitter<'a>,
     timings: Option<&'a SharedPhaseTimings>,
 }
 
-/// One item's result as its lane left it.
-///
-/// Cancellation travels beside the ordinary outcomes rather than short-circuiting
-/// a lane's siblings, so the whole batch still joins before anything is reported.
-enum LaneOutcome {
-    Finished(BatchItem),
-    Cancelled(AnalysisError),
+impl LaneShared<'_> {
+    fn fail(&self, error: AnalysisError) {
+        self.stop.store(true, Ordering::Release);
+        let mut failure = self
+            .failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if failure.is_none() {
+            *failure = Some(error);
+        }
+    }
+}
+
+struct BatchChunkEmitter<'a> {
+    sink: &'a dyn BatchChunkSink,
+    state: Mutex<BatchChunkState>,
+}
+
+struct BatchChunkState {
+    pending: Vec<BatchChunkItem>,
+    published: usize,
+    succeeded: usize,
+    failed: usize,
+}
+
+impl<'a> BatchChunkEmitter<'a> {
+    fn new(sink: &'a dyn BatchChunkSink) -> Self {
+        Self {
+            sink,
+            state: Mutex::new(BatchChunkState {
+                pending: Vec::with_capacity(BatchChunk::MAX_ITEMS),
+                published: 0,
+                succeeded: 0,
+                failed: 0,
+            }),
+        }
+    }
+
+    fn publish(&self, entry: BatchChunkItem) -> Result<(), AnalysisError> {
+        let chunk = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| batch_stream_error("batch chunk buffer is poisoned"))?;
+            match &entry.item.outcome {
+                BatchItemOutcome::Success { .. } => state.succeeded += 1,
+                BatchItemOutcome::Failure { .. } => state.failed += 1,
+            }
+            state.published += 1;
+            state.pending.push(entry);
+            (state.pending.len() == BatchChunk::MAX_ITEMS).then(|| BatchChunk {
+                items: std::mem::replace(
+                    &mut state.pending,
+                    Vec::with_capacity(BatchChunk::MAX_ITEMS),
+                ),
+            })
+        };
+        match chunk {
+            Some(chunk) => self.sink.emit(chunk),
+            None => Ok(()),
+        }
+    }
+
+    fn finish(self, expected: usize) -> Result<BatchCompletion, AnalysisError> {
+        let state = self
+            .state
+            .into_inner()
+            .map_err(|_| batch_stream_error("batch chunk buffer is poisoned"))?;
+        if state.published != expected {
+            return Err(unclaimed_item_error(state.published, expected));
+        }
+        if !state.pending.is_empty() {
+            self.sink.emit(BatchChunk {
+                items: state.pending,
+            })?;
+        }
+        let summary = BatchSummary {
+            total: state.published,
+            succeeded: state.succeeded,
+            failed: state.failed,
+        };
+        let status = match (summary.succeeded, summary.failed) {
+            (_, 0) => BatchStatus::Succeeded,
+            (0, _) => BatchStatus::Failed,
+            _ => BatchStatus::PartiallySucceeded,
+        };
+        Ok(BatchCompletion { status, summary })
+    }
 }
 
 #[cfg(test)]
@@ -508,16 +684,21 @@ enum LaneFault {
     Panic(usize),
 }
 
-fn cancelled() -> AnalysisError {
-    AnalysisError::cancelled()
-}
-
-fn unclaimed_item_error() -> AnalysisError {
+fn unclaimed_item_error(published: usize, expected: usize) -> AnalysisError {
     AnalysisError::new(
         ErrorCode::Internal,
         AnalysisStage::Internal,
         "a batch item was never claimed by a file lane",
     )
+    .with_details(format!("published={published}; expected={expected}"))
+}
+
+fn batch_stream_error(message: impl Into<String>) -> AnalysisError {
+    AnalysisError::new(ErrorCode::Internal, AnalysisStage::Internal, message)
+}
+
+fn batch_collector_error(message: impl Into<String>) -> AnalysisError {
+    AnalysisError::new(ErrorCode::Internal, AnalysisStage::Output, message)
 }
 
 fn lane_spawn_error(error: io::Error) -> AnalysisError {
@@ -666,7 +847,10 @@ mod tests {
     // would perform.
 
     use crate::{NoopProgressSink, concurrency::ConcurrencyPlan};
-    use std::sync::atomic::AtomicUsize as TestCounter;
+    use std::sync::{Arc, atomic::AtomicUsize as TestCounter};
+
+    type PublishedIdentity = (usize, String, &'static str);
+    type PublishedIdentities = Arc<Mutex<Vec<PublishedIdentity>>>;
 
     /// Three lanes is not a rounder number than the rest: on the eight-worker
     /// plan below it is the widest split that still grants a packet pool, and
@@ -710,7 +894,130 @@ mod tests {
         BatchRunner::with_overlap_shape(test_plan(), nonzero(lanes), OverlapShape::DEFAULT)
     }
 
+    fn fake_batch(item_count: usize) -> tempfile::TempDir {
+        let directory = tempfile::tempdir().unwrap();
+        for index in 0..item_count {
+            std::fs::write(
+                directory.path().join(format!("{index:04}.wav")),
+                b"not a wave file",
+            )
+            .unwrap();
+        }
+        directory
+    }
+
     const MAX_LANE_PLAN_WORKERS: usize = 8;
+
+    #[test]
+    fn completed_items_are_delivered_in_bounded_chunks_with_a_tail() {
+        let directory = fake_batch(BatchChunk::MAX_ITEMS + 2);
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let control = ExecutionControl::new(&cancellation, &progress);
+        let emitted: Mutex<Vec<BatchChunk>> = Mutex::new(Vec::new());
+        let chunks = |chunk: BatchChunk| {
+            assert!(!chunk.items.is_empty());
+            assert!(chunk.items.len() <= BatchChunk::MAX_ITEMS);
+            emitted.lock().unwrap().push(chunk);
+            Ok(())
+        };
+
+        let completion = runner_for(3)
+            .run(
+                BatchRequest::new(vec![directory.path().to_path_buf()], false),
+                &chunks,
+                &control,
+            )
+            .expect("ordinary item failures must be delivered as chunks");
+
+        assert_eq!(completion.status, BatchStatus::Failed);
+        assert_eq!(completion.summary.total, BatchChunk::MAX_ITEMS + 2);
+        assert_eq!(completion.summary.succeeded, 0);
+        assert_eq!(completion.summary.failed, BatchChunk::MAX_ITEMS + 2);
+        let emitted = emitted.into_inner().unwrap();
+        assert_eq!(
+            emitted
+                .iter()
+                .map(|chunk| chunk.items.len())
+                .collect::<Vec<_>>(),
+            [BatchChunk::MAX_ITEMS, 2]
+        );
+        let mut indexes = emitted
+            .into_iter()
+            .flat_map(|chunk| chunk.items.into_iter().map(|entry| entry.index))
+            .collect::<Vec<_>>();
+        indexes.sort_unstable();
+        assert_eq!(indexes, (0..BatchChunk::MAX_ITEMS + 2).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_chunk_sink_error_stops_the_batch_without_a_terminal_event() {
+        let directory = fake_batch(BatchChunk::MAX_ITEMS);
+        let cancellation = CancellationToken::new();
+        let terminal = AtomicBool::new(false);
+        let progress = |event: AnalysisEvent| {
+            if matches!(event, AnalysisEvent::BatchFinished { .. }) {
+                terminal.store(true, Ordering::SeqCst);
+            }
+        };
+        let control = ExecutionControl::new(&cancellation, &progress);
+        let chunks = |_chunk: BatchChunk| {
+            Err(AnalysisError::new(
+                ErrorCode::OutputFailed,
+                AnalysisStage::Output,
+                "injected chunk sink failure",
+            ))
+        };
+
+        let error = runner_for(3)
+            .run(
+                BatchRequest::new(vec![directory.path().to_path_buf()], false),
+                &chunks,
+                &control,
+            )
+            .expect_err("a chunk sink failure must fail the whole batch");
+
+        assert_eq!(error.code, ErrorCode::OutputFailed);
+        assert_eq!(error.stage, AnalysisStage::Output);
+        assert_eq!(error.message, "injected chunk sink failure");
+        assert!(!terminal.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn the_explicit_report_collector_restores_stable_index_order() {
+        let item = |index: usize| BatchChunkItem {
+            index,
+            item: BatchItem {
+                display_path: format!("item-{index}"),
+                outcome: BatchItemOutcome::Failure {
+                    error: AnalysisError::new(
+                        ErrorCode::UnsupportedFormat,
+                        AnalysisStage::Probe,
+                        "test failure",
+                    ),
+                },
+            },
+        };
+        let collector = BatchReportCollector::new();
+        collector
+            .emit(BatchChunk {
+                items: vec![item(1), item(0)],
+            })
+            .unwrap();
+        let report = collector
+            .finish(BatchCompletion {
+                status: BatchStatus::Failed,
+                summary: BatchSummary {
+                    total: 2,
+                    succeeded: 0,
+                    failed: 2,
+                },
+            })
+            .unwrap();
+
+        assert_eq!(report.items[0].display_path, "item-0");
+        assert_eq!(report.items[1].display_path, "item-1");
+    }
 
     /// A mixed-route, mixed-outcome input set.
     ///
@@ -734,7 +1041,10 @@ mod tests {
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
         let control = ExecutionControl::new(&cancellation, &progress);
-        runner_for(lanes).run(BatchRequest::new(inputs, false), &control)
+        let collector = BatchReportCollector::new();
+        let completion =
+            runner_for(lanes).run(BatchRequest::new(inputs, false), &collector, &control)?;
+        collector.finish(completion)
     }
 
     fn shape(report: &BatchReport) -> Vec<(String, bool)> {
@@ -793,12 +1103,13 @@ mod tests {
     }
 
     #[test]
-    fn every_progress_event_names_the_item_it_belongs_to() {
+    fn every_progress_event_and_chunk_item_names_its_input() {
         for lanes in LANE_COUNTS {
             let inputs = mixed_inputs();
-            let seen: Mutex<Vec<(usize, String, &'static str)>> = Mutex::new(Vec::new());
+            let seen: PublishedIdentities = Arc::new(Mutex::new(Vec::new()));
             let cancellation = CancellationToken::new();
-            let sink = |event: AnalysisEvent| {
+            let progress_seen = Arc::clone(&seen);
+            let progress = move |event: AnalysisEvent| {
                 let entry = match event {
                     AnalysisEvent::FileStarted {
                         index,
@@ -809,26 +1120,34 @@ mod tests {
                         display_path,
                         ..
                     } => Some((index, display_path, "finished")),
-                    AnalysisEvent::BatchItemFinished { index, item } => {
-                        Some((index, item.display_path, "published"))
-                    }
                     _ => None,
                 };
                 if let Some(entry) = entry {
-                    seen.lock().unwrap().push(entry);
+                    progress_seen.lock().unwrap().push(entry);
                 }
             };
-            let control = ExecutionControl::new(&cancellation, &sink);
+            let chunk_seen = Arc::clone(&seen);
+            let chunks = move |chunk: BatchChunk| {
+                let mut seen = chunk_seen.lock().unwrap();
+                seen.extend(
+                    chunk
+                        .items
+                        .into_iter()
+                        .map(|entry| (entry.index, entry.item.display_path, "published")),
+                );
+                Ok(())
+            };
+            let control = ExecutionControl::new(&cancellation, &progress);
             runner_for(lanes)
-                .run(BatchRequest::new(inputs.clone(), false), &control)
+                .run(BatchRequest::new(inputs.clone(), false), &chunks, &control)
                 .expect("the batch must complete");
 
-            let seen = seen.into_inner().unwrap();
+            let seen = seen.lock().unwrap();
             // Events may interleave across lanes, so order proves nothing. What
             // must hold is that each event's index still names its own file and
             // that every item reported both lifecycle boundaries and its
             // renderable outcome exactly once.
-            for (index, display_path, _) in &seen {
+            for (index, display_path, _) in seen.iter() {
                 let expected = inputs
                     .get(*index)
                     .unwrap_or_else(|| panic!("{lanes} lanes emitted index {index} out of range"));
@@ -875,7 +1194,9 @@ mod tests {
                 _ => {}
             };
             let control = ExecutionControl::new(&cancellation, &sink);
-            let outcome = runner_for(lanes).run(BatchRequest::new(mixed_inputs(), false), &control);
+            let chunks = NoopBatchChunkSink;
+            let outcome =
+                runner_for(lanes).run(BatchRequest::new(mixed_inputs(), false), &chunks, &control);
 
             let error = outcome.expect_err("a cancelled batch must not return a report");
             assert_eq!(error.code, ErrorCode::Cancelled, "{lanes} lanes");
@@ -900,9 +1221,10 @@ mod tests {
             }
         };
         let control = ExecutionControl::new(&cancellation, &sink);
+        let chunks = NoopBatchChunkSink;
         let error = runner_for(4)
             .with_fault(LaneFault::Spawn(2))
-            .run(BatchRequest::new(mixed_inputs(), false), &control)
+            .run(BatchRequest::new(mixed_inputs(), false), &chunks, &control)
             .expect_err("an injected lane spawn failure must be structured");
 
         assert_eq!(error.code, ErrorCode::ResourceExhausted);
@@ -920,9 +1242,10 @@ mod tests {
         let cancellation = CancellationToken::new();
         let progress = NoopProgressSink;
         let control = ExecutionControl::new(&cancellation, &progress);
+        let chunks = NoopBatchChunkSink;
         let error = runner_for(4)
             .with_fault(LaneFault::Panic(0))
-            .run(BatchRequest::new(mixed_inputs(), false), &control)
+            .run(BatchRequest::new(mixed_inputs(), false), &chunks, &control)
             .expect_err("an injected lane panic must not escape the application facade");
 
         assert_eq!(error.code, ErrorCode::Internal);

@@ -4,7 +4,8 @@ MacinMeter 0.3.1 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 
 ## 0.3.1 能力边界
 
-- 支持单文件与受共享资源计划约束的批量分析；最终结果始终保持输入顺序。
+- 支持单文件与受共享资源计划约束的批量分析；完成项按稳定 index 分块到达，最终
+  schema-v4 结果仍保持输入顺序。
 - 支持整窗拖入单文件、多文件、目录或混合输入；目录可选择当前层或递归发现。
 - 提供中英文界面、结果搜索与 DR 精细值排序、路径隐藏，以及 Markdown、共享
   `WireEnvelope` JSON、PNG 和 SVG 导出。
@@ -54,8 +55,16 @@ GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
 }
 ```
 
-批量完成项会合并为 `batch_items` 消息，以减少大批量时的 WebView 回调。Channel
-消息只用于显示进度和增量渲染；最终结果仍以命令返回的 `WireEnvelope` 为准。
+application 核心把批量完成项直接交给同步 `BatchChunkSink`；每个非空 chunk 当前
+最多 8 项，可能因 file lane 并行而乱序到达，但每项都有稳定的发现顺序 index。
+Tauri 将一个核心 chunk 原样映射为一个 `batch_items` 消息，以减少大批量时的
+WebView 回调。Channel 消息只用于显示进度和增量渲染；只有命令成功返回时这些分块
+才构成完整批次。过渡期 adapter 会显式收集分块，以继续返回原有 schema-v4
+`WireEnvelope`；核心本身不再构造完整 `BatchReport`。
+
+这层收集是 Tauri/现有导出格式的兼容边界，不是未来 egui 的执行模型。分块契约与
+不保留旧 Rust 执行 API 的决策见
+[`ADR-0016`](../docs/adr/0016-chunked-batch-result-delivery.md)。
 
 ## 开发与验证
 

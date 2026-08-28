@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use macinmeter::{
-    AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchRequest,
-    CancellationToken, ChannelLayout, ExecutionBudget, ExecutionControl, NoopProgressSink,
-    StreamSpec, WireEnvelope,
+    AnalysisResult, AnalyzerSession, Application, BatchItemOutcome, BatchReportCollector,
+    BatchRequest, CancellationToken, ChannelLayout, ExecutionBudget, ExecutionControl,
+    NoopProgressSink, StreamSpec, WireEnvelope,
 };
 #[cfg(feature = "performance-probes")]
 use macinmeter_codecs::PacketPipelineProbeSnapshot;
@@ -865,16 +865,25 @@ fn run_batch(arguments: &[OsString]) -> Result<Value, String> {
 
     let started = Instant::now();
     for _ in 0..iterations {
+        let collector = BatchReportCollector::new();
         #[cfg(feature = "performance-probes")]
-        let (next_report, next_probe) = application
+        let (completion, next_probe) = application
             .run_batch_with_performance_probe(
                 BatchRequest::new(vec![directory.clone()], true),
+                &collector,
                 &control,
             )
             .map_err(|error| error.to_string())?;
         #[cfg(not(feature = "performance-probes"))]
-        let next_report = application
-            .run_batch(BatchRequest::new(vec![directory.clone()], true), &control)
+        let completion = application
+            .run_batch(
+                BatchRequest::new(vec![directory.clone()], true),
+                &collector,
+                &control,
+            )
+            .map_err(|error| error.to_string())?;
+        let next_report = collector
+            .finish(completion)
             .map_err(|error| error.to_string())?;
         #[cfg(feature = "performance-probes")]
         {
