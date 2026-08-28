@@ -352,6 +352,7 @@ application
 ├── Application::analyze_file / chunked run_batch / discover_inputs
 ├── bounded FIFO admission / request cancellation
 ├── bounded BatchChunkSink delivery / BatchCompletion
+├── opt-in BatchDetailStore / lightweight batch list projection
 ├── explicit AlbumAggregator
 ├── progress
 └── versioned WireEnvelope
@@ -401,6 +402,9 @@ Error
   `BatchChunkSink` 分块移交，chunk 可乱序而 item 的发现 index 稳定。核心不保留
   完整 `BatchReport`，需要单文档的 adapter 显式收集并恢复最终顺序；既有部分失败
   语义不变，窗口级并行保持窗口内与跨窗口浮点归约的原始顺序；
+- 大批量交互 adapter 可把 chunk 移入显式 `BatchDetailStore`，列表只消费派生摘要，
+  选择项通过稳定 index 读取同一次分析产生的 `Arc<BatchItem>`；完整 schema-4 文档
+  只在显式导出时物化，不用重新分析文件实现详情加载；
 - 一个 active 顶层 job 与最多 64 个 FIFO reservation 保持不变。file lane、decoder
   worker、window worker、队列和重排序内存共用 application-owned 资源计划，禁止
   `file × packet × window` 乘法并发或 adapter 自建 pool；

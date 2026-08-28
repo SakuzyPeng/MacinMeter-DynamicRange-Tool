@@ -2,9 +2,10 @@
 
 use macinmeter::{
     AnalysisEvent, AnalyzeRequest, Application, BatchChunk, BatchChunkItem, BatchChunkSink,
-    BatchItemOutcome, BatchReportCollector, BatchRequest, BatchStatus, CancellationToken,
-    ContainerFormat, DecodeProgress, ErrorCode, ExecutionControl, NoopBatchChunkSink,
-    NoopProgressSink, SourceCodec, WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
+    BatchDetailStore, BatchItemOutcome, BatchItemSummaryOutcome, BatchListChunk,
+    BatchReportCollector, BatchRequest, BatchStatus, CancellationToken, ContainerFormat,
+    DecodeProgress, ErrorCode, ExecutionControl, NoopBatchChunkSink, NoopProgressSink, SourceCodec,
+    WIRE_SCHEMA_VERSION, WireEnvelope, WirePayload,
 };
 use serde_json::Value;
 use std::{
@@ -384,6 +385,49 @@ fn product_batch_preserves_explicit_input_order_across_file_lanes() {
             .items
             .iter()
             .all(|item| matches!(item.outcome, BatchItemOutcome::Success { .. }))
+    );
+}
+
+#[test]
+fn public_batch_detail_store_keeps_list_delivery_light_and_export_schema_stable() {
+    let path = fixture("tiny_duration.wav");
+    let cancellation = CancellationToken::new();
+    let progress = NoopProgressSink;
+    let store = BatchDetailStore::new();
+    let lists: Mutex<Vec<BatchListChunk>> = Mutex::new(Vec::new());
+    let chunks = |chunk| {
+        lists.lock().unwrap().push(store.store_chunk(chunk)?);
+        Ok(())
+    };
+
+    let completion = Application::new()
+        .run_batch(
+            BatchRequest::new(vec![path.clone()], false),
+            &chunks,
+            &ExecutionControl::new(&cancellation, &progress),
+        )
+        .expect("the public application path must deliver the detail once");
+    store.finish(completion).unwrap();
+
+    let lists = lists.into_inner().unwrap();
+    let row = &lists[0].items[0];
+    assert_eq!(row.index, 0);
+    assert_eq!(row.item.display_path, path.display().to_string());
+    assert!(matches!(
+        row.item.outcome,
+        BatchItemSummaryOutcome::Success { .. }
+    ));
+    let list_json = serde_json::to_value(&lists).unwrap();
+    assert!(list_json[0]["items"][0]["item"].get("analysis").is_none());
+
+    let detail = store.detail(0).unwrap().unwrap();
+    assert!(matches!(detail.outcome, BatchItemOutcome::Success { .. }));
+    let envelope = serde_json::to_value(WireEnvelope::batch(store.report().unwrap())).unwrap();
+    assert_eq!(envelope["schemaVersion"], WIRE_SCHEMA_VERSION);
+    assert_eq!(envelope["kind"], "batch");
+    assert_eq!(
+        envelope["data"]["items"][0]["displayPath"],
+        path.display().to_string()
     );
 }
 

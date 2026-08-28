@@ -2,19 +2,20 @@
 use crate::concurrency::PlanAllocation;
 use crate::{
     AnalysisError, AnalysisEvent, AnalysisReport, AnalysisStage, AnalyzeRequest, CancellationToken,
-    ErrorCode, ExecutionControl,
+    ChannelCount, ContainerFormat, DecodedDuration, ErrorCode, ExecutionControl, FiniteF32,
+    SampleRate, SourceCodec,
     application::{Analyzer, OverlapShape, PhaseTimings, SharedPhaseTimings},
     concurrency::ConcurrencyPlan,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     io,
     num::NonZeroUsize,
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::channel,
     },
@@ -55,6 +56,80 @@ pub enum BatchItemOutcome {
 pub struct BatchItem {
     pub display_path: String,
     pub outcome: BatchItemOutcome,
+}
+
+/// The small, immutable success projection needed by a batch list row.
+///
+/// Per-channel measurements, fixed algorithm parameters, diagnostics text, and
+/// the remaining source metadata stay in the corresponding [`BatchItem`]
+/// detail. This projection is derived from that detail and never recomputed by
+/// analyzing the source again.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchTrackSummary {
+    pub track_dr_db: Option<FiniteF32>,
+    pub rounded_dr: Option<u32>,
+    pub overall_rms_dbfs: Option<FiniteF32>,
+    pub primary_peak_dbfs: Option<FiniteF32>,
+    pub duration: DecodedDuration,
+    pub sample_rate: SampleRate,
+    pub channels: ChannelCount,
+    pub bits_per_sample: Option<u32>,
+    pub container: ContainerFormat,
+    pub codec: SourceCodec,
+    pub backend: String,
+    pub warning_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum BatchItemSummaryOutcome {
+    Success { metrics: BatchTrackSummary },
+    Failure { error: AnalysisError },
+}
+
+/// A lightweight row projection for lists containing hundreds or thousands of
+/// completed files.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchItemSummary {
+    pub display_path: String,
+    pub outcome: BatchItemSummaryOutcome,
+}
+
+impl BatchItem {
+    pub fn summary(&self) -> BatchItemSummary {
+        let outcome = match &self.outcome {
+            BatchItemOutcome::Success { report } => {
+                let aggregate = &report.analysis().aggregates().track;
+                let metrics = report.analysis().report();
+                let source = report.source();
+                BatchItemSummaryOutcome::Success {
+                    metrics: BatchTrackSummary {
+                        track_dr_db: aggregate.dr_db,
+                        rounded_dr: aggregate.rounded_dr,
+                        overall_rms_dbfs: metrics.overall_rms_dbfs,
+                        primary_peak_dbfs: metrics.primary_peak_dbfs,
+                        duration: metrics.duration,
+                        sample_rate: source.sample_rate,
+                        channels: source.channels,
+                        bits_per_sample: source.bits_per_sample,
+                        container: source.container,
+                        codec: source.codec,
+                        backend: report.diagnostics().backend.clone(),
+                        warning_count: report.diagnostics().warnings.len(),
+                    },
+                }
+            }
+            BatchItemOutcome::Failure { error } => BatchItemSummaryOutcome::Failure {
+                error: error.clone(),
+            },
+        };
+        BatchItemSummary {
+            display_path: self.display_path.clone(),
+            outcome,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -102,12 +177,156 @@ impl BatchChunk {
     pub const MAX_ITEMS: usize = 8;
 }
 
+/// One stable-index list row projected while its full detail moves into a
+/// [`BatchDetailStore`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchListItem {
+    pub index: usize,
+    pub item: BatchItemSummary,
+}
+
+/// A lightweight counterpart to one accepted result chunk.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchListChunk {
+    pub items: Vec<BatchListItem>,
+}
+
 /// Terminal metadata returned after every accepted chunk has been delivered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchCompletion {
     pub status: BatchStatus,
     pub summary: BatchSummary,
+}
+
+/// Owns exactly one complete detail per accepted batch index.
+///
+/// This is an opt-in consumer-side result session. The execution core still
+/// retains only its bounded pending chunk. Native adapters can keep this store
+/// beside lightweight list rows, obtain an `Arc` only for the selected detail,
+/// and materialize a complete [`BatchReport`] only for an explicit export.
+#[derive(Debug, Default)]
+pub struct BatchDetailStore {
+    state: Mutex<BatchDetailState>,
+}
+
+#[derive(Debug, Default)]
+struct BatchDetailState {
+    items: BTreeMap<usize, Arc<BatchItem>>,
+    completion: Option<BatchCompletion>,
+}
+
+impl BatchDetailStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Atomically retain a result chunk and return only its list projections.
+    pub fn store_chunk(&self, chunk: BatchChunk) -> Result<BatchListChunk, AnalysisError> {
+        if chunk.items.is_empty() || chunk.items.len() > BatchChunk::MAX_ITEMS {
+            return Err(batch_detail_store_error(format!(
+                "batch detail store received a chunk containing {} items",
+                chunk.items.len()
+            )));
+        }
+
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| batch_detail_store_error("batch detail store is poisoned"))?;
+        if state.completion.is_some() {
+            return Err(batch_detail_store_error(
+                "batch detail store received a chunk after completion",
+            ));
+        }
+
+        let mut indexes = HashSet::with_capacity(chunk.items.len());
+        for entry in &chunk.items {
+            if !indexes.insert(entry.index) || state.items.contains_key(&entry.index) {
+                return Err(batch_detail_store_error(format!(
+                    "batch detail store received duplicate index {}",
+                    entry.index
+                )));
+            }
+        }
+
+        let list = BatchListChunk {
+            items: chunk
+                .items
+                .iter()
+                .map(|entry| BatchListItem {
+                    index: entry.index,
+                    item: entry.item.summary(),
+                })
+                .collect(),
+        };
+        for entry in chunk.items {
+            state.items.insert(entry.index, Arc::new(entry.item));
+        }
+        Ok(list)
+    }
+
+    /// Seal the session after the execution core has delivered every chunk.
+    pub fn finish(&self, completion: BatchCompletion) -> Result<(), AnalysisError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| batch_detail_store_error("batch detail store is poisoned"))?;
+        if state.completion.is_some() {
+            return Err(batch_detail_store_error(
+                "batch detail store was completed more than once",
+            ));
+        }
+        validate_stored_batch(&state.items, completion)?;
+        state.completion = Some(completion);
+        Ok(())
+    }
+
+    /// Return a shared detail without cloning its report graph.
+    ///
+    /// Details already accepted before terminal completion are available while
+    /// a batch is still running. A caller must still wait for a successful
+    /// [`BatchCompletion`] before treating the session itself as complete.
+    pub fn detail(&self, index: usize) -> Result<Option<Arc<BatchItem>>, AnalysisError> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| batch_detail_store_error("batch detail store is poisoned"))?
+            .items
+            .get(&index)
+            .cloned())
+    }
+
+    pub fn completion(&self) -> Result<Option<BatchCompletion>, AnalysisError> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| batch_detail_store_error("batch detail store is poisoned"))?
+            .completion)
+    }
+
+    /// Clone every detail only when an adapter explicitly needs the stable
+    /// schema-4 batch document.
+    pub fn report(&self) -> Result<BatchReport, AnalysisError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| batch_detail_store_error("batch detail store is poisoned"))?;
+        let completion = state
+            .completion
+            .ok_or_else(|| batch_detail_store_error("batch detail store is not complete"))?;
+        Ok(BatchReport {
+            status: completion.status,
+            items: state
+                .items
+                .values()
+                .map(|item| item.as_ref().clone())
+                .collect(),
+            summary: completion.summary,
+        })
+    }
 }
 
 /// Receives owned result chunks from a batch execution.
@@ -701,6 +920,61 @@ fn batch_collector_error(message: impl Into<String>) -> AnalysisError {
     AnalysisError::new(ErrorCode::Internal, AnalysisStage::Output, message)
 }
 
+fn batch_detail_store_error(message: impl Into<String>) -> AnalysisError {
+    AnalysisError::new(ErrorCode::Internal, AnalysisStage::Output, message)
+}
+
+fn validate_stored_batch(
+    items: &BTreeMap<usize, Arc<BatchItem>>,
+    completion: BatchCompletion,
+) -> Result<(), AnalysisError> {
+    if items.len() != completion.summary.total {
+        return Err(batch_detail_store_error(format!(
+            "batch detail store received {} of {} items",
+            items.len(),
+            completion.summary.total
+        )));
+    }
+
+    let mut succeeded = 0;
+    let mut failed = 0;
+    for (expected, (index, item)) in items.iter().enumerate() {
+        if *index != expected {
+            return Err(batch_detail_store_error(format!(
+                "batch detail store expected index {expected}, found {index}"
+            )));
+        }
+        match item.outcome {
+            BatchItemOutcome::Success { .. } => succeeded += 1,
+            BatchItemOutcome::Failure { .. } => failed += 1,
+        }
+    }
+
+    let observed = BatchSummary {
+        total: items.len(),
+        succeeded,
+        failed,
+    };
+    if observed != completion.summary {
+        return Err(batch_detail_store_error(format!(
+            "batch detail store counts {observed:?} do not match completion {:?}",
+            completion.summary
+        )));
+    }
+    let status = match (succeeded, failed) {
+        (_, 0) => BatchStatus::Succeeded,
+        (0, _) => BatchStatus::Failed,
+        _ => BatchStatus::PartiallySucceeded,
+    };
+    if status != completion.status {
+        return Err(batch_detail_store_error(format!(
+            "batch detail store status {status:?} does not match completion {:?}",
+            completion.status
+        )));
+    }
+    Ok(())
+}
+
 fn lane_spawn_error(error: io::Error) -> AnalysisError {
     AnalysisError::new(
         ErrorCode::ResourceExhausted,
@@ -906,6 +1180,22 @@ mod tests {
         directory
     }
 
+    fn failed_entry(index: usize) -> BatchChunkItem {
+        BatchChunkItem {
+            index,
+            item: BatchItem {
+                display_path: format!("item-{index}"),
+                outcome: BatchItemOutcome::Failure {
+                    error: AnalysisError::new(
+                        ErrorCode::UnsupportedFormat,
+                        AnalysisStage::Probe,
+                        "test failure",
+                    ),
+                },
+            },
+        }
+    }
+
     const MAX_LANE_PLAN_WORKERS: usize = 8;
 
     #[test]
@@ -985,23 +1275,10 @@ mod tests {
 
     #[test]
     fn the_explicit_report_collector_restores_stable_index_order() {
-        let item = |index: usize| BatchChunkItem {
-            index,
-            item: BatchItem {
-                display_path: format!("item-{index}"),
-                outcome: BatchItemOutcome::Failure {
-                    error: AnalysisError::new(
-                        ErrorCode::UnsupportedFormat,
-                        AnalysisStage::Probe,
-                        "test failure",
-                    ),
-                },
-            },
-        };
         let collector = BatchReportCollector::new();
         collector
             .emit(BatchChunk {
-                items: vec![item(1), item(0)],
+                items: vec![failed_entry(1), failed_entry(0)],
             })
             .unwrap();
         let report = collector
@@ -1017,6 +1294,112 @@ mod tests {
 
         assert_eq!(report.items[0].display_path, "item-0");
         assert_eq!(report.items[1].display_path, "item-1");
+    }
+
+    #[test]
+    fn detail_store_keeps_one_shared_detail_and_projects_only_list_fields() {
+        let cancellation = CancellationToken::new();
+        let progress = NoopProgressSink;
+        let control = ExecutionControl::new(&cancellation, &progress);
+        let store = BatchDetailStore::new();
+        let lists: Mutex<Vec<BatchListChunk>> = Mutex::new(Vec::new());
+        let chunks = |chunk| {
+            lists.lock().unwrap().push(store.store_chunk(chunk)?);
+            Ok(())
+        };
+
+        let completion = runner_for(1)
+            .run(
+                BatchRequest::new(vec![fixture("tiny_duration.wav")], false),
+                &chunks,
+                &control,
+            )
+            .expect("the real result must reach the detail store");
+
+        let detail_before_completion = store.detail(0).unwrap().unwrap();
+        assert!(store.report().is_err());
+        store.finish(completion).unwrap();
+        let detail_after_completion = store.detail(0).unwrap().unwrap();
+        assert!(Arc::ptr_eq(
+            &detail_before_completion,
+            &detail_after_completion
+        ));
+
+        let lists = lists.into_inner().unwrap();
+        let [list] = lists.as_slice() else {
+            panic!("the one-item batch must project one list chunk");
+        };
+        let [row] = list.items.as_slice() else {
+            panic!("the one-item batch must project one list row");
+        };
+        let BatchItemSummaryOutcome::Success { metrics } = &row.item.outcome else {
+            panic!("the wave fixture must have a success summary");
+        };
+        let BatchItemOutcome::Success { report } = &detail_before_completion.outcome else {
+            panic!("the retained detail must be the successful report");
+        };
+        assert_eq!(
+            metrics.track_dr_db,
+            report.analysis().aggregates().track.dr_db
+        );
+        assert_eq!(metrics.duration, report.analysis().report().duration);
+        assert_eq!(metrics.channels, report.source().channels);
+        let serialized = serde_json::to_string(list).unwrap();
+        assert!(!serialized.contains("\"analysis\""));
+        assert!(!serialized.contains("\"diagnostics\""));
+
+        let restored = store.report().unwrap();
+        assert_eq!(restored.summary, completion.summary);
+        assert_eq!(restored.items, [detail_before_completion.as_ref().clone()]);
+    }
+
+    #[test]
+    fn detail_store_rejects_a_duplicate_chunk_atomically() {
+        let store = BatchDetailStore::new();
+        store
+            .store_chunk(BatchChunk {
+                items: vec![failed_entry(0)],
+            })
+            .unwrap();
+        let error = store
+            .store_chunk(BatchChunk {
+                items: vec![failed_entry(1), failed_entry(0)],
+            })
+            .expect_err("a duplicate stable index must reject the whole chunk");
+
+        assert_eq!(error.stage, AnalysisStage::Output);
+        assert!(error.message.contains("duplicate index 0"));
+        assert!(store.detail(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn detail_store_handles_a_thousand_rows_without_cloning_details_for_the_list() {
+        const ITEMS: usize = 1_000;
+        let store = BatchDetailStore::new();
+        let mut projected = 0;
+        for start in (0..ITEMS).step_by(BatchChunk::MAX_ITEMS) {
+            let end = (start + BatchChunk::MAX_ITEMS).min(ITEMS);
+            let list = store
+                .store_chunk(BatchChunk {
+                    items: (start..end).map(failed_entry).collect(),
+                })
+                .unwrap();
+            projected += list.items.len();
+        }
+        store
+            .finish(BatchCompletion {
+                status: BatchStatus::Failed,
+                summary: BatchSummary {
+                    total: ITEMS,
+                    succeeded: 0,
+                    failed: ITEMS,
+                },
+            })
+            .unwrap();
+
+        assert_eq!(projected, ITEMS);
+        assert_eq!(store.report().unwrap().items.len(), ITEMS);
+        assert_eq!(store.detail(ITEMS).unwrap(), None);
     }
 
     /// A mixed-route, mixed-outcome input set.

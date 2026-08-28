@@ -12,7 +12,10 @@ The backend exposes:
 | Command | Purpose |
 |---|---|
 | `run_analysis` | analyze one explicit file |
-| `run_batch` | analyze discovered inputs across bounded file lanes, stream result chunks, and return the stable schema-4 batch envelope |
+| `run_batch` | analyze discovered inputs, stream lightweight summaries, and return a retained result ID plus completion counts |
+| `get_batch_item_detail` | return exactly one retained item selected by stable index |
+| `get_batch_report` | explicitly materialize the stable schema-4 batch envelope for a whole-result operation |
+| `release_batch_results` | release one completed native result session |
 | `discover_inputs` | expand files/directories in stable order under a cancellable `jobId` |
 | `cancel_job` | cancel exactly one caller-generated `jobId` |
 | `get_capabilities` | return the read-only native capability snapshot; the picker builds its extension filter from `stableDiscoveryExtensions` instead of a handwritten list |
@@ -30,11 +33,11 @@ index and path, and the frontend aggregates progress from the latest state of
 every item instead of treating an event index as a completed serial prefix.
 Completed results use the core `BatchChunkSink` path: each non-empty chunk has
 at most eight owned items, may arrive out of order, and carries a stable
-discovery index for every item. The transitional Tauri adapter forwards each
-core chunk as one `batch_items` channel message and explicitly collects the
-same items only to preserve the final schema-4 envelope. The batch is complete
-only when the command returns successfully; earlier chunks can precede a later
-cancellation or output error.
+discovery index for every item. The transitional Tauri adapter moves the full
+items into one native `BatchDetailStore` and forwards only a lightweight
+`batch_summaries` list chunk. The batch is complete only when the command
+returns successfully; earlier summaries can precede a later cancellation or
+output error.
 
 The frontend creates each `jobId`. Tauri state maps that ID to an independent
 `CancellationToken`; inserting a duplicate active ID is an error. Progress
@@ -51,8 +54,10 @@ Directory previews are jobs too. Reselecting, clearing, or starting analysis
 cancels an outstanding preview before continuing, so it cannot race a batch
 directory walk.
 
-Analysis and batch responses use schema 4 of the same versioned `WireEnvelope`
-as CLI JSON. The analysis payload exposes `analysis.aggregates.track`, separate
+Analysis responses and explicitly materialized batch documents use schema 4 of
+the same versioned `WireEnvelope` as CLI JSON. The runtime batch completion and
+list-summary DTOs are not exported documents. The analysis payload exposes
+`analysis.aggregates.track`, separate
 channel/track `report` metrics, exact decoded duration, and DR diagnostics named
 `drSelectedPeak`, `drPrimaryPeak`, and `drSecondaryPeak`. Zero-level dBFS is
 `null`; other public report values are finite by construction.
@@ -63,10 +68,15 @@ explicit `AlbumAggregator` is not invoked by Tauri commands. Rendering
 preferences stay in TypeScript and never enter the analysis request.
 
 The application core no longer returns or retains a complete `BatchReport`.
-That type remains a wire-document compatibility boundary for CLI and this
-transitional adapter. A future egui adapter consumes result chunks directly;
-it does not need to preserve the Tauri channel or WebView result path. See
-[ADR-0016](adr/0016-chunked-batch-result-delivery.md).
+That type remains a wire-document compatibility boundary. Tauri returns only a
+result ID plus completion metadata, fetches one full item when its Details
+button is selected, and materializes the original schema-4 batch envelope only
+for explicit whole-result operations such as JSON export. Native sessions are
+released when results are cleared and at most eight abandoned sessions can be
+retained. A future egui adapter owns the detail store directly and needs no
+Tauri registry, channel, or WebView result path. See
+[ADR-0016](adr/0016-chunked-batch-result-delivery.md) and
+[ADR-0017](adr/0017-on-demand-batch-details.md).
 
 The product frontend accepts native whole-window drops of files, directories,
 or mixed inputs. Dropped and picker-selected paths share the same cancellable

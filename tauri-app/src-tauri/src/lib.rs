@@ -2,7 +2,7 @@
 
 use macinmeter::{
     AnalysisError, AnalysisEvent, AnalysisStage, AnalyzeRequest, Application, ApplicationJob,
-    BatchChunk, BatchChunkItem, BatchChunkSink, BatchCompletion, BatchReportCollector,
+    BatchChunk, BatchChunkSink, BatchCompletion, BatchDetailStore, BatchItem, BatchListItem,
     BatchRequest, CancellationToken, CapabilitySnapshot, ErrorCode, NoopProgressSink, WireEnvelope,
 };
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ use std::{
 use tauri::{Emitter, ipc::Channel};
 
 const FRONTEND_DECODE_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
+const MAX_RETAINED_BATCH_RESULTS: usize = 8;
 
 #[derive(Debug, Clone, Default)]
 struct JobRegistry {
@@ -83,6 +84,69 @@ impl Drop for ActiveJob {
     }
 }
 
+/// Transitional Tauri ownership for completed details.
+///
+/// The future egui model can own one `Arc<BatchDetailStore>` directly. Tauri
+/// needs an ID registry because a command requesting one detail runs after the
+/// batch command has returned. Sessions are explicitly released by the
+/// frontend and bounded so abandoned windows cannot retain results without
+/// limit.
+#[derive(Debug, Clone, Default)]
+struct BatchResultRegistry {
+    results: Arc<Mutex<HashMap<String, Arc<BatchDetailStore>>>>,
+}
+
+impl BatchResultRegistry {
+    fn insert(&self, id: &str, details: Arc<BatchDetailStore>) -> Result<(), AnalysisError> {
+        let mut results = self
+            .results
+            .lock()
+            .map_err(|_| internal_error("batch result registry is poisoned"))?;
+        if results.contains_key(id) {
+            return Err(AnalysisError::new(
+                ErrorCode::InvalidRequest,
+                AnalysisStage::Validation,
+                "batch result id is already retained",
+            ));
+        }
+        if results.len() >= MAX_RETAINED_BATCH_RESULTS {
+            return Err(AnalysisError::new(
+                ErrorCode::ResourceExhausted,
+                AnalysisStage::Validation,
+                "too many batch result sessions are retained",
+            )
+            .recoverable(true));
+        }
+        results.insert(id.to_owned(), details);
+        Ok(())
+    }
+
+    fn get(&self, id: &str) -> Result<Arc<BatchDetailStore>, AnalysisError> {
+        self.results
+            .lock()
+            .map_err(|_| internal_error("batch result registry is poisoned"))?
+            .get(id)
+            .cloned()
+            .ok_or_else(|| {
+                AnalysisError::new(
+                    ErrorCode::InvalidRequest,
+                    AnalysisStage::Validation,
+                    "batch result is no longer available",
+                )
+                .recoverable(true)
+            })
+    }
+
+    fn remove(&self, id: &str) -> Result<bool, AnalysisError> {
+        Ok(self
+            .results
+            .lock()
+            .map_err(|_| internal_error("batch result registry is poisoned"))?
+            .remove(id)
+            .is_some())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunAnalysisRequest {
@@ -104,6 +168,19 @@ struct RunBatchRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BatchDetailRequest {
+    result_id: String,
+    index: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchResultRequest {
+    result_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DiscoverRequest {
     job_id: String,
     inputs: Vec<PathBuf>,
@@ -114,6 +191,31 @@ struct DiscoverRequest {
 #[serde(rename_all = "camelCase")]
 struct DiscoveryResponse {
     files: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(
+    tag = "outcome",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+enum BatchRunResponse {
+    Completed {
+        result_id: String,
+        tool_version: String,
+        completion: BatchCompletion,
+    },
+    Error {
+        envelope: WireEnvelope,
+    },
+}
+
+impl BatchRunResponse {
+    fn error(error: AnalysisError) -> Self {
+        Self::Error {
+            envelope: WireEnvelope::error(error),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -138,7 +240,7 @@ impl FrontendProgressState {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum FrontendMessage {
     Event { event: AnalysisEvent },
-    BatchItems { items: Vec<BatchChunkItem> },
+    BatchSummaries { items: Vec<BatchListItem> },
 }
 
 /// Bridges core progress into one invocation-scoped IPC channel.
@@ -150,7 +252,7 @@ enum FrontendMessage {
 struct FrontendProgressSink {
     channel: Channel<FrontendMessage>,
     state: Mutex<FrontendProgressState>,
-    collector: BatchReportCollector,
+    details: Arc<BatchDetailStore>,
 }
 
 impl FrontendProgressSink {
@@ -158,20 +260,24 @@ impl FrontendProgressSink {
         Self {
             channel,
             state: Mutex::new(FrontendProgressState::default()),
-            collector: BatchReportCollector::new(),
+            details: Arc::new(BatchDetailStore::new()),
         }
     }
 
-    fn finish(self, completion: BatchCompletion) -> Result<macinmeter::BatchReport, AnalysisError> {
-        self.collector.finish(completion)
+    fn details(&self) -> Arc<BatchDetailStore> {
+        Arc::clone(&self.details)
+    }
+
+    fn finish(&self, completion: BatchCompletion) -> Result<(), AnalysisError> {
+        self.details.finish(completion)
     }
 }
 
 impl BatchChunkSink for FrontendProgressSink {
     fn emit(&self, chunk: BatchChunk) -> Result<(), AnalysisError> {
-        self.collector.emit(chunk.clone())?;
+        let list = self.details.store_chunk(chunk)?;
         self.channel
-            .send(FrontendMessage::BatchItems { items: chunk.items })
+            .send(FrontendMessage::BatchSummaries { items: list.items })
             .map_err(|error| {
                 AnalysisError::new(
                     ErrorCode::OutputFailed,
@@ -318,26 +424,34 @@ fn execute_analysis(
 async fn run_batch(
     window: tauri::Window,
     registry: tauri::State<'_, JobRegistry>,
+    batch_results: tauri::State<'_, BatchResultRegistry>,
     application: tauri::State<'_, Application>,
     request: RunBatchRequest,
     on_event: Channel<FrontendMessage>,
-) -> Result<WireEnvelope, AnalysisError> {
+) -> Result<BatchRunResponse, AnalysisError> {
     if let Err(error) = validate_job_id(&request.job_id) {
-        return Ok(WireEnvelope::error(error));
+        return Ok(BatchRunResponse::error(error));
     }
     let registry = registry.inner().clone();
     let active_job = match registry.register(&request.job_id) {
         Ok(job) => job,
-        Err(error) => return Ok(WireEnvelope::error(error)),
+        Err(error) => return Ok(BatchRunResponse::error(error)),
     };
     let application_job = match application.reserve(&active_job.token) {
         Ok(job) => job,
-        Err(error) => return Ok(WireEnvelope::error(error)),
+        Err(error) => return Ok(BatchRunResponse::error(error)),
     };
 
     let job_id = request.job_id;
-    let envelope = match tauri::async_runtime::spawn_blocking(move || {
+    let result_registry = batch_results.inner().clone();
+    let cleanup_registry = result_registry.clone();
+    let cleanup_id = job_id.clone();
+    let response = match tauri::async_runtime::spawn_blocking(move || {
         let sink = FrontendProgressSink::new(on_event);
+        if let Err(error) = result_registry.insert(&job_id, sink.details()) {
+            drop(active_job);
+            return BatchRunResponse::error(error);
+        }
         let batch_request = BatchRequest {
             inputs: request.inputs,
             recursive: request.recursive,
@@ -351,29 +465,92 @@ async fn run_batch(
                 .run_batch(batch_request, &sink, &sink)
                 .map(|completion| (completion, None))
         };
-        let envelope = match ran {
+        let response = match ran {
             Ok((completion, timings)) => match sink.finish(completion) {
-                Ok(report) => {
+                Ok(()) => {
                     if let Some(timings) = timings {
                         emit_timing(&window, &job_id, true, timings);
                     }
-                    WireEnvelope::batch(report)
+                    BatchRunResponse::Completed {
+                        result_id: job_id.clone(),
+                        tool_version: macinmeter::VERSION.to_owned(),
+                        completion,
+                    }
                 }
-                Err(error) => WireEnvelope::error(error),
+                Err(error) => {
+                    let _ = result_registry.remove(&job_id);
+                    BatchRunResponse::error(error)
+                }
             },
-            Err(error) => WireEnvelope::error(error),
+            Err(error) => {
+                let _ = result_registry.remove(&job_id);
+                BatchRunResponse::error(error)
+            }
         };
         drop(active_job);
-        envelope
+        response
     })
     .await
     {
-        Ok(envelope) => envelope,
-        Err(error) => WireEnvelope::error(internal_error(format!(
-            "batch task failed to join: {error}"
-        ))),
+        Ok(response) => response,
+        Err(error) => {
+            let _ = cleanup_registry.remove(&cleanup_id);
+            BatchRunResponse::error(internal_error(format!(
+                "batch task failed to join: {error}"
+            )))
+        }
     };
-    Ok(envelope)
+    Ok(response)
+}
+
+#[tauri::command]
+fn get_batch_item_detail(
+    batch_results: tauri::State<'_, BatchResultRegistry>,
+    request: BatchDetailRequest,
+) -> Result<BatchItem, AnalysisError> {
+    validate_job_id(&request.result_id)?;
+    batch_results
+        .get(&request.result_id)?
+        .detail(request.index)?
+        .map(|item| item.as_ref().clone())
+        .ok_or_else(|| {
+            AnalysisError::new(
+                ErrorCode::InvalidRequest,
+                AnalysisStage::Validation,
+                "batch detail index is not available",
+            )
+            .recoverable(true)
+        })
+}
+
+#[tauri::command]
+async fn get_batch_report(
+    batch_results: tauri::State<'_, BatchResultRegistry>,
+    request: BatchResultRequest,
+) -> Result<WireEnvelope, AnalysisError> {
+    validate_job_id(&request.result_id)?;
+    let details = batch_results.get(&request.result_id)?;
+    tauri::async_runtime::spawn_blocking(move || details.report().map(WireEnvelope::batch))
+        .await
+        .map_err(|error| internal_error(format!("batch report task failed to join: {error}")))?
+}
+
+#[tauri::command]
+fn release_batch_results(
+    batch_results: tauri::State<'_, BatchResultRegistry>,
+    request: BatchResultRequest,
+) -> Result<bool, AnalysisError> {
+    validate_job_id(&request.result_id)?;
+    let details = batch_results.get(&request.result_id)?;
+    if details.completion()?.is_none() {
+        return Err(AnalysisError::new(
+            ErrorCode::InvalidRequest,
+            AnalysisStage::Validation,
+            "an active batch result cannot be released",
+        )
+        .recoverable(true));
+    }
+    batch_results.remove(&request.result_id)
 }
 
 #[tauri::command]
@@ -435,6 +612,7 @@ fn internal_error(message: impl Into<String>) -> AnalysisError {
 pub fn run() {
     let result = tauri::Builder::<tauri::Wry>::default()
         .manage(JobRegistry::default())
+        .manage(BatchResultRegistry::default())
         .manage(Application::new())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -442,6 +620,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             run_analysis,
             run_batch,
+            get_batch_item_detail,
+            get_batch_report,
+            release_batch_results,
             discover_inputs,
             cancel_job,
             get_capabilities
@@ -502,6 +683,73 @@ mod tests {
             assert!(registry.register("job").is_err());
         }
         assert!(registry.register("job").is_ok());
+    }
+
+    #[test]
+    fn retained_batch_results_are_bounded_and_explicitly_released() {
+        let registry = BatchResultRegistry::default();
+        for index in 0..MAX_RETAINED_BATCH_RESULTS {
+            registry
+                .insert(
+                    &format!("result-{index}"),
+                    Arc::new(BatchDetailStore::new()),
+                )
+                .unwrap();
+        }
+
+        let full = registry
+            .insert("one-too-many", Arc::new(BatchDetailStore::new()))
+            .expect_err("abandoned result sessions must have a hard bound");
+        assert_eq!(full.code, ErrorCode::ResourceExhausted);
+        assert!(full.recoverable);
+
+        assert!(registry.remove("result-0").unwrap());
+        assert!(registry.get("result-0").is_err());
+        registry
+            .insert("replacement", Arc::new(BatchDetailStore::new()))
+            .unwrap();
+    }
+
+    #[test]
+    fn runtime_batch_dtos_are_lightweight_and_separate_from_wire_schema() {
+        let message = FrontendMessage::BatchSummaries {
+            items: vec![BatchListItem {
+                index: 3,
+                item: macinmeter::BatchItemSummary {
+                    display_path: "broken.wav".to_owned(),
+                    outcome: macinmeter::BatchItemSummaryOutcome::Failure {
+                        error: AnalysisError::new(
+                            ErrorCode::MalformedMedia,
+                            AnalysisStage::Probe,
+                            "test failure",
+                        ),
+                    },
+                },
+            }],
+        };
+        let message = serde_json::to_value(message).unwrap();
+        assert_eq!(message["type"], "batch_summaries");
+        assert_eq!(message["items"][0]["index"], 3);
+        assert_eq!(message["items"][0]["item"]["outcome"]["status"], "failure");
+        assert!(message["items"][0]["item"].get("analysis").is_none());
+
+        let response = serde_json::to_value(BatchRunResponse::Completed {
+            result_id: "result-id".to_owned(),
+            tool_version: macinmeter::VERSION.to_owned(),
+            completion: BatchCompletion {
+                status: macinmeter::BatchStatus::PartiallySucceeded,
+                summary: macinmeter::BatchSummary {
+                    total: 2,
+                    succeeded: 1,
+                    failed: 1,
+                },
+            },
+        })
+        .unwrap();
+        assert_eq!(response["outcome"], "completed");
+        assert_eq!(response["resultId"], "result-id");
+        assert_eq!(response["completion"]["summary"]["total"], 2);
+        assert!(response.get("schemaVersion").is_none());
     }
 
     #[test]

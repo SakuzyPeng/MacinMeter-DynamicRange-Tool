@@ -166,6 +166,45 @@ export type BatchItem = {
     | { status: "failure"; error: PublicError };
 };
 
+export type BatchTrackSummary = {
+  trackDrDb: number | null;
+  roundedDr: number | null;
+  overallRmsDbfs: number | null;
+  primaryPeakDbfs: number | null;
+  duration: {
+    decodedFrames: number;
+    sampleRate: number;
+  };
+  sampleRate: number;
+  channels: number;
+  bitsPerSample: number | null;
+  container: string;
+  codec: string;
+  backend: string;
+  warningCount: number;
+};
+
+export type BatchItemSummary = {
+  displayPath: string;
+  outcome:
+    | { status: "success"; metrics: BatchTrackSummary }
+    | { status: "failure"; error: PublicError };
+};
+
+export type BatchCompletion = {
+  status: "succeeded" | "partially_succeeded" | "failed";
+  summary: { total: number; succeeded: number; failed: number };
+};
+
+export type BatchRunResponse =
+  | {
+      outcome: "completed";
+      resultId: string;
+      toolVersion: string;
+      completion: BatchCompletion;
+    }
+  | { outcome: "error"; envelope: WireEnvelope };
+
 export type BatchReport = {
   status: "succeeded" | "partially_succeeded" | "failed";
   items: BatchItem[];
@@ -213,8 +252,8 @@ export type AnalysisEvent =
 export type FrontendMessage =
   | { type: "event"; event: AnalysisEvent }
   | {
-      type: "batch_items";
-      items: { index: number; item: BatchItem }[];
+      type: "batch_summaries";
+      items: { index: number; item: BatchItemSummary }[];
     };
 
 /// Delivered on its own event, never inside the exported envelope: wall time

@@ -47,8 +47,10 @@ pub use application::{AnalyzeRequest, PhaseTimings};
 #[doc(hidden)]
 pub use batch::BatchPerformanceProbe;
 pub use batch::{
-    BatchChunk, BatchChunkItem, BatchChunkSink, BatchCompletion, BatchItem, BatchItemOutcome,
-    BatchReport, BatchReportCollector, BatchRequest, BatchStatus, BatchSummary, NoopBatchChunkSink,
+    BatchChunk, BatchChunkItem, BatchChunkSink, BatchCompletion, BatchDetailStore, BatchItem,
+    BatchItemOutcome, BatchItemSummary, BatchItemSummaryOutcome, BatchListChunk, BatchListItem,
+    BatchReport, BatchReportCollector, BatchRequest, BatchStatus, BatchSummary, BatchTrackSummary,
+    NoopBatchChunkSink,
 };
 pub use capability::{
     CapabilityRoute, CapabilitySnapshot, CapabilityStatus, NativeRouteCapability, capabilities,

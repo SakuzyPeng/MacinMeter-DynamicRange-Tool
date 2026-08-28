@@ -27,7 +27,10 @@ import {
 import type {
   AnalysisEvent,
   AnalysisReport,
+  BatchCompletion,
   BatchItem,
+  BatchItemSummary,
+  BatchRunResponse,
   CapabilitySnapshot,
   ChannelResult,
   DiscoveryResponse,
@@ -49,8 +52,16 @@ type StatusState = {
 type DisplayEntry = {
   key: number;
   displayPath: string;
+  summary: BatchItemSummary | null;
   report: AnalysisReport | null;
   error: PublicError | null;
+  expanded: boolean;
+};
+
+type LazyBatchResult = {
+  resultId: string;
+  toolVersion: string;
+  completion: BatchCompletion;
 };
 
 const element = <T extends HTMLElement>(id: string): T => {
@@ -104,8 +115,12 @@ let cancellingJobId: string | null = null;
 let activeTotal = 1;
 const activeProgress = new BatchProgress(activeTotal);
 let lastEnvelope: WireEnvelope | null = null;
-const streamedBatchItems = new Map<number, BatchItem>();
-const pendingStreamedBatchItems = new Map<number, BatchItem>();
+let lastBatchResult: LazyBatchResult | null = null;
+const batchItemSummaries = new Map<number, BatchItemSummary>();
+const pendingBatchItemSummaries = new Map<number, BatchItemSummary>();
+const loadedBatchItems = new Map<number, BatchItem>();
+const expandedBatchItems = new Set<number>();
+const loadingBatchItems = new Set<number>();
 const renderedStreamedBatchNodes = new Map<number, HTMLElement>();
 const renderedStreamedBatchIndexes: number[] = [];
 let streamedBatchRenderFrame: number | null = null;
@@ -124,6 +139,7 @@ let searchIndex = -1;
 let discoveryFilterExtensions: string[] = [];
 let statusState: StatusState = { key: "status.ready", progress: 0 };
 let exportInProgress = false;
+let rawRequestRevision = 0;
 
 const escapeHtml = (value: string): string => {
   const replacements: Record<string, string> = {
@@ -226,7 +242,7 @@ const updateControls = (): void => {
   analyzeButton.classList.toggle("cancel-mode", running);
   analyzeButton.textContent = t(running ? "btn.cancel" : "btn.analyze");
 
-  const hasResult = lastEnvelope !== null;
+  const hasResult = lastEnvelope !== null || lastBatchResult !== null;
   copyMarkdownButton.disabled = !hasResult || interactionLocked;
   exportJsonButton.disabled = !hasResult || interactionLocked;
   exportImageButton.disabled = !hasResult || interactionLocked;
@@ -352,13 +368,28 @@ const resetStreamedBatch = (): void => {
     cancelAnimationFrame(streamedBatchRenderFrame);
     streamedBatchRenderFrame = null;
   }
-  streamedBatchItems.clear();
-  pendingStreamedBatchItems.clear();
+  batchItemSummaries.clear();
+  pendingBatchItemSummaries.clear();
+  loadedBatchItems.clear();
+  expandedBatchItems.clear();
+  loadingBatchItems.clear();
   renderedStreamedBatchNodes.clear();
   renderedStreamedBatchIndexes.length = 0;
 };
 
+const releaseRetainedBatch = (): void => {
+  const resultId = lastBatchResult?.resultId;
+  lastBatchResult = null;
+  if (!resultId) return;
+  void invoke<boolean>("release_batch_results", {
+    request: { resultId },
+  }).catch(() => {
+    // The backend may already have discarded a failed or cancelled session.
+  });
+};
+
 const clearResults = (): void => {
+  releaseRetainedBatch();
   resetStreamedBatch();
   lastEnvelope = null;
   lastPhaseTimings = null;
@@ -369,6 +400,8 @@ const clearResults = (): void => {
   rawPanel.open = false;
   rawPanel.hidden = true;
   rawJson.textContent = "";
+  delete rawJson.dataset.loading;
+  rawRequestRevision += 1;
   sortMode = "none";
   sortModeSelect.value = "none";
   searchInput.value = "";
@@ -431,19 +464,28 @@ const renderChannel = (report: AnalysisReport, channel: ChannelResult): string =
 
 const reportHeader = (entry: DisplayEntry): string => {
   const name = fileName(entry.displayPath);
+  const lazySuccess = entry.summary?.outcome.status === "success";
+  const loading = loadingBatchItems.has(entry.key);
+  const detailAction = lazySuccess
+    ? `<button type="button" class="entry-action toggle-entry-detail" data-entry="${entry.key}" ${loading ? "disabled" : ""}>${escapeHtml(t(loading ? "btn.loadingDetails" : entry.expanded ? "btn.hideDetails" : "btn.showDetails"))}</button>`
+    : "";
   return `<div class="directory-entry-header">
     <div class="entry-title">
       <div class="entry-title-row"><h3>${escapeHtml(name)}</h3></div>
       ${hidePath ? "" : `<span class="entry-path">${escapeHtml(entry.displayPath)}</span>`}
     </div>
     <div class="entry-actions">
-      <button type="button" class="entry-action copy-entry-md" data-entry="${entry.key}">${escapeHtml(t("btn.entryMd"))}</button>
+      ${detailAction}
+      ${entry.report || entry.error ? `<button type="button" class="entry-action copy-entry-md" data-entry="${entry.key}">${escapeHtml(t("btn.entryMd"))}</button>` : ""}
       ${entry.report ? `<button type="button" class="entry-action copy-entry-png" data-entry="${entry.key}">${escapeHtml(t("btn.entryPng"))}</button>` : ""}
     </div>
   </div>`;
 };
 
 const renderReportEntry = (entry: DisplayEntry): string => {
+  if (entry.summary?.outcome.status === "success" && !entry.report) {
+    return renderBatchSummaryEntry(entry, entry.summary.outcome.metrics);
+  }
   if (!entry.report) return renderErrorEntry(entry);
   const report = entry.report;
   const aggregate = report.analysis.aggregates.track;
@@ -486,6 +528,40 @@ const renderReportEntry = (entry: DisplayEntry): string => {
   </article>`;
 };
 
+const renderBatchSummaryEntry = (
+  entry: DisplayEntry,
+  metrics: Extract<BatchItemSummary["outcome"], { status: "success" }>["metrics"],
+): string => {
+  const duration = formatDuration(
+    metrics.duration.decodedFrames,
+    metrics.duration.sampleRate,
+  );
+  const bits = metrics.bitsPerSample
+    ? t("label.bits", { bits: metrics.bitsPerSample })
+    : "—";
+  const aggregateHtml =
+    metrics.roundedDr === null || metrics.trackDrDb === null
+      ? `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>—</strong><em>${escapeHtml(t("result.noAggregate"))}</em></div>`
+      : `<div class="dr-hero"><span>${escapeHtml(t("result.track"))}</span><strong>DR${metrics.roundedDr}</strong><em>${metrics.trackDrDb.toFixed(4)} dB</em></div>`;
+  return `<article id="entry-${entry.key}" class="directory-entry batch-list-entry" data-search="${escapeHtml(`${fileName(entry.displayPath)} ${entry.displayPath}`.toLowerCase())}">
+    ${reportHeader(entry)}
+    <div class="track-summary batch-list-summary">
+      ${aggregateHtml}
+      <div class="metric"><span>${escapeHtml(t("result.peak"))}</span><strong>${formatDbfs(metrics.primaryPeakDbfs)}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.rms"))}</span><strong>${formatDbfs(metrics.overallRmsDbfs)}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.duration"))}</span><strong>${duration}</strong></div>
+      <div class="metric"><span>${escapeHtml(t("result.backend"))}</span><strong>${escapeHtml(metrics.backend)}</strong></div>
+    </div>
+    <div class="format-line">
+      <span>${metrics.sampleRate.toLocaleString()} Hz</span>
+      <span>${metrics.channels} ch</span>
+      <span>${escapeHtml(bits)}</span>
+      <span>${escapeHtml(metrics.container)} / ${escapeHtml(metrics.codec)}</span>
+      ${metrics.warningCount > 0 ? `<span>${escapeHtml(t("result.warningCount", { count: metrics.warningCount }))}</span>` : ""}
+    </div>
+  </article>`;
+};
+
 const renderErrorEntry = (entry: DisplayEntry): string => {
   const error = entry.error;
   const message = error?.message ?? t("status.failed");
@@ -498,23 +574,54 @@ const renderErrorEntry = (entry: DisplayEntry): string => {
 const batchDisplayEntry = (item: BatchItem, key: number): DisplayEntry => ({
   key,
   displayPath: item.displayPath,
+  summary: batchItemSummaries.get(key) ?? null,
   report: item.outcome.status === "success" ? item.outcome.report : null,
   error: item.outcome.status === "failure" ? item.outcome.error : null,
+  expanded: true,
 });
 
+const batchSummaryDisplayEntry = (
+  item: BatchItemSummary,
+  key: number,
+): DisplayEntry => {
+  const loaded = loadedBatchItems.get(key);
+  const expanded = expandedBatchItems.has(key);
+  return {
+    key,
+    displayPath: item.displayPath,
+    summary: item,
+    report:
+      expanded && loaded?.outcome.status === "success"
+        ? loaded.outcome.report
+        : null,
+    error:
+      item.outcome.status === "failure"
+        ? item.outcome.error
+        : expanded && loaded?.outcome.status === "failure"
+          ? loaded.outcome.error
+          : null,
+    expanded,
+  };
+};
+
 const displayEntries = (): DisplayEntry[] => {
-  if (!lastEnvelope) {
-    return [...streamedBatchItems.entries()]
+  if (lastBatchResult || (!lastEnvelope && batchItemSummaries.size > 0)) {
+    return [...batchItemSummaries.entries()]
       .sort(([left], [right]) => left - right)
-      .map(([key, item]) => batchDisplayEntry(item, key));
+      .map(([key, item]) => batchSummaryDisplayEntry(item, key));
+  }
+  if (!lastEnvelope) {
+    return [];
   }
   if (lastEnvelope.kind === "analysis") {
     return [
       {
         key: 0,
         displayPath: lastEnvelope.data.source.displayPath,
+        summary: null,
         report: lastEnvelope.data,
         error: null,
+        expanded: true,
       },
     ];
   }
@@ -523,8 +630,10 @@ const displayEntries = (): DisplayEntry[] => {
       {
         key: 0,
         displayPath: lastEnvelope.data.displayPath ?? selectedInputs[0] ?? "MacinMeter",
+        summary: null,
         report: null,
         error: lastEnvelope.data,
+        expanded: true,
       },
     ];
   }
@@ -533,7 +642,10 @@ const displayEntries = (): DisplayEntry[] => {
 
 const visibleEntries = (): DisplayEntry[] =>
   hideFailed
-    ? displayEntries().filter((entry) => entry.report !== null)
+    ? displayEntries().filter(
+        (entry) =>
+          entry.summary?.outcome.status === "success" || entry.report !== null,
+      )
     : displayEntries();
 
 const sortedEntries = (): DisplayEntry[] => {
@@ -541,16 +653,88 @@ const sortedEntries = (): DisplayEntry[] => {
   if (sortMode === "none") return entries;
   const direction = sortMode === "dr-asc" ? 1 : -1;
   return entries.sort((left, right) => {
-    const leftDr = left.report?.analysis.aggregates.track.drDb;
-    const rightDr = right.report?.analysis.aggregates.track.drDb;
-    if (leftDr === null || leftDr === undefined) return 1;
-    if (rightDr === null || rightDr === undefined) return -1;
+    const leftDr =
+      left.summary?.outcome.status === "success"
+        ? left.summary.outcome.metrics.trackDrDb
+        : left.report?.analysis.aggregates.track.drDb;
+    const rightDr =
+      right.summary?.outcome.status === "success"
+        ? right.summary.outcome.metrics.trackDrDb
+        : right.report?.analysis.aggregates.track.drDb;
+    const leftMissing = leftDr === null || leftDr === undefined;
+    const rightMissing = rightDr === null || rightDr === undefined;
+    if (leftMissing && rightMissing) return left.key - right.key;
+    if (leftMissing) return 1;
+    if (rightMissing) return -1;
     const order = (leftDr - rightDr) * direction;
     return order === 0 ? left.key - right.key : order;
   });
 };
 
+const rerenderBatchEntry = (key: number): void => {
+  const current = renderedStreamedBatchNodes.get(key);
+  const summary = batchItemSummaries.get(key);
+  if (!current || !summary) return;
+  const template = document.createElement("template");
+  template.innerHTML = renderReportEntry(batchSummaryDisplayEntry(summary, key));
+  const replacement = template.content.firstElementChild;
+  if (!(replacement instanceof HTMLElement)) return;
+  bindEntryActions(replacement);
+  current.replaceWith(replacement);
+  renderedStreamedBatchNodes.set(key, replacement);
+};
+
+const toggleBatchDetail = async (key: number): Promise<void> => {
+  if (expandedBatchItems.delete(key)) {
+    rerenderBatchEntry(key);
+    return;
+  }
+  if (loadedBatchItems.has(key)) {
+    expandedBatchItems.add(key);
+    rerenderBatchEntry(key);
+    return;
+  }
+  const result = lastBatchResult;
+  const summary = batchItemSummaries.get(key);
+  if (!result || summary?.outcome.status !== "success" || loadingBatchItems.has(key)) {
+    return;
+  }
+
+  loadingBatchItems.add(key);
+  rerenderBatchEntry(key);
+  try {
+    const item = await invoke<BatchItem>("get_batch_item_detail", {
+      request: { resultId: result.resultId, index: key },
+    });
+    if (lastBatchResult?.resultId !== result.resultId) return;
+    if (item.displayPath !== summary.displayPath || item.outcome.status !== "success") {
+      throw new Error("batch detail does not match its list summary");
+    }
+    loadedBatchItems.set(key, item);
+    expandedBatchItems.add(key);
+  } catch (error) {
+    status(
+      "status.detailFailed",
+      { message: describeInvokeError(error) },
+      { error: true },
+    );
+  } finally {
+    loadingBatchItems.delete(key);
+    rerenderBatchEntry(key);
+  }
+};
+
 const bindEntryActions = (root: ParentNode = resultsElement): void => {
+  root
+    .querySelectorAll<HTMLButtonElement>(
+      ".toggle-entry-detail:not([data-actions-bound])",
+    )
+    .forEach((button) => {
+      button.dataset.actionsBound = "true";
+      button.addEventListener("click", () => {
+        void toggleBatchDetail(Number(button.dataset.entry));
+      });
+    });
   root
     .querySelectorAll<HTMLButtonElement>(
       ".copy-entry-md:not([data-actions-bound])",
@@ -586,7 +770,7 @@ const STREAMED_RENDER_ITEMS_PER_FRAME = 12;
 const renderStreamedBatchSummary = (): void => {
   let succeeded = 0;
   let failed = 0;
-  for (const item of streamedBatchItems.values()) {
+  for (const item of batchItemSummaries.values()) {
     if (item.outcome.status === "success") succeeded += 1;
     else failed += 1;
   }
@@ -610,15 +794,15 @@ const streamedInsertionIndex = (key: number): number => {
 };
 
 const flushStreamedBatchItems = (): void => {
-  const entries = [...pendingStreamedBatchItems.entries()]
+  const entries = [...pendingBatchItemSummaries.entries()]
     .sort(([left], [right]) => left - right)
     .slice(0, STREAMED_RENDER_ITEMS_PER_FRAME);
   if (entries.length === 0) return;
-  for (const [key] of entries) pendingStreamedBatchItems.delete(key);
+  for (const [key] of entries) pendingBatchItemSummaries.delete(key);
 
   const template = document.createElement("template");
   template.innerHTML = entries
-    .map(([key, item]) => renderReportEntry(batchDisplayEntry(item, key)))
+    .map(([key, item]) => renderReportEntry(batchSummaryDisplayEntry(item, key)))
     .join("");
   bindEntryActions(template.content);
   const nodes = Array.from(template.content.children) as HTMLElement[];
@@ -644,56 +828,76 @@ const scheduleStreamedBatchRender = (): void => {
   streamedBatchRenderFrame = requestAnimationFrame(() => {
     streamedBatchRenderFrame = null;
     flushStreamedBatchItems();
-    if (pendingStreamedBatchItems.size > 0) scheduleStreamedBatchRender();
+    if (pendingBatchItemSummaries.size > 0) scheduleStreamedBatchRender();
   });
 };
 
-const queueStreamedBatchItem = (index: number, item: BatchItem): void => {
+const queueStreamedBatchItem = (
+  index: number,
+  item: BatchItemSummary,
+): void => {
   if (
     lastEnvelope !== null ||
+    lastBatchResult !== null ||
     !Number.isInteger(index) ||
     index < 0 ||
-    streamedBatchItems.has(index)
+    batchItemSummaries.has(index)
   ) {
     return;
   }
-  streamedBatchItems.set(index, item);
-  pendingStreamedBatchItems.set(index, item);
+  batchItemSummaries.set(index, item);
+  pendingBatchItemSummaries.set(index, item);
   scheduleStreamedBatchRender();
 };
 
-const renderFinalBatchIncrementally = async (
-  items: readonly BatchItem[],
-): Promise<void> => {
+const finishBatchList = async (result: LazyBatchResult): Promise<void> => {
   if (streamedBatchRenderFrame !== null) {
     cancelAnimationFrame(streamedBatchRenderFrame);
     streamedBatchRenderFrame = null;
   }
-  items.forEach((item, index) => {
-    streamedBatchItems.set(index, item);
-    if (!renderedStreamedBatchNodes.has(index)) {
-      pendingStreamedBatchItems.set(index, item);
-    }
-  });
 
-  while (pendingStreamedBatchItems.size > 0) {
+  while (pendingBatchItemSummaries.size > 0) {
     status(
       "status.renderingResults",
       {
         current: renderedStreamedBatchNodes.size,
-        total: items.length,
+        total: result.completion.summary.total,
       },
-      { progress: (renderedStreamedBatchNodes.size / items.length) * 100 },
+      {
+        progress:
+          (renderedStreamedBatchNodes.size /
+            Math.max(result.completion.summary.total, 1)) *
+          100,
+      },
     );
     await nextPaint();
     flushStreamedBatchItems();
   }
 
-  const complete = items.every((_, index) =>
-    renderedStreamedBatchNodes.has(index),
-  );
-  if (!complete) renderResults();
-  resetStreamedBatch();
+  const complete =
+    batchItemSummaries.size === result.completion.summary.total &&
+    Array.from(
+      { length: result.completion.summary.total },
+      (_, index) => index,
+    ).every((index) => batchItemSummaries.has(index));
+  let succeeded = 0;
+  let failed = 0;
+  for (const item of batchItemSummaries.values()) {
+    if (item.outcome.status === "success") succeeded += 1;
+    else failed += 1;
+  }
+  if (
+    !complete ||
+    succeeded !== result.completion.summary.succeeded ||
+    failed !== result.completion.summary.failed
+  ) {
+    throw new Error("batch summary stream is incomplete");
+  }
+  lastBatchResult = result;
+  rawPanel.hidden = false;
+  batchSummary.textContent = t("result.summary", result.completion.summary);
+  batchSummary.classList.remove("hidden");
+  updateControls();
 };
 
 const renderResults = (): void => {
@@ -701,8 +905,21 @@ const renderResults = (): void => {
   resultsElement.innerHTML = entries.map(renderReportEntry).join("");
   bindEntryActions();
 
-  if (lastEnvelope?.kind === "batch") {
-    const summary = lastEnvelope.data.summary;
+  if (lastBatchResult) {
+    renderedStreamedBatchNodes.clear();
+    renderedStreamedBatchIndexes.length = 0;
+    for (const entry of entries) {
+      const node = document.getElementById(`entry-${entry.key}`);
+      if (!node) continue;
+      renderedStreamedBatchNodes.set(entry.key, node);
+      renderedStreamedBatchIndexes.push(entry.key);
+    }
+  }
+
+  const summary =
+    lastBatchResult?.completion.summary ??
+    (lastEnvelope?.kind === "batch" ? lastEnvelope.data.summary : null);
+  if (summary) {
     batchSummary.textContent = t("result.summary", summary);
     batchSummary.classList.remove("hidden");
   } else {
@@ -733,6 +950,16 @@ const envelopeAudioSeconds = (envelope: WireEnvelope): number => {
   return 0;
 };
 
+const lazyBatchAudioSeconds = (): number => {
+  let total = 0;
+  for (const item of batchItemSummaries.values()) {
+    if (item.outcome.status !== "success") continue;
+    const { decodedFrames, sampleRate } = item.outcome.metrics.duration;
+    if (sampleRate > 0) total += decodedFrames / sampleRate;
+  }
+  return total;
+};
+
 // Wall time measured around the command, which is what the user waited. The
 // realtime multiple needs no baseline beyond the material's own length, but
 // it describes this host at this moment, so it stays in the status line and
@@ -749,11 +976,6 @@ const elapsedValues = (
   };
 };
 
-const populateRawJson = (): void => {
-  if (!lastEnvelope || rawJson.textContent) return;
-  rawJson.textContent = JSON.stringify(lastEnvelope, null, 2);
-};
-
 const renderEnvelope = async (
   envelope: WireEnvelope,
   elapsedMs: number,
@@ -761,16 +983,8 @@ const renderEnvelope = async (
   lastEnvelope = envelope;
   rawJson.textContent = "";
   rawPanel.hidden = false;
-  if (rawPanel.open) populateRawJson();
-  if (envelope.kind === "batch") {
-    await renderFinalBatchIncrementally(envelope.data.items);
-    batchSummary.textContent = t("result.summary", envelope.data.summary);
-    batchSummary.classList.remove("hidden");
-    updateControls();
-  } else {
-    resetStreamedBatch();
-    renderResults();
-  }
+  resetStreamedBatch();
+  renderResults();
   if (envelope.kind === "error") {
     status(
       envelope.data.code === "cancelled" ? "status.cancelled" : "status.failed",
@@ -797,6 +1011,29 @@ const renderEnvelope = async (
       { error: envelope.data.summary.failed > 0, progress: 100 },
     );
   }
+  renderPhaseTimings();
+};
+
+const renderCompletedBatch = async (
+  response: Extract<BatchRunResponse, { outcome: "completed" }>,
+  elapsedMs: number,
+): Promise<void> => {
+  const result: LazyBatchResult = {
+    resultId: response.resultId,
+    toolVersion: response.toolVersion,
+    completion: response.completion,
+  };
+  await finishBatchList(result);
+  const timing = elapsedValues(elapsedMs, lazyBatchAudioSeconds());
+  status(
+    timing ? "status.batchCompleteTimed" : "status.batchComplete",
+    {
+      succeeded: response.completion.summary.succeeded,
+      failed: response.completion.summary.failed,
+      ...(timing ?? {}),
+    },
+    { error: response.completion.summary.failed > 0, progress: 100 },
+  );
   renderPhaseTimings();
 };
 
@@ -870,10 +1107,70 @@ const formatEntryMarkdown = (entry: DisplayEntry): string => {
   return markdown;
 };
 
-const formatAllMarkdown = (): string => {
-  if (!lastEnvelope) return "";
-  const header = `# ${t("md.title")}\n\nMacinMeter ${lastEnvelope.toolVersion}\n\n`;
-  return header + visibleEntries().map(formatEntryMarkdown).join("\n");
+const fullResultEnvelope = async (): Promise<WireEnvelope | null> => {
+  if (lastEnvelope) return lastEnvelope;
+  const resultId = lastBatchResult?.resultId;
+  if (!resultId) return null;
+  return invoke<WireEnvelope>("get_batch_report", {
+    request: { resultId },
+  });
+};
+
+const populateRawJson = async (): Promise<void> => {
+  if (rawJson.textContent || rawJson.dataset.loading === "true") return;
+  const revision = rawRequestRevision;
+  rawJson.dataset.loading = "true";
+  rawJson.textContent = t("status.loadingDetails");
+  try {
+    const envelope = await fullResultEnvelope();
+    if (revision === rawRequestRevision) {
+      rawJson.textContent = envelope
+        ? JSON.stringify(envelope, null, 2)
+        : t("status.detailUnavailable");
+    }
+  } catch (error) {
+    if (revision === rawRequestRevision) {
+      rawJson.textContent = describeInvokeError(error);
+    }
+  } finally {
+    if (revision === rawRequestRevision) delete rawJson.dataset.loading;
+  }
+};
+
+const envelopeEntries = (envelope: WireEnvelope): DisplayEntry[] => {
+  if (envelope.kind === "analysis") {
+    return [
+      {
+        key: 0,
+        displayPath: envelope.data.source.displayPath,
+        summary: null,
+        report: envelope.data,
+        error: null,
+        expanded: true,
+      },
+    ];
+  }
+  if (envelope.kind === "error") {
+    return [
+      {
+        key: 0,
+        displayPath: envelope.data.displayPath ?? selectedInputs[0] ?? "MacinMeter",
+        summary: null,
+        report: null,
+        error: envelope.data,
+        expanded: true,
+      },
+    ];
+  }
+  return envelope.data.items.map(batchDisplayEntry);
+};
+
+const formatAllMarkdown = (envelope: WireEnvelope): string => {
+  const entries = hideFailed
+    ? envelopeEntries(envelope).filter((entry) => entry.report !== null)
+    : envelopeEntries(envelope);
+  const header = `# ${t("md.title")}\n\nMacinMeter ${envelope.toolVersion}\n\n`;
+  return header + entries.map(formatEntryMarkdown).join("\n");
 };
 
 const copyText = async (
@@ -1102,15 +1399,26 @@ const renderSvgPage = (
   entries: readonly HTMLElement[],
 ): Promise<string> => withImageCapturePage(container, entries, svgText);
 
+const currentToolVersion = (): string =>
+  lastEnvelope?.toolVersion ?? lastBatchResult?.toolVersion ?? packageMetadata.version;
+
+const materializeBatchDetails = (envelope: WireEnvelope): void => {
+  if (!lastBatchResult || envelope.kind !== "batch") return;
+  envelope.data.items.forEach((item, index) => {
+    loadedBatchItems.set(index, item);
+    if (item.outcome.status === "success") expandedBatchItems.add(index);
+  });
+  renderResults();
+};
+
 const exportImage = async (): Promise<void> => {
   if (
-    !lastEnvelope ||
+    (!lastEnvelope && !lastBatchResult) ||
     resultsElement.children.length === 0 ||
     exportInProgress
   ) {
     return;
   }
-  const envelope = lastEnvelope;
   const previousStatus = statusState;
   const statusWasHidden = statusElement.hidden;
   exportInProgress = true;
@@ -1123,7 +1431,11 @@ const exportImage = async (): Promise<void> => {
       restoreStatus(previousStatus, statusWasHidden);
       return;
     }
-    const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.${format}`;
+    const envelope = await fullResultEnvelope();
+    if (!envelope) throw new Error("result is no longer available");
+    materializeBatchDetails(envelope);
+    await nextPaint();
+    const name = `MacinMeter_v${currentToolVersion()}_${fileTimestamp()}.${format}`;
     const pages = imageCapturePages(
       resultsElement,
       format === "png"
@@ -1200,8 +1512,7 @@ const exportImage = async (): Promise<void> => {
 };
 
 const exportJson = async (): Promise<void> => {
-  if (!lastEnvelope || exportInProgress) return;
-  const envelope = lastEnvelope;
+  if ((!lastEnvelope && !lastBatchResult) || exportInProgress) return;
   const previousStatus = statusState;
   const statusWasHidden = statusElement.hidden;
   exportInProgress = true;
@@ -1209,7 +1520,7 @@ const exportJson = async (): Promise<void> => {
   try {
     status("status.preparingExport", {}, { progress: 0 });
     await nextPaint();
-    const name = `MacinMeter_v${envelope.toolVersion}_${fileTimestamp()}.json`;
+    const name = `MacinMeter_v${currentToolVersion()}_${fileTimestamp()}.json`;
     const path = await save({
       defaultPath: name,
       filters: [{ name: "JSON", extensions: ["json"] }],
@@ -1221,6 +1532,8 @@ const exportJson = async (): Promise<void> => {
 
     status("status.exportingJson", {}, { progress: 0 });
     await nextPaint();
+    const envelope = await fullResultEnvelope();
+    if (!envelope) throw new Error("result is no longer available");
     const bytes = new TextEncoder().encode(JSON.stringify(envelope, null, 2));
     await writeBytesInChunks(path, bytes);
     status("status.exported", { name }, { progress: 100 });
@@ -1343,23 +1656,37 @@ const runAnalysis = async (): Promise<void> => {
   const onEvent = new Channel<FrontendMessage>();
   onEvent.onmessage = (message) => handleFrontendMessage(jobId, message);
   try {
-    const envelope =
-      selectionKind === "files" && selectedInputs.length === 1
-        ? await invoke<WireEnvelope>("run_analysis", {
-            request: { jobId, path: selectedInputs[0], timing: showTiming },
-            onEvent,
-          })
-        : await invoke<WireEnvelope>("run_batch", {
-            request: {
-              jobId,
-              inputs: selectedInputs,
-              recursive,
-              timing: showTiming,
-            },
-            onEvent,
+    if (selectionKind === "files" && selectedInputs.length === 1) {
+      const envelope = await invoke<WireEnvelope>("run_analysis", {
+        request: { jobId, path: selectedInputs[0], timing: showTiming },
+        onEvent,
+      });
+      await renderEnvelope(envelope, performance.now() - startedAt);
+    } else {
+      const response = await invoke<BatchRunResponse>("run_batch", {
+        request: {
+          jobId,
+          inputs: selectedInputs,
+          recursive,
+          timing: showTiming,
+        },
+        onEvent,
+      });
+      if (response.outcome === "error") {
+        await renderEnvelope(response.envelope, performance.now() - startedAt);
+      } else {
+        try {
+          await renderCompletedBatch(response, performance.now() - startedAt);
+        } catch (error) {
+          void invoke<boolean>("release_batch_results", {
+            request: { resultId: response.resultId },
           });
-    await renderEnvelope(envelope, performance.now() - startedAt);
+          throw error;
+        }
+      }
+    }
   } catch (error) {
+    clearResults();
     status(
       "status.discoveryFailed",
       { message: describeInvokeError(error) },
@@ -1444,7 +1771,20 @@ showTimingButton.addEventListener("click", () => {
 });
 
 copyMarkdownButton.addEventListener("click", () => {
-  void copyText(formatAllMarkdown(), copyMarkdownButton);
+  void (async () => {
+    try {
+      const envelope = await fullResultEnvelope();
+      if (envelope) {
+        await copyText(formatAllMarkdown(envelope), copyMarkdownButton);
+      }
+    } catch (error) {
+      status(
+        "status.copyFailed",
+        { message: describeInvokeError(error) },
+        { error: true },
+      );
+    }
+  })();
 });
 
 exportJsonButton.addEventListener("click", () => void exportJson());
@@ -1462,7 +1802,7 @@ searchInput.addEventListener("keydown", (event) => {
 });
 searchNextButton.addEventListener("click", () => highlightSearch(true));
 rawPanel.addEventListener("toggle", () => {
-  if (rawPanel.open) populateRawJson();
+  if (rawPanel.open) void populateRawJson();
 });
 
 const setLanguage = (language: SupportedLanguage): void => {
@@ -1473,7 +1813,7 @@ const setLanguage = (language: SupportedLanguage): void => {
   renderSelection();
   renderStatus();
   renderPhaseTimings();
-  if (lastEnvelope && activeJobId === null) renderResults();
+  if ((lastEnvelope || lastBatchResult) && activeJobId === null) renderResults();
 };
 
 element<HTMLButtonElement>("lang-zh").addEventListener("click", () =>
@@ -1583,6 +1923,8 @@ const loadCapabilities = async (): Promise<void> => {
     discoveryFilterExtensions = [];
   }
 };
+
+window.addEventListener("beforeunload", releaseRetainedBatch);
 
 appVersion.textContent = `v${packageMetadata.version}`;
 setLanguage(getCurrentLanguage());

@@ -13,8 +13,9 @@ MacinMeter 0.3.1 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
   受限的 MP4/M4A + ALAC（16/24-bit、1–8 声道）。
 - 目录发现使用扩展名筛选；实际解码器仍按文件内容探测。
 - 每个分析 job 使用前端生成的 `jobId` 和独立 `CancellationToken`；取消作用于整个 job。
-- 分析、批量和错误共用 schema version 4 的 `WireEnvelope`；channel/track
-  report metrics、精确 decoded duration 与 DR diagnostics 分层保存。
+- 单文件响应、错误与显式物化的批量文档共用 schema version 4 的
+  `WireEnvelope`；运行期摘要/终态 DTO 不属于导出 schema。channel/track report
+  metrics、精确 decoded duration 与 DR diagnostics 分层保存。
 - 大批量完成项会随分析进度分批渲染；JSON 与分页 PNG/SVG 导出不会改变后端报告。
 - 不包含 FFmpeg、DSD、Opus、预处理或环境变量修改。
 
@@ -28,8 +29,8 @@ MacinMeter 0.3.1 的 Tauri 2 桌面界面。GUI 与 CLI 都只调用 workspace �
 报告中的固定数值参数用于结果复现；界面不向用户暴露内部算法名称或状态标签。
 
 主窗口当前一次启动一个 job；后端注册表仍按 job 隔离，因此不同窗口或直接命令调用不会共享取消状态。
-前端 TypeScript 类型只描述这份共享 wire schema；后端没有第二套 Rust 结果 DTO，
-字段 tag/casing 由 Rust 契约测试固定。
+前端 TypeScript 分开描述稳定 wire schema 与运行期 summary/completion DTO；后端没有
+第二套分析报告模型，字段 tag/casing 由 Rust 契约测试固定。
 
 GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
 `drSelectedPeak`、`drPrimaryPeak`、`drSecondaryPeak`，不能替代 report 字段。
@@ -40,7 +41,10 @@ GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
 | 命令 | 输入 | 输出 |
 | --- | --- | --- |
 | `run_analysis` | `{ jobId, path }` + invocation-scoped channel | `WireEnvelope` |
-| `run_batch` | `{ jobId, inputs, recursive }` + invocation-scoped channel | `WireEnvelope` |
+| `run_batch` | `{ jobId, inputs, recursive }` + invocation-scoped channel | result ID、tool version 与终态计数 |
+| `get_batch_item_detail` | `{ resultId, index }` | 选中项的完整 `BatchItem` |
+| `get_batch_report` | `{ resultId }` | 显式物化的 schema-v4 `WireEnvelope` |
+| `release_batch_results` | `{ resultId }` | 是否释放已完成的 native 会话 |
 | `discover_inputs` | `{ jobId, inputs, recursive }` | 稳定排序后的路径列表 |
 | `cancel_job` | `jobId` | 是否找到并请求取消该 job |
 
@@ -57,14 +61,20 @@ GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
 
 application 核心把批量完成项直接交给同步 `BatchChunkSink`；每个非空 chunk 当前
 最多 8 项，可能因 file lane 并行而乱序到达，但每项都有稳定的发现顺序 index。
-Tauri 将一个核心 chunk 原样映射为一个 `batch_items` 消息，以减少大批量时的
-WebView 回调。Channel 消息只用于显示进度和增量渲染；只有命令成功返回时这些分块
-才构成完整批次。过渡期 adapter 会显式收集分块，以继续返回原有 schema-v4
-`WireEnvelope`；核心本身不再构造完整 `BatchReport`。
+Tauri 把完整项移入 native `BatchDetailStore`，一个核心 chunk 只映射为一个轻量
+`batch_summaries` 消息。普通列表不包含每声道结果；用户点击“详情”时才请求并传输
+该项完整报告，再次展开复用已经加载的详情。
+
+`run_batch` 成功只返回 result ID 与终态计数。JSON、全部 Markdown、raw JSON 或整批
+图片导出会显式请求后端按稳定顺序物化原有 schema-v4 `WireEnvelope`。清空结果或
+开始下一批会释放 native 会话；遗留会话存在硬上限。核心本身仍不构造完整
+`BatchReport`。
 
 这层收集是 Tauri/现有导出格式的兼容边界，不是未来 egui 的执行模型。分块契约与
 不保留旧 Rust 执行 API 的决策见
 [`ADR-0016`](../docs/adr/0016-chunked-batch-result-delivery.md)。
+按需详情与未来 egui 的直接所有权模型见
+[`ADR-0017`](../docs/adr/0017-on-demand-batch-details.md)。
 
 ## 开发与验证
 

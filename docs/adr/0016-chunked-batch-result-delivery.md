@@ -71,8 +71,8 @@ index 校验并恢复 `BatchReport`，也明确让该 adapter 重新承担 O(ite
 - 分析数值与错误分类不变；
 - 由显式 collector 生成的最终 item 顺序不变；
 - CLI JSON schema version 4、human 输出和退出码不变；
-- 过渡期 Tauri 仍返回 schema 4 `WireEnvelope::Batch`，同时把核心 chunk 直接转成
-  `batch_items` channel 消息；
+- 本 ADR 落地时过渡期 Tauri 仍返回 schema 4 `WireEnvelope::Batch`；后继
+  ADR-0017 已把普通列表改成 `batch_summaries`，只在显式完整导出时物化该 envelope；
 - 未来 egui adapter 直接消费 chunk，不继承 WebView/Tauri IPC 兼容层。
 
 ## 资源边界
@@ -82,9 +82,10 @@ index 校验并恢复 `BatchReport`，也明确让该 adapter 重新承担 O(ite
 chunk 加上有界在途 sink 调用构成；adapter 主动复制、缓存或持久化结果所占资源由
 adapter 自己负责。
 
-本决策也不实现真正的“点击时才加载详情”。当前 chunk 仍携带完整 `BatchItem`。
-若未来要让数千项批次只常驻行摘要，需要另行定义详情所有权、缓存/持久化、生命周期
-和失败语义，不能让 UI 用不稳定的文件路径重新分析来冒充详情加载。
+本决策本身不实现“点击时才加载详情”；其后
+[ADR-0017](0017-on-demand-batch-details.md) 已在不重新分析文件的前提下定义摘要投影、
+详情所有权、会话生命周期与显式全量导出。核心 chunk 仍携带完整 `BatchItem`，由
+调用方的详情 store 接管，而列表 consumer 只接收派生摘要。
 
 ## 验收
 
