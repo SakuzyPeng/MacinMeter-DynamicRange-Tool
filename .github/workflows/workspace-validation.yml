@@ -23,6 +23,10 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
+      # The egui desktop crate fetches one checksum-pinned UI font at build
+      # time; one cache per job keeps clippy, test and release from each
+      # downloading it.
+      MACINMETER_UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
 
     steps:
       - name: Checkout repository
@@ -94,6 +98,10 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
+      # The egui desktop crate fetches one checksum-pinned UI font at build
+      # time; one cache per job keeps clippy, test and release from each
+      # downloading it.
+      MACINMETER_UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
 
     steps:
       - name: Checkout repository
@@ -189,6 +197,10 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
+      # The egui desktop crate fetches one checksum-pinned UI font at build
+      # time; one cache per job keeps clippy, test and release from each
+      # downloading it.
+      MACINMETER_UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
 
     steps:
       - name: Checkout repository

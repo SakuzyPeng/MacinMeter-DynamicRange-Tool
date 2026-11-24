@@ -22,7 +22,8 @@ domain
 ├── codecs
 └── macinmeter application façade
     ├── CLI
-    └── Tauri GUI
+    ├── Tauri GUI
+    └── egui desktop GUI (prototype, `apps/macinmeter-desktop`)
 ```
 
 - `domain` owns valid stream/source/report/error types.
@@ -59,6 +60,12 @@ domain
 - Tauri reserves an `ApplicationJob` before `spawn_blocking`; queued
   cancellation and RAII release are part of the application contract.
 - CLI and GUI only parse, render, and adapt I/O.
+- `apps/macinmeter-desktop` is an egui prototype beside the Tauri GUI, on the
+  MacinDecode Spatial Player's stack (eframe/egui 0.36.1, rfd 0.17.2). It
+  reserves `ApplicationJob` on the UI thread before spawning one named worker
+  thread, and exports the envelope with the CLI's own serializer. Its
+  `build.rs` fetches one checksum-pinned UI font: the repository's only network
+  exception, confined to that crate's build. See `docs/desktop_egui.md`.
 - M4 conformance drives `AnalyzerSession` from controlled finite interleaved
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.

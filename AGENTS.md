@@ -11,6 +11,8 @@ This repository is a virtual Cargo workspace targeting version 0.3.1:
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
 - `apps/macinmeter-cli` — CLI adapter and renderers
 - `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`
+- `apps/macinmeter-desktop` — egui desktop GUI prototype on the player's stack;
+  see `docs/desktop_egui.md`
 - `reference` — fixed targets, observations, static analysis, specifications,
   and conformance records
 
@@ -150,6 +152,9 @@ python3 scripts/run-performance-baseline.py
 - Prefer valid constructors and structured `AnalysisError` over panics outside
   tests.
 - Keep tests deterministic, local, and independent of FFmpeg or network access.
+  The one build-time fetch is `apps/macinmeter-desktop/build.rs`'s
+  checksum-pinned UI font (`MACINMETER_UI_FONT_PATH` for offline builds); do
+  not add another.
 - Algorithm changes require chunk-boundary, window-boundary, multichannel, and
   finite-JSON coverage plus an update to
   `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`.
