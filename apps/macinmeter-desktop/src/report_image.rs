@@ -25,8 +25,8 @@ use crate::{
     i18n::{Language, t, tf},
     theme,
 };
-use eframe::egui::Color32;
-use macinmeter::{AnalysisError, AnalysisReport, ChannelOutcome};
+use eframe::egui::{self, Color32};
+use macinmeter::{AnalysisError, AnalysisReport, BatchTrackSummary, ChannelOutcome};
 use resvg::{tiny_skia, usvg};
 use skrifa::{
     FontRef, MetadataProvider,
@@ -47,8 +47,6 @@ const CARD_GAP: f32 = 12.0;
 const CARD_RADIUS: f32 = 15.0;
 /// Horizontal padding every band uses.
 const PAD_X: f32 = 14.0;
-/// Inside the card's 1 px border.
-const INNER_WIDTH: f32 = CARD_WIDTH - 2.0;
 
 /// Content height per page, as the Tauri export paginated: a PNG page stays
 /// within common canvas limits, an SVG page within what editors open briskly.
@@ -174,6 +172,89 @@ impl ImageEntry {
     }
 }
 
+impl ImageEntry {
+    /// A batch row before its details are opened: the same card without the
+    /// channel table, with the warning count in place of the warnings.
+    pub fn summary(
+        language: Language,
+        display_path: &str,
+        summary: &BatchTrackSummary,
+        hide_path: bool,
+        hide_warnings: bool,
+    ) -> Self {
+        let (track_value, track_note) = match (summary.rounded_dr, summary.track_dr_db) {
+            (Some(rounded), Some(precise)) => {
+                (format!("DR{rounded}"), format!("{:.4} dB", precise.get()))
+            }
+            _ => ("—".to_owned(), t(language, "result.noAggregate")),
+        };
+        let bits = summary.bits_per_sample.map_or_else(
+            || "—".to_owned(),
+            |bits| tf(language, "label.bits", &[("bits", &bits)]),
+        );
+        let body = ReportBody {
+            track_label: t(language, "result.track"),
+            track_value,
+            track_note,
+            metrics: vec![
+                (
+                    t(language, "result.peak"),
+                    format::dbfs(summary.primary_peak_dbfs),
+                ),
+                (
+                    t(language, "result.rms"),
+                    format::dbfs(summary.overall_rms_dbfs),
+                ),
+                (
+                    t(language, "result.duration"),
+                    format::duration(summary.duration),
+                ),
+                (t(language, "result.backend"), summary.backend.clone()),
+            ],
+            source: vec![
+                format!(
+                    "{} Hz",
+                    format::grouped(u64::from(summary.sample_rate.get()))
+                ),
+                format!("{} ch", summary.channels.get()),
+                bits,
+                format!(
+                    "{} / {}",
+                    format::wire_name(&summary.container),
+                    format::wire_name(&summary.codec)
+                ),
+                format!(
+                    "{} frames",
+                    format::grouped(summary.duration.decoded_frames)
+                ),
+            ],
+            headings: [
+                "table.channel",
+                "table.rounded",
+                "table.precise",
+                "table.rms",
+                "table.peak",
+            ]
+            .map(|key| t(language, key)),
+            rows: Vec::new(),
+            warnings: if hide_warnings || summary.warning_count == 0 {
+                Vec::new()
+            } else {
+                vec![tf(
+                    language,
+                    "result.warningCount",
+                    &[("count", &summary.warning_count)],
+                )]
+            },
+        };
+        Self {
+            name: format::file_name(display_path).to_owned(),
+            path: (!hide_path).then(|| display_path.to_owned()),
+            body: Body::Report(Box::new(body)),
+        }
+    }
+}
+
 fn report_body(language: Language, report: &AnalysisReport, hide_warnings: bool) -> ReportBody {
     let analysis = report.analysis();
     let aggregate = &analysis.aggregates().track;
@@ -266,13 +347,13 @@ fn report_body(language: Language, report: &AnalysisReport, hide_warnings: bool)
 
 /// Advance widths of the embedded face, per em, cached by character. Kerning is
 /// not modelled; truncation and wrapping keep a small margin for it.
-struct Metrics {
+pub struct Metrics {
     font: FontRef<'static>,
     advances: HashMap<char, f32>,
 }
 
 impl Metrics {
-    fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         let font = FontRef::new(theme::UI_FONT).map_err(|error| error.to_string())?;
         Ok(Self {
             font,
@@ -438,6 +519,7 @@ enum Shape {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     shapes: Vec<Shape>,
+    width: f32,
     height: f32,
 }
 
@@ -474,6 +556,8 @@ fn rule_color() -> Color32 {
 struct Pen<'a> {
     metrics: &'a mut Metrics,
     shapes: Vec<Shape>,
+    /// Width inside the card's 1 px border.
+    inner: f32,
 }
 
 impl Pen<'_> {
@@ -490,7 +574,7 @@ impl Pen<'_> {
 
     /// A 1 px horizontal rule across the card.
     fn rule(&mut self, y: f32, color: Color32) {
-        self.rect(0.0, y, INNER_WIDTH, 1.0, color);
+        self.rect(0.0, y, self.inner, 1.0, color);
     }
 
     /// Text in a line box of `line_height` whose top is `top`.
@@ -542,11 +626,15 @@ fn normal_line(size: f32) -> f32 {
     size * NORMAL_LINE_HEIGHT
 }
 
-fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
+/// Lays out one card `width` wide. `reserve` keeps that much of the header's
+/// right side free for the window's buttons; an exported card reserves none.
+pub fn lay_out_card(metrics: &mut Metrics, entry: &ImageEntry, width: f32, reserve: f32) -> Card {
     let mut pen = Pen {
         metrics,
         shapes: Vec::new(),
+        inner: (width - 2.0).max(1.0),
     };
+    let header_text = (pen.inner - 2.0 * PAD_X - reserve).max(40.0);
 
     // .directory-entry-header: padding 13px 14px 11px, tinted, ruled below.
     let header_fill = mix(theme::SURFACE_SOFT, 0.68, theme::SURFACE);
@@ -558,16 +646,9 @@ fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
     if entry.path.is_some() {
         header_height += 3.0 + normal_line(12.0);
     }
-    pen.rect(0.0, 0.0, INNER_WIDTH, header_height, header_fill);
+    pen.rect(0.0, 0.0, pen.inner, header_height, header_fill);
     let mut y = 13.0;
-    pen.line(
-        PAD_X,
-        y,
-        16.0 * 1.4,
-        title,
-        &entry.name,
-        INNER_WIDTH - 2.0 * PAD_X,
-    );
+    pen.line(PAD_X, y, 16.0 * 1.4, title, &entry.name, header_text);
     y += 16.0 * 1.4;
     if let Some(text) = &entry.path {
         y += 3.0;
@@ -577,7 +658,7 @@ fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
             normal_line(12.0),
             path,
             text,
-            680.0_f32.min(INNER_WIDTH - 2.0 * PAD_X),
+            680.0_f32.min(header_text),
         );
     }
     pen.rule(header_height, theme::BORDER);
@@ -591,7 +672,7 @@ fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
             details,
         } => {
             // .error-entry: padding 14px on the danger tint.
-            let width = INNER_WIDTH - 2.0 * PAD_X;
+            let width = pen.inner - 2.0 * PAD_X;
             let index = pen.shapes.len();
             let mut y = top + 14.0;
             y += pen.paragraph(
@@ -629,7 +710,7 @@ fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
                 Shape::Rect {
                     x: 0.0,
                     y: top,
-                    width: INNER_WIDTH,
+                    width: pen.inner,
                     height: y - top,
                     radius: 0.0,
                     fill: theme::DANGER_SOFT,
@@ -640,16 +721,17 @@ fn lay_out(metrics: &mut Metrics, entry: &ImageEntry) -> Card {
     };
     Card {
         shapes: pen.shapes,
+        width: pen.inner + 2.0,
         // The 1 px border above and below.
         height: bottom + 2.0,
     }
 }
 
+/// Below this card width the stylesheet's `max-width: 760px` rule applied:
+/// two columns, with Track DR spanning the first row.
+const NARROW_CARD: f32 = 690.0;
+
 fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
-    // .track-summary: minmax(160px, 1.15fr) repeat(4, minmax(92px, 0.7fr)).
-    let fractions = 1.15 + 0.7 * 4.0;
-    let hero_width = (INNER_WIDTH * 1.15 / fractions).max(160.0);
-    let metric_width = ((INNER_WIDTH - hero_width) / 4.0).max(92.0);
     let label = Style::label(0.08);
     let label_line = normal_line(11.0);
     let hero_value = Style::new(28.0, theme::ACCENT)
@@ -661,70 +743,97 @@ fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     // Cells are flex columns centred vertically, at least 82 px tall.
     let hero_content = label_line + 2.0 + 28.0 + 4.0 + normal_line(13.0);
     let metric_content = label_line + 5.0 + normal_line(14.0);
-    let row_height = (hero_content.max(metric_content) + 26.0).max(82.0);
+    let hero_height = (hero_content + 26.0).max(82.0);
+    let metric_height = (metric_content + 26.0).max(82.0);
 
-    pen.rect(0.0, top, hero_width, row_height, theme::SURFACE_SOFT);
-    let mut y = top + (row_height - hero_content) / 2.0;
-    let cell_text = hero_width - 2.0 * PAD_X;
-    pen.line(
-        PAD_X,
-        y,
-        label_line,
-        label,
-        &report.track_label.to_uppercase(),
-        cell_text,
-    );
-    y += label_line + 2.0;
-    pen.line(PAD_X, y, 28.0, hero_value, &report.track_value, cell_text);
-    y += 28.0 + 4.0;
-    pen.line(
-        PAD_X,
-        y,
-        normal_line(13.0),
-        hero_note,
-        &report.track_note,
-        cell_text,
-    );
-
-    let mut x = hero_width;
-    for (index, (name, value)) in report.metrics.iter().enumerate() {
-        // border-right on every cell but the last.
-        pen.rect(x - 1.0, top, 1.0, row_height, theme::BORDER);
-        let width = if index + 1 == report.metrics.len() {
-            INNER_WIDTH - x
-        } else {
-            metric_width
-        };
-        let mut y = top + (row_height - metric_content) / 2.0;
+    let hero = |pen: &mut Pen<'_>, width: f32, height: f32| {
+        pen.rect(0.0, top, width, height, theme::SURFACE_SOFT);
+        let mut y = top + (height - hero_content) / 2.0;
         let text_width = width - 2.0 * PAD_X;
+        let track_label = report.track_label.to_uppercase();
+        pen.line(PAD_X, y, label_line, label, &track_label, text_width);
+        y += label_line + 2.0;
+        pen.line(PAD_X, y, 28.0, hero_value, &report.track_value, text_width);
+        y += 28.0 + 4.0;
         pen.line(
-            x + PAD_X,
+            PAD_X,
             y,
-            label_line,
-            label,
-            &name.to_uppercase(),
+            normal_line(13.0),
+            hero_note,
+            &report.track_note,
             text_width,
         );
-        y += label_line + 5.0;
-        pen.line(
-            x + PAD_X,
-            y,
-            normal_line(14.0),
-            metric_value,
-            value,
-            text_width,
-        );
-        x += width;
-    }
-    pen.rule(top + row_height, theme::BORDER);
-    let mut y = top + row_height + 1.0;
+    };
+    let metric =
+        |pen: &mut Pen<'_>, x: f32, y: f32, width: f32, (name, value): &(String, String)| {
+            let mut y = y + (metric_height - metric_content) / 2.0;
+            let text_width = width - 2.0 * PAD_X;
+            pen.line(
+                x + PAD_X,
+                y,
+                label_line,
+                label,
+                &name.to_uppercase(),
+                text_width,
+            );
+            y += label_line + 5.0;
+            pen.line(
+                x + PAD_X,
+                y,
+                normal_line(14.0),
+                metric_value,
+                value,
+                text_width,
+            );
+        };
+
+    let bottom = if pen.inner + 2.0 < NARROW_CARD {
+        hero(pen, pen.inner, hero_height);
+        let half = pen.inner / 2.0;
+        let mut y = top + hero_height;
+        for pair in report.metrics.chunks(2) {
+            for (column, item) in pair.iter().enumerate() {
+                #[allow(clippy::cast_precision_loss, reason = "column is 0 or 1")]
+                let x = half * column as f32;
+                if column == 0 {
+                    pen.rect(half - 1.0, y, 1.0, metric_height, theme::BORDER);
+                }
+                metric(pen, x, y, half, item);
+            }
+            y += metric_height;
+        }
+        y
+    } else {
+        // .track-summary: minmax(160px, 1.15fr) repeat(4, minmax(92px, 0.7fr)).
+        let fractions = 1.15 + 0.7 * 4.0;
+        let hero_width = (pen.inner * 1.15 / fractions).max(160.0);
+        let metric_width = ((pen.inner - hero_width) / 4.0).max(92.0);
+        let row_height = hero_height.max(metric_height);
+        hero(pen, hero_width, row_height);
+        let mut x = hero_width;
+        for (index, item) in report.metrics.iter().enumerate() {
+            // border-right on every cell but the last.
+            pen.rect(x - 1.0, top, 1.0, row_height, theme::BORDER);
+            let width = if index + 1 == report.metrics.len() {
+                pen.inner - x
+            } else {
+                metric_width
+            };
+            let y = top + (row_height - metric_height) / 2.0;
+            metric(pen, x, y, width, item);
+            x += width;
+        }
+        top + row_height
+    };
+    pen.rule(bottom, theme::BORDER);
+    let mut y = bottom + 1.0;
 
     // .format-line: padding 9px 14px, "·" between items, ruled below.
     let band_height = 9.0 + normal_line(12.0) + 9.0;
     pen.rect(
         0.0,
         y,
-        INNER_WIDTH,
+        pen.inner,
         band_height,
         mix(theme::SURFACE_SOFT, 0.42, theme::SURFACE),
     );
@@ -744,7 +853,14 @@ fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     pen.rule(y, theme::BORDER);
     y += 1.0;
 
-    y = lay_out_table(pen, report, y);
+    if !report.rows.is_empty() {
+        y = lay_out_table(pen, report, y);
+    } else {
+        // A batch summary has no table until its details are opened; the
+        // format band's rule then closes the card.
+        y -= 1.0;
+        pen.shapes.pop();
+    }
 
     // .diagnostics: padding 9px 14px, ruled above, line-height 1.5.
     if !report.warnings.is_empty() {
@@ -755,7 +871,7 @@ fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
         y += 9.0;
         let style = Style::new(12.0, theme::WARNING);
         for warning in &report.warnings {
-            y += pen.paragraph(PAD_X, y, INNER_WIDTH - 2.0 * PAD_X, 18.0, style, warning);
+            y += pen.paragraph(PAD_X, y, pen.inner - 2.0 * PAD_X, 18.0, style, warning);
         }
         y += 9.0;
         pen.shapes.insert(
@@ -763,7 +879,7 @@ fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
             Shape::Rect {
                 x: 0.0,
                 y: start,
-                width: INNER_WIDTH,
+                width: pen.inner,
                 height: y - start,
                 radius: 0.0,
                 fill: theme::WARNING_SOFT,
@@ -815,7 +931,7 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     }
     let natural: Vec<f32> = content.iter().map(|width| width + 2.0 * PAD_X).collect();
     let total: f32 = natural.iter().sum();
-    let extra = (INNER_WIDTH - total).max(0.0);
+    let extra = (pen.inner - total).max(0.0);
     let mut columns = [0.0_f32; 5];
     let mut x = 0.0;
     for (column, width) in natural.iter().enumerate() {
@@ -828,7 +944,7 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     pen.rect(
         0.0,
         top,
-        INNER_WIDTH,
+        pen.inner,
         heading_height,
         mix(theme::SURFACE_SOFT, 0.58, theme::SURFACE),
     );
@@ -841,7 +957,7 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
 
     let line = normal_line(13.0);
     let row_height = 9.0 + line + 9.0;
-    let last_cell = INNER_WIDTH - PAD_X;
+    let last_cell = pen.inner - PAD_X;
     for (index, row) in report.rows.iter().enumerate() {
         let text_top = y + 9.0;
         pen.text(text_x(0), text_top, line, label, &row.channel);
@@ -909,12 +1025,113 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     y
 }
 
+/// Paints a laid-out card into the window at `origin`, with the same shapes
+/// the SVG carries, so the window and an exported image cannot drift apart.
+/// egui has one weight of the embedded face, so heavier text is drawn twice,
+/// half a point apart, as the PNG strokes it.
+pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlighted: bool) {
+    let outer = egui::Rect::from_min_size(origin, egui::vec2(card.width, card.height));
+    painter.rect_filled(outer, CARD_RADIUS, theme::SURFACE);
+    let inner_origin = origin + egui::vec2(1.0, 1.0);
+    let inner_width = card.width - 2.0;
+    let inner_bottom = card.height - 2.0;
+    // The stylesheet clips bands to the card's rounded corners; egui cannot
+    // clip to a rounded rect, so a band touching a corner takes its radius.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the card radius is a small constant"
+    )]
+    let corner = (CARD_RADIUS - 1.0) as u8;
+    for shape in &card.shapes {
+        match shape {
+            Shape::Rect {
+                x,
+                y,
+                width,
+                height,
+                radius,
+                fill,
+            } => {
+                let rect = egui::Rect::from_min_size(
+                    inner_origin + egui::vec2(*x, *y),
+                    egui::vec2(*width, *height),
+                );
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "pill radii are a few points"
+                )]
+                let mut rounding = egui::CornerRadius::same(*radius as u8);
+                if *radius == 0.0 && *height > 1.0 {
+                    let left = *x <= 0.5;
+                    let right = x + width >= inner_width - 0.5;
+                    let first = *y <= 0.5;
+                    let last = y + height >= inner_bottom - 0.5;
+                    if first && left {
+                        rounding.nw = corner;
+                    }
+                    if first && right {
+                        rounding.ne = corner;
+                    }
+                    if last && left {
+                        rounding.sw = corner;
+                    }
+                    if last && right {
+                        rounding.se = corner;
+                    }
+                }
+                painter.rect_filled(rect, rounding, *fill);
+            }
+            Shape::Text { x, y, style, text } => {
+                let font = match style.family {
+                    Family::Mono => egui::FontId::monospace(style.size),
+                    Family::Sans | Family::Serif => egui::FontId::proportional(style.size),
+                };
+                let job = egui::text::LayoutJob::single_section(
+                    text.clone(),
+                    egui::TextFormat {
+                        font_id: font,
+                        color: style.color,
+                        extra_letter_spacing: style.spacing * style.size,
+                        ..Default::default()
+                    },
+                );
+                let galley = painter.layout_job(job);
+                let baseline = galley
+                    .rows
+                    .first()
+                    .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
+                    .unwrap_or(ASCENT * style.size);
+                let position = inner_origin + egui::vec2(*x, y - baseline);
+                if style.weight >= 600 {
+                    painter.galley(position + egui::vec2(0.5, 0.0), galley.clone(), style.color);
+                }
+                painter.galley(position, galley, style.color);
+            }
+        }
+    }
+    painter.rect_stroke(
+        outer,
+        CARD_RADIUS,
+        egui::Stroke::new(
+            if highlighted { 2.0 } else { 1.0 },
+            if highlighted {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+}
+
 /// Lays out every entry. The caller paginates by [`Card::height`].
 pub fn lay_out_cards(entries: &[ImageEntry]) -> Result<Vec<Card>, String> {
     let mut metrics = Metrics::new()?;
     Ok(entries
         .iter()
-        .map(|entry| lay_out(&mut metrics, entry))
+        .map(|entry| lay_out_card(&mut metrics, entry, CARD_WIDTH, 0.0))
         .collect())
 }
 
@@ -1048,7 +1265,8 @@ pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
         let height = card.height;
         let _ = write!(
             svg,
-            r#"<g transform="translate({PAGE_PADDING} {top:.2})"><clipPath id="card-{index}"><rect x="1" y="1" width="{INNER_WIDTH}" height="{:.2}" rx="{}"/></clipPath>"#,
+            r#"<g transform="translate({PAGE_PADDING} {top:.2})"><clipPath id="card-{index}"><rect x="1" y="1" width="{}" height="{:.2}" rx="{}"/></clipPath>"#,
+            card.width - 2.0,
             height - 2.0,
             CARD_RADIUS - 1.0
         );
@@ -1249,11 +1467,11 @@ mod tests {
         let long = format!("{}/最后一首歌.wav", "非常长的目录名称/".repeat(20));
         let entry = ImageEntry::new(Language::Chinese, &long, Err(&error), false, false);
         let mut metrics = Metrics::new().unwrap();
-        let card = lay_out(&mut metrics, &entry);
+        let card = lay_out_card(&mut metrics, &entry, CARD_WIDTH, 0.0);
         for shape in &card.shapes {
             if let Shape::Text { x, style, text, .. } = shape {
                 let right = x + metrics.width(text, style.size, style.spacing);
-                assert!(right <= INNER_WIDTH - PAD_X + 0.5, "{text} overflows");
+                assert!(right <= CARD_WIDTH - 2.0 - PAD_X + 0.5, "{text} overflows");
             }
         }
         // The path is ellipsised to one line, as `.entry-path` was.

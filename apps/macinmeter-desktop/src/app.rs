@@ -11,14 +11,13 @@ use crate::{
     jobs::{
         AnalysisJob, DiscoveryJob, Finished, JobResult, Phase, Request, Update, Wake as JobWake,
     },
-    report_image::ImageFormat,
+    report_image::{self, ImageEntry, ImageFormat},
     theme,
 };
 use eframe::egui::{self, Align, Layout, Margin, RichText, Sense, Stroke};
 use macinmeter::{
     AnalysisError, AnalysisReport, Application, BatchItem, BatchItemOutcome, BatchItemSummary,
-    BatchItemSummaryOutcome, BatchTrackSummary, ChannelCount, ChannelOutcome, ContainerFormat,
-    DecodedDuration, ErrorCode, FiniteF32, PhaseTimings, SourceCodec, capabilities,
+    BatchItemSummaryOutcome, BatchTrackSummary, ErrorCode, FiniteF32, PhaseTimings, capabilities,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -1925,6 +1924,13 @@ fn card<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
         .inner
 }
 
+/// Room each card's header keeps free for its buttons.
+const ENTRY_BUTTONS: f32 = 200.0;
+
+/// A result card. It is the very card the image export draws (see
+/// [`report_image`]), painted with egui, with its buttons as widgets on top:
+/// the window and an exported image share one layout, as the Tauri GUI's
+/// window and html-to-image capture shared one DOM.
 fn draw_entry(
     ui: &mut egui::Ui,
     language: Language,
@@ -1934,346 +1940,88 @@ fn draw_entry(
     copied: &Option<(Copied, Instant)>,
     detail: Option<&AnalysisReport>,
 ) -> Option<EntryAction> {
-    let mut action = None;
-    egui::Frame::NONE
-        .fill(theme::SURFACE)
-        .stroke(Stroke::new(
-            if highlighted { 2.0 } else { 1.0 },
-            if highlighted {
-                theme::ACCENT
-            } else {
-                theme::BORDER
-            },
-        ))
-        .corner_radius(6)
-        .inner_margin(Margin::same(14))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            egui::Sides::new().shrink_left().show(
-                ui,
-                |ui| {
-                    ui.vertical(|ui| {
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(format::file_name(entry.path))
-                                    .size(16.0)
-                                    .strong(),
-                            )
-                            .wrap(),
-                        );
-                        if !view.hide_path {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(entry.path)
-                                        .size(11.0)
-                                        .color(theme::TEXT_TERTIARY),
-                                )
-                                .wrap(),
-                            );
-                        }
-                    });
-                },
-                |ui| {
-                    if matches!(entry.outcome, EntryOutcome::Summary(_)) {
-                        let key = if detail.is_some() { "btn.hideDetails" } else { "btn.showDetails" };
-                        if ui.small_button(t(language, key)).clicked() {
-                            action = Some(EntryAction::ToggleDetail(entry.key));
-                        }
-                    }
-                    let label = if matches!(copied, Some((Copied::Entry(key), _)) if *key == entry.key)
-                    {
-                        t(language, "status.copied")
-                    } else {
-                        t(language, "btn.entryMd")
-                    };
-                    if ui.small_button(label).clicked() {
-                        action = Some(EntryAction::CopyMarkdown(entry.key));
-                    }
-                    // As in the Tauri GUI, only a measured result has a card
-                    // worth copying as a picture.
-                    if !matches!(entry.outcome, EntryOutcome::Error(_))
-                        && ui.small_button(t(language, "btn.entryPng")).clicked()
-                    {
-                        action = Some(EntryAction::CopyPng(entry.key));
-                    }
-                },
-            );
-            match entry.outcome {
-                EntryOutcome::Analysis(report) => draw_report(ui, language, entry.key, report, view),
-                EntryOutcome::Summary(metrics) => {
-                    draw_track_metrics(ui, language, (metrics.rounded_dr, metrics.track_dr_db),
-                        metrics.primary_peak_dbfs, metrics.overall_rms_dbfs, metrics.duration, &metrics.backend);
-                    draw_source(ui, language, metrics.duration, metrics.channels,
-                        metrics.bits_per_sample, metrics.container, metrics.codec);
-                    if let Some(report) = detail {
-                        draw_report_details(ui, language, entry.key, report, view);
-                    } else if !view.hide_warnings && metrics.warning_count > 0 {
-                        ui.label(RichText::new(tf(language, "result.warningCount",
-                            &[("count", &metrics.warning_count)])).color(theme::WARNING));
-                    }
-                }
-                EntryOutcome::Error(error) => draw_error(ui, language, error),
-            }
-        });
-    action
-}
+    let shown = match (entry.outcome, detail) {
+        (EntryOutcome::Analysis(report), _) | (EntryOutcome::Summary(_), Some(report)) => {
+            ImageEntry::new(
+                language,
+                entry.path,
+                Ok(report),
+                view.hide_path,
+                view.hide_warnings,
+            )
+        }
+        (EntryOutcome::Summary(summary), None) => ImageEntry::summary(
+            language,
+            entry.path,
+            summary,
+            view.hide_path,
+            view.hide_warnings,
+        ),
+        (EntryOutcome::Error(error), _) => ImageEntry::new(
+            language,
+            entry.path,
+            Err(error),
+            view.hide_path,
+            view.hide_warnings,
+        ),
+    };
+    let width = ui.available_width();
+    let Ok(mut metrics) = report_image::Metrics::new() else {
+        ui.label(RichText::new(entry.path).color(theme::DANGER));
+        return None;
+    };
+    let card = report_image::lay_out_card(&mut metrics, &shown, width, ENTRY_BUTTONS);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, card.height()), Sense::hover());
+    report_image::paint(&card, ui.painter(), rect.min, highlighted);
 
-fn metric(ui: &mut egui::Ui, label: &str, value: RichText) {
-    egui::Frame::NONE
-        .fill(theme::SURFACE_SOFT)
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(10, 6))
-        .show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.label(RichText::new(label).size(11.0).color(theme::TEXT_SECONDARY));
-                ui.label(value);
-            });
-        });
-}
-
-fn draw_report(
-    ui: &mut egui::Ui,
-    language: Language,
-    key: usize,
-    report: &AnalysisReport,
-    view: View,
-) {
-    let analysis = report.analysis();
-    let aggregate = &analysis.aggregates().track;
-    let metrics = analysis.report();
-    draw_track_metrics(
-        ui,
-        language,
-        (aggregate.rounded_dr, aggregate.dr_db),
-        metrics.primary_peak_dbfs,
-        metrics.overall_rms_dbfs,
-        metrics.duration,
-        &report.diagnostics().backend,
+    // .entry-action: 30 px pills in the header's top-right corner.
+    let buttons = egui::Rect::from_min_max(
+        egui::pos2(rect.right() - 14.0 - ENTRY_BUTTONS, rect.top() + 10.0),
+        egui::pos2(rect.right() - 14.0, rect.top() + 40.0),
     );
-    let source = report.source();
-    draw_source(
-        ui,
-        language,
-        metrics.duration,
-        source.channels,
-        source.bits_per_sample,
-        source.container,
-        source.codec,
+    let mut row = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(buttons)
+            .layout(Layout::right_to_left(Align::Center)),
     );
-    draw_report_details(ui, language, key, report, view);
-}
-
-fn draw_track_metrics(
-    ui: &mut egui::Ui,
-    language: Language,
-    track_dr: (Option<u32>, Option<FiniteF32>),
-    peak: Option<FiniteF32>,
-    rms: Option<FiniteF32>,
-    duration: DecodedDuration,
-    backend: &str,
-) {
-    ui.horizontal_wrapped(|ui| {
-        egui::Frame::NONE
-            .fill(theme::ACCENT_SOFT)
-            .corner_radius(4)
-            .inner_margin(Margin::symmetric(12, 6))
-            .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(t(language, "result.track"))
-                            .size(11.0)
-                            .color(theme::ACCENT_STRONG),
-                    );
-                    match track_dr {
-                        (Some(rounded), Some(precise)) => {
-                            ui.label(RichText::new(format!("DR{rounded}")).size(26.0).strong());
-                            ui.label(
-                                RichText::new(format!("{:.4} dB", precise.get()))
-                                    .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
-                            );
-                        }
-                        _ => {
-                            ui.label(RichText::new("—").size(26.0).strong());
-                            ui.label(
-                                RichText::new(t(language, "result.noAggregate"))
-                                    .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
-                            );
-                        }
-                    }
-                });
-            });
-        metric(
-            ui,
-            &t(language, "result.peak"),
-            RichText::new(format::dbfs(peak)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.rms"),
-            RichText::new(format::dbfs(rms)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.duration"),
-            RichText::new(format::duration(duration)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.backend"),
-            RichText::new(backend).strong(),
-        );
-    });
-}
-
-fn draw_source(
-    ui: &mut egui::Ui,
-    language: Language,
-    duration: DecodedDuration,
-    channels: ChannelCount,
-    bits: Option<u32>,
-    container: ContainerFormat,
-    codec: SourceCodec,
-) {
-    let bits = bits.map_or_else(
-        || "—".to_owned(),
-        |bits| tf(language, "label.bits", &[("bits", &bits)]),
-    );
-    ui.label(
-        RichText::new(
-            [
-                format!(
-                    "{} Hz",
-                    format::grouped(u64::from(duration.sample_rate.get()))
-                ),
-                format!("{} ch", channels.get()),
-                bits,
-                format!(
-                    "{} / {}",
-                    format::wire_name(&container),
-                    format::wire_name(&codec)
-                ),
-                format!("{} frames", format::grouped(duration.decoded_frames)),
-            ]
-            .join("  ·  "),
+    row.spacing_mut().item_spacing.x = 5.0;
+    let pill = |ui: &mut egui::Ui, text: String| {
+        ui.add(
+            egui::Button::new(RichText::new(text).size(13.0).color(theme::TEXT_SECONDARY))
+                .fill(theme::SURFACE)
+                .stroke(Stroke::new(1.0, theme::BORDER))
+                .corner_radius(15)
+                .min_size(egui::vec2(0.0, 30.0)),
         )
-        .size(12.0)
-        .color(theme::TEXT_SECONDARY),
-    );
-}
-
-fn draw_report_details(
-    ui: &mut egui::Ui,
-    language: Language,
-    key: usize,
-    report: &AnalysisReport,
-    view: View,
-) {
-    egui::Grid::new(("channels", key))
-        .striped(true)
-        .num_columns(5)
-        .spacing([18.0, 6.0])
-        .show(ui, |ui| {
-            for heading in [
-                "table.channel",
-                "table.rounded",
-                "table.precise",
-                "table.rms",
-                "table.peak",
-            ] {
-                ui.label(
-                    RichText::new(t(language, heading))
-                        .size(11.0)
-                        .strong()
-                        .color(theme::TEXT_SECONDARY),
-                );
-            }
-            ui.end_row();
-            for channel in report.analysis().channels() {
-                let role = format::channel_role(report, channel.channel_index);
-                ui.horizontal(|ui| {
-                    ui.label(format!("CH {}", channel.channel_index + 1));
-                    if let Some(role) = role {
-                        ui.label(RichText::new(role).size(10.0).color(if role == "LFE" {
-                            theme::WARNING
-                        } else {
-                            theme::TEXT_TERTIARY
-                        }));
-                    }
-                });
-                match &channel.outcome {
-                    ChannelOutcome::Measured { measurement } => {
-                        ui.label(
-                            RichText::new(format!("DR{}", measurement.rounded_dr))
-                                .strong()
-                                .color(theme::ACCENT_STRONG),
-                        );
-                        ui.label(format!("{:.4} dB", measurement.dr_db.get()));
-                        ui.label(format::dbfs(channel.report.overall_rms_dbfs));
-                        ui.label(format::linear_dbfs(measurement.dr_selected_peak.get()));
-                    }
-                    ChannelOutcome::Silent { .. } => {
-                        ui.label(RichText::new("DR0").strong().color(theme::TEXT_TERTIARY));
-                        ui.label(
-                            RichText::new(t(language, "table.silent")).color(theme::TEXT_TERTIARY),
-                        );
-                        ui.label("");
-                        ui.label("");
-                    }
-                    ChannelOutcome::InsufficientData { .. } => {
-                        ui.label(RichText::new("—").color(theme::TEXT_TERTIARY));
-                        ui.label(
-                            RichText::new(t(language, "table.insufficient"))
-                                .color(theme::TEXT_TERTIARY),
-                        );
-                        ui.label("");
-                        ui.label("");
-                    }
-                }
-                ui.end_row();
-            }
-        });
-
-    let warnings = &report.diagnostics().warnings;
-    if !view.hide_warnings && !warnings.is_empty() {
-        egui::Frame::NONE
-            .fill(theme::WARNING_SOFT)
-            .corner_radius(4)
-            .inner_margin(Margin::symmetric(10, 6))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                for warning in warnings {
-                    ui.add(
-                        egui::Label::new(RichText::new(warning).size(12.0).color(theme::WARNING))
-                            .wrap(),
-                    );
-                }
-            });
+        .clicked()
+    };
+    let mut action = None;
+    // As in the Tauri GUI, only a measured result has a card worth copying
+    // as a picture.
+    if !matches!(entry.outcome, EntryOutcome::Error(_))
+        && pill(&mut row, t(language, "btn.entryPng"))
+    {
+        action = Some(EntryAction::CopyPng(entry.key));
     }
-}
-
-fn draw_error(ui: &mut egui::Ui, language: Language, error: &AnalysisError) {
-    egui::Frame::NONE
-        .fill(theme::DANGER_SOFT)
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(10, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new(format!(
-                    "{} · {}",
-                    t(language, "result.failed"),
-                    format::wire_name(&error.code)
-                ))
-                .strong()
-                .color(theme::DANGER),
-            );
-            ui.add(egui::Label::new(&error.message).wrap());
-            if let Some(details) = &error.details {
-                ui.add(egui::Label::new(RichText::new(details).monospace().size(11.0)).wrap());
-            }
-        });
+    let markdown = if matches!(copied, Some((Copied::Entry(key), _)) if *key == entry.key) {
+        t(language, "status.copied")
+    } else {
+        t(language, "btn.entryMd")
+    };
+    if pill(&mut row, markdown) {
+        action = Some(EntryAction::CopyMarkdown(entry.key));
+    }
+    if matches!(entry.outcome, EntryOutcome::Summary(_)) {
+        let key = if detail.is_some() {
+            "btn.hideDetails"
+        } else {
+            "btn.showDetails"
+        };
+        if pill(&mut row, t(language, key)) {
+            action = Some(EntryAction::ToggleDetail(entry.key));
+        }
+    }
+    action
 }
 
 fn selection_label(inputs: &[PathBuf]) -> String {

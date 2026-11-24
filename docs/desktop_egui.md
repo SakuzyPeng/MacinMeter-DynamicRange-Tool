@@ -68,6 +68,20 @@ honours:
   into `src/format.rs` with the CLI's own test vectors. Moving them to one
   shared place is follow-up work.
 
+### Result cards
+
+The window and the image export draw one card. `report_image::lay_out_card`
+turns an entry into rectangles and baseline-positioned text at a given width.
+The window paints those shapes with egui (`report_image::paint`) and lays its
+PNG/MD/Details buttons over the header; the export writes the same shapes as
+SVG. This is how the Tauri GUI's window and its html-to-image capture shared
+one DOM, and the two cannot drift apart. A batch row shows the same card
+without the channel table, with its warning count in the warning band, until
+its details are opened. Below 690 px the summary grid switches to the
+stylesheet's two-column form, with Track DR across the first row. Card text is
+painted rather than laid out as labels, so it cannot be selected; Copy MD
+carries the values.
+
 ### Image export
 
 `src/report_image.rs` lays out one card per visible entry at a fixed 900 px
