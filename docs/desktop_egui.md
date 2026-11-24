@@ -70,8 +70,11 @@ honours:
 
 ### Image export
 
-`src/report_image.rs` lays out one card per visible entry at a fixed 760 px
-width, from the report itself rather than from the window. It wraps text using
+`src/report_image.rs` lays out one card per visible entry at a fixed 900 px
+width, from the report itself rather than from the window. The card follows
+the Tauri card's stylesheet (`.directory-entry` and its children): a tinted
+header band, a five-cell summary grid with dividers, a format band, the channel
+table with role pills, and a warning band, clipped to a 15 px rounded border. It wraps text using
 the embedded face's glyph advances, read with skrifa. Each page is serialised as
 SVG made of `<rect>` and `<text>` elements. The Tauri export instead wrapped
 cloned HTML in `<foreignObject>`, which only a browser renders, and its output
@@ -83,6 +86,10 @@ depended on the window width and the host's fonts.
   channel table; a batch card reads it from `BatchDetailStore`.
 - **PNG**: resvg rasterises the SVG with only the embedded font loaded (no
   system fonts), at up to 2× within a 16384 px / 32 MP canvas.
+- **Typography**: the SVG names the stylesheet's serif stack and its 600–750
+  weights, so a viewer with those faces shows them. Only Noto Sans CJK SC
+  Regular is embedded, so in a PNG serif falls back to it and heavier weights
+  are synthesised with a thin stroke in the text colour.
 - **Pagination**: as Tauri did, at 4000 px of content per PNG page and
   12000 px per SVG page. One page goes to a chosen file; several go to a chosen
   folder as `name_01.png`, `name_02.png`, and so on.

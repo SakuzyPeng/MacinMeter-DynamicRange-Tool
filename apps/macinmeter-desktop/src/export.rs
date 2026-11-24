@@ -170,7 +170,7 @@ pub fn prepare_images(
     let heights: Vec<f32> = cards.iter().map(report_image::Card::height).collect();
     let pages = report_image::paginate(&heights, format.page_height())
         .into_iter()
-        .map(|range| report_image::svg_page(&cards[range]))
+        .map(|range| report_image::svg_page(&cards[range], format))
         .collect();
     Ok(PreparedImages {
         format,
@@ -215,7 +215,7 @@ pub fn write_images(
 pub fn entry_image(result: &JobResult, view: &ImageView, key: usize) -> Result<ColorImage, String> {
     let entry = image_entry(result, view, key)?;
     let cards = report_image::lay_out_cards(std::slice::from_ref(&entry))?;
-    let pixmap = report_image::render_pixmap(&report_image::svg_page(&cards))?;
+    let pixmap = report_image::render_pixmap(&report_image::svg_page(&cards, ImageFormat::Png))?;
     let size = [pixmap.width() as usize, pixmap.height() as usize];
     // tiny-skia stores premultiplied RGBA, which is what egui takes here.
     Ok(ColorImage::from_rgba_premultiplied(size, pixmap.data()))
