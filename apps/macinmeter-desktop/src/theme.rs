@@ -9,8 +9,8 @@ use eframe::egui::{
     epaint::text::{FontInsert, FontPriority, InsertFontFamily},
 };
 
-const NOTO_SANS_CJK_SC: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansCJKsc-Regular.otf"));
+/// The embedded UI face, shared by the window and the image renderer.
+pub const UI_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansCJKsc-Regular.otf"));
 
 pub const BACKGROUND: Color32 = Color32::from_rgb(0xfb, 0xf7, 0xf0);
 pub const SURFACE: Color32 = Color32::from_rgb(0xff, 0xfe, 0xfa);
@@ -71,7 +71,7 @@ pub fn install(context: &egui::Context) {
 fn install_ui_font(context: &egui::Context) {
     context.add_font(FontInsert::new(
         "noto-sans-cjk-sc",
-        egui::FontData::from_static(NOTO_SANS_CJK_SC),
+        egui::FontData::from_static(UI_FONT),
         vec![
             InsertFontFamily {
                 family: egui::FontFamily::Proportional,

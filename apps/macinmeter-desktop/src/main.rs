@@ -5,8 +5,7 @@
 //! MacinMeter's desktop GUI on egui: a prototype beside the Tauri GUI.
 //!
 //! Like the Tauri GUI it only parses, renders and adapts I/O over the shared
-//! `macinmeter::Application`. Image export and installers are not part of the
-//! prototype.
+//! `macinmeter::Application`. Installers are not part of the prototype.
 
 mod app;
 mod card_layout;
@@ -15,6 +14,7 @@ mod format;
 mod i18n;
 mod jobs;
 mod progress;
+mod report_image;
 mod theme;
 
 const ICON: &[u8] = include_bytes!("../../../tauri-app/src-tauri/icons/128x128@2x.png");
