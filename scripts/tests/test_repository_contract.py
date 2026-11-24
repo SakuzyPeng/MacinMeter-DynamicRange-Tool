@@ -33,7 +33,7 @@ resolver = "2"
 [workspace.package]
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.98"
 authors = ["Test"]
 license = "MIT"
 repository = "https://example.invalid/repository"

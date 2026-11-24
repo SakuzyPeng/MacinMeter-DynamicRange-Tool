@@ -1038,8 +1038,8 @@ fn inspect_sample_sizes<R: Read + Seek>(
             let byte_len = entries as usize * size_of::<u32>();
             let offset = stsz.data_start + 12 + u64::from(first_index) * 4;
             read_exact_at(reader, path, offset, &mut scratch[..byte_len])?;
-            for (entry, bytes) in scratch[..byte_len].chunks_exact(4).enumerate() {
-                if be_u32(bytes) == 0 {
+            for (entry, bytes) in scratch[..byte_len].as_chunks::<4>().0.iter().enumerate() {
+                if u32::from_be_bytes(*bytes) == 0 {
                     let index = first_index + entry as u32;
                     return Err(malformed(
                         path,

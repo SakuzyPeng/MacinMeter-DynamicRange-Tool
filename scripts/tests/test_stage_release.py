@@ -431,8 +431,8 @@ class StageReleaseTests(unittest.TestCase):
             )
 
     def test_unsigned_candidate_requires_pinned_rust_and_node_toolchains(self) -> None:
-        package = {"msrv": "1.88"}
-        toolchain = {"rustc": "1.88.0", "node": "v22.18.0"}
+        package = {"msrv": "1.98"}
+        toolchain = {"rustc": "1.98.0", "node": "v22.18.0"}
         # Both platforms are pinned to the same toolchain, so a candidate from
         # either host is built with the versions the evidence names.
         for macos, windows in ((True, False), (False, True)):
@@ -444,7 +444,7 @@ class StageReleaseTests(unittest.TestCase):
             )
 
             for key, value, message in (
-                ("rustc", "1.89.0", "exact Rust 1.88"),
+                ("rustc", "1.99.0", "exact Rust 1.98"),
                 ("node", "v24.0.0", "Node.js 22"),
             ):
                 changed = dict(toolchain)

@@ -15,7 +15,7 @@ The repository has one bounded validation workflow:
 - The workflow uses explicit Ubuntu 24.04, Windows Server 2025 x64, and macOS
   26 arm64 jobs with read-only repository permissions. Linux and Windows have
   45-minute timeouts; macOS has 60 minutes for the release-profile GUI build.
-  Rust is pinned to the verified MSRV, 1.88, and Node.js is pinned to 22.
+  Rust is pinned to the verified MSRV, 1.98, and Node.js is pinned to 22.
 
 ## Standard automatic gate
 

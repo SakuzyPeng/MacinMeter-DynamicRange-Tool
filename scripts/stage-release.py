@@ -1077,7 +1077,7 @@ def validate_candidate_toolchain(
         return
     if version_tuple(toolchain["rustc"]) != version_tuple(package["msrv"]):
         raise ReleaseError(
-            "unsigned release candidates require the exact Rust 1.88 toolchain"
+            "unsigned release candidates require the exact Rust 1.98 toolchain"
         )
     if version_tuple(toolchain["node"].removeprefix("v"))[0] != 22:
         raise ReleaseError(

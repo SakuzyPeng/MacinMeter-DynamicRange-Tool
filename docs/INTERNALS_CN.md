@@ -7,7 +7,7 @@
 
 ## 从源码构建
 
-需要 Rust 1.88 或更新版本以及 Cargo：
+需要 Rust 1.98 或更新版本以及 Cargo：
 
 ```bash
 cargo build --locked --release -p macinmeter-cli

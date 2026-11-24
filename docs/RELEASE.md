@@ -39,7 +39,7 @@ invites readers to wait for a signed build that is not coming.
 
 - a clean Git worktree for a release candidate;
 - Python 3.11 or newer;
-- Rust 1.88 or newer and the locked Cargo graph;
+- Rust 1.98 or newer and the locked Cargo graph;
 - Node.js for the shared version contract, plus the platform Tauri
   prerequisites when including the GUI;
 - 7-Zip on Windows when staging or verifying the NSIS installer.
@@ -134,7 +134,7 @@ python scripts/stage-release.py stage \
 They write to
 `target/release-candidates/0.3.1/aarch64-apple-darwin` and
 `target/release-candidates/0.3.1/x86_64-pc-windows-msvc`. Each refuses a dirty
-source tree, a mismatched host, toolchains other than Rust 1.88 and Node.js 22,
+source tree, a mismatched host, toolchains other than Rust 1.98 and Node.js 22,
 a missing GUI, `--allow-dirty`, or `--replace`. Their manifests record the full
 Rust/Cargo/Node/npm identity and use
 `unsigned_macos_arm64_release_candidate` or

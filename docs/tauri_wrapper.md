@@ -72,7 +72,7 @@ npm run build
 npm run tauri dev
 ```
 
-Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
+Rust 1.98+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
 Workspace Rust builds place artifacts under the root `target/` directory. The
 0.3.1 bundle targets are Apple Silicon macOS 11.0+ `.app`/`.dmg` and Windows

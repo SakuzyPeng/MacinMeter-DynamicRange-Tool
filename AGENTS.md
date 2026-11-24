@@ -146,7 +146,7 @@ python3 scripts/run-performance-baseline.py
 
 ## Style and tests
 
-- Rust 2024, MSRV 1.88, rustfmt defaults, zero Clippy warnings.
+- Rust 2024, MSRV 1.98 (pinned by `rust-toolchain.toml`), rustfmt defaults, zero Clippy warnings.
 - Prefer valid constructors and structured `AnalysisError` over panics outside
   tests.
 - Keep tests deterministic, local, and independent of FFmpeg or network access.

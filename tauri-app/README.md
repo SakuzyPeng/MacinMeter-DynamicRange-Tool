@@ -61,7 +61,7 @@ GUI 显示独立的 overall RMS/primary peak report metrics。DR 诊断字段为
 
 环境要求：
 
-- Rust 1.88 或更新版本
+- Rust 1.98 或更新版本
 - Node.js 18、20 或 22+（建议使用当前 LTS）
 - 当前平台对应的 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 

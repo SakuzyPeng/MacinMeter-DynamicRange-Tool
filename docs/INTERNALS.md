@@ -7,7 +7,7 @@ or reading its sources. The [README](../README.md) covers everyday use.
 
 ## Building from source
 
-Rust 1.88 or newer, with Cargo:
+Rust 1.98 or newer, with Cargo:
 
 ```bash
 cargo build --locked --release -p macinmeter-cli
