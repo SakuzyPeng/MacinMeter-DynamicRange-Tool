@@ -418,10 +418,7 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<AnalysisReport, AnalysisError> {
-        let decode = match self.single_file_allocation() {
-            Ok(allocation) => allocation.decode(),
-            Err(error) => return Err(error),
-        };
+        let decode = self.single_file_allocation()?.decode();
         let shape = self.overlap_shape;
         self.execute(progress, |control| {
             Analyzer::with_overlap_shape(decode, shape).analyze_file_with_control(request, control)
@@ -433,10 +430,7 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<(AnalysisReport, PhaseTimings), AnalysisError> {
-        let decode = match self.single_file_allocation() {
-            Ok(allocation) => allocation.decode(),
-            Err(error) => return Err(error),
-        };
+        let decode = self.single_file_allocation()?.decode();
         let shape = self.overlap_shape;
         self.execute(progress, |control| {
             Analyzer::with_overlap_shape(decode, shape)
@@ -452,10 +446,7 @@ impl ApplicationJob {
         request: AnalyzeRequest,
         progress: &dyn ProgressSink,
     ) -> Result<(AnalysisReport, ApplicationPerformanceProbe), AnalysisError> {
-        let decode = match self.single_file_allocation() {
-            Ok(allocation) => allocation.decode(),
-            Err(error) => return Err(error),
-        };
+        let decode = self.single_file_allocation()?.decode();
         let shape = self.overlap_shape;
         self.execute(progress, |control| {
             Analyzer::with_overlap_shape(decode, shape)

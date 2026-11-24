@@ -33,7 +33,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 2026-07-16
         with:
-          toolchain: 1.88.0
+          toolchain: 1.98.0
           components: rustfmt, clippy
 
       - name: Install Node.js
@@ -55,6 +55,12 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libxdo-dev \
             patchelf
+
+      - name: Share the UI font cache across builds
+        shell: bash
+        env:
+          UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
+        run: echo "MACINMETER_UI_FONT_CACHE_DIR=$UI_FONT_CACHE_DIR" >> "$GITHUB_ENV"
 
       - name: Check repository identity
         run: python3 scripts/check-repository-contract.py
@@ -104,8 +110,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 2026-07-16
         with:
-          toolchain: 1.88.0
+          toolchain: 1.98.0
           components: clippy
+
+      - name: Share the UI font cache across builds
+        shell: bash
+        env:
+          UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
+        run: echo "MACINMETER_UI_FONT_CACHE_DIR=$UI_FONT_CACHE_DIR" >> "$GITHUB_ENV"
 
       - name: Check repository identity
         run: python scripts/check-repository-contract.py
@@ -199,8 +211,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 2026-07-16
         with:
-          toolchain: 1.88.0
+          toolchain: 1.98.0
           components: clippy
+
+      - name: Share the UI font cache across builds
+        shell: bash
+        env:
+          UI_FONT_CACHE_DIR: ${{ runner.temp }}/macinmeter-ui-font
+        run: echo "MACINMETER_UI_FONT_CACHE_DIR=$UI_FONT_CACHE_DIR" >> "$GITHUB_ENV"
 
       - name: Check repository identity
         run: python3 scripts/check-repository-contract.py

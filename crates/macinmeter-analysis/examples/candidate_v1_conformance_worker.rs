@@ -90,11 +90,10 @@ fn run() -> Result<(), String> {
             .map_err(|error| format!("stdin ended before the declared PCM length: {error}"))?;
 
         samples.clear();
-        for encoded in bytes[..chunk_bytes].chunks_exact(F64_BYTES) {
-            let encoded: [u8; F64_BYTES] = encoded
-                .try_into()
-                .map_err(|_| "PCM block is not f64-aligned".to_string())?;
-            samples.push(f64::from_le_bytes(encoded));
+        // Both the declared length and the block size are whole samples, so
+        // every block splits into `f64` chunks with no remainder.
+        for encoded in bytes[..chunk_bytes].as_chunks::<F64_BYTES>().0 {
+            samples.push(f64::from_le_bytes(*encoded));
         }
         session
             .push_interleaved(&samples)

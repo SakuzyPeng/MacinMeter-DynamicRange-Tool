@@ -173,8 +173,8 @@ def validate(root: Path) -> list[str]:
     version = workspace_package.get("version")
     require(isinstance(version, str), "workspace.package.version must be a string")
     require(
-        workspace_package.get("rust-version") == "1.88",
-        "workspace.package.rust-version must remain the verified MSRV 1.88",
+        workspace_package.get("rust-version") == "1.98",
+        "workspace.package.rust-version must remain the verified MSRV 1.98",
     )
     require(
         workspace_package.get("edition") == "2024",

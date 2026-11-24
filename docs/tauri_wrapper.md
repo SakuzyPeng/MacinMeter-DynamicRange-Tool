@@ -73,8 +73,7 @@ result ID plus completion metadata, fetches one full item when its Details
 button is selected, and materializes the original schema-4 batch envelope only
 for explicit whole-result operations such as JSON export. Native sessions are
 released when results are cleared and at most eight abandoned sessions can be
-retained. A future egui adapter owns the detail store directly and needs no
-Tauri registry, channel, or WebView result path. See
+retained. The egui prototype owns its detail store directly. See
 [ADR-0016](adr/0016-chunked-batch-result-delivery.md) and
 [ADR-0017](adr/0017-on-demand-batch-details.md).
 
@@ -94,7 +93,7 @@ npm run build
 npm run tauri dev
 ```
 
-Rust 1.88+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
+Rust 1.98+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
 Workspace Rust builds place artifacts under the root `target/` directory. The
 0.3.1 bundle targets are Apple Silicon macOS 11.0+ `.app`/`.dmg` and Windows

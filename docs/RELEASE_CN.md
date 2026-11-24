@@ -34,7 +34,7 @@ Windows ARM64/32-bit 或 Linux GUI 制品。
 
 - release candidate 必须来自干净的 Git 工作树；
 - Python 3.11 或更新版本；
-- Rust 1.88 或更新版本，以及 locked Cargo graph；
+- Rust 1.98 或更新版本，以及 locked Cargo graph；
 - 共享版本契约需要 Node.js；纳入 GUI 时还需要当前平台的 Tauri prerequisites；
 - 在 Windows 上 staging 或验证 NSIS installer 时需要 7-Zip。
 
@@ -120,7 +120,7 @@ python scripts/stage-release.py stage \
 
 它们分别写入 `target/release-candidates/0.3.1/aarch64-apple-darwin` 与
 `target/release-candidates/0.3.1/x86_64-pc-windows-msvc`。每个 mode 都拒绝脏 source、
-不匹配的 host、Rust 1.88/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
+不匹配的 host、Rust 1.98/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
 `--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并分别标记为
 `unsigned_macos_arm64_release_candidate` 或
 `unsigned_windows_x64_release_candidate`；两者都不会声称已经签名、公证、具备
