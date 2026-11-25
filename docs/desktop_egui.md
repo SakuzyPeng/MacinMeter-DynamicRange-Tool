@@ -9,24 +9,23 @@ stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
 | Question | Decision |
 |---|---|
 | Toolchain | The whole workspace moves to Rust 1.98.0, pinned by `rust-toolchain.toml`, the same compiler as the player. eframe 0.36.1 itself needs 1.95. |
-| UI fonts | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB) for the card's serif title and DR number. Its build script downloads them on a cache miss, including when compiling the test binary; the two are one network exception. Set `MACINMETER_UI_FONT_PATH` and `MACINMETER_SERIF_FONT_PATH` to build with local copies. |
+| UI fonts | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB) for the card's serif title and DR number. The serif font ships in the source tree. Set `MACINMETER_UI_FONT_PATH` to build offline with a local copy of Noto. |
 | Complex scripts | egui 0.36 shapes text with HarfRust but has no bidi and no system font fallback. Arabic or Hebrew file names render in logical (reversed) order, and scripts outside the embedded font render as boxes. This is accepted. |
 | Windows installer | Stays NSIS when the Tauri bundler goes, so an install can replace a 0.3.x Tauri install in place. Not part of the prototype. |
 | Image export | Drawn from report data as a real vector SVG, with PNG rasterised from that SVG; see [Image export](#image-export). |
 
 ### Font build input
 
-`build.rs` downloads each font once, verifies its SHA-256, and copies it into
-`OUT_DIR`. Noto Sans CJK SC comes from jsDelivr; Source Serif 4 comes from
-raw.githubusercontent.com at the 4.005R commit, with jsDelivr as a second
-mirror. Three variables control it:
+The desktop crate embeds the unmodified Source Serif 4 Semibold OTF from
+Adobe's 4.005R release. Its checksum and license are in
+`apps/macinmeter-desktop/OFL-SourceSerif4.txt`.
 
-- `MACINMETER_UI_FONT_PATH` and `MACINMETER_SERIF_FONT_PATH`: local copies of
-  the exact files, for offline builds. The checksums are still enforced.
-- `MACINMETER_UI_FONT_CACHE_DIR`: an absolute directory shared by profiles and
-  checkouts. CI sets one per job.
+`build.rs` verifies the SHA-256 of Noto Sans CJK SC and copies it into
+`OUT_DIR`. Set `MACINMETER_UI_FONT_PATH` to use a local copy. On a cache
+miss it can download Noto from jsDelivr. `MACINMETER_UI_FONT_CACHE_DIR`
+selects an absolute cache directory shared across profiles and checkouts.
 
-jsDelivr sometimes answers these files with a 403 that it caches for 60 s
+jsDelivr sometimes answers the Noto request with a 403 that it caches for 60 s
 (`s-maxage=60`). That was observed while building this prototype. Each retry
 therefore waits 61 s rather than hitting the same cached refusal.
 
@@ -79,10 +78,10 @@ PNG/MD/Details buttons over the header; the export writes the same shapes as
 SVG. This is how the Tauri GUI's window and its html-to-image capture shared
 one DOM, and the two cannot drift apart. A batch row shows the same card
 without the channel table, with its warning count in the warning band, until
-its details are opened. Below 690 px the summary grid switches to the
-stylesheet's two-column form, with Track DR across the first row. Card text is
-painted rather than laid out as labels, so it cannot be selected; Copy MD
-carries the values.
+its details are opened. Below 690 px the summary grid uses two columns, with
+Track DR across the first row. When the channel table exceeds the available
+width, each channel lists its labeled measurements vertically. Screen readers
+receive text nodes for the painted labels, including full elided file names.
 
 ### Image export
 
@@ -99,7 +98,9 @@ depended on the window width and the host's fonts.
 - **Content**: strings come from the same formatters and locale tables as the
   window. The export follows the screen: visible entries in on-screen order,
   with the path and warning toggles applied. Every card carries its full
-  channel table; a batch card reads it from `BatchDetailStore`.
+  channel table. A batch card reads it from `BatchDetailStore`. Hiding paths
+  also hides free-form failure details that can contain filesystem paths. The
+  error code and application message remain visible.
 - **PNG**: resvg rasterises the SVG with only the embedded font loaded (no
   system fonts), at up to 2× within a 16384 px / 32 MP canvas.
 - **Typography**: the SVG names the stylesheet's serif stack and its 600–750
@@ -112,11 +113,13 @@ depended on the window width and the host's fonts.
 - **Pagination**: as Tauri did, at 4000 px of content per PNG page and
   12000 px per SVG page. One page goes to a chosen file; several go to a chosen
   folder as `name_01.png`, `name_02.png`, and so on.
-- **Workers**: layout, rasterisation and writing run on a `macinmeter-image`
-  worker. Each page is written atomically, and the status line counts pages as
-  they finish. A cancelled dialog restores the previous status line.
-- **Clipboard**: the PNG button on a measured card copies that card's
-  rasterised image.
+- **Workers**. Before the destination dialog, a worker measures one card at a
+  time and keeps the order and page boundaries. After selection, the writer
+  renders and atomically saves one page at a time. Each saved page wakes the
+  progress display. A cancelled dialog restores the previous status line.
+- **Clipboard**. The PNG button renders the card and writes the image to the
+  system clipboard on the image worker. The status line reports the result of
+  the native write.
 - **Determinism**: the same report, language and toggles give the same SVG
   text. PNG bytes are not claimed to be identical across hosts.
 

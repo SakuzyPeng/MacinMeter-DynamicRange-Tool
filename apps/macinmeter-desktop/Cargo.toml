@@ -18,6 +18,7 @@ path = "src/main.rs"
 sha2.workspace = true
 
 [dependencies]
+arboard.workspace = true
 eframe.workspace = true
 macinmeter = { path = "../../crates/macinmeter", version = "0.3.1" }
 resvg.workspace = true

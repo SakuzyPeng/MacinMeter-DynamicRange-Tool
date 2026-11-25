@@ -13,7 +13,7 @@ The 0.3.1 source tree directly uses projects including:
 - Walkdir for deterministic filesystem discovery;
 - Tauri and its dialog plugin for the desktop adapter;
 - Vite and TypeScript for the frontend build;
-- eframe/egui, wgpu, rfd, resvg and skrifa for the egui desktop prototype
+- eframe/egui, wgpu, rfd, arboard, resvg and skrifa for the egui desktop prototype
   (`apps/macinmeter-desktop`).
 
 The application icon sets the letters "DR" in Source Serif 4 at weight 700,

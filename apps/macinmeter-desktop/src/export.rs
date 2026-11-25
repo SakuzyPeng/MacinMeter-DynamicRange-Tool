@@ -8,14 +8,14 @@ use crate::{
     jobs::{JobResult, Wake},
     report_image::{self, ImageEntry, ImageFormat},
 };
-use eframe::egui::ColorImage;
 use macinmeter::{BatchItemOutcome, WireEnvelope};
 use std::{
     io::{BufWriter, Write},
+    ops::Range,
     panic::{AssertUnwindSafe, catch_unwind},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
         mpsc::{self, Receiver, TryRecvError},
     },
     thread,
@@ -107,19 +107,8 @@ pub struct ImageView {
     pub language: Language,
     pub hide_path: bool,
     pub hide_warnings: bool,
-    /// Entry keys in on-screen order, after the failure filter.
-    pub order: Vec<usize>,
     /// Shown for a whole-job error that names no path.
     pub fallback_path: String,
-}
-
-/// One card per key, with full channel tables. A batch card reads its detail
-/// from the store, as the window does when a card is expanded.
-pub fn image_entries(result: &JobResult, view: &ImageView) -> Result<Vec<ImageEntry>, String> {
-    view.order
-        .iter()
-        .map(|&key| image_entry(result, view, key))
-        .collect()
 }
 
 fn image_entry(result: &JobResult, view: &ImageView, key: usize) -> Result<ImageEntry, String> {
@@ -151,72 +140,125 @@ fn image_entry(result: &JobResult, view: &ImageView, key: usize) -> Result<Image
     }
 }
 
-/// Laid-out pages, waiting for the user to choose where they go.
-#[derive(Debug, Clone)]
+fn export_card(
+    result: &JobResult,
+    view: &ImageView,
+    key: usize,
+    metrics: &mut report_image::Metrics,
+) -> Result<report_image::Card, String> {
+    let entry = image_entry(result, view, key)?;
+    Ok(report_image::lay_out_card(
+        metrics,
+        &entry,
+        report_image::CARD_WIDTH,
+        0.0,
+    ))
+}
+
+/// Only the view, its order and page boundaries survive the destination dialog.
+#[derive(Debug)]
 pub struct PreparedImages {
     pub format: ImageFormat,
     pub name: String,
-    pub pages: Vec<String>,
+    result: Arc<JobResult>,
+    view: ImageView,
+    order: Vec<usize>,
+    pages: Vec<Range<usize>>,
 }
 
 pub fn prepare_images(
-    result: &JobResult,
-    view: &ImageView,
+    result: Arc<JobResult>,
+    view: ImageView,
+    order: Vec<usize>,
     format: ImageFormat,
     name: String,
 ) -> Result<PreparedImages, String> {
-    let entries = image_entries(result, view)?;
-    let cards = report_image::lay_out_cards(&entries)?;
-    let heights: Vec<f32> = cards.iter().map(report_image::Card::height).collect();
-    let pages = report_image::paginate(&heights, format.page_height())
-        .into_iter()
-        .map(|range| report_image::svg_page(&cards[range], format))
-        .collect();
+    let mut metrics = report_image::Metrics::new()?;
+    let mut heights = Vec::with_capacity(order.len());
+    for &key in &order {
+        heights.push(export_card(&result, &view, key, &mut metrics)?.height());
+    }
+    let pages = report_image::paginate(&heights, format.page_height());
     Ok(PreparedImages {
         format,
         name,
+        result,
+        view,
+        order,
         pages,
     })
 }
 
-/// Where each page goes: the chosen file for one page, numbered files in the
-/// chosen folder for several.
-pub fn image_targets(prepared: &PreparedImages, chosen: &Path) -> Vec<PathBuf> {
-    let count = prepared.pages.len();
-    if count == 1 {
-        return vec![chosen.to_path_buf()];
+impl PreparedImages {
+    pub fn page_count(&self) -> usize {
+        self.pages.len()
     }
-    (0..count)
-        .map(|page| chosen.join(report_image::numbered_name(&prepared.name, page, count)))
-        .collect()
+
+    /// Materialise one page at a time from the immutable result snapshot.
+    pub fn write(
+        &self,
+        chosen: &Path,
+        mut page_written: impl FnMut(usize),
+    ) -> Result<usize, String> {
+        let mut metrics = report_image::Metrics::new()?;
+        for (index, page) in self.pages.iter().enumerate() {
+            let cards = self.order[page.clone()]
+                .iter()
+                .map(|&key| export_card(&self.result, &self.view, key, &mut metrics))
+                .collect::<Result<Vec<_>, _>>()?;
+            let svg = report_image::svg_page(&cards, self.format);
+            let bytes = match self.format {
+                ImageFormat::Svg => svg.into_bytes(),
+                ImageFormat::Png => report_image::render_png(&svg)?,
+            };
+            let target = if self.page_count() == 1 {
+                chosen.to_owned()
+            } else {
+                chosen.join(report_image::numbered_name(
+                    &self.name,
+                    index,
+                    self.page_count(),
+                ))
+            };
+            write_atomically(&target, |writer| {
+                writer.write_all(&bytes).map_err(|error| error.to_string())
+            })?;
+            page_written(index + 1);
+        }
+        Ok(self.page_count())
+    }
 }
 
-/// Writes each page, counting finished pages into `progress`. Returns the
-/// number written.
-pub fn write_images(
-    prepared: &PreparedImages,
-    targets: &[PathBuf],
-    progress: &AtomicUsize,
-) -> Result<usize, String> {
-    for (svg, target) in prepared.pages.iter().zip(targets) {
-        let bytes = match prepared.format {
-            ImageFormat::Svg => svg.as_bytes().to_vec(),
-            ImageFormat::Png => report_image::render_png(svg)?,
+pub type ClipboardWriter =
+    Arc<dyn Fn(arboard::ImageData<'static>) -> Result<(), String> + Send + Sync>;
+
+/// Keep our native handle alive between writes so Linux can serve clipboard
+/// requests even after the image worker exits.
+pub fn system_clipboard() -> ClipboardWriter {
+    let handle = Mutex::new(None);
+    Arc::new(move |image| {
+        let mut handle = handle.lock().map_err(|error| error.to_string())?;
+        let clipboard = match handle.as_mut() {
+            Some(clipboard) => clipboard,
+            None => handle.insert(arboard::Clipboard::new().map_err(|error| error.to_string())?),
         };
-        write_atomically(target, |writer| {
-            writer.write_all(&bytes).map_err(|error| error.to_string())
-        })?;
-        progress.fetch_add(1, Ordering::Relaxed);
-    }
-    Ok(prepared.pages.len())
+        clipboard
+            .set_image(image)
+            .map_err(|error| error.to_string())
+    })
 }
 
-/// One card rasterised for the clipboard.
-pub fn entry_image(result: &JobResult, view: &ImageView, key: usize) -> Result<ColorImage, String> {
-    let entry = image_entry(result, view, key)?;
-    let cards = report_image::lay_out_cards(std::slice::from_ref(&entry))?;
-    let pixmap = report_image::render_pixmap(&report_image::svg_page(&cards, ImageFormat::Png))?;
-    let size = [pixmap.width() as usize, pixmap.height() as usize];
-    // tiny-skia stores premultiplied RGBA, which is what egui takes here.
-    Ok(ColorImage::from_rgba_premultiplied(size, pixmap.data()))
+pub fn copy_entry(
+    result: &JobResult,
+    view: &ImageView,
+    key: usize,
+    clipboard: &ClipboardWriter,
+) -> Result<(), String> {
+    let card = export_card(result, view, key, &mut report_image::Metrics::new()?)?;
+    let pixmap = report_image::render_pixmap(&report_image::svg_page(&[card], ImageFormat::Png))?;
+    clipboard(arboard::ImageData {
+        width: pixmap.width() as usize,
+        height: pixmap.height() as usize,
+        bytes: pixmap.take_demultiplied().into(),
+    })
 }

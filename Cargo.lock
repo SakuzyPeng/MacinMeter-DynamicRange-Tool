@@ -3037,6 +3037,7 @@ dependencies = [
 name = "macinmeter-desktop"
 version = "0.3.1"
 dependencies = [
+ "arboard",
  "eframe",
  "macinmeter",
  "resvg",

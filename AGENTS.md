@@ -153,8 +153,8 @@ python3 scripts/run-performance-baseline.py
   tests.
 - Keep tests deterministic, local, and independent of FFmpeg or network access.
   The one build-time fetch is `apps/macinmeter-desktop/build.rs`'s
-  checksum-pinned UI fonts (`MACINMETER_UI_FONT_PATH` and
-  `MACINMETER_SERIF_FONT_PATH` for offline builds); do not add another.
+  checksum-pinned UI font (`MACINMETER_UI_FONT_PATH` for offline builds); do
+  not add another.
 - Algorithm changes require chunk-boundary, window-boundary, multichannel, and
   finite-JSON coverage plus an update to
   `reference/specs/foo-dr-meter-1.0.8-candidate-v1.md`.

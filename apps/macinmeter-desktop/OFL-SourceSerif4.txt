@@ -1,5 +1,5 @@
 Source Serif 4 Semibold, version 4.005 (adobe-fonts/source-serif tag 4.005R),
-embedded unmodified in the macinmeter-desktop binary by build.rs
+vendored in fonts/ and embedded unmodified in the macinmeter-desktop binary
 (SHA-256 25e034392847d9965c92f98971b3646436b7ab919ece9118b0c0e5ec94c02efc).
 
 The licence below is adobe-fonts/source-serif LICENSE.md at that tag.
@@ -24,7 +24,7 @@ with others.
 
 The OFL allows the licensed fonts to be used, studied, modified and
 redistributed freely as long as they are not sold by themselves. The
-fonts, including any derivative works, can be bundled, embedded, 
+fonts, including any derivative works, can be bundled, embedded,
 redistributed and/or sold with any software provided that any reserved
 names are not used by derivative works. The fonts and derivatives,
 however, cannot be released under any other type of license. The

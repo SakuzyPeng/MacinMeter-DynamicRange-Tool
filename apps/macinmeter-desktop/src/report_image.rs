@@ -167,7 +167,14 @@ impl ImageEntry {
                     format::wire_name(&error.code)
                 ),
                 message: error.message.clone(),
-                details: error.details.clone(),
+                // Free-form decoder and OS details can name paths other than
+                // display_path (for example an unreadable child directory).
+                // The structured code and the application's message stay visible.
+                details: if hide_path {
+                    None
+                } else {
+                    error.details.clone()
+                },
             },
         };
         Self {
@@ -530,6 +537,8 @@ enum Shape {
         y: f32,
         style: Style,
         text: String,
+        /// Original label when the window or exported image shows an ellipsis.
+        full_text: Option<Box<str>>,
     },
 }
 
@@ -598,6 +607,18 @@ impl Pen<'_> {
 
     /// Text in a line box of `line_height` whose top is `top`.
     fn text(&mut self, x: f32, top: f32, line_height: f32, style: Style, text: &str) {
+        self.text_run(x, top, line_height, style, text.to_owned(), None);
+    }
+
+    fn text_run(
+        &mut self,
+        x: f32,
+        top: f32,
+        line_height: f32,
+        style: Style,
+        text: String,
+        full_text: Option<Box<str>>,
+    ) {
         if text.is_empty() {
             return;
         }
@@ -611,7 +632,8 @@ impl Pen<'_> {
             x,
             y: top + (line_height - content * style.size) / 2.0 + ascent * style.size,
             style,
-            text: text.to_owned(),
+            text,
+            full_text,
         });
     }
 
@@ -625,7 +647,8 @@ impl Pen<'_> {
         let shown = self
             .metrics
             .ellipsize(text, style.size, style.spacing, style.family, width);
-        self.text(x, top, line_height, style, &shown);
+        let full_text = (shown != text).then(|| Box::from(text));
+        self.text_run(x, top, line_height, style, shown, full_text);
     }
 
     /// Wrapped text; returns the height used.
@@ -855,27 +878,40 @@ fn lay_out_report(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     let mut y = bottom + 1.0;
 
     // .format-line: padding 9px 14px, "·" between items, ruled below.
-    let band_height = 9.0 + normal_line(12.0) + 9.0;
-    pen.rect(
-        0.0,
-        y,
-        pen.inner,
-        band_height,
-        mix(theme::SURFACE_SOFT, 0.42, theme::SURFACE),
-    );
+    let band_start = pen.shapes.len();
     let item = Style::new(12.0, theme::TEXT_SECONDARY);
     let dot = Style::new(12.0, theme::BORDER_STRONG);
+    let dot_width = pen.width("·", dot);
+    let available = pen.inner - 2.0 * PAD_X;
+    let mut line_top = y + 9.0;
     let mut x = PAD_X;
     for (index, text) in report.source.iter().enumerate() {
-        pen.text(x, y + 9.0, normal_line(12.0), item, text);
-        x += pen.width(text, item);
-        if index + 1 < report.source.len() {
-            x += 12.0;
-            pen.text(x, y + 9.0, normal_line(12.0), dot, "·");
-            x += pen.width("·", dot) + 12.0;
+        let width = pen.width(text, item);
+        if index > 0 {
+            if x + 24.0 + dot_width + width > pen.inner - PAD_X {
+                x = PAD_X;
+                line_top += normal_line(12.0) + 6.0;
+            } else {
+                pen.text(x + 12.0, line_top, normal_line(12.0), dot, "·");
+                x += 24.0 + dot_width;
+            }
         }
+        pen.line(x, line_top, normal_line(12.0), item, text, available);
+        x += width;
     }
-    y += band_height;
+    let bottom = line_top + normal_line(12.0) + 9.0;
+    pen.shapes.insert(
+        band_start,
+        Shape::Rect {
+            x: 0.0,
+            y,
+            width: pen.inner,
+            height: bottom - y,
+            radius: 0.0,
+            fill: mix(theme::SURFACE_SOFT, 0.42, theme::SURFACE),
+        },
+    );
+    y = bottom;
     pen.rule(y, theme::BORDER);
     y += 1.0;
 
@@ -957,7 +993,10 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     }
     let natural: Vec<f32> = content.iter().map(|width| width + 2.0 * PAD_X).collect();
     let total: f32 = natural.iter().sum();
-    let extra = (pen.inner - total).max(0.0);
+    if total > pen.inner {
+        return lay_out_compact_channels(pen, report, top);
+    }
+    let extra = pen.inner - total;
     let mut columns = [0.0_f32; 5];
     let mut x = 0.0;
     for (column, width) in natural.iter().enumerate() {
@@ -1051,12 +1090,61 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
     y
 }
 
+/// On a narrow or zoomed window, put each channel's labeled measurements on
+/// their own lines so the peak column and its full numeric value stay readable.
+fn lay_out_compact_channels(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
+    let width = pen.inner - 2.0 * PAD_X;
+    let heading = Style::new(13.0, theme::TEXT).weight(650);
+    let value = Style::new(13.0, theme::TEXT_SECONDARY);
+    let line_height = normal_line(13.0);
+    let mut y = top;
+    for (index, row) in report.rows.iter().enumerate() {
+        if index > 0 {
+            pen.rule(y, rule_color());
+            y += 1.0;
+        }
+        y += 9.0;
+        let title = match row.role {
+            Some(role) => format!("{} · {role}", row.channel),
+            None => row.channel.clone(),
+        };
+        let mut line = |style, text: &str| {
+            y += pen.paragraph(PAD_X, y, width, line_height, style, text);
+        };
+        line(heading, &title);
+        match &row.cells {
+            RowCells::Measured(cells) => {
+                for (label, text) in report.headings[1..].iter().zip(cells) {
+                    line(value, &format!("{label}  {text}"));
+                }
+            }
+            RowCells::Silent(note) => {
+                line(value, &format!("{}  DR0", report.headings[1]));
+                line(value, note);
+            }
+            RowCells::Insufficient(note) => line(value, note),
+        }
+        y += 9.0;
+    }
+    y
+}
+
 /// Paints a laid-out card into the window at `origin`, with the same shapes
 /// the SVG carries, so the window and an exported image cannot drift apart.
 /// Serif text is drawn in the embedded Semibold; the sans face has only its
 /// Regular, so heavier sans text is drawn twice, half a point apart, as the
 /// PNG strokes it.
-pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlighted: bool) {
+pub fn paint(card: &Card, ui: &egui::Ui, origin: egui::Pos2, highlighted: bool) {
+    let painter = ui.painter();
+    let accessible = ui
+        .ctx()
+        .accesskit_node_builder(ui.unique_id(), |_| ())
+        .is_some();
+    let label_sense = if accessible && ui.memory(|memory| memory.options.screen_reader) {
+        egui::Sense::focusable_noninteractive()
+    } else {
+        egui::Sense::hover()
+    };
     let outer = egui::Rect::from_min_size(origin, egui::vec2(card.width, card.height));
     painter.rect_filled(outer, CARD_RADIUS, theme::SURFACE);
     let inner_origin = origin + egui::vec2(1.0, 1.0);
@@ -1070,7 +1158,7 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
         reason = "the card radius is a small constant"
     )]
     let corner = (CARD_RADIUS - 1.0) as u8;
-    for shape in &card.shapes {
+    for (index, shape) in card.shapes.iter().enumerate() {
         match shape {
             Shape::Rect {
                 x,
@@ -1110,7 +1198,13 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
                 }
                 painter.rect_filled(rect, rounding, *fill);
             }
-            Shape::Text { x, y, style, text } => {
+            Shape::Text {
+                x,
+                y,
+                style,
+                text,
+                full_text,
+            } => {
                 let font = match style.family {
                     Family::Mono => egui::FontId::monospace(style.size),
                     Family::Serif => egui::FontId::new(style.size, theme::serif_family()),
@@ -1132,6 +1226,18 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
                     .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
                     .unwrap_or(ASCENT * style.size);
                 let position = inner_origin + egui::vec2(*x, y - baseline);
+                if accessible {
+                    let bounds = galley.rect.translate(position.to_vec2());
+                    let label =
+                        ui.interact(bounds, ui.id().with(("card-text", index)), label_sense);
+                    label.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Label,
+                            ui.is_enabled(),
+                            full_text.as_deref().unwrap_or(text),
+                        )
+                    });
+                }
                 if style.weight >= 600 && style.family != Family::Serif {
                     painter.galley(position + egui::vec2(0.5, 0.0), galley.clone(), style.color);
                 }
@@ -1152,15 +1258,6 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
         ),
         egui::StrokeKind::Inside,
     );
-}
-
-/// Lays out every entry. The caller paginates by [`Card::height`].
-pub fn lay_out_cards(entries: &[ImageEntry]) -> Result<Vec<Card>, String> {
-    let mut metrics = Metrics::new()?;
-    Ok(entries
-        .iter()
-        .map(|entry| lay_out_card(&mut metrics, entry, CARD_WIDTH, 0.0))
-        .collect())
 }
 
 /// Greedy pagination by content height, as the Tauri export did: a page closes
@@ -1221,11 +1318,10 @@ fn escape(text: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
-            // XML 1.0 cannot carry most C0 controls even escaped.
-            character if character.is_control() && !matches!(character, '\t' | '\n' | '\r') => {
-                out.push('\u{FFFD}');
-            }
-            character => out.push(character),
+            // Rust chars already exclude surrogates. XML 1.0 also excludes
+            // most C0 controls and the last two code points of the BMP.
+            '\t' | '\n' | '\r' | ' '..='\u{fffd}' | '\u{10000}'..=char::MAX => out.push(character),
+            _ => out.push('\u{fffd}'),
         }
     }
     out
@@ -1324,7 +1420,9 @@ pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
                         hex(*fill)
                     );
                 }
-                Shape::Text { x, y, style, text } => {
+                Shape::Text {
+                    x, y, style, text, ..
+                } => {
                     write_text(&mut svg, *x, *y, *style, text, format);
                 }
             }
@@ -1408,6 +1506,14 @@ mod tests {
     use super::*;
     use macinmeter::{AnalyzeRequest, Application};
     use std::path::{Path, PathBuf};
+
+    fn lay_out_cards(entries: &[ImageEntry]) -> Result<Vec<Card>, String> {
+        let mut metrics = Metrics::new()?;
+        Ok(entries
+            .iter()
+            .map(|entry| lay_out_card(&mut metrics, entry, CARD_WIDTH, 0.0))
+            .collect())
+    }
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1513,6 +1619,96 @@ mod tests {
         );
         let svg = svg_page(&[card], ImageFormat::Svg);
         assert!(svg.contains("unsupported_format"));
+    }
+
+    #[test]
+    fn hiding_a_failed_scans_path_also_protects_its_free_form_details() {
+        let path = "/private/client/album";
+        let child = "/private/client/album/unreadable";
+        let error = AnalysisError::new(
+            macinmeter::ErrorCode::PermissionDenied,
+            macinmeter::AnalysisStage::Discovery,
+            "failed to scan an input directory",
+        )
+        .with_display_path(path)
+        .with_details(format!(
+            "IO error for operation on {child}: Permission denied"
+        ));
+        for hide_path in [false, true] {
+            let entry = ImageEntry::new(Language::English, path, Err(&error), hide_path, false);
+            let cards = lay_out_cards(&[entry]).unwrap();
+            for format in [ImageFormat::Png, ImageFormat::Svg] {
+                let svg = svg_page(&cards, format);
+                assert!(svg.contains(">album</text>"));
+                assert!(svg.contains("permission_denied"));
+                assert!(svg.contains("failed to scan an input directory"));
+                assert_eq!(svg.contains("/private/client"), !hide_path);
+                assert_eq!(svg.contains(child), !hide_path);
+            }
+        }
+    }
+
+    #[test]
+    fn exported_text_obeys_the_xml_character_range() {
+        assert_eq!(
+            escape("\t\n\r\u{80}\u{fffd}\u{10000}"),
+            "\t\n\r\u{80}\u{fffd}\u{10000}"
+        );
+        let report = report("full_scale_clipping.wav");
+        let entry = ImageEntry::new(
+            Language::English,
+            "song\u{7}\u{fffe}\u{ffff}.wav",
+            Ok(&report),
+            true,
+            false,
+        );
+        let cards = lay_out_cards(&[entry]).unwrap();
+        for format in [ImageFormat::Svg, ImageFormat::Png] {
+            let svg = svg_page(&cards, format);
+            assert!(svg.contains("song���.wav"));
+            usvg::Tree::from_str(&svg, &usvg::Options::default()).unwrap();
+        }
+    }
+
+    #[test]
+    fn compact_channels_keep_their_headers_values_and_notes_inside_the_card() {
+        for name in [
+            "native-alac-v1/alac24-8ch-48000.mp4",
+            "silence.wav",
+            "tiny_duration.wav",
+        ] {
+            let report = report(name);
+            for language in [Language::English, Language::Chinese] {
+                let entry = ImageEntry::new(language, name, Ok(&report), false, false);
+                let mut metrics = Metrics::new().unwrap();
+                let card = lay_out_card(&mut metrics, &entry, 300.0, 200.0);
+                let mut lines = Vec::new();
+                for shape in &card.shapes {
+                    if let Shape::Text { x, style, text, .. } = shape {
+                        let right =
+                            x + metrics.width(text, style.size, style.spacing, style.family);
+                        assert!(right <= card.width - 1.0, "{text} ends at {right}");
+                        lines.push(text.as_str());
+                    }
+                }
+                let Body::Report(body) = &entry.body else {
+                    unreachable!()
+                };
+                for row in &body.rows {
+                    assert!(lines.iter().any(|line| line.starts_with(&row.channel)));
+                    match &row.cells {
+                        RowCells::Measured(cells) => {
+                            for (label, value) in body.headings[1..].iter().zip(cells) {
+                                assert!(lines.contains(&format!("{label}  {value}").as_str()));
+                            }
+                        }
+                        RowCells::Silent(note) | RowCells::Insufficient(note) => {
+                            assert!(lines.contains(&note.as_str()));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// `MACINMETER_IMAGE_SAMPLE_DIR=/tmp/out cargo test -p macinmeter-desktop

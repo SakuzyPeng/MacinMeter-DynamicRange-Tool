@@ -14,8 +14,7 @@ pub const UI_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansCJK
 /// The card's serif face (title, DR number): Source Serif 4 Semibold, the face
 /// the app icon's "DR" is drawn from. CJK in serif text falls back to
 /// [`UI_FONT`].
-pub const SERIF_FONT: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/SourceSerif4-Semibold.otf"));
+pub const SERIF_FONT: &[u8] = include_bytes!("../fonts/SourceSerif4-Semibold.otf");
 
 /// The egui family that draws the stylesheet's `--font-serif` text.
 pub fn serif_family() -> egui::FontFamily {

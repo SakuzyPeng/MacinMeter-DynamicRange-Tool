@@ -15,6 +15,7 @@
 *.m4a binary
 *.mp4 binary
 *.png binary
+*.otf binary
 *.bin binary
 
 # Reference evidence and reverse-engineering harnesses are not product code.
