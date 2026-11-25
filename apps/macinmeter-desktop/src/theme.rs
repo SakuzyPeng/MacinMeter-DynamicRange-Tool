@@ -1,4 +1,4 @@
-//! The paper palette the Tauri stylesheet defined, and the embedded UI font.
+//! The paper palette the Tauri stylesheet defined, and the embedded UI fonts.
 //!
 //! The colours are the `:root` tokens of `tauri-app/src/styles.css`; the
 //! MacinDecode Spatial Player's theme already uses the same values, so the two
@@ -11,6 +11,16 @@ use eframe::egui::{
 
 /// The embedded UI face, shared by the window and the image renderer.
 pub const UI_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansCJKsc-Regular.otf"));
+/// The card's serif face (title, DR number): Source Serif 4 Semibold, the face
+/// the app icon's "DR" is drawn from. CJK in serif text falls back to
+/// [`UI_FONT`].
+pub const SERIF_FONT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/SourceSerif4-Semibold.otf"));
+
+/// The egui family that draws the stylesheet's `--font-serif` text.
+pub fn serif_family() -> egui::FontFamily {
+    egui::FontFamily::Name("serif".into())
+}
 
 pub const BACKGROUND: Color32 = Color32::from_rgb(0xfb, 0xf7, 0xf0);
 pub const SURFACE: Color32 = Color32::from_rgb(0xff, 0xfe, 0xfa);
@@ -83,13 +93,63 @@ fn install_ui_font(context: &egui::Context) {
                 family: egui::FontFamily::Monospace,
                 priority: FontPriority::Lowest,
             },
+            // Behind the serif face, for CJK characters in a serif title.
+            InsertFontFamily {
+                family: serif_family(),
+                priority: FontPriority::Lowest,
+            },
         ],
+    ));
+    context.add_font(FontInsert::new(
+        "source-serif-4-semibold",
+        egui::FontData::from_static(SERIF_FONT),
+        vec![InsertFontFamily {
+            family: serif_family(),
+            priority: FontPriority::Highest,
+        }],
     ));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_serif_family_falls_back_to_cjk() {
+        let context = egui::Context::default();
+        install_ui_font(&context);
+        context.begin_pass(egui::RawInput::default());
+        // `has_glyphs` cannot answer this: egui reports a character as missing
+        // whenever it resolves to the family's replacement-glyph face, which
+        // here is the CJK face doing the falling back. Widths show which face
+        // drew each character instead.
+        let (order, serif, sans) = context.fonts_mut(|fonts| {
+            let order = fonts
+                .definitions()
+                .families
+                .get(&serif_family())
+                .cloned()
+                .unwrap_or_default();
+            let serif = egui::FontId::new(16.0, serif_family());
+            let sans = egui::FontId::proportional(16.0);
+            let mut widths = |font: &egui::FontId| {
+                ['D', '欅', 'セ'].map(|character| fonts.glyph_width(font, character))
+            };
+            (order, widths(&serif), widths(&sans))
+        });
+        let mut output = context.end_pass();
+        output.textures_delta.clear();
+        assert_eq!(order, ["source-serif-4-semibold", "noto-sans-cjk-sc"]);
+        assert!(
+            (serif[0] - sans[0]).abs() > 0.1,
+            "Latin is drawn in the serif face"
+        );
+        assert!(
+            serif[1] > 0.0 && (serif[1] - sans[1]).abs() < 1e-3,
+            "CJK falls back"
+        );
+        assert!((serif[2] - sans[2]).abs() < 1e-3, "kana falls back");
+    }
 
     #[test]
     fn embedded_font_covers_latin_chinese_japanese_and_korean() {

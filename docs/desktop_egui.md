@@ -9,22 +9,24 @@ stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
 | Question | Decision |
 |---|---|
 | Toolchain | The whole workspace moves to Rust 1.98.0, pinned by `rust-toolchain.toml`, the same compiler as the player. eframe 0.36.1 itself needs 1.95. |
-| UI font | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB). Its build script downloads the font on a cache miss, including when compiling the test binary. Set `MACINMETER_UI_FONT_PATH` to build with a local copy. |
+| UI fonts | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB) for the card's serif title and DR number. Its build script downloads them on a cache miss, including when compiling the test binary; the two are one network exception. Set `MACINMETER_UI_FONT_PATH` and `MACINMETER_SERIF_FONT_PATH` to build with local copies. |
 | Complex scripts | egui 0.36 shapes text with HarfRust but has no bidi and no system font fallback. Arabic or Hebrew file names render in logical (reversed) order, and scripts outside the embedded font render as boxes. This is accepted. |
 | Windows installer | Stays NSIS when the Tauri bundler goes, so an install can replace a 0.3.x Tauri install in place. Not part of the prototype. |
 | Image export | Drawn from report data as a real vector SVG, with PNG rasterised from that SVG; see [Image export](#image-export). |
 
 ### Font build input
 
-`build.rs` downloads the font once, verifies its SHA-256, and copies it into
-`OUT_DIR`. Two variables control it:
+`build.rs` downloads each font once, verifies its SHA-256, and copies it into
+`OUT_DIR`. Noto Sans CJK SC comes from jsDelivr; Source Serif 4 comes from
+raw.githubusercontent.com at the 4.005R commit, with jsDelivr as a second
+mirror. Three variables control it:
 
-- `MACINMETER_UI_FONT_PATH`: a local copy of the exact file, for offline
-  builds. The checksum is still enforced.
+- `MACINMETER_UI_FONT_PATH` and `MACINMETER_SERIF_FONT_PATH`: local copies of
+  the exact files, for offline builds. The checksums are still enforced.
 - `MACINMETER_UI_FONT_CACHE_DIR`: an absolute directory shared by profiles and
   checkouts. CI sets one per job.
 
-jsDelivr sometimes answers this file with a 403 that it caches for 60 s
+jsDelivr sometimes answers these files with a 403 that it caches for 60 s
 (`s-maxage=60`). That was observed while building this prototype. Each retry
 therefore waits 61 s rather than hitting the same cached refusal.
 
@@ -101,9 +103,12 @@ depended on the window width and the host's fonts.
 - **PNG**: resvg rasterises the SVG with only the embedded font loaded (no
   system fonts), at up to 2× within a 16384 px / 32 MP canvas.
 - **Typography**: the SVG names the stylesheet's serif stack and its 600–750
-  weights, so a viewer with those faces shows them. Only Noto Sans CJK SC
-  Regular is embedded, so in a PNG serif falls back to it and heavier weights
-  are synthesised with a thin stroke in the text colour.
+  weights, so a viewer with those faces shows them. The window and the PNG
+  draw serif text in the embedded Source Serif 4 Semibold, falling back to
+  Noto Sans CJK SC for CJK characters. Only Noto's Regular is embedded, so
+  heavier sans text is synthesised: a thin stroke in a PNG, a second pass half
+  a point over in the window. In a PNG, resvg draws a mixed Latin/CJK serif run
+  in the fallback face, where a browser would split it.
 - **Pagination**: as Tauri did, at 4000 px of content per PNG page and
   12000 px per SVG page. One page goes to a chosen file; several go to a chosen
   folder as `name_01.png`, `name_02.png`, and so on.

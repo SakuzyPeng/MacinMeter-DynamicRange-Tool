@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MacinMeter Dynamic Range desktop GUI on egui (prototype beside the Tauri GUI)"
-# An application shell, not a library: it embeds a UI font and window glue.
+# An application shell, not a library: it embeds UI fonts and window glue.
 publish = false
 
 [[bin]]

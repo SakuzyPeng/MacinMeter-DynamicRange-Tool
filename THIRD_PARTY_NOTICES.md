@@ -26,14 +26,18 @@ Tauri GUI redistribute no font file.
 Source Serif 4 采用 SIL Open Font License 1.1，许可全文随源文件保存在
 `tauri-app/icons-src/OFL-SourceSerif4.txt`；CLI 与 Tauri GUI 不随附任何字体文件。
 
-The egui desktop prototype is the exception: its binary embeds Noto Sans CJK SC
-2.004, © 2014-2021 Adobe, under the SIL Open Font License 1.1, which also lays
-out and rasterises its exported images. The licence text is kept at
-`apps/macinmeter-desktop/OFL-NotoSansCJK.txt` and must accompany any build of
+The egui desktop prototype is the exception. Its binary embeds two unmodified
+fonts under the SIL Open Font License 1.1, which also lay out and rasterise its
+exported images: Noto Sans CJK SC 2.004, © 2014-2021 Adobe, and Source Serif 4
+Semibold 4.005, © 2014-2023 Adobe, with Reserved Font Name 'Source'. Their
+licence texts are kept at `apps/macinmeter-desktop/OFL-NotoSansCJK.txt` and
+`apps/macinmeter-desktop/OFL-SourceSerif4.txt` and must accompany any build of
 that binary that is distributed. The prototype is not a release artifact yet.
-egui 桌面原型例外：其二进制内嵌 Noto Sans CJK SC 2.004（© 2014-2021 Adobe，
-SIL Open Font License 1.1），图片导出也用它排版和栅格化。许可全文保存在
-`apps/macinmeter-desktop/OFL-NotoSansCJK.txt`，分发该二进制时必须随附；原型目前
+egui 桌面原型例外：其二进制原样内嵌两款 SIL Open Font License 1.1 字体，图片导出
+也用它们排版和栅格化：Noto Sans CJK SC 2.004（© 2014-2021 Adobe）与 Source Serif 4
+Semibold 4.005（© 2014-2023 Adobe，保留字体名称 'Source'）。许可全文保存在
+`apps/macinmeter-desktop/OFL-NotoSansCJK.txt` 与
+`apps/macinmeter-desktop/OFL-SourceSerif4.txt`，分发该二进制时必须随附；原型目前
 不是发布制品。
 
 The authoritative package versions are recorded in `Cargo.lock` and

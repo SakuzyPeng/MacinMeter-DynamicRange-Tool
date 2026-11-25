@@ -12,9 +12,10 @@
 //!
 //! The SVG names the stylesheet's serif stack and weights, so a viewer that has
 //! those faces shows them. PNG is the same layout rasterised by resvg with only
-//! the embedded Noto Sans CJK SC Regular loaded, so it does not depend on the
-//! host: serif falls back to that face, and the stylesheet's 600–750 weights
-//! are synthesised with a thin stroke in the text colour.
+//! the embedded faces loaded, so it does not depend on the host: serif text is
+//! Source Serif 4 Semibold (CJK falling back to Noto Sans CJK SC), and the
+//! sans face's 600–750 weights are synthesised with a thin stroke in the text
+//! colour because only its Regular is embedded.
 //!
 //! Strings come from the same formatters and locale tables as the window, and
 //! images follow what is on screen: visible entries in on-screen order, with
@@ -72,6 +73,11 @@ const MONO_STACK: &str = "ui-monospace, Menlo, Consolas, 'Noto Sans CJK SC', mon
 /// a CSS line box does.
 const ASCENT: f32 = 0.88;
 const NORMAL_LINE_HEIGHT: f32 = 1.448;
+/// Source Serif 4's ascent and descent, per em (its `hhea` and typo metrics).
+const SERIF_ASCENT: f32 = 1.036;
+const SERIF_DESCENT: f32 = 0.335;
+/// The serif face's family name in the rasteriser's database.
+const SERIF_FAMILY: &str = "Source Serif 4";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageFormat {
@@ -345,59 +351,72 @@ fn report_body(language: Language, report: &AnalysisReport, hide_warnings: bool)
 
 // ---- measurement ---------------------------------------------------------------
 
-/// Advance widths of the embedded face, per em, cached by character. Kerning is
-/// not modelled; truncation and wrapping keep a small margin for it.
+/// Advance widths of the embedded faces, per em, cached by character. Serif
+/// text measures with the serif face and falls back to the sans face for
+/// characters it lacks (CJK), as the window and the rasteriser draw it.
+/// Kerning is not modelled; truncation and wrapping keep a small margin for it.
 pub struct Metrics {
-    font: FontRef<'static>,
-    advances: HashMap<char, f32>,
+    sans: FontRef<'static>,
+    serif: FontRef<'static>,
+    advances: HashMap<(Family, char), f32>,
+}
+
+fn face_advance(font: &FontRef<'_>, character: char) -> Option<f32> {
+    let glyph = font.charmap().map(character)?;
+    font.glyph_metrics(Size::new(1.0), LocationRef::default())
+        .advance_width(glyph)
 }
 
 impl Metrics {
     pub fn new() -> Result<Self, String> {
-        let font = FontRef::new(theme::UI_FONT).map_err(|error| error.to_string())?;
         Ok(Self {
-            font,
+            sans: FontRef::new(theme::UI_FONT).map_err(|error| error.to_string())?,
+            serif: FontRef::new(theme::SERIF_FONT).map_err(|error| error.to_string())?,
             advances: HashMap::new(),
         })
     }
 
-    fn advance(&mut self, character: char) -> f32 {
-        if let Some(advance) = self.advances.get(&character) {
+    fn advance(&mut self, character: char, family: Family) -> f32 {
+        if let Some(advance) = self.advances.get(&(family, character)) {
             return *advance;
         }
-        let advance = self
-            .font
-            .charmap()
-            .map(character)
-            .and_then(|glyph| {
-                self.font
-                    .glyph_metrics(Size::new(1.0), LocationRef::default())
-                    .advance_width(glyph)
-            })
+        let serif = match family {
+            Family::Serif => face_advance(&self.serif, character),
+            Family::Sans | Family::Mono => None,
+        };
+        let advance = serif
+            .or_else(|| face_advance(&self.sans, character))
             .unwrap_or(0.6);
-        self.advances.insert(character, advance);
+        self.advances.insert((family, character), advance);
         advance
     }
 
     /// Width of `text` with CSS `letter-spacing` (in em) after every character.
-    fn width(&mut self, text: &str, size: f32, spacing: f32) -> f32 {
+    fn width(&mut self, text: &str, size: f32, spacing: f32, family: Family) -> f32 {
         text.chars()
-            .map(|character| self.advance(character) + spacing)
+            .map(|character| self.advance(character, family) + spacing)
             .sum::<f32>()
             * size
     }
 
     /// `text-overflow: ellipsis` within `width`.
-    fn ellipsize(&mut self, text: &str, size: f32, spacing: f32, width: f32) -> String {
+    fn ellipsize(
+        &mut self,
+        text: &str,
+        size: f32,
+        spacing: f32,
+        family: Family,
+        width: f32,
+    ) -> String {
         let limit = width * 0.98;
-        if self.width(text, size, spacing) <= limit {
+        if self.width(text, size, spacing, family) <= limit {
             return text.to_owned();
         }
-        let ellipsis = self.width("…", size, spacing);
+        let ellipsis = self.width("…", size, spacing, family);
         let mut out = String::new();
         let mut used = 0.0;
         for character in text.chars() {
-            let advance = (self.advance(character) + spacing) * size;
+            let advance = (self.advance(character, family) + spacing) * size;
             if used + advance + ellipsis > limit {
                 break;
             }
@@ -417,7 +436,7 @@ impl Metrics {
             let mut line = String::new();
             for word in paragraph.split_inclusive(' ') {
                 let candidate = format!("{line}{word}");
-                if self.width(candidate.trim_end(), size, 0.0) <= limit {
+                if self.width(candidate.trim_end(), size, 0.0, Family::Sans) <= limit {
                     line = candidate;
                     continue;
                 }
@@ -427,7 +446,7 @@ impl Metrics {
                 }
                 for character in word.chars() {
                     line.push(character);
-                    if self.width(line.trim_end(), size, 0.0) > limit {
+                    if self.width(line.trim_end(), size, 0.0, Family::Sans) > limit {
                         line.pop();
                         lines.push(line.trim_end().to_owned());
                         line = character.to_string();
@@ -442,7 +461,7 @@ impl Metrics {
 
 // ---- drawing -------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Family {
     Sans,
     Serif,
@@ -582,23 +601,30 @@ impl Pen<'_> {
         if text.is_empty() {
             return;
         }
+        // The baseline sits half the leading below the line box's top, then
+        // one ascent down, using the metrics of the face that draws the text.
+        let (ascent, content) = match style.family {
+            Family::Serif => (SERIF_ASCENT, SERIF_ASCENT + SERIF_DESCENT),
+            Family::Sans | Family::Mono => (ASCENT, 1.0),
+        };
         self.shapes.push(Shape::Text {
             x,
-            y: top + (line_height - style.size) / 2.0 + ASCENT * style.size,
+            y: top + (line_height - content * style.size) / 2.0 + ascent * style.size,
             style,
             text: text.to_owned(),
         });
     }
 
     fn width(&mut self, text: &str, style: Style) -> f32 {
-        self.metrics.width(text, style.size, style.spacing)
+        self.metrics
+            .width(text, style.size, style.spacing, style.family)
     }
 
     /// One line, truncated with an ellipsis to `width`.
     fn line(&mut self, x: f32, top: f32, line_height: f32, style: Style, text: &str, width: f32) {
         let shown = self
             .metrics
-            .ellipsize(text, style.size, style.spacing, width);
+            .ellipsize(text, style.size, style.spacing, style.family, width);
         self.text(x, top, line_height, style, &shown);
     }
 
@@ -1027,8 +1053,9 @@ fn lay_out_table(pen: &mut Pen<'_>, report: &ReportBody, top: f32) -> f32 {
 
 /// Paints a laid-out card into the window at `origin`, with the same shapes
 /// the SVG carries, so the window and an exported image cannot drift apart.
-/// egui has one weight of the embedded face, so heavier text is drawn twice,
-/// half a point apart, as the PNG strokes it.
+/// Serif text is drawn in the embedded Semibold; the sans face has only its
+/// Regular, so heavier sans text is drawn twice, half a point apart, as the
+/// PNG strokes it.
 pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlighted: bool) {
     let outer = egui::Rect::from_min_size(origin, egui::vec2(card.width, card.height));
     painter.rect_filled(outer, CARD_RADIUS, theme::SURFACE);
@@ -1086,7 +1113,8 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
             Shape::Text { x, y, style, text } => {
                 let font = match style.family {
                     Family::Mono => egui::FontId::monospace(style.size),
-                    Family::Sans | Family::Serif => egui::FontId::proportional(style.size),
+                    Family::Serif => egui::FontId::new(style.size, theme::serif_family()),
+                    Family::Sans => egui::FontId::proportional(style.size),
                 };
                 let job = egui::text::LayoutJob::single_section(
                     text.clone(),
@@ -1104,7 +1132,7 @@ pub fn paint(card: &Card, painter: &egui::Painter, origin: egui::Pos2, highlight
                     .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
                     .unwrap_or(ASCENT * style.size);
                 let position = inner_origin + egui::vec2(*x, y - baseline);
-                if style.weight >= 600 {
+                if style.weight >= 600 && style.family != Family::Serif {
                     painter.galley(position + egui::vec2(0.5, 0.0), galley.clone(), style.color);
                 }
                 painter.galley(position, galley, style.color);
@@ -1217,9 +1245,10 @@ fn write_text(svg: &mut String, x: f32, y: f32, style: Style, text: &str, format
     );
     if style.weight != 400 {
         let _ = write!(svg, r#" font-weight="{}""#, style.weight);
-        // The PNG has only the Regular face, so heavier text gets a stroke in
-        // its own colour; 750 reads close to the stylesheet's bold labels.
-        if format == ImageFormat::Png && style.weight > 400 {
+        // Serif text has its real Semibold. The sans face is Regular only, so
+        // in a PNG heavier sans text gets a stroke in its own colour; 750
+        // reads close to the stylesheet's bold labels.
+        if format == ImageFormat::Png && style.weight > 400 && style.family != Family::Serif {
             let stroke = style.size * f32::from(style.weight - 400) / 9_000.0;
             let _ = write!(
                 svg,
@@ -1320,9 +1349,11 @@ fn font_database() -> Arc<usvg::fontdb::Database> {
     Arc::clone(DATABASE.get_or_init(|| {
         let mut database = usvg::fontdb::Database::new();
         database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(theme::UI_FONT)));
-        // Every generic family resolves to the one embedded face.
+        database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(theme::SERIF_FONT)));
+        // The generic families resolve to the embedded faces. A character the
+        // serif face lacks (CJK) falls back to the sans face.
         database.set_sans_serif_family(EMBEDDED_FAMILY);
-        database.set_serif_family(EMBEDDED_FAMILY);
+        database.set_serif_family(SERIF_FAMILY);
         database.set_monospace_family(EMBEDDED_FAMILY);
         Arc::new(database)
     }))
@@ -1470,7 +1501,7 @@ mod tests {
         let card = lay_out_card(&mut metrics, &entry, CARD_WIDTH, 0.0);
         for shape in &card.shapes {
             if let Shape::Text { x, style, text, .. } = shape {
-                let right = x + metrics.width(text, style.size, style.spacing);
+                let right = x + metrics.width(text, style.size, style.spacing, style.family);
                 assert!(right <= CARD_WIDTH - 2.0 - PAD_X + 0.5, "{text} overflows");
             }
         }

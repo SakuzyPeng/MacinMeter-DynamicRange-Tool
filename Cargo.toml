@@ -31,7 +31,7 @@ eframe = { version = "=0.36.1", default-features = false, features = [
     "wgpu",
     "x11",
 ] }
-# Image export rasterises the GUI's own SVG with the embedded UI font only:
+# Image export rasterises the GUI's own SVG with the embedded UI fonts only:
 # no system fonts, so a PNG does not depend on what the host has installed.
 resvg = { version = "0.50", default-features = false, features = ["text"] }
 # Unlike the player, no `common-controls-v6`: that feature imports
