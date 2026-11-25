@@ -11,13 +11,13 @@ use crate::{
     jobs::{
         AnalysisJob, DiscoveryJob, Finished, JobResult, Phase, Request, Update, Wake as JobWake,
     },
+    report_image::{self, ImageEntry, ImageFormat},
     theme,
 };
 use eframe::egui::{self, Align, Layout, Margin, RichText, Sense, Stroke};
 use macinmeter::{
     AnalysisError, AnalysisReport, Application, BatchItem, BatchItemOutcome, BatchItemSummary,
-    BatchItemSummaryOutcome, BatchTrackSummary, ChannelCount, ChannelOutcome, ContainerFormat,
-    DecodedDuration, ErrorCode, FiniteF32, PhaseTimings, SourceCodec, capabilities,
+    BatchItemSummaryOutcome, BatchTrackSummary, ErrorCode, FiniteF32, PhaseTimings, capabilities,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -25,7 +25,10 @@ use std::{
     future::Future,
     path::PathBuf,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::{Context, Poll, Wake, Waker},
     time::{Duration, Instant},
 };
@@ -62,6 +65,7 @@ impl SortMode {
     }
 }
 
+#[derive(Clone)]
 struct Status {
     key: &'static str,
     values: Vec<(&'static str, String)>,
@@ -119,6 +123,23 @@ enum Dialog {
     SaveJson {
         pending: Pending<Option<rfd::FileHandle>>,
     },
+    /// One image page: a file. Several: a folder for numbered files.
+    ImageTarget {
+        prepared: export::PreparedImages,
+        pending: Pending<Option<rfd::FileHandle>>,
+    },
+}
+
+/// Image work in flight on a worker.
+enum ImageTask {
+    Preparing(export::Pending<export::PreparedImages>),
+    Writing {
+        pending: export::Pending<usize>,
+        progress: Arc<AtomicUsize>,
+        total: usize,
+        name: String,
+    },
+    Copying(export::Pending<()>),
 }
 
 enum RawJson {
@@ -330,6 +351,12 @@ pub struct MeterApp {
 
     dialog: Option<Dialog>,
     export: Option<export::Pending<String>>,
+    image_prompt: bool,
+    image: Option<ImageTask>,
+    image_clipboard: export::ClipboardWriter,
+    /// The status line from before an image export, restored if it is
+    /// cancelled, as the Tauri GUI did.
+    status_before_image: Option<(Status, bool)>,
     copied: Option<(Copied, Instant)>,
     raw_open: bool,
     raw_json: Option<RawJson>,
@@ -388,6 +415,10 @@ impl MeterApp {
             scroll_to: None,
             dialog: None,
             export: None,
+            image_prompt: false,
+            image: None,
+            image_clipboard: export::system_clipboard(),
+            status_before_image: None,
             copied: None,
             raw_open: false,
             raw_json: None,
@@ -404,6 +435,8 @@ impl MeterApp {
         self.job.is_some()
             || self.dialog.is_some()
             || self.export.is_some()
+            || self.image_prompt
+            || self.image.is_some()
             || matches!(self.raw_json, Some(RawJson::Loading(_)))
     }
 
@@ -725,6 +758,18 @@ impl MeterApp {
                     self.write_json(context, target.path().to_path_buf());
                 }
             }
+            Dialog::ImageTarget { pending, .. } => {
+                let Poll::Ready(target) = pending.as_mut().poll(&mut task) else {
+                    return;
+                };
+                let Some(Dialog::ImageTarget { prepared, .. }) = self.dialog.take() else {
+                    return;
+                };
+                match target {
+                    Some(target) => self.write_images(context, prepared, target.path()),
+                    None => self.restore_status_before_image(),
+                }
+            }
         }
     }
 
@@ -783,6 +828,241 @@ impl MeterApp {
                     .with("message", error)
                     .error(),
             ),
+        }
+    }
+
+    fn image_view(&self) -> export::ImageView {
+        export::ImageView {
+            language: self.language,
+            hide_path: self.view.hide_path,
+            hide_warnings: self.view.hide_warnings,
+            fallback_path: self.results.fallback_path.clone(),
+        }
+    }
+
+    fn start_image_export(&mut self, context: &egui::Context, format: ImageFormat) {
+        let Some(result) = self.results.result.clone() else {
+            return;
+        };
+        let view = self.image_view();
+        let order = self.order.clone();
+        let name = format!(
+            "MacinMeter_v{}_{}.{}",
+            macinmeter::VERSION,
+            file_timestamp(),
+            format.extension()
+        );
+        match export::start_named("macinmeter-image", Self::job_wake(context), move || {
+            export::prepare_images(result, view, order, format, name)
+        }) {
+            Ok(pending) => {
+                self.image = Some(ImageTask::Preparing(pending));
+                self.status_before_image = Some((self.status.clone(), self.status_visible));
+                self.set_status(Status::new("status.preparingExport"));
+            }
+            Err(error) => self.set_status(
+                Status::new("status.exportFailed")
+                    .with("message", error)
+                    .error(),
+            ),
+        }
+    }
+
+    fn choose_image_target(&mut self, context: &egui::Context, prepared: export::PreparedImages) {
+        if prepared.page_count() == 0 {
+            self.restore_status_before_image();
+            return;
+        }
+        let pending: Pending<Option<rfd::FileHandle>> = if prepared.page_count() == 1 {
+            let filter = match prepared.format {
+                ImageFormat::Png => "PNG Image",
+                ImageFormat::Svg => "SVG Image",
+            };
+            Box::pin(
+                rfd::AsyncFileDialog::new()
+                    .set_file_name(&prepared.name)
+                    .add_filter(filter, &[prepared.format.extension()])
+                    .save_file(),
+            )
+        } else {
+            Box::pin(
+                rfd::AsyncFileDialog::new()
+                    .set_title(t(self.language, "dialog.exportFolder"))
+                    .pick_folder(),
+            )
+        };
+        self.dialog = Some(Dialog::ImageTarget { prepared, pending });
+        context.request_repaint();
+    }
+
+    fn write_images(
+        &mut self,
+        context: &egui::Context,
+        prepared: export::PreparedImages,
+        chosen: &std::path::Path,
+    ) {
+        self.status_before_image = None;
+        let total = prepared.page_count();
+        let name = if total == 1 {
+            chosen
+                .file_name()
+                .unwrap_or(chosen.as_os_str())
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            prepared.name.clone()
+        };
+        let chosen = chosen.to_owned();
+        let progress = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&progress);
+        let wake = Self::job_wake(context);
+        match export::start_named("macinmeter-image", Arc::clone(&wake), move || {
+            prepared.write(&chosen, |done| {
+                counter.store(done, Ordering::Relaxed);
+                wake();
+            })
+        }) {
+            Ok(pending) => {
+                self.image = Some(ImageTask::Writing {
+                    pending,
+                    progress,
+                    total,
+                    name,
+                });
+                self.set_status(
+                    Status::new("status.exportingImage")
+                        .with("current", 1)
+                        .with("total", total),
+                );
+            }
+            Err(error) => self.set_status(
+                Status::new("status.exportFailed")
+                    .with("message", error)
+                    .error(),
+            ),
+        }
+    }
+
+    fn restore_status_before_image(&mut self) {
+        if let Some((status, visible)) = self.status_before_image.take() {
+            self.status = status;
+            self.status_visible = visible;
+        }
+    }
+
+    fn copy_entry_png(&mut self, context: &egui::Context, key: usize) {
+        let Some(result) = self.results.result.clone() else {
+            return;
+        };
+        let view = self.image_view();
+        let clipboard = Arc::clone(&self.image_clipboard);
+        match export::start_named("macinmeter-image", Self::job_wake(context), move || {
+            export::copy_entry(&result, &view, key, &clipboard)
+        }) {
+            Ok(pending) => self.image = Some(ImageTask::Copying(pending)),
+            Err(error) => self.set_status(
+                Status::new("status.pngCopyFailed")
+                    .with("message", error)
+                    .error(),
+            ),
+        }
+    }
+
+    fn poll_image(&mut self, context: &egui::Context) {
+        let Some(task) = &self.image else {
+            return;
+        };
+        match task {
+            ImageTask::Preparing(pending) => {
+                let Some(result) = export::poll(pending) else {
+                    return;
+                };
+                self.image = None;
+                match result {
+                    Ok(prepared) => self.choose_image_target(context, prepared),
+                    Err(error) => self.set_status(
+                        Status::new("status.exportFailed")
+                            .with("message", error)
+                            .error(),
+                    ),
+                }
+            }
+            ImageTask::Writing {
+                pending,
+                progress,
+                total,
+                name,
+            } => {
+                let Some(result) = export::poll(pending) else {
+                    let done = progress.load(Ordering::Relaxed);
+                    #[allow(clippy::cast_precision_loss, reason = "page counts are small")]
+                    let fraction = done as f32 / (*total).max(1) as f32;
+                    let status = Status::new("status.exportingImage")
+                        .with("current", (done + 1).min(*total))
+                        .with("total", *total)
+                        .progress(fraction);
+                    self.set_status(status);
+                    return;
+                };
+                let (total, name) = (*total, name.clone());
+                self.image = None;
+                self.set_status(match result {
+                    Ok(1) => Status::new("status.exported")
+                        .with("name", name)
+                        .progress(1.0),
+                    Ok(count) => Status::new("status.exportedMany")
+                        .with("count", count)
+                        .with("name", name)
+                        .progress(1.0),
+                    Err(error) => Status::new("status.exportFailed")
+                        .with("message", error)
+                        .with("total", total)
+                        .error(),
+                });
+            }
+            ImageTask::Copying(pending) => {
+                let Some(result) = export::poll(pending) else {
+                    return;
+                };
+                self.image = None;
+                self.set_status(match result {
+                    Ok(()) => Status::new("status.pngCopied"),
+                    Err(error) => Status::new("status.pngCopyFailed")
+                        .with("message", error)
+                        .error(),
+                });
+            }
+        }
+    }
+
+    fn draw_image_prompt(&mut self, context: &egui::Context) {
+        if !self.image_prompt {
+            return;
+        }
+        let mut chosen = None;
+        let response = egui::Modal::new(egui::Id::new("image-format")).show(context, |ui| {
+            ui.label(RichText::new(t(self.language, "dialog.exportFormat")).strong());
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("PNG").clicked() {
+                    chosen = Some(Some(ImageFormat::Png));
+                }
+                if ui.button("SVG").clicked() {
+                    chosen = Some(Some(ImageFormat::Svg));
+                }
+                if ui.button(t(self.language, "dialog.cancel")).clicked() {
+                    chosen = Some(None);
+                }
+            });
+        });
+        if response.should_close() && chosen.is_none() {
+            chosen = Some(None);
+        }
+        if let Some(format) = chosen {
+            self.image_prompt = false;
+            if let Some(format) = format {
+                self.start_image_export(context, format);
+            }
         }
     }
 
@@ -1150,51 +1430,71 @@ impl MeterApp {
         let context = ui.ctx().clone();
         let locked = self.locked();
         let has_result = self.results.result.is_some();
+        // Every control is its own item so the row wraps between controls;
+        // an enabled-group would be laid out, and overflow, as one block.
+        let language = self.language;
+        let toggle = |ui: &mut egui::Ui, enabled: bool, value: &mut bool, key: &str| {
+            let response =
+                ui.add_enabled(enabled, egui::Button::selectable(*value, t(language, key)));
+            if response.clicked() {
+                *value = !*value;
+            }
+            response.clicked()
+        };
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(t(self.language, "section.results")).strong());
-            ui.add_enabled_ui(!locked, |ui| {
-                ui.toggle_value(&mut self.view.hide_path, t(self.language, "btn.hidePath"));
-                if ui
-                    .toggle_value(&mut self.view.show_timing, t(self.language, "btn.timing"))
-                    .changed()
-                    && !self.view.show_timing
-                {
-                    self.timings = None;
-                }
-                ui.toggle_value(
-                    &mut self.view.hide_warnings,
-                    t(self.language, "btn.hideWarnings"),
-                );
-                ui.toggle_value(
-                    &mut self.view.hide_failed,
-                    t(self.language, "btn.hideFailed"),
-                );
+            ui.label(RichText::new(t(language, "section.results")).strong());
+            toggle(ui, !locked, &mut self.view.hide_path, "btn.hidePath");
+            if toggle(ui, !locked, &mut self.view.show_timing, "btn.timing")
+                && !self.view.show_timing
+            {
+                self.timings = None;
+            }
+            toggle(
+                ui,
+                !locked,
+                &mut self.view.hide_warnings,
+                "btn.hideWarnings",
+            );
+            toggle(ui, !locked, &mut self.view.hide_failed, "btn.hideFailed");
+            let results = !locked && has_result;
+            if ui
+                .add_enabled(
+                    results,
+                    egui::Button::new(self.copy_label(&Copied::All, "btn.copyMd")),
+                )
+                .clicked()
+            {
+                self.copy_markdown(&context, Copied::All);
+            }
+            if ui
+                .add_enabled(results, egui::Button::new(t(language, "btn.exportJson")))
+                .clicked()
+            {
+                self.export_json(&context);
+            }
+            if ui
+                .add_enabled(results, egui::Button::new(t(language, "btn.exportImage")))
+                .clicked()
+            {
+                self.image_prompt = true;
+            }
+            // The dropdown sits in its own enabled group, which the wrapping
+            // row cannot split, so it moves to the next row itself.
+            const SORT_WIDTH: f32 = 150.0;
+            if ui.available_size_before_wrap().x < SORT_WIDTH + ui.spacing().item_spacing.x {
+                ui.end_row();
+            }
+            ui.add_enabled_ui(results && self.order.len() > 1, |ui| {
+                egui::ComboBox::from_id_salt("sort-mode")
+                    .width(SORT_WIDTH - 2.0 * ui.spacing().button_padding.x)
+                    .selected_text(t(language, self.view.sort.key()))
+                    .show_ui(ui, |ui| {
+                        for mode in SortMode::ALL {
+                            ui.selectable_value(&mut self.view.sort, mode, t(language, mode.key()));
+                        }
+                    });
             });
-            ui.add_enabled_ui(!locked && has_result, |ui| {
-                if ui
-                    .button(self.copy_label(&Copied::All, "btn.copyMd"))
-                    .clicked()
-                {
-                    self.copy_markdown(&context, Copied::All);
-                }
-                if ui.button(t(self.language, "btn.exportJson")).clicked() {
-                    self.export_json(&context);
-                }
-                ui.add_enabled_ui(self.order.len() > 1, |ui| {
-                    egui::ComboBox::from_id_salt("sort-mode")
-                        .selected_text(t(self.language, self.view.sort.key()))
-                        .show_ui(ui, |ui| {
-                            for mode in SortMode::ALL {
-                                ui.selectable_value(
-                                    &mut self.view.sort,
-                                    mode,
-                                    t(self.language, mode.key()),
-                                );
-                            }
-                        });
-                });
-                ui.toggle_value(&mut self.raw_open, t(self.language, "raw.title"));
-            });
+            toggle(ui, results, &mut self.raw_open, "raw.title");
         });
         ui.horizontal(|ui| {
             ui.add_enabled_ui(!locked && has_result, |ui| {
@@ -1352,7 +1652,10 @@ impl MeterApp {
         let mut remeasured = false;
         area.show_viewport(ui, |ui, viewport| {
             let origin = ui.max_rect().min;
-            let width = ui.available_width();
+            // The visible width, not the content's: once anything overflowed,
+            // the content width would carry the overflow into every later
+            // frame and nothing would wrap again.
+            let width = viewport.width();
 
             let mut header = ui.new_child(
                 egui::UiBuilder::new()
@@ -1431,6 +1734,7 @@ impl MeterApp {
         for action in actions {
             match action {
                 EntryAction::CopyMarkdown(key) => self.copy_markdown(ui.ctx(), Copied::Entry(key)),
+                EntryAction::CopyPng(key) => self.copy_entry_png(ui.ctx(), key),
                 EntryAction::ToggleDetail(key) => self.toggle_detail(key),
             }
         }
@@ -1537,6 +1841,7 @@ impl eframe::App for MeterApp {
         self.poll_preview();
         self.poll_job();
         self.poll_output();
+        self.poll_image(context);
         if let Some((_, at)) = &self.copied {
             let remaining = COPIED_FEEDBACK.saturating_sub(at.elapsed());
             if remaining.is_zero() {
@@ -1564,6 +1869,7 @@ impl eframe::App for MeterApp {
             )
             .show(root, |ui| self.draw_page(ui));
         self.draw_raw(&context);
+        self.draw_image_prompt(&context);
         self.draw_drop_overlay(&context);
     }
 
@@ -1574,6 +1880,7 @@ impl eframe::App for MeterApp {
 
 enum EntryAction {
     CopyMarkdown(usize),
+    CopyPng(usize),
     ToggleDetail(usize),
 }
 
@@ -1629,6 +1936,13 @@ fn card<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
         .inner
 }
 
+/// Room each card's header keeps free for its buttons.
+const ENTRY_BUTTONS: f32 = 200.0;
+
+/// A result card. It is the very card the image export draws (see
+/// [`report_image`]), painted with egui, with its buttons as widgets on top:
+/// the window and an exported image share one layout, as the Tauri GUI's
+/// window and html-to-image capture shared one DOM.
 fn draw_entry(
     ui: &mut egui::Ui,
     language: Language,
@@ -1638,339 +1952,93 @@ fn draw_entry(
     copied: &Option<(Copied, Instant)>,
     detail: Option<&AnalysisReport>,
 ) -> Option<EntryAction> {
-    let mut action = None;
-    egui::Frame::NONE
-        .fill(theme::SURFACE)
-        .stroke(Stroke::new(
-            if highlighted { 2.0 } else { 1.0 },
-            if highlighted {
-                theme::ACCENT
-            } else {
-                theme::BORDER
-            },
-        ))
-        .corner_radius(6)
-        .inner_margin(Margin::same(14))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            egui::Sides::new().shrink_left().show(
-                ui,
-                |ui| {
-                    ui.vertical(|ui| {
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(format::file_name(entry.path))
-                                    .size(16.0)
-                                    .strong(),
-                            )
-                            .wrap(),
-                        );
-                        if !view.hide_path {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(entry.path)
-                                        .size(11.0)
-                                        .color(theme::TEXT_TERTIARY),
-                                )
-                                .wrap(),
-                            );
-                        }
-                    });
-                },
-                |ui| {
-                    if matches!(entry.outcome, EntryOutcome::Summary(_)) {
-                        let key = if detail.is_some() { "btn.hideDetails" } else { "btn.showDetails" };
-                        if ui.small_button(t(language, key)).clicked() {
-                            action = Some(EntryAction::ToggleDetail(entry.key));
-                        }
-                    }
-                    let label = if matches!(copied, Some((Copied::Entry(key), _)) if *key == entry.key)
-                    {
-                        t(language, "status.copied")
-                    } else {
-                        t(language, "btn.entryMd")
-                    };
-                    if ui.small_button(label).clicked() {
-                        action = Some(EntryAction::CopyMarkdown(entry.key));
-                    }
-                },
-            );
-            match entry.outcome {
-                EntryOutcome::Analysis(report) => draw_report(ui, language, entry.key, report, view),
-                EntryOutcome::Summary(metrics) => {
-                    draw_track_metrics(ui, language, (metrics.rounded_dr, metrics.track_dr_db),
-                        metrics.primary_peak_dbfs, metrics.overall_rms_dbfs, metrics.duration, &metrics.backend);
-                    draw_source(ui, language, metrics.duration, metrics.channels,
-                        metrics.bits_per_sample, metrics.container, metrics.codec);
-                    if let Some(report) = detail {
-                        draw_report_details(ui, language, entry.key, report, view);
-                    } else if !view.hide_warnings && metrics.warning_count > 0 {
-                        ui.label(RichText::new(tf(language, "result.warningCount",
-                            &[("count", &metrics.warning_count)])).color(theme::WARNING));
-                    }
-                }
-                EntryOutcome::Error(error) => draw_error(ui, language, error),
-            }
-        });
-    action
-}
+    let shown = match (entry.outcome, detail) {
+        (EntryOutcome::Analysis(report), _) | (EntryOutcome::Summary(_), Some(report)) => {
+            ImageEntry::new(
+                language,
+                entry.path,
+                Ok(report),
+                view.hide_path,
+                view.hide_warnings,
+            )
+        }
+        (EntryOutcome::Summary(summary), None) => ImageEntry::summary(
+            language,
+            entry.path,
+            summary,
+            view.hide_path,
+            view.hide_warnings,
+        ),
+        (EntryOutcome::Error(error), _) => ImageEntry::new(
+            language,
+            entry.path,
+            Err(error),
+            view.hide_path,
+            view.hide_warnings,
+        ),
+    };
+    let width = ui.available_width();
+    let Ok(mut metrics) = report_image::Metrics::new() else {
+        let label = if view.hide_path {
+            format::file_name(entry.path)
+        } else {
+            entry.path
+        };
+        ui.label(RichText::new(label).color(theme::DANGER));
+        return None;
+    };
+    let card = report_image::lay_out_card(&mut metrics, &shown, width, ENTRY_BUTTONS);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, card.height()), Sense::hover());
+    report_image::paint(&card, ui, rect.min, highlighted);
 
-fn metric(ui: &mut egui::Ui, label: &str, value: RichText) {
-    egui::Frame::NONE
-        .fill(theme::SURFACE_SOFT)
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(10, 6))
-        .show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.label(RichText::new(label).size(11.0).color(theme::TEXT_SECONDARY));
-                ui.label(value);
-            });
-        });
-}
-
-fn draw_report(
-    ui: &mut egui::Ui,
-    language: Language,
-    key: usize,
-    report: &AnalysisReport,
-    view: View,
-) {
-    let analysis = report.analysis();
-    let aggregate = &analysis.aggregates().track;
-    let metrics = analysis.report();
-    draw_track_metrics(
-        ui,
-        language,
-        (aggregate.rounded_dr, aggregate.dr_db),
-        metrics.primary_peak_dbfs,
-        metrics.overall_rms_dbfs,
-        metrics.duration,
-        &report.diagnostics().backend,
+    // .entry-action: 30 px pills in the header's top-right corner.
+    let buttons = egui::Rect::from_min_max(
+        egui::pos2(rect.right() - 14.0 - ENTRY_BUTTONS, rect.top() + 10.0),
+        egui::pos2(rect.right() - 14.0, rect.top() + 40.0),
     );
-    let source = report.source();
-    draw_source(
-        ui,
-        language,
-        metrics.duration,
-        source.channels,
-        source.bits_per_sample,
-        source.container,
-        source.codec,
+    let mut row = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(buttons)
+            .layout(Layout::right_to_left(Align::Center)),
     );
-    draw_report_details(ui, language, key, report, view);
-}
-
-fn draw_track_metrics(
-    ui: &mut egui::Ui,
-    language: Language,
-    track_dr: (Option<u32>, Option<FiniteF32>),
-    peak: Option<FiniteF32>,
-    rms: Option<FiniteF32>,
-    duration: DecodedDuration,
-    backend: &str,
-) {
-    ui.horizontal_wrapped(|ui| {
-        egui::Frame::NONE
-            .fill(theme::ACCENT_SOFT)
-            .corner_radius(4)
-            .inner_margin(Margin::symmetric(12, 6))
-            .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(t(language, "result.track"))
-                            .size(11.0)
-                            .color(theme::ACCENT_STRONG),
-                    );
-                    match track_dr {
-                        (Some(rounded), Some(precise)) => {
-                            ui.label(RichText::new(format!("DR{rounded}")).size(26.0).strong());
-                            ui.label(
-                                RichText::new(format!("{:.4} dB", precise.get()))
-                                    .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
-                            );
-                        }
-                        _ => {
-                            ui.label(RichText::new("—").size(26.0).strong());
-                            ui.label(
-                                RichText::new(t(language, "result.noAggregate"))
-                                    .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
-                            );
-                        }
-                    }
-                });
-            });
-        metric(
-            ui,
-            &t(language, "result.peak"),
-            RichText::new(format::dbfs(peak)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.rms"),
-            RichText::new(format::dbfs(rms)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.duration"),
-            RichText::new(format::duration(duration)).strong(),
-        );
-        metric(
-            ui,
-            &t(language, "result.backend"),
-            RichText::new(backend).strong(),
-        );
-    });
-}
-
-fn draw_source(
-    ui: &mut egui::Ui,
-    language: Language,
-    duration: DecodedDuration,
-    channels: ChannelCount,
-    bits: Option<u32>,
-    container: ContainerFormat,
-    codec: SourceCodec,
-) {
-    let bits = bits.map_or_else(
-        || "—".to_owned(),
-        |bits| tf(language, "label.bits", &[("bits", &bits)]),
-    );
-    ui.label(
-        RichText::new(
-            [
-                format!(
-                    "{} Hz",
-                    format::grouped(u64::from(duration.sample_rate.get()))
-                ),
-                format!("{} ch", channels.get()),
-                bits,
-                format!(
-                    "{} / {}",
-                    format::wire_name(&container),
-                    format::wire_name(&codec)
-                ),
-                format!("{} frames", format::grouped(duration.decoded_frames)),
-            ]
-            .join("  ·  "),
+    row.spacing_mut().item_spacing.x = 5.0;
+    let pill = |ui: &mut egui::Ui, text: String| {
+        ui.add(
+            egui::Button::new(RichText::new(text).size(13.0).color(theme::TEXT_SECONDARY))
+                .fill(theme::SURFACE)
+                .stroke(Stroke::new(1.0, theme::BORDER))
+                .corner_radius(15)
+                .min_size(egui::vec2(0.0, 30.0)),
         )
-        .size(12.0)
-        .color(theme::TEXT_SECONDARY),
-    );
-}
-
-fn draw_report_details(
-    ui: &mut egui::Ui,
-    language: Language,
-    key: usize,
-    report: &AnalysisReport,
-    view: View,
-) {
-    egui::Grid::new(("channels", key))
-        .striped(true)
-        .num_columns(5)
-        .spacing([18.0, 6.0])
-        .show(ui, |ui| {
-            for heading in [
-                "table.channel",
-                "table.rounded",
-                "table.precise",
-                "table.rms",
-                "table.peak",
-            ] {
-                ui.label(
-                    RichText::new(t(language, heading))
-                        .size(11.0)
-                        .strong()
-                        .color(theme::TEXT_SECONDARY),
-                );
-            }
-            ui.end_row();
-            for channel in report.analysis().channels() {
-                let role = format::channel_role(report, channel.channel_index);
-                ui.horizontal(|ui| {
-                    ui.label(format!("CH {}", channel.channel_index + 1));
-                    if let Some(role) = role {
-                        ui.label(RichText::new(role).size(10.0).color(if role == "LFE" {
-                            theme::WARNING
-                        } else {
-                            theme::TEXT_TERTIARY
-                        }));
-                    }
-                });
-                match &channel.outcome {
-                    ChannelOutcome::Measured { measurement } => {
-                        ui.label(
-                            RichText::new(format!("DR{}", measurement.rounded_dr))
-                                .strong()
-                                .color(theme::ACCENT_STRONG),
-                        );
-                        ui.label(format!("{:.4} dB", measurement.dr_db.get()));
-                        ui.label(format::dbfs(channel.report.overall_rms_dbfs));
-                        ui.label(format::linear_dbfs(measurement.dr_selected_peak.get()));
-                    }
-                    ChannelOutcome::Silent { .. } => {
-                        ui.label(RichText::new("DR0").strong().color(theme::TEXT_TERTIARY));
-                        ui.label(
-                            RichText::new(t(language, "table.silent")).color(theme::TEXT_TERTIARY),
-                        );
-                        ui.label("");
-                        ui.label("");
-                    }
-                    ChannelOutcome::InsufficientData { .. } => {
-                        ui.label(RichText::new("—").color(theme::TEXT_TERTIARY));
-                        ui.label(
-                            RichText::new(t(language, "table.insufficient"))
-                                .color(theme::TEXT_TERTIARY),
-                        );
-                        ui.label("");
-                        ui.label("");
-                    }
-                }
-                ui.end_row();
-            }
-        });
-
-    let warnings = &report.diagnostics().warnings;
-    if !view.hide_warnings && !warnings.is_empty() {
-        egui::Frame::NONE
-            .fill(theme::WARNING_SOFT)
-            .corner_radius(4)
-            .inner_margin(Margin::symmetric(10, 6))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                for warning in warnings {
-                    ui.add(
-                        egui::Label::new(RichText::new(warning).size(12.0).color(theme::WARNING))
-                            .wrap(),
-                    );
-                }
-            });
+        .clicked()
+    };
+    let mut action = None;
+    // As in the Tauri GUI, only a measured result has a card worth copying
+    // as a picture.
+    if !matches!(entry.outcome, EntryOutcome::Error(_))
+        && pill(&mut row, t(language, "btn.entryPng"))
+    {
+        action = Some(EntryAction::CopyPng(entry.key));
     }
-}
-
-fn draw_error(ui: &mut egui::Ui, language: Language, error: &AnalysisError) {
-    egui::Frame::NONE
-        .fill(theme::DANGER_SOFT)
-        .corner_radius(4)
-        .inner_margin(Margin::symmetric(10, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new(format!(
-                    "{} · {}",
-                    t(language, "result.failed"),
-                    format::wire_name(&error.code)
-                ))
-                .strong()
-                .color(theme::DANGER),
-            );
-            ui.add(egui::Label::new(&error.message).wrap());
-            if let Some(details) = &error.details {
-                ui.add(egui::Label::new(RichText::new(details).monospace().size(11.0)).wrap());
-            }
-        });
+    let markdown = if matches!(copied, Some((Copied::Entry(key), _)) if *key == entry.key) {
+        t(language, "status.copied")
+    } else {
+        t(language, "btn.entryMd")
+    };
+    if pill(&mut row, markdown) {
+        action = Some(EntryAction::CopyMarkdown(entry.key));
+    }
+    if matches!(entry.outcome, EntryOutcome::Summary(_)) {
+        let key = if detail.is_some() {
+            "btn.hideDetails"
+        } else {
+            "btn.showDetails"
+        };
+        if pill(&mut row, t(language, key)) {
+            action = Some(EntryAction::ToggleDetail(entry.key));
+        }
+    }
+    action
 }
 
 fn selection_label(inputs: &[PathBuf]) -> String {
@@ -2143,6 +2211,305 @@ mod tests {
         app.analyze_or_cancel(&egui::Context::default());
         wait_for_analysis(&mut app);
         app
+    }
+
+    fn wait_for_image(app: &mut MeterApp, context: &egui::Context) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while app.image.is_some() {
+            assert!(Instant::now() < deadline, "image work did not finish");
+            app.poll_image(context);
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn image_export_follows_the_screen_and_reports_the_chosen_name() {
+        let mut app = app_with_batch();
+        app.view.hide_failed = true;
+        app.view.sort = SortMode::DrDescending;
+        app.refresh_order();
+        assert_eq!(app.order.len(), 3, "the failed fixture is hidden");
+        let prepared = export::prepare_images(
+            app.results.result.clone().unwrap(),
+            app.image_view(),
+            app.order.clone(),
+            ImageFormat::Svg,
+            "suggested.svg".into(),
+        )
+        .unwrap();
+        assert_eq!(prepared.page_count(), 1);
+
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("chosen.svg");
+        let context = egui::Context::default();
+        app.write_images(&context, prepared, &target);
+        wait_for_image(&mut app, &context);
+        assert_eq!(app.status.text(Language::English), "Exported chosen.svg.");
+        let page = std::fs::read_to_string(target).unwrap();
+        assert!(!page.contains("fake_audio.wav"));
+        let positions: Vec<_> = app
+            .order
+            .iter()
+            .map(|&key| {
+                let name = format::file_name(app.results.entry(key).unwrap().path);
+                page.find(&format!(">{name}</text>")).unwrap()
+            })
+            .collect();
+        assert!(positions.is_sorted());
+        assert!(
+            page.contains(">CH 1</text>"),
+            "include full details of collapsed rows"
+        );
+    }
+
+    fn prepare_album_pages(count: usize) -> export::PreparedImages {
+        use macinmeter::{
+            BatchChunk, BatchChunkItem, BatchCompletion, BatchDetailStore, BatchStatus,
+            BatchSummary,
+        };
+        let report = Application::new()
+            .analyze_file(AnalyzeRequest::new(fixture(
+                "native-alac-v1/alac24-8ch-48000.mp4",
+            )))
+            .unwrap();
+        let store = BatchDetailStore::new();
+        for start in (0..count).step_by(BatchChunk::MAX_ITEMS) {
+            let items = (start..(start + BatchChunk::MAX_ITEMS).min(count))
+                .map(|index| BatchChunkItem {
+                    index,
+                    item: BatchItem {
+                        display_path: format!("dir/track-{index}.mp4"),
+                        outcome: BatchItemOutcome::Success {
+                            report: Box::new(report.clone()),
+                        },
+                    },
+                })
+                .collect();
+            store.store_chunk(BatchChunk { items }).unwrap();
+        }
+        let completion = BatchCompletion {
+            status: BatchStatus::Succeeded,
+            summary: BatchSummary {
+                total: count,
+                succeeded: count,
+                failed: 0,
+            },
+        };
+        store.finish(completion).unwrap();
+        let result = Arc::new(JobResult::Batch {
+            completion,
+            details: store,
+        });
+        let app = MeterApp::with_language(Language::English);
+        export::prepare_images(
+            result,
+            app.image_view(),
+            (0..count).rev().collect(),
+            ImageFormat::Svg,
+            "pages.svg".into(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn each_committed_page_notifies_progress_before_the_next_is_written() {
+        const ITEMS: usize = 100;
+        let prepared = prepare_album_pages(ITEMS);
+        let total = prepared.page_count();
+        assert!(total >= 3);
+        let directory = tempfile::tempdir().unwrap();
+        let path = |index| {
+            directory
+                .path()
+                .join(report_image::numbered_name("pages.svg", index, total))
+        };
+        let mut saved = Vec::new();
+        let written = prepared
+            .write(directory.path(), |count| {
+                assert_eq!(count, saved.len() + 1);
+                assert!(path(count - 1).is_file());
+                if count < total {
+                    assert!(!path(count).exists());
+                }
+                saved.push(std::fs::read_to_string(path(count - 1)).unwrap());
+            })
+            .unwrap();
+        assert_eq!(written, total);
+        let pages = saved.join("");
+        let mut remaining = pages.as_str();
+        for key in (0..ITEMS).rev() {
+            let marker = format!(">track-{key}.mp4</text>");
+            remaining = remaining
+                .split_once(&marker)
+                .expect("card order across pages")
+                .1;
+        }
+
+        // A failed page does not advance progress or start a later write.
+        let blocked = tempfile::tempdir().unwrap();
+        std::fs::create_dir(blocked.path().join(report_image::numbered_name(
+            "pages.svg",
+            1,
+            total,
+        )))
+        .unwrap();
+        let mut completed = Vec::new();
+        assert!(
+            prepared
+                .write(blocked.path(), |count| completed.push(count))
+                .is_err()
+        );
+        assert_eq!(completed, [1]);
+        assert!(
+            !blocked
+                .path()
+                .join(report_image::numbered_name("pages.svg", 2, total))
+                .exists()
+        );
+    }
+
+    #[test]
+    fn an_idle_window_gets_a_repaint_request_while_pages_are_still_being_written() {
+        let prepared = prepare_album_pages(50);
+        let total = prepared.page_count();
+        assert!(total >= 2);
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory
+            .path()
+            .join(report_image::numbered_name("pages.svg", 0, total));
+        let second = directory
+            .path()
+            .join(report_image::numbered_name("pages.svg", 1, total));
+        let context = egui::Context::default();
+        // Let the initial repaint requests settle before the writer starts.
+        for _ in 0..4 {
+            context
+                .run_ui(egui::RawInput::default(), |_| {})
+                .textures_delta
+                .clear();
+        }
+        let (notified, received) = std::sync::mpsc::channel();
+        context.set_request_repaint_callback(move |_| {
+            if first.is_file() && !second.exists() {
+                let _ = notified.send(());
+            }
+        });
+        let mut app = MeterApp::with_language(Language::English);
+        app.write_images(&context, prepared, directory.path());
+        wait_for_image(&mut app, &context);
+        assert!(received.try_recv().is_ok());
+        assert_eq!(app.status.key, "status.exportedMany");
+    }
+
+    #[test]
+    fn an_image_export_with_nothing_to_write_restores_the_status_line() {
+        let context = egui::Context::default();
+        let mut app = MeterApp::with_language(Language::English);
+        app.results.result = Some(Arc::new(JobResult::Error(AnalysisError::cancelled())));
+        app.view.hide_failed = true;
+        app.refresh_order();
+        assert!(app.order.is_empty());
+        let before = app.status.key;
+        app.start_image_export(&context, ImageFormat::Svg);
+        assert_eq!(app.status.key, "status.preparingExport");
+        assert!(app.locked());
+        wait_for_image(&mut app, &context);
+        assert_eq!(app.status.key, before);
+        assert!(app.dialog.is_none());
+    }
+
+    #[test]
+    fn a_png_page_and_a_clipboard_card_are_written_off_the_ui_thread() {
+        let mut app = app_with_batch();
+        app.refresh_order();
+        let context = egui::Context::default();
+        app.image_clipboard = Arc::new(|image| {
+            assert_eq!(thread::current().name(), Some("macinmeter-image"));
+            assert!(image.width > 900 && image.height > 300);
+            assert_eq!(image.bytes.len(), image.width * image.height * 4);
+            Ok(())
+        });
+        app.copy_entry_png(&context, 0);
+        assert!(matches!(app.image, Some(ImageTask::Copying(_))));
+        wait_for_image(&mut app, &context);
+        assert_eq!(app.status.key, "status.pngCopied");
+
+        app.image_clipboard = Arc::new(|_| Err("clipboard occupied".into()));
+        app.copy_entry_png(&context, 0);
+        wait_for_image(&mut app, &context);
+        assert_eq!(app.status.key, "status.pngCopyFailed");
+        assert!(app.status.text(app.language).contains("clipboard occupied"));
+
+        let prepared = export::prepare_images(
+            app.results.result.clone().unwrap(),
+            app.image_view(),
+            app.order.clone(),
+            ImageFormat::Png,
+            "r.png".into(),
+        )
+        .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("r.png");
+        app.write_images(&context, prepared, &target);
+        wait_for_image(&mut app, &context);
+        let bytes = std::fs::read(target).unwrap();
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn the_accessibility_tree_exposes_full_names_measurements_and_visible_diagnostics() {
+        let report = Application::new()
+            .analyze_file(AnalyzeRequest::new(fixture(
+                "native-alac-v1/alac16-stereo-48000-multipacket.m4a",
+            )))
+            .unwrap();
+        let filename = format!("{}-final.m4a", "Long album title ".repeat(9));
+        let path = format!("private-parent/{filename}");
+        let entry = Entry {
+            key: 0,
+            path: &path,
+            outcome: EntryOutcome::Analysis(&report),
+        };
+        let context = egui::Context::default();
+        theme::install(&context);
+        context.enable_accesskit();
+        let mut view = MeterApp::with_language(Language::English).view;
+        let read = |view| {
+            let mut out = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    draw_entry(ui, Language::English, &entry, view, false, &None, None);
+                },
+            );
+            out.textures_delta.clear();
+            out.platform_output
+                .accesskit_update
+                .unwrap()
+                .nodes
+                .into_iter()
+                .filter_map(|(_, node)| node.value().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        let shown = read(view);
+        for expected in [&filename[..], &path, "TRACK DR", "DR2", "CH 2", "1.7797 dB"] {
+            assert!(shown.iter().any(|label| label == expected), "{expected}");
+        }
+        assert!(shown.iter().any(|label| label.contains("partial window")));
+        view.hide_path = true;
+        view.hide_warnings = true;
+        let hidden = read(view);
+        assert!(hidden.contains(&filename));
+        assert!(
+            !hidden
+                .iter()
+                .any(|label| label.contains("private-parent") || label.contains("partial window"))
+        );
     }
 
     #[test]

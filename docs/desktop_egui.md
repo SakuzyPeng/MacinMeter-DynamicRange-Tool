@@ -9,22 +9,23 @@ stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
 | Question | Decision |
 |---|---|
 | Toolchain | The whole workspace moves to Rust 1.98.0, pinned by `rust-toolchain.toml`, the same compiler as the player. eframe 0.36.1 itself needs 1.95. |
-| UI font | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB). Its build script downloads the font on a cache miss, including when compiling the test binary. Set `MACINMETER_UI_FONT_PATH` to build with a local copy. |
+| UI fonts | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB) for the card's serif title and DR number. The serif font ships in the source tree. Set `MACINMETER_UI_FONT_PATH` to build offline with a local copy of Noto. |
 | Complex scripts | egui 0.36 shapes text with HarfRust but has no bidi and no system font fallback. Arabic or Hebrew file names render in logical (reversed) order, and scripts outside the embedded font render as boxes. This is accepted. |
 | Windows installer | Stays NSIS when the Tauri bundler goes, so an install can replace a 0.3.x Tauri install in place. Not part of the prototype. |
-| Image export | Will be rebuilt from report data (a real vector SVG, PNG rasterised from it), not from a screenshot of the UI. Not part of the prototype. |
+| Image export | Drawn from report data as a real vector SVG, with PNG rasterised from that SVG; see [Image export](#image-export). |
 
 ### Font build input
 
-`build.rs` downloads the font once, verifies its SHA-256, and copies it into
-`OUT_DIR`. Two variables control it:
+The desktop crate embeds the unmodified Source Serif 4 Semibold OTF from
+Adobe's 4.005R release. Its checksum and license are in
+`apps/macinmeter-desktop/OFL-SourceSerif4.txt`.
 
-- `MACINMETER_UI_FONT_PATH`: a local copy of the exact file, for offline
-  builds. The checksum is still enforced.
-- `MACINMETER_UI_FONT_CACHE_DIR`: an absolute directory shared by profiles and
-  checkouts. CI sets one per job.
+`build.rs` verifies the SHA-256 of Noto Sans CJK SC and copies it into
+`OUT_DIR`. Set `MACINMETER_UI_FONT_PATH` to use a local copy. On a cache
+miss it can download Noto from jsDelivr. `MACINMETER_UI_FONT_CACHE_DIR`
+selects an absolute cache directory shared across profiles and checkouts.
 
-jsDelivr sometimes answers this file with a 403 that it caches for 60 s
+jsDelivr sometimes answers the Noto request with a 403 that it caches for 60 s
 (`s-maxage=60`). That was observed while building this prototype. Each retry
 therefore waits 61 s rather than hitting the same cached refusal.
 
@@ -38,7 +39,7 @@ therefore waits 61 s rather than hitting the same cached refusal.
 - **Results**: streamed batch summaries, one expandable channel detail,
   path, warning and failure visibility, timing, precise-DR sorting, and search.
 - **Output**: Markdown copying per entry and for everything shown, JSON export,
-  and a structured-result view.
+  PNG/SVG image export, per-entry PNG copying, and a structured-result view.
 - **Settings**: Chinese/English, persisted between launches.
 
 ### Application contract
@@ -68,6 +69,66 @@ honours:
   into `src/format.rs` with the CLI's own test vectors. Moving them to one
   shared place is follow-up work.
 
+### Result cards
+
+The window and the image export draw one card. `report_image::lay_out_card`
+turns an entry into rectangles and baseline-positioned text at a given width.
+The window paints those shapes with egui (`report_image::paint`) and lays its
+PNG/MD/Details buttons over the header; the export writes the same shapes as
+SVG. This is how the Tauri GUI's window and its html-to-image capture shared
+one DOM, and the two cannot drift apart. A batch row shows the same card
+without the channel table, with its warning count in the warning band, until
+its details are opened. Below 690 px the summary grid uses two columns, with
+Track DR across the first row. When the channel table exceeds the available
+width, each channel lists its labeled measurements vertically. Screen readers
+receive text nodes for the painted labels, including full elided file names.
+
+### Image export
+
+`src/report_image.rs` lays out one card per visible entry at a fixed 900 px
+width, from the report itself rather than from the window. The card follows
+the Tauri card's stylesheet (`.directory-entry` and its children): a tinted
+header band, a five-cell summary grid with dividers, a format band, the channel
+table with role pills, and a warning band, clipped to a 15 px rounded border. It wraps text using
+the embedded face's glyph advances, read with skrifa. Each page is serialised as
+SVG made of `<rect>` and `<text>` elements. The Tauri export instead wrapped
+cloned HTML in `<foreignObject>`, which only a browser renders, and its output
+depended on the window width and the host's fonts.
+
+- **Content**: strings come from the same formatters and locale tables as the
+  window. The export follows the screen: visible entries in on-screen order,
+  with the path and warning toggles applied. Every card carries its full
+  channel table. A batch card reads it from `BatchDetailStore`. Hiding paths
+  also hides free-form failure details that can contain filesystem paths. The
+  error code and application message remain visible.
+- **PNG**: resvg rasterises the SVG with only the embedded font loaded (no
+  system fonts), at up to 2× within a 16384 px / 32 MP canvas.
+- **Typography**: the SVG names the stylesheet's serif stack and its 600–750
+  weights, so a viewer with those faces shows them. The window and the PNG
+  draw serif text in the embedded Source Serif 4 Semibold, falling back to
+  Noto Sans CJK SC for CJK characters. Only Noto's Regular is embedded, so
+  heavier sans text is synthesised: a thin stroke in a PNG, a second pass half
+  a point over in the window. In a PNG, resvg draws a mixed Latin/CJK serif run
+  in the fallback face, where a browser would split it.
+- **Pagination**: as Tauri did, at 4000 px of content per PNG page and
+  12000 px per SVG page. One page goes to a chosen file; several go to a chosen
+  folder as `name_01.png`, `name_02.png`, and so on.
+- **Workers**. Before the destination dialog, a worker measures one card at a
+  time and keeps the order and page boundaries. After selection, the writer
+  renders and atomically saves one page at a time. Each saved page wakes the
+  progress display. A cancelled dialog restores the previous status line.
+- **Clipboard**. The PNG button renders the card and writes the image to the
+  system clipboard on the image worker. The status line reports the result of
+  the native write.
+- **Determinism**: the same report, language and toggles give the same SVG
+  text. PNG bytes are not claimed to be identical across hosts.
+
+To look at sample pages:
+
+```bash
+MACINMETER_IMAGE_SAMPLE_DIR=/tmp/out cargo test -p macinmeter-desktop writes_sample_images -- --ignored
+```
+
 ### Large batches
 
 The page lays out the cards that intersect the viewport. A height index
@@ -77,7 +138,6 @@ documents are materialized for explicit JSON operations.
 
 ## Not yet
 
-- Image export (PNG/SVG), as decided above.
 - Packaging. This needs:
   - an `.app` bundle and DMG for macOS 11.0+ arm64;
   - a hand-written NSIS installer for Windows x64;

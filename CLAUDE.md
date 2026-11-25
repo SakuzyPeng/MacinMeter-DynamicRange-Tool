@@ -64,9 +64,11 @@ domain
   MacinDecode Spatial Player's stack (eframe/egui 0.36.1, rfd 0.17.2). It
   reserves `ApplicationJob` on the UI thread before spawning one named worker
   thread, consumes batch chunks through `BatchDetailStore`, and writes schema-4
-  JSON on a separate worker after the user chooses a destination. Its
-  `build.rs` fetches one checksum-pinned UI font: the repository's only network
-  exception, confined to that crate's build. See `docs/desktop_egui.md`.
+  JSON on a separate worker after the user chooses a destination. Image export
+  draws SVG from report data and rasterises PNG with resvg and the embedded fonts
+  only, never from a screenshot of the window. Its
+  `build.rs` fetches the checksum-pinned Noto Sans CJK SC on a cache miss.
+  The desktop crate includes Source Serif 4 Semibold in its source tree. See `docs/desktop_egui.md`.
 - M4 conformance drives `AnalyzerSession` from controlled finite interleaved
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.

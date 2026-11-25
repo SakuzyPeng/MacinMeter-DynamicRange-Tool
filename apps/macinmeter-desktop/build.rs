@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Supplies the one UI font the desktop GUI embeds.
+//! Supplies the desktop GUI's external Noto Sans CJK font.
 //!
 //! egui draws only the fonts it is given and has no system fallback, so a CJK
 //! file name needs a CJK face compiled in. The face is fetched once, pinned by

@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MacinMeter Dynamic Range desktop GUI on egui (prototype beside the Tauri GUI)"
-# An application shell, not a library: it embeds a UI font and window glue.
+# An application shell, not a library: it embeds UI fonts and window glue.
 publish = false
 
 [[bin]]
@@ -18,9 +18,12 @@ path = "src/main.rs"
 sha2.workspace = true
 
 [dependencies]
+arboard.workspace = true
 eframe.workspace = true
 macinmeter = { path = "../../crates/macinmeter", version = "0.3.1" }
+resvg.workspace = true
 rfd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+skrifa.workspace = true
 tempfile.workspace = true
