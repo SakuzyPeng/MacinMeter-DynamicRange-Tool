@@ -4,14 +4,8 @@
 //! MacinDecode Spatial Player's theme already uses the same values, so the two
 //! desktop apps read as one family.
 
-use crate::fonts::{self, Face};
+use crate::fonts;
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
-use std::{borrow::Cow, sync::Arc};
-
-/// The egui family that draws the stylesheet's `--font-serif` text.
-pub fn serif_family() -> egui::FontFamily {
-    egui::FontFamily::Name("serif".into())
-}
 
 pub const BACKGROUND: Color32 = Color32::from_rgb(0xfb, 0xf7, 0xf0);
 pub const SURFACE: Color32 = Color32::from_rgb(0xff, 0xfe, 0xfa);
@@ -69,85 +63,35 @@ pub fn install(context: &egui::Context) {
     });
 }
 
-/// egui's families from the font chains: the sans chain ahead of egui's own
-/// faces for proportional text, behind Hack for monospace (so the raw JSON view
-/// lines up while a CJK path inside it still renders), and the serif chain
-/// followed by the sans chain for `--font-serif` text.
 fn install_ui_font(context: &egui::Context) {
-    let ui = fonts::ui_fonts();
-    let mut definitions = egui::FontDefinitions::default();
-    let mut register = |face: &Face| {
-        definitions.font_data.insert(
-            face.key.clone(),
-            Arc::new(egui::FontData {
-                font: Cow::Borrowed(face.data),
-                index: face.index,
-                tweak: egui::FontTweak::default(),
-            }),
-        );
-        face.key.clone()
-    };
-    let sans: Vec<String> = ui.sans.iter().map(&mut register).collect();
-    let serif: Vec<String> = ui.serif.iter().map(&mut register).collect();
-    let families = &mut definitions.families;
-    let proportional = families.entry(egui::FontFamily::Proportional).or_default();
-    proportional.splice(0..0, sans.iter().cloned());
-    let fallback = proportional.clone();
-    families
-        .entry(egui::FontFamily::Monospace)
-        .or_default()
-        .extend(sans.iter().cloned());
-    families.insert(serif_family(), serif.into_iter().chain(fallback).collect());
-    context.set_fonts(definitions);
+    context.set_fonts(fonts::definitions().clone());
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fonts::Family;
 
     #[test]
-    fn the_serif_family_falls_back_to_cjk() {
+    fn window_uses_the_selected_faces_in_order() {
         let context = egui::Context::default();
         install_ui_font(&context);
         context.begin_pass(egui::RawInput::default());
-        // `has_glyphs` cannot answer this: egui reports a character as missing
-        // whenever it resolves to the family's replacement-glyph face, which
-        // here is the CJK face doing the falling back. Widths show which face
-        // drew each character instead.
-        let (order, serif, sans) = context.fonts_mut(|fonts| {
-            let order = fonts
-                .definitions()
-                .families
-                .get(&serif_family())
-                .cloned()
-                .unwrap_or_default();
-            let serif = egui::FontId::new(16.0, serif_family());
-            let sans = egui::FontId::proportional(16.0);
-            let mut widths = |font: &egui::FontId| {
-                ['D', '欅', 'セ'].map(|character| fonts.glyph_width(font, character))
-            };
-            (order, widths(&serif), widths(&sans))
+        context.fonts_mut(|fonts| {
+            let expected = fonts::definitions();
+            for family in [Family::Serif, Family::Sans, Family::Mono] {
+                let family = family.egui();
+                let keys = &fonts.definitions().families[&family];
+                assert_eq!(keys, &expected.families[&family]);
+                for key in keys {
+                    assert!(std::sync::Arc::ptr_eq(
+                        &fonts.definitions().font_data[key],
+                        &expected.font_data[key]
+                    ));
+                }
+            }
         });
-        let mut output = context.end_pass();
-        output.textures_delta.clear();
-        let ui = fonts::ui_fonts();
-        let chain: Vec<&str> = ui.serif_chain().map(|face| face.key.as_str()).collect();
-        assert_eq!(&order[..chain.len()], chain.as_slice());
-        if ui.serif.is_empty() {
-            // A host without a serif face draws serif text in the sans chain.
-            return;
-        }
-        assert!(
-            (serif[0] - sans[0]).abs() > 0.1,
-            "Latin is drawn in the serif face"
-        );
-        if cfg!(feature = "bundled-fonts") {
-            assert!(
-                serif[1] > 0.0 && (serif[1] - sans[1]).abs() < 1e-3,
-                "CJK falls back"
-            );
-            assert!((serif[2] - sans[2]).abs() < 1e-3, "kana falls back");
-        }
+        context.end_pass().textures_delta.clear();
     }
 
     #[cfg(feature = "bundled-fonts")]

@@ -7,22 +7,20 @@
 //! produced. The Tauri GUI rasterised its DOM with html-to-image, so an image
 //! depended on the window width and the host's fonts, and its "SVG" was HTML in
 //! a `<foreignObject>` that only a browser could open. Here the card is laid
-//! out from the report at a fixed width with the embedded face's own advances,
+//! out from the report at a fixed width with the window fonts' advances,
 //! into a real SVG of rectangles and `<text>`.
 //!
-//! The SVG names the stylesheet's serif stack and weights, so a viewer that has
-//! those faces shows them. PNG is the same layout rasterised by resvg with only
-//! the embedded faces loaded, so it does not depend on the host: serif text is
-//! Source Serif 4 Semibold (CJK falling back to Noto Sans CJK SC), and the
-//! sans face's 600–750 weights are synthesised with a thin stroke in the text
-//! colour because only its Regular is embedded.
+//! A standalone SVG names the stylesheet's families. PNG export uses exact
+//! window faces and collection indices for each grapheme run. Heavier sans
+//! text is synthesised with a thin stroke in the text colour.
 //!
 //! Strings come from the same formatters and locale tables as the window, and
 //! images follow what is on screen: visible entries in on-screen order, with
 //! the path and warning toggles applied.
 
 use crate::{
-    fonts, format,
+    fonts::{self, Family},
+    format,
     i18n::{Language, t, tf},
     theme,
 };
@@ -30,7 +28,8 @@ use eframe::egui::{self, Color32};
 use macinmeter::{AnalysisError, AnalysisReport, BatchTrackSummary, ChannelOutcome};
 use resvg::{tiny_skia, usvg};
 use skrifa::{
-    FontRef, MetadataProvider,
+    FontRef, GlyphId, MetadataProvider,
+    charmap::Charmap,
     instance::{LocationRef, Size},
 };
 use std::{
@@ -38,6 +37,8 @@ use std::{
     fmt::Write as _,
     sync::{Arc, OnceLock},
 };
+
+use unicode_segmentation::UnicodeSegmentation as _;
 
 /// Width of one card: the Tauri page's 940 px column less its panel padding.
 /// The page adds [`PAGE_PADDING`] on each side, as the Tauri capture frame did.
@@ -58,8 +59,7 @@ const PNG_MAX_SCALE: f32 = 2.0;
 const PNG_MAX_DIMENSION: f32 = 16_384.0;
 const PNG_MAX_PIXELS: f32 = 32.0 * 1024.0 * 1024.0;
 
-/// The stylesheet's `--font-ui`, with the embedded face first so a PNG and a
-/// viewer without the others agree.
+/// Family names for standalone SVG viewers.
 const SANS_STACK: &str = "'Noto Sans CJK SC', Inter, 'SF Pro Text', 'PingFang SC', \
      'Microsoft YaHei', 'Hiragino Sans', 'Yu Gothic', sans-serif";
 /// The stylesheet's `--font-serif`.
@@ -351,24 +351,95 @@ fn report_body(language: Language, report: &AnalysisReport, hide_warnings: bool)
 
 // ---- measurement ---------------------------------------------------------------
 
-/// Advance widths and line metrics of the UI faces ([`crate::fonts`]), per
-/// em. A character takes its advance from the first face in its chain that
-/// maps it: serif text walks the serif faces and then the sans faces, as the
-/// window and the rasteriser draw it. Kerning is not modelled; truncation and
-/// wrapping keep a small margin for it.
-pub struct Metrics {
-    sans: Vec<FontRef<'static>>,
-    serif: Vec<FontRef<'static>>,
-    advances: HashMap<(Family, char), f32>,
-    /// (ascent, ascent + descent) per em of each chain's primary face.
-    sans_line: (f32, f32),
-    serif_line: (f32, f32),
+struct CardFace<'a> {
+    key: &'a str,
+    font: FontRef<'a>,
+    charmap: Charmap<'a>,
 }
 
-fn face_advance(font: &FontRef<'_>, character: char) -> Option<f32> {
-    let glyph = font.charmap().map(character)?;
-    font.glyph_metrics(Size::new(1.0), LocationRef::default())
-        .advance_width(glyph)
+/// Parsed views of the exact definitions passed to egui, including Hack and
+/// the emoji fallbacks. All cards share these immutable cmap views.
+struct CardFonts<'a> {
+    sans: Vec<CardFace<'a>>,
+    serif: Vec<CardFace<'a>>,
+    mono: Vec<CardFace<'a>>,
+}
+
+impl<'a> CardFonts<'a> {
+    fn new(defs: &'a egui::FontDefinitions) -> Self {
+        let chain = |family: Family| {
+            defs.families[&family.egui()]
+                .iter()
+                .filter_map(|key| {
+                    let data = defs.font_data.get(key)?;
+                    let font = FontRef::from_index(data.as_ref().as_ref(), data.index).ok()?;
+                    let charmap = font.charmap();
+                    Some(CardFace { key, font, charmap })
+                })
+                .collect()
+        };
+        Self {
+            sans: chain(Family::Sans),
+            serif: chain(Family::Serif),
+            mono: chain(Family::Mono),
+        }
+    }
+
+    fn chain(&self, family: Family) -> &[CardFace<'a>] {
+        match family {
+            Family::Sans => &self.sans,
+            Family::Serif => &self.serif,
+            Family::Mono => &self.mono,
+        }
+    }
+
+    fn glyph(&self, family: Family, ch: char) -> Option<(&CardFace<'a>, GlyphId)> {
+        self.chain(family).iter().find_map(|face| {
+            face.charmap
+                .map(ch)
+                .filter(|id| *id != GlyphId::NOTDEF)
+                .map(|id| (face, id))
+        })
+    }
+
+    /// egui chooses a face from the base character of each whole grapheme.
+    fn runs<'text>(
+        &self,
+        family: Family,
+        text: &'text str,
+    ) -> impl Iterator<Item = (&'a str, &'text str)> {
+        let mut graphemes = text
+            .grapheme_indices(true)
+            .map(move |(offset, grapheme)| {
+                let key = grapheme
+                    .chars()
+                    .next()
+                    .and_then(|ch| self.glyph(family, xml_char(ch)))
+                    .map(|(face, _)| face.key)
+                    .or_else(|| self.chain(family).first().map(|face| face.key))
+                    .unwrap_or("sans-serif");
+                (offset, key)
+            })
+            .peekable();
+        std::iter::from_fn(move || {
+            let (start, key) = graphemes.next()?;
+            while graphemes.next_if(|&(_, next)| next == key).is_some() {}
+            let end = graphemes.peek().map_or(text.len(), |(next, _)| *next);
+            Some((key, &text[start..end]))
+        })
+    }
+}
+
+fn card_fonts() -> &'static CardFonts<'static> {
+    static FONTS: OnceLock<CardFonts<'static>> = OnceLock::new();
+    FONTS.get_or_init(|| CardFonts::new(fonts::definitions()))
+}
+
+pub struct Metrics {
+    advances: HashMap<(Family, char), f32>,
+    sans_line: (f32, f32),
+    serif_line: (f32, f32),
+    mono_line: (f32, f32),
 }
 
 /// A face's ascent and full height (ascent plus descent), per em.
@@ -379,34 +450,26 @@ fn line_metrics(font: &FontRef<'_>) -> (f32, f32) {
 
 impl Metrics {
     pub fn new() -> Result<Self, String> {
-        let ui = fonts::ui_fonts();
-        let parse = |faces: &[fonts::Face]| -> Vec<FontRef<'static>> {
-            faces
-                .iter()
-                .filter_map(|face| FontRef::from_index(face.data, face.index).ok())
-                .collect()
+        let line = |family| {
+            card_fonts()
+                .chain(family)
+                .first()
+                .map(|face| line_metrics(&face.font))
+                .ok_or_else(|| format!("no usable {family:?} UI font"))
         };
-        let sans = parse(&ui.sans);
-        let serif = parse(&ui.serif);
-        let primary = sans
-            .first()
-            .ok_or_else(|| "no usable UI font face".to_owned())?;
-        let sans_line = line_metrics(primary);
-        let serif_line = serif.first().map_or(sans_line, line_metrics);
         Ok(Self {
-            sans,
-            serif,
             advances: HashMap::new(),
-            sans_line,
-            serif_line,
+            sans_line: line(Family::Sans)?,
+            serif_line: line(Family::Serif)?,
+            mono_line: line(Family::Mono)?,
         })
     }
 
-    /// Where a line box's baseline sits for text of `family`.
     fn line(&self, family: Family) -> (f32, f32) {
         match family {
             Family::Serif => self.serif_line,
-            Family::Sans | Family::Mono => self.sans_line,
+            Family::Sans => self.sans_line,
+            Family::Mono => self.mono_line,
         }
     }
 
@@ -414,23 +477,29 @@ impl Metrics {
         if let Some(advance) = self.advances.get(&(family, character)) {
             return *advance;
         }
-        let serif: &[FontRef<'static>] = match family {
-            Family::Serif => &self.serif,
-            Family::Sans | Family::Mono => &[],
-        };
-        let advance = serif
-            .iter()
-            .chain(&self.sans)
-            .find_map(|font| face_advance(font, character))
+        let advance = card_fonts()
+            .glyph(family, xml_char(character))
+            .and_then(|(face, glyph)| {
+                face.font
+                    .glyph_metrics(Size::new(1.0), LocationRef::default())
+                    .advance_width(glyph)
+            })
             .unwrap_or(0.6);
         self.advances.insert((family, character), advance);
         advance
     }
 
-    /// Width of `text` with CSS `letter-spacing` (in em) after every character.
+    fn grapheme_advance(&mut self, grapheme: &str, family: Family) -> f32 {
+        grapheme.chars()
+            .filter(|ch| !matches!(ch, '\u{200c}' | '\u{200d}' | '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}'))
+            .map(|ch| self.advance(ch, family))
+            .sum()
+    }
+
+    /// Unkerned advances, with CSS letter spacing per grapheme.
     fn width(&mut self, text: &str, size: f32, spacing: f32, family: Family) -> f32 {
-        text.chars()
-            .map(|character| self.advance(character, family) + spacing)
+        text.graphemes(true)
+            .map(|cluster| self.grapheme_advance(cluster, family) + spacing)
             .sum::<f32>()
             * size
     }
@@ -451,13 +520,13 @@ impl Metrics {
         let ellipsis = self.width("…", size, spacing, family);
         let mut out = String::new();
         let mut used = 0.0;
-        for character in text.chars() {
-            let advance = (self.advance(character, family) + spacing) * size;
+        for cluster in text.graphemes(true) {
+            let advance = (self.grapheme_advance(cluster, family) + spacing) * size;
             if used + advance + ellipsis > limit {
                 break;
             }
             used += advance;
-            out.push(character);
+            out.push_str(cluster);
         }
         out.push('…');
         out
@@ -465,14 +534,14 @@ impl Metrics {
 
     /// Greedy wrap at spaces, falling back to characters for anything wider
     /// than a line (paths, CJK runs).
-    fn wrap(&mut self, text: &str, size: f32, width: f32) -> Vec<String> {
+    fn wrap(&mut self, text: &str, size: f32, family: Family, width: f32) -> Vec<String> {
         let limit = width * 0.97;
         let mut lines = Vec::new();
         for paragraph in text.split('\n') {
             let mut line = String::new();
             for word in paragraph.split_inclusive(' ') {
                 let candidate = format!("{line}{word}");
-                if self.width(candidate.trim_end(), size, 0.0, Family::Sans) <= limit {
+                if self.width(candidate.trim_end(), size, 0.0, family) <= limit {
                     line = candidate;
                     continue;
                 }
@@ -480,12 +549,13 @@ impl Metrics {
                     lines.push(line.trim_end().to_owned());
                     line.clear();
                 }
-                for character in word.chars() {
-                    line.push(character);
-                    if self.width(line.trim_end(), size, 0.0, Family::Sans) > limit {
-                        line.pop();
+                for cluster in word.graphemes(true) {
+                    let before = line.len();
+                    line.push_str(cluster);
+                    if before > 0 && self.width(line.trim_end(), size, 0.0, family) > limit {
+                        line.truncate(before);
                         lines.push(line.trim_end().to_owned());
-                        line = character.to_string();
+                        line = cluster.to_owned();
                     }
                 }
             }
@@ -496,13 +566,6 @@ impl Metrics {
 }
 
 // ---- drawing -------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Family {
-    Sans,
-    Serif,
-    Mono,
-}
 
 /// One text run's styling, named after the stylesheet's properties.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -687,7 +750,7 @@ impl Pen<'_> {
         style: Style,
         text: &str,
     ) -> f32 {
-        let lines = self.metrics.wrap(text, style.size, width);
+        let lines = self.metrics.wrap(text, style.size, style.family, width);
         let mut y = top;
         for line in &lines {
             self.text(x, y, line_height, style, line);
@@ -1157,9 +1220,7 @@ fn lay_out_compact_channels(pen: &mut Pen<'_>, report: &ReportBody, top: f32) ->
 
 /// Paints a laid-out card into the window at `origin`, with the same shapes
 /// the SVG carries, so the window and an exported image cannot drift apart.
-/// Serif text is drawn in the embedded Semibold; the sans face has only its
-/// Regular, so heavier sans text is drawn twice, half a point apart, as the
-/// PNG strokes it.
+/// Heavier sans text is drawn twice, half a point apart, to match the PNG stroke.
 pub fn paint(card: &Card, ui: &egui::Ui, origin: egui::Pos2, highlighted: bool) {
     let painter = ui.painter();
     let accessible = ui
@@ -1231,11 +1292,7 @@ pub fn paint(card: &Card, ui: &egui::Ui, origin: egui::Pos2, highlighted: bool) 
                 text,
                 full_text,
             } => {
-                let font = match style.family {
-                    Family::Mono => egui::FontId::monospace(style.size),
-                    Family::Serif => egui::FontId::new(style.size, theme::serif_family()),
-                    Family::Sans => egui::FontId::proportional(style.size),
-                };
+                let font = egui::FontId::new(style.size, style.family.egui());
                 let job = egui::text::LayoutJob::single_section(
                     text.clone(),
                     egui::TextFormat {
@@ -1336,30 +1393,48 @@ fn hex(color: Color32) -> String {
     format!("#{:02x}{:02x}{:02x}", color.r(), color.g(), color.b())
 }
 
+fn xml_char(ch: char) -> char {
+    // Rust chars already exclude surrogates. XML 1.0 also excludes most C0
+    // controls and the last two code points of the BMP.
+    match ch {
+        '\t' | '\n' | '\r' | ' '..='\u{fffd}' | '\u{10000}'..=char::MAX => ch,
+        _ => '\u{fffd}',
+    }
+}
+
 fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for character in text.chars() {
+    for character in text.chars().map(xml_char) {
         match character {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
-            // Rust chars already exclude surrogates. XML 1.0 also excludes
-            // most C0 controls and the last two code points of the BMP.
-            '\t' | '\n' | '\r' | ' '..='\u{fffd}' | '\u{10000}'..=char::MAX => out.push(character),
-            _ => out.push('\u{fffd}'),
+            _ => out.push(character),
         }
     }
     out
 }
 
-fn write_text(svg: &mut String, x: f32, y: f32, style: Style, text: &str, format: ImageFormat) {
-    let family = match style.family {
+fn write_text(
+    svg: &mut String,
+    x: f32,
+    y: f32,
+    style: Style,
+    text: &str,
+    png_fonts: Option<&CardFonts<'_>>,
+) {
+    let stack = match style.family {
         Family::Sans => SANS_STACK,
         Family::Serif => SERIF_STACK,
         Family::Mono => MONO_STACK,
     };
+    let mut runs = png_fonts.map(|fonts| fonts.runs(style.family, text));
+    let (family, first) = runs
+        .as_mut()
+        .and_then(Iterator::next)
+        .unwrap_or((stack, text));
     let _ = write!(
         svg,
         r#"<text x="{x:.2}" y="{y:.2}" font-family="{family}" font-size="{}" fill="{}""#,
@@ -1371,7 +1446,7 @@ fn write_text(svg: &mut String, x: f32, y: f32, style: Style, text: &str, format
         // Serif text has its real Semibold. The sans face is Regular only, so
         // in a PNG heavier sans text gets a stroke in its own colour; 750
         // reads close to the stylesheet's bold labels.
-        if format == ImageFormat::Png && style.weight > 400 && style.family != Family::Serif {
+        if png_fonts.is_some() && style.weight > 400 && style.family != Family::Serif {
             let stroke = style.size * f32::from(style.weight - 400) / 9_000.0;
             let _ = write!(
                 svg,
@@ -1387,7 +1462,17 @@ fn write_text(svg: &mut String, x: f32, y: f32, style: Style, text: &str, format
             style.spacing * style.size
         );
     }
-    let _ = write!(svg, r#" xml:space="preserve">{}</text>"#, escape(text));
+    let _ = write!(svg, r#" xml:space="preserve">{}"#, escape(first));
+    for (key, run) in runs.into_iter().flatten() {
+        // An explicit baseline starts a new usvg shaping chunk and carries
+        // forward the previous run's final x, including its kerning.
+        let _ = write!(
+            svg,
+            r#"<tspan y="{y:.2}" font-family="{key}">{}</tspan>"#,
+            escape(run)
+        );
+    }
+    svg.push_str("</text>");
 }
 
 /// One page as SVG text: the cards stacked on the paper background. `format`
@@ -1395,6 +1480,7 @@ fn write_text(svg: &mut String, x: f32, y: f32, style: Style, text: &str, format
 pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
     #[allow(clippy::cast_precision_loss, reason = "a page holds few cards")]
     let gaps = CARD_GAP * cards.len().saturating_sub(1) as f32;
+    let png_fonts = (format == ImageFormat::Png).then(card_fonts);
     let content_height = cards.iter().map(Card::height).sum::<f32>() + gaps;
     let width = CARD_WIDTH + 2.0 * PAGE_PADDING;
     let height = content_height + 2.0 * PAGE_PADDING;
@@ -1450,7 +1536,7 @@ pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
                 Shape::Text {
                     x, y, style, text, ..
                 } => {
-                    write_text(&mut svg, *x, *y, *style, text, format);
+                    write_text(&mut svg, *x, *y, *style, text, png_fonts);
                 }
             }
         }
@@ -1469,37 +1555,38 @@ pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
     svg
 }
 
-fn font_database() -> Arc<usvg::fontdb::Database> {
-    static DATABASE: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
-    Arc::clone(DATABASE.get_or_init(|| {
-        let ui = fonts::ui_fonts();
-        let mut database = usvg::fontdb::Database::new();
-        let mut loaded: Vec<*const u8> = Vec::new();
-        for face in ui.serif_chain() {
-            // A collection serving several faces is loaded once.
-            if !loaded.contains(&face.data.as_ptr()) {
-                loaded.push(face.data.as_ptr());
-                database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(face.data)));
-            }
-        }
-        // The generic families resolve to the chains' primary faces. A
-        // character a face lacks falls back to another face in the database.
-        let sans = primary_family(&ui.sans);
-        database.set_sans_serif_family(sans.clone());
-        database.set_serif_family(if ui.serif.is_empty() {
-            sans.clone()
-        } else {
-            primary_family(&ui.serif)
+/// Each internal SVG family names exactly one selected collection member.
+fn raster_database(defs: &egui::FontDefinitions) -> usvg::fontdb::Database {
+    use usvg::fontdb::{Database, FaceInfo, ID, Language, Source, Stretch, Style, Weight};
+
+    let mut db = Database::new();
+    for (key, data) in &defs.font_data {
+        db.push_face_info(FaceInfo {
+            id: ID::dummy(),
+            source: Source::Binary(data.clone()),
+            index: data.index,
+            families: vec![(key.clone(), Language::English_UnitedStates)],
+            post_script_name: key.clone(),
+            style: Style::Normal,
+            weight: Weight::NORMAL,
+            stretch: Stretch::Normal,
+            monospaced: false,
         });
-        database.set_monospace_family(sans);
-        Arc::new(database)
-    }))
+    }
+    db
 }
 
-fn primary_family(faces: &[fonts::Face]) -> String {
-    faces
-        .first()
-        .map_or_else(|| "sans-serif".to_owned(), |face| face.family.clone())
+fn raster_options(fontdb: Arc<usvg::fontdb::Database>) -> usvg::Options<'static> {
+    usvg::Options {
+        fontdb,
+        // Each run already has the face selected by the window. Searching
+        // other families here could replace the entire run or change weight.
+        font_resolver: usvg::FontResolver {
+            select_fallback: Box::new(|_, _, _| None),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 
 /// The largest scale up to 2× that keeps the canvas within common limits.
@@ -1514,12 +1601,10 @@ fn png_scale(width: f32, height: f32) -> f32 {
 /// Rasterises one SVG page with the UI faces only: the embedded ones in a
 /// bundled build, the window's own system faces otherwise.
 pub fn render_pixmap(svg: &str) -> Result<tiny_skia::Pixmap, String> {
-    let options = usvg::Options {
-        fontdb: font_database(),
-        font_family: primary_family(&fonts::ui_fonts().sans),
-        ..usvg::Options::default()
-    };
-    let tree = usvg::Tree::from_str(svg, &options).map_err(|error| error.to_string())?;
+    static DATABASE: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
+    let db = DATABASE.get_or_init(|| Arc::new(raster_database(fonts::definitions())));
+    let tree = usvg::Tree::from_str(svg, &raster_options(Arc::clone(db)))
+        .map_err(|error| error.to_string())?;
     let size = tree.size();
     let scale = png_scale(size.width(), size.height());
     #[allow(
@@ -1574,6 +1659,85 @@ mod tests {
     }
 
     #[test]
+    fn png_uses_the_measured_face_and_index_for_each_grapheme_run() {
+        let mut defs = egui::FontDefinitions::default();
+        let bytes = include_bytes!("../tests/fonts/fallback.ttc");
+        for (key, index) in [
+            ("fixture-sans", 0),
+            ("fixture-kana", 1),
+            ("fixture-serif", 2),
+        ] {
+            let mut data = egui::FontData::from_static(bytes);
+            data.index = index;
+            defs.font_data.insert(key.into(), Arc::new(data));
+        }
+        defs.families
+            .get_mut(&Family::Sans.egui())
+            .unwrap()
+            .splice(0..0, ["fixture-sans".into(), "fixture-kana".into()]);
+        defs.families
+            .get_mut(&Family::Mono.egui())
+            .unwrap()
+            .extend(["fixture-sans".into(), "fixture-kana".into()]);
+        let sans = defs.families[&Family::Sans.egui()].clone();
+        defs.families.insert(
+            Family::Serif.egui(),
+            std::iter::once("fixture-serif".into())
+                .chain(sans)
+                .collect(),
+        );
+        let fonts = CardFonts::new(&defs);
+        let db = Arc::new(raster_database(&defs));
+        assert_eq!(db.len(), defs.font_data.len());
+        let options = raster_options(Arc::clone(&db));
+        for family in [Family::Sans, Family::Serif, Family::Mono] {
+            let text = "D原ㇰ🎵D";
+            let mut svg =
+                String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="50">"#);
+            let style = Style::new(20.0, theme::TEXT).family(family).weight(600);
+            write_text(&mut svg, 0.0, 30.0, style, text, Some(&fonts));
+            svg.push_str("</svg>");
+            let tree = usvg::Tree::from_str(&svg, &options).unwrap();
+            let Some(usvg::Node::Text(output)) = tree.root().children().first() else {
+                panic!("missing text node")
+            };
+            let glyphs: Vec<_> = output
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .collect();
+            assert_eq!(glyphs.len(), text.chars().count());
+            let mut width = 0.0;
+            for (ch, glyph) in text.chars().zip(glyphs) {
+                let (expected, id) = fonts.glyph(family, ch).unwrap();
+                let actual = db.face(glyph.font).unwrap();
+                assert_eq!(actual.families[0].0, expected.key);
+                assert_eq!(actual.index, defs.font_data[expected.key].index);
+                assert_eq!(glyph.id.0, id.to_u32());
+                width += expected
+                    .font
+                    .glyph_metrics(Size::new(20.0), LocationRef::default())
+                    .advance_width(id)
+                    .unwrap();
+            }
+            assert!(
+                (width - output.bounding_box().width()).abs() < 0.1,
+                "{family:?}: measured {width}, rasterised {:?}",
+                output.bounding_box()
+            );
+        }
+        let mixed: Vec<_> = fonts.runs(Family::Serif, "Dㇰ🎵\u{fe0f}").collect();
+        assert_eq!(
+            mixed,
+            [
+                ("fixture-serif", "D"),
+                ("fixture-kana", "ㇰ"),
+                ("NotoEmoji-Regular", "🎵\u{fe0f}")
+            ]
+        );
+    }
+
+    #[test]
     fn a_card_is_real_svg_text_not_foreign_html() {
         let report = report("native-alac-v1/alac16-stereo-48000-multipacket.m4a");
         let entry = ImageEntry::new(
@@ -1591,7 +1755,7 @@ mod tests {
         let aggregate = report.analysis().aggregates().track.rounded_dr.unwrap();
         assert!(svg.contains(&format!(">DR{aggregate}</text>")));
         assert!(svg.contains(">CH 2</text>"));
-        // Parses as SVG and lays out text with the embedded face alone.
+        // Parses as SVG and lays out text with the selected window faces.
         let pixmap = render_pixmap(&svg).unwrap();
         assert!(pixmap.width() > 1_000);
         assert!(pixmap.pixels().iter().any(|pixel| pixel.red() < 0x80));
@@ -1711,8 +1875,18 @@ mod tests {
         let cards = lay_out_cards(&[entry]).unwrap();
         for format in [ImageFormat::Svg, ImageFormat::Png] {
             let svg = svg_page(&cards, format);
-            assert!(svg.contains("song���.wav"));
-            usvg::Tree::from_str(&svg, &usvg::Options::default()).unwrap();
+            let xml = usvg::roxmltree::Document::parse(&svg).unwrap();
+            assert!(
+                xml.descendants()
+                    .filter(|n| n.has_tag_name("text"))
+                    .any(|n| {
+                        n.descendants()
+                            .filter(|t| t.is_text())
+                            .filter_map(|t| t.text())
+                            .collect::<String>()
+                            == "song���.wav"
+                    })
+            );
         }
     }
 

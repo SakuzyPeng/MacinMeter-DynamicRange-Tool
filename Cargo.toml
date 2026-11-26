@@ -74,6 +74,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tempfile = "3"
 thiserror = "2"
+# The same grapheme boundaries egui uses to select a face for a text run.
+unicode-segmentation = "1"
 walkdir = "2.5"
 
 [profile.release]

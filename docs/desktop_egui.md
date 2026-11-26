@@ -27,22 +27,20 @@ build the window and an exported image still draw one card.
 | CJK serif | No (CJK falls back to Noto Sans) | The host's Songti SC or SimSun, as in the Tauri GUI |
 | Exported PNG | The same on every host | Depends on the host's fonts, as Tauri's did |
 | Build | Fetches Noto once (the network exception) | Fetches nothing |
-| Linux release binary | 39.2 MB | 23.1 MB |
+| Additional embedded font data | About 16.7 MB | 0 bytes |
 
-In the system build a face joins a chain only if it covers a probe character
-the faces before it do not: Latin, 原顺序, kana and Hangul. That keeps every
-CJK collection on the host from being held in memory. After the named stack,
-the sans chain takes the host face that covers the most still-missing probe
-characters, round by round, as a browser's last-resort fallback would. This
-is what finds a CJK face on Linux, where the stack's names are mostly absent;
-ties go to the closest weight and then the family name. With nothing usable
-on the host, egui's Ubuntu Light keeps layout and rasterisation working.
-egui's own small default faces (Ubuntu Light, Hack, emoji) are in both builds.
+The system build checks the full Unicode character map of each named face.
+The proportional chain starts with the stylesheet's named faces and egui's
+default faces. Additional host fonts supply missing characters. Proportional
+upright faces take priority, and an installed monospace font can supply the
+only available CJK glyphs. Private-use characters participate in the named
+stacks. Each selected file has one backing allocation shared by all its
+collection members. The monospace chain starts with Hack, and the default
+Latin and emoji faces are available to both builds.
 
-CI lints both builds on Linux, Windows and macOS, and tests the system build
-on Linux. Its tests assert host-independent properties only: every chosen face
-adds coverage, and every probe character some host face covers is covered by
-the sans chain.
+CI lints both builds on Linux, Windows and macOS and tests the system build on
+Linux. The desktop tests use a small, fixed TTC to check member indices,
+mixed-script glyphs, advances, shared data and monospace-only fallback.
 
 ### Font build input
 
@@ -120,7 +118,7 @@ width, from the report itself rather than from the window. The card follows
 the Tauri card's stylesheet (`.directory-entry` and its children): a tinted
 header band, a five-cell summary grid with dividers, a format band, the channel
 table with role pills, and a warning band, clipped to a 15 px rounded border. It wraps text using
-the embedded face's glyph advances, read with skrifa. Each page is serialised as
+the selected faces' glyph advances, read with skrifa. Each page is serialised as
 SVG made of `<rect>` and `<text>` elements. The Tauri export instead wrapped
 cloned HTML in `<foreignObject>`, which only a browser renders, and its output
 depended on the window width and the host's fonts.
@@ -131,16 +129,14 @@ depended on the window width and the host's fonts.
   channel table. A batch card reads it from `BatchDetailStore`. Hiding paths
   also hides free-form failure details that can contain filesystem paths. The
   error code and application message remain visible.
-- **PNG**: resvg rasterises the SVG with only the embedded font loaded (no
-  system fonts), at up to 2× within a 16384 px / 32 MP canvas.
-- **Typography**: the SVG names the stylesheet's serif stack and its 600–750
-  weights, so a viewer with those faces shows them. The window and the PNG
-  draw serif text in the serif chain's first face, falling back through the
-  rest of that chain and then the sans chain for characters it lacks. Text
-  baselines come from each chain's primary face metrics. In the bundled build
-  only Noto's Regular is embedded, so heavier sans text is synthesised: a thin
-  stroke in a PNG, a second pass half a point over in the window. In a PNG, resvg draws a mixed Latin/CJK serif run
-  in the fallback face, where a browser would split it.
+- **PNG** uses resvg at up to 2× within a 16384 px / 32 MP canvas. Each
+  text run names the exact font and collection index used in the window.
+  Adjacent graphemes that share a face are shaped together. Mixed Latin, CJK
+  and emoji runs continue at the previous run's final horizontal position.
+- **Typography** in a standalone SVG uses the stylesheet's font stacks and
+  600–750 weights. Card baselines use each chain's primary face metrics.
+  The window and PNG synthesise heavier sans text with a second paint pass
+  and a thin stroke, respectively.
 - **Pagination**: as Tauri did, at 4000 px of content per PNG page and
   12000 px per SVG page. One page goes to a chosen file; several go to a chosen
   folder as `name_01.png`, `name_02.png`, and so on.

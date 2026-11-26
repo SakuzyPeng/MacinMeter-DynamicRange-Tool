@@ -3060,6 +3060,7 @@ dependencies = [
  "sha2",
  "skrifa 0.49.0",
  "tempfile",
+ "unicode-segmentation",
 ]
 
 [[package]]
