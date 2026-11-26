@@ -10,6 +10,7 @@
 mod app;
 mod card_layout;
 mod export;
+mod fonts;
 mod format;
 mod i18n;
 mod jobs;

@@ -1,20 +1,12 @@
-//! The paper palette the Tauri stylesheet defined, and the embedded UI fonts.
+//! The paper palette the Tauri stylesheet defined, and the UI fonts' egui families.
 //!
 //! The colours are the `:root` tokens of `tauri-app/src/styles.css`; the
 //! MacinDecode Spatial Player's theme already uses the same values, so the two
 //! desktop apps read as one family.
 
-use eframe::egui::{
-    self, Color32, CornerRadius, Stroke,
-    epaint::text::{FontInsert, FontPriority, InsertFontFamily},
-};
-
-/// The embedded UI face, shared by the window and the image renderer.
-pub const UI_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansCJKsc-Regular.otf"));
-/// The card's serif face (title, DR number): Source Serif 4 Semibold, the face
-/// the app icon's "DR" is drawn from. CJK in serif text falls back to
-/// [`UI_FONT`].
-pub const SERIF_FONT: &[u8] = include_bytes!("../fonts/SourceSerif4-Semibold.otf");
+use crate::fonts::{self, Face};
+use eframe::egui::{self, Color32, CornerRadius, Stroke};
+use std::{borrow::Cow, sync::Arc};
 
 /// The egui family that draws the stylesheet's `--font-serif` text.
 pub fn serif_family() -> egui::FontFamily {
@@ -77,36 +69,36 @@ pub fn install(context: &egui::Context) {
     });
 }
 
+/// egui's families from the font chains: the sans chain ahead of egui's own
+/// faces for proportional text, behind Hack for monospace (so the raw JSON view
+/// lines up while a CJK path inside it still renders), and the serif chain
+/// followed by the sans chain for `--font-serif` text.
 fn install_ui_font(context: &egui::Context) {
-    context.add_font(FontInsert::new(
-        "noto-sans-cjk-sc",
-        egui::FontData::from_static(UI_FONT),
-        vec![
-            InsertFontFamily {
-                family: egui::FontFamily::Proportional,
-                priority: FontPriority::Highest,
-            },
-            // Monospace keeps its Latin face and falls back to CJK, so the raw
-            // JSON view lines up while a Chinese path inside it still renders.
-            InsertFontFamily {
-                family: egui::FontFamily::Monospace,
-                priority: FontPriority::Lowest,
-            },
-            // Behind the serif face, for CJK characters in a serif title.
-            InsertFontFamily {
-                family: serif_family(),
-                priority: FontPriority::Lowest,
-            },
-        ],
-    ));
-    context.add_font(FontInsert::new(
-        "source-serif-4-semibold",
-        egui::FontData::from_static(SERIF_FONT),
-        vec![InsertFontFamily {
-            family: serif_family(),
-            priority: FontPriority::Highest,
-        }],
-    ));
+    let ui = fonts::ui_fonts();
+    let mut definitions = egui::FontDefinitions::default();
+    let mut register = |face: &Face| {
+        definitions.font_data.insert(
+            face.key.clone(),
+            Arc::new(egui::FontData {
+                font: Cow::Borrowed(face.data),
+                index: face.index,
+                tweak: egui::FontTweak::default(),
+            }),
+        );
+        face.key.clone()
+    };
+    let sans: Vec<String> = ui.sans.iter().map(&mut register).collect();
+    let serif: Vec<String> = ui.serif.iter().map(&mut register).collect();
+    let families = &mut definitions.families;
+    let proportional = families.entry(egui::FontFamily::Proportional).or_default();
+    proportional.splice(0..0, sans.iter().cloned());
+    let fallback = proportional.clone();
+    families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .extend(sans.iter().cloned());
+    families.insert(serif_family(), serif.into_iter().chain(fallback).collect());
+    context.set_fonts(definitions);
 }
 
 #[cfg(test)]
@@ -138,18 +130,27 @@ mod tests {
         });
         let mut output = context.end_pass();
         output.textures_delta.clear();
-        assert_eq!(order, ["source-serif-4-semibold", "noto-sans-cjk-sc"]);
+        let ui = fonts::ui_fonts();
+        let chain: Vec<&str> = ui.serif_chain().map(|face| face.key.as_str()).collect();
+        assert_eq!(&order[..chain.len()], chain.as_slice());
+        if ui.serif.is_empty() {
+            // A host without a serif face draws serif text in the sans chain.
+            return;
+        }
         assert!(
             (serif[0] - sans[0]).abs() > 0.1,
             "Latin is drawn in the serif face"
         );
-        assert!(
-            serif[1] > 0.0 && (serif[1] - sans[1]).abs() < 1e-3,
-            "CJK falls back"
-        );
-        assert!((serif[2] - sans[2]).abs() < 1e-3, "kana falls back");
+        if cfg!(feature = "bundled-fonts") {
+            assert!(
+                serif[1] > 0.0 && (serif[1] - sans[1]).abs() < 1e-3,
+                "CJK falls back"
+            );
+            assert!((serif[2] - sans[2]).abs() < 1e-3, "kana falls back");
+        }
     }
 
+    #[cfg(feature = "bundled-fonts")]
     #[test]
     fn embedded_font_covers_latin_chinese_japanese_and_korean() {
         let context = egui::Context::default();

@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! Supplies the desktop GUI's external Noto Sans CJK font.
+//! Supplies the desktop GUI's external Noto Sans CJK font for the default
+//! `bundled-fonts` build. A build without that feature embeds no font and
+//! fetches nothing.
 //!
 //! egui draws only the fonts it is given and has no system fallback, so a CJK
 //! file name needs a CJK face compiled in. The face is fetched once, pinned by
@@ -26,6 +28,10 @@ const FONT_URL: &str = "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@165c01b46
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // A system-font build embeds no font, so it fetches nothing.
+    if env::var_os("CARGO_FEATURE_BUNDLED_FONTS").is_none() {
+        return;
+    }
     println!("cargo:rerun-if-env-changed={FONT_OVERRIDE_ENV}");
     println!("cargo:rerun-if-env-changed={FONT_CACHE_ENV}");
 

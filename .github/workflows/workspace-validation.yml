@@ -74,6 +74,11 @@ jobs:
       - name: Run standard workspace tests
         run: cargo test --locked --workspace --all-targets
 
+      - name: Check and test the system-font desktop build
+        run: |
+          cargo clippy --locked -p macinmeter-desktop --no-default-features --all-targets -- -D warnings
+          cargo test --locked -p macinmeter-desktop --no-default-features
+
       - name: Run reference-tool tests
         run: python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 
@@ -124,6 +129,9 @@ jobs:
 
       - name: Run Windows Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Check the system-font desktop build
+        run: cargo clippy --locked -p macinmeter-desktop --no-default-features --all-targets -- -D warnings
 
       - name: Run Windows workspace tests
         run: cargo test --locked --workspace --all-targets
@@ -225,6 +233,9 @@ jobs:
 
       - name: Run macOS Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Check the system-font desktop build
+        run: cargo clippy --locked -p macinmeter-desktop --no-default-features --all-targets -- -D warnings
 
       - name: Run macOS workspace tests
         run: cargo test --locked --workspace --all-targets

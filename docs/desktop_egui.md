@@ -9,10 +9,40 @@ stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
 | Question | Decision |
 |---|---|
 | Toolchain | The whole workspace moves to Rust 1.98.0, pinned by `rust-toolchain.toml`, the same compiler as the player. eframe 0.36.1 itself needs 1.95. |
-| UI fonts | The desktop crate embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB) for the card's serif title and DR number. The serif font ships in the source tree. Set `MACINMETER_UI_FONT_PATH` to build offline with a local copy of Noto. |
+| UI fonts | Two builds; see [Font builds](#font-builds). The default `bundled-fonts` build embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB). A build without that feature embeds neither and uses the host's fonts, as the Tauri WebView did. |
 | Complex scripts | egui 0.36 shapes text with HarfRust but has no bidi and no system font fallback. Arabic or Hebrew file names render in logical (reversed) order, and scripts outside the embedded font render as boxes. This is accepted. |
 | Windows installer | Stays NSIS when the Tauri bundler goes, so an install can replace a 0.3.x Tauri install in place. Not part of the prototype. |
 | Image export | Drawn from report data as a real vector SVG, with PNG rasterised from that SVG; see [Image export](#image-export). |
+
+### Font builds
+
+`src/fonts.rs` is the one place faces come from. It resolves a sans fallback
+chain and a serif chain once per process. The window's egui families, card
+layout measurement and PNG rasterisation all read those chains, so in either
+build the window and an exported image still draw one card.
+
+| | `bundled-fonts` (default) | system fonts (`--no-default-features`) |
+|---|---|---|
+| Faces | Noto Sans CJK SC; Source Serif 4 Semibold, then Noto for CJK | The stylesheet's `--font-ui` and `--font-serif` stacks, looked up among the host's fonts with fontdb |
+| CJK serif | No (CJK falls back to Noto Sans) | The host's Songti SC or SimSun, as in the Tauri GUI |
+| Exported PNG | The same on every host | Depends on the host's fonts, as Tauri's did |
+| Build | Fetches Noto once (the network exception) | Fetches nothing |
+| Linux release binary | 39.2 MB | 23.1 MB |
+
+In the system build a face joins a chain only if it covers a probe character
+the faces before it do not: Latin, 原顺序, kana and Hangul. That keeps every
+CJK collection on the host from being held in memory. After the named stack,
+the sans chain takes the host face that covers the most still-missing probe
+characters, round by round, as a browser's last-resort fallback would. This
+is what finds a CJK face on Linux, where the stack's names are mostly absent;
+ties go to the closest weight and then the family name. With nothing usable
+on the host, egui's Ubuntu Light keeps layout and rasterisation working.
+egui's own small default faces (Ubuntu Light, Hack, emoji) are in both builds.
+
+CI lints both builds on Linux, Windows and macOS, and tests the system build
+on Linux. Its tests assert host-independent properties only: every chosen face
+adds coverage, and every probe character some host face covers is covered by
+the sans chain.
 
 ### Font build input
 
@@ -20,8 +50,8 @@ The desktop crate embeds the unmodified Source Serif 4 Semibold OTF from
 Adobe's 4.005R release. Its checksum and license are in
 `apps/macinmeter-desktop/OFL-SourceSerif4.txt`.
 
-`build.rs` verifies the SHA-256 of Noto Sans CJK SC and copies it into
-`OUT_DIR`. Set `MACINMETER_UI_FONT_PATH` to use a local copy. On a cache
+In the `bundled-fonts` build, `build.rs` verifies the SHA-256 of Noto Sans
+CJK SC and copies it into `OUT_DIR`; without the feature it does nothing. Set `MACINMETER_UI_FONT_PATH` to use a local copy. On a cache
 miss it can download Noto from jsDelivr. `MACINMETER_UI_FONT_CACHE_DIR`
 selects an absolute cache directory shared across profiles and checkouts.
 
@@ -105,10 +135,11 @@ depended on the window width and the host's fonts.
   system fonts), at up to 2× within a 16384 px / 32 MP canvas.
 - **Typography**: the SVG names the stylesheet's serif stack and its 600–750
   weights, so a viewer with those faces shows them. The window and the PNG
-  draw serif text in the embedded Source Serif 4 Semibold, falling back to
-  Noto Sans CJK SC for CJK characters. Only Noto's Regular is embedded, so
-  heavier sans text is synthesised: a thin stroke in a PNG, a second pass half
-  a point over in the window. In a PNG, resvg draws a mixed Latin/CJK serif run
+  draw serif text in the serif chain's first face, falling back through the
+  rest of that chain and then the sans chain for characters it lacks. Text
+  baselines come from each chain's primary face metrics. In the bundled build
+  only Noto's Regular is embedded, so heavier sans text is synthesised: a thin
+  stroke in a PNG, a second pass half a point over in the window. In a PNG, resvg draws a mixed Latin/CJK serif run
   in the fallback face, where a browser would split it.
 - **Pagination**: as Tauri did, at 4000 px of content per PNG page and
   12000 px per SVG page. One page goes to a chosen file; several go to a chosen

@@ -7,7 +7,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MacinMeter Dynamic Range desktop GUI on egui (prototype beside the Tauri GUI)"
-# An application shell, not a library: it embeds UI fonts and window glue.
+# An application shell, not a library: it carries window glue and, by default,
+# its UI fonts.
 publish = false
 
 [[bin]]
@@ -17,9 +18,19 @@ path = "src/main.rs"
 [build-dependencies]
 sha2.workspace = true
 
+[features]
+default = ["bundled-fonts"]
+# Embed Noto Sans CJK SC (fetched by build.rs) and Source Serif 4 Semibold, so
+# the window and exported PNGs look the same on every host. Without it the
+# binary embeds neither, fetches nothing, and looks the stylesheet's stacks up
+# among the host's fonts at start-up, as the Tauri WebView did.
+bundled-fonts = []
+
 [dependencies]
 arboard.workspace = true
 eframe.workspace = true
+epaint_default_fonts.workspace = true
+fontdb.workspace = true
 macinmeter = { path = "../../crates/macinmeter", version = "0.3.1" }
 resvg.workspace = true
 rfd.workspace = true

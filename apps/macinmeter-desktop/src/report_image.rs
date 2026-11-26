@@ -22,7 +22,7 @@
 //! the path and warning toggles applied.
 
 use crate::{
-    format,
+    fonts, format,
     i18n::{Language, t, tf},
     theme,
 };
@@ -58,8 +58,6 @@ const PNG_MAX_SCALE: f32 = 2.0;
 const PNG_MAX_DIMENSION: f32 = 16_384.0;
 const PNG_MAX_PIXELS: f32 = 32.0 * 1024.0 * 1024.0;
 
-/// The embedded face's family name.
-const EMBEDDED_FAMILY: &str = "Noto Sans CJK SC";
 /// The stylesheet's `--font-ui`, with the embedded face first so a PNG and a
 /// viewer without the others agree.
 const SANS_STACK: &str = "'Noto Sans CJK SC', Inter, 'SF Pro Text', 'PingFang SC', \
@@ -69,15 +67,10 @@ const SERIF_STACK: &str = "'Iowan Old Style', 'Palatino Linotype', Palatino, 'So
      'Noto Serif CJK SC', 'Source Han Serif SC', SimSun, serif";
 const MONO_STACK: &str = "ui-monospace, Menlo, Consolas, 'Noto Sans CJK SC', monospace";
 
-/// Noto Sans CJK's ascent and line gap, per em, for placing baselines the way
-/// a CSS line box does.
-const ASCENT: f32 = 0.88;
+/// CSS `line-height: normal` for the stylesheet's sans stack, per em, which
+/// sizes the card's bands. Baselines inside a line box use each chain's own
+/// face metrics (see [`Metrics::line`]).
 const NORMAL_LINE_HEIGHT: f32 = 1.448;
-/// Source Serif 4's ascent and descent, per em (its `hhea` and typo metrics).
-const SERIF_ASCENT: f32 = 1.036;
-const SERIF_DESCENT: f32 = 0.335;
-/// The serif face's family name in the rasteriser's database.
-const SERIF_FAMILY: &str = "Source Serif 4";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageFormat {
@@ -358,14 +351,18 @@ fn report_body(language: Language, report: &AnalysisReport, hide_warnings: bool)
 
 // ---- measurement ---------------------------------------------------------------
 
-/// Advance widths of the embedded faces, per em, cached by character. Serif
-/// text measures with the serif face and falls back to the sans face for
-/// characters it lacks (CJK), as the window and the rasteriser draw it.
-/// Kerning is not modelled; truncation and wrapping keep a small margin for it.
+/// Advance widths and line metrics of the UI faces ([`crate::fonts`]), per
+/// em. A character takes its advance from the first face in its chain that
+/// maps it: serif text walks the serif faces and then the sans faces, as the
+/// window and the rasteriser draw it. Kerning is not modelled; truncation and
+/// wrapping keep a small margin for it.
 pub struct Metrics {
-    sans: FontRef<'static>,
-    serif: FontRef<'static>,
+    sans: Vec<FontRef<'static>>,
+    serif: Vec<FontRef<'static>>,
     advances: HashMap<(Family, char), f32>,
+    /// (ascent, ascent + descent) per em of each chain's primary face.
+    sans_line: (f32, f32),
+    serif_line: (f32, f32),
 }
 
 fn face_advance(font: &FontRef<'_>, character: char) -> Option<f32> {
@@ -374,25 +371,57 @@ fn face_advance(font: &FontRef<'_>, character: char) -> Option<f32> {
         .advance_width(glyph)
 }
 
+/// A face's ascent and full height (ascent plus descent), per em.
+fn line_metrics(font: &FontRef<'_>) -> (f32, f32) {
+    let metrics = font.metrics(Size::new(1.0), LocationRef::default());
+    (metrics.ascent, metrics.ascent - metrics.descent)
+}
+
 impl Metrics {
     pub fn new() -> Result<Self, String> {
+        let ui = fonts::ui_fonts();
+        let parse = |faces: &[fonts::Face]| -> Vec<FontRef<'static>> {
+            faces
+                .iter()
+                .filter_map(|face| FontRef::from_index(face.data, face.index).ok())
+                .collect()
+        };
+        let sans = parse(&ui.sans);
+        let serif = parse(&ui.serif);
+        let primary = sans
+            .first()
+            .ok_or_else(|| "no usable UI font face".to_owned())?;
+        let sans_line = line_metrics(primary);
+        let serif_line = serif.first().map_or(sans_line, line_metrics);
         Ok(Self {
-            sans: FontRef::new(theme::UI_FONT).map_err(|error| error.to_string())?,
-            serif: FontRef::new(theme::SERIF_FONT).map_err(|error| error.to_string())?,
+            sans,
+            serif,
             advances: HashMap::new(),
+            sans_line,
+            serif_line,
         })
+    }
+
+    /// Where a line box's baseline sits for text of `family`.
+    fn line(&self, family: Family) -> (f32, f32) {
+        match family {
+            Family::Serif => self.serif_line,
+            Family::Sans | Family::Mono => self.sans_line,
+        }
     }
 
     fn advance(&mut self, character: char, family: Family) -> f32 {
         if let Some(advance) = self.advances.get(&(family, character)) {
             return *advance;
         }
-        let serif = match family {
-            Family::Serif => face_advance(&self.serif, character),
-            Family::Sans | Family::Mono => None,
+        let serif: &[FontRef<'static>] = match family {
+            Family::Serif => &self.serif,
+            Family::Sans | Family::Mono => &[],
         };
         let advance = serif
-            .or_else(|| face_advance(&self.sans, character))
+            .iter()
+            .chain(&self.sans)
+            .find_map(|font| face_advance(font, character))
             .unwrap_or(0.6);
         self.advances.insert((family, character), advance);
         advance
@@ -624,10 +653,7 @@ impl Pen<'_> {
         }
         // The baseline sits half the leading below the line box's top, then
         // one ascent down, using the metrics of the face that draws the text.
-        let (ascent, content) = match style.family {
-            Family::Serif => (SERIF_ASCENT, SERIF_ASCENT + SERIF_DESCENT),
-            Family::Sans | Family::Mono => (ASCENT, 1.0),
-        };
+        let (ascent, content) = self.metrics.line(style.family);
         self.shapes.push(Shape::Text {
             x,
             y: top + (line_height - content * style.size) / 2.0 + ascent * style.size,
@@ -1224,7 +1250,8 @@ pub fn paint(card: &Card, ui: &egui::Ui, origin: egui::Pos2, highlighted: bool) 
                     .rows
                     .first()
                     .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
-                    .unwrap_or(ASCENT * style.size);
+                    // An empty row has no glyph; any ascent places nothing.
+                    .unwrap_or(style.size);
                 let position = inner_origin + egui::vec2(*x, y - baseline);
                 if accessible {
                     let bounds = galley.rect.translate(position.to_vec2());
@@ -1445,16 +1472,34 @@ pub fn svg_page(cards: &[Card], format: ImageFormat) -> String {
 fn font_database() -> Arc<usvg::fontdb::Database> {
     static DATABASE: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     Arc::clone(DATABASE.get_or_init(|| {
+        let ui = fonts::ui_fonts();
         let mut database = usvg::fontdb::Database::new();
-        database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(theme::UI_FONT)));
-        database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(theme::SERIF_FONT)));
-        // The generic families resolve to the embedded faces. A character the
-        // serif face lacks (CJK) falls back to the sans face.
-        database.set_sans_serif_family(EMBEDDED_FAMILY);
-        database.set_serif_family(SERIF_FAMILY);
-        database.set_monospace_family(EMBEDDED_FAMILY);
+        let mut loaded: Vec<*const u8> = Vec::new();
+        for face in ui.serif_chain() {
+            // A collection serving several faces is loaded once.
+            if !loaded.contains(&face.data.as_ptr()) {
+                loaded.push(face.data.as_ptr());
+                database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(face.data)));
+            }
+        }
+        // The generic families resolve to the chains' primary faces. A
+        // character a face lacks falls back to another face in the database.
+        let sans = primary_family(&ui.sans);
+        database.set_sans_serif_family(sans.clone());
+        database.set_serif_family(if ui.serif.is_empty() {
+            sans.clone()
+        } else {
+            primary_family(&ui.serif)
+        });
+        database.set_monospace_family(sans);
         Arc::new(database)
     }))
+}
+
+fn primary_family(faces: &[fonts::Face]) -> String {
+    faces
+        .first()
+        .map_or_else(|| "sans-serif".to_owned(), |face| face.family.clone())
 }
 
 /// The largest scale up to 2× that keeps the canvas within common limits.
@@ -1466,11 +1511,12 @@ fn png_scale(width: f32, height: f32) -> f32 {
         .min((PNG_MAX_PIXELS / (width * height)).sqrt())
 }
 
-/// Rasterises one SVG page with the embedded font only.
+/// Rasterises one SVG page with the UI faces only: the embedded ones in a
+/// bundled build, the window's own system faces otherwise.
 pub fn render_pixmap(svg: &str) -> Result<tiny_skia::Pixmap, String> {
     let options = usvg::Options {
         fontdb: font_database(),
-        font_family: EMBEDDED_FAMILY.to_owned(),
+        font_family: primary_family(&fonts::ui_fonts().sans),
         ..usvg::Options::default()
     };
     let tree = usvg::Tree::from_str(svg, &options).map_err(|error| error.to_string())?;

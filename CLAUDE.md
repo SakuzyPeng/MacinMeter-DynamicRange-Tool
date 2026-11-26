@@ -65,10 +65,14 @@ domain
   reserves `ApplicationJob` on the UI thread before spawning one named worker
   thread, consumes batch chunks through `BatchDetailStore`, and writes schema-4
   JSON on a separate worker after the user chooses a destination. Image export
-  draws SVG from report data and rasterises PNG with resvg and the embedded fonts
-  only, never from a screenshot of the window. Its
+  draws SVG from report data and rasterises PNG with resvg and the window's own
+  faces only, never from a screenshot of the window. Its
   `build.rs` fetches the checksum-pinned Noto Sans CJK SC on a cache miss.
-  The desktop crate includes Source Serif 4 Semibold in its source tree. See `docs/desktop_egui.md`.
+  The desktop crate includes Source Serif 4 Semibold in its source tree. Both
+  are embedded only by the default `bundled-fonts` feature; without it the
+  binary embeds neither, fetches nothing, and `src/fonts.rs` resolves the
+  Tauri stylesheet's font stacks among the host's fonts. Window, layout and
+  PNG export always read the same face chains. See `docs/desktop_egui.md`.
 - M4 conformance drives `AnalyzerSession` from controlled finite interleaved
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.
