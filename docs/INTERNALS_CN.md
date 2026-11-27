@@ -152,7 +152,9 @@ decoder，窗口级并行尚未实现。
 产出 NSIS 安装包 —— 本地 staging 与有界 CI 门禁都会构建并**打开**最终制品做结构化
 验证：DMG 会被挂载并检查其中的 `.app`；安装包会在候选目录之外解包，并核对内层
 `macinmeter-gui.exe` 的 PE machine 实测为 x86_64、版本资源匹配、Authenticode 为未
-签名。外层 installer 同样必须是未签名 PE。
+签名。外层 installer 同样必须是未签名 PE。打包的 GUI 是 egui 桌面 GUI，bundled-fonts
+与 system-fonts 两种字体构建同时发布；验证器从 executable 自身的字节判断每个包是哪种
+构建（[ADR-0018](adr/0018-egui-desktop-gui-release-artifacts.md)）。
 
 Intel/universal macOS、ARM64 Windows 与 Linux GUI 包不属于 0.3.1 发行范围。目前的
 打包情况汇总在[发行与制品状态](RELEASE_CN.md)。

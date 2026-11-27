@@ -6,7 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "MacinMeter Dynamic Range desktop GUI on egui (prototype beside the Tauri GUI)"
+description = "MacinMeter Dynamic Range desktop GUI on egui"
 # An application shell, not a library: it carries window glue and, by default,
 # its UI fonts.
 publish = false
@@ -16,6 +16,7 @@ name = "macinmeter-desktop"
 path = "src/main.rs"
 
 [build-dependencies]
+embed-resource.workspace = true
 sha2.workspace = true
 
 [features]

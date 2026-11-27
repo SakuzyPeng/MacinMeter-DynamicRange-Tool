@@ -22,8 +22,8 @@ domain
 ├── codecs
 └── macinmeter application façade
     ├── CLI
-    ├── Tauri GUI
-    └── egui desktop GUI (prototype, `apps/macinmeter-desktop`)
+    ├── egui desktop GUI (`apps/macinmeter-desktop`, the packaged GUI)
+    └── Tauri GUI (source retained, no longer packaged)
 ```
 
 - `domain` owns valid stream/source/report/error types.
@@ -60,8 +60,8 @@ domain
 - Tauri reserves an `ApplicationJob` before `spawn_blocking`; queued
   cancellation and RAII release are part of the application contract.
 - CLI and GUI only parse, render, and adapt I/O.
-- `apps/macinmeter-desktop` is an egui prototype beside the Tauri GUI, on the
-  MacinDecode Spatial Player's stack (eframe/egui 0.36.1, rfd 0.17.2). It
+- `apps/macinmeter-desktop` is the packaged GUI (ADR-0018), on the MacinDecode
+  Spatial Player's stack (eframe/egui 0.36.1, rfd 0.17.2). It
   reserves `ApplicationJob` on the UI thread before spawning one named worker
   thread, consumes batch chunks through `BatchDetailStore`, and writes schema-4
   JSON on a separate worker after the user chooses a destination. Image export
@@ -72,7 +72,10 @@ domain
   are embedded only by the default `bundled-fonts` feature; without it the
   binary embeds neither, fetches nothing, and `src/fonts.rs` resolves the
   Tauri stylesheet's font stacks among the host's fonts. Window, layout and
-  PNG export always read the same face chains. See `docs/desktop_egui.md`.
+  PNG export always read the same face chains. Releases ship both font builds
+  under the Tauri GUI's names, so either replaces a 0.3.x Tauri install in
+  place; `stage-release.py` assembles the macOS app and DMG itself and compiles
+  `packaging/windows/installer.nsi` with NSIS. See `docs/desktop_egui.md`.
 - M4 conformance drives `AnalyzerSession` from controlled finite interleaved
   `f64` independently of product codec support. Do not restore a codec route to
   make a reference fixture pass.
@@ -106,7 +109,8 @@ Release staging is a separate local operation:
 
 ```bash
 python3 scripts/stage-release.py stage
-# current-host macOS DMG, explicitly local and unsigned/unnotarized
+# current-host desktop GUI in both font builds (macOS DMGs or Windows NSIS
+# installers), explicitly local and unsigned/unnotarized
 python3 scripts/stage-release.py stage --include-gui
 ```
 

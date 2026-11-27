@@ -18,9 +18,18 @@ Release.
 The 0.3.1 release contains two platform slices:
 
 - Apple Silicon macOS: target `aarch64-apple-darwin`, minimum macOS 11.0, an
-  arm64 CLI archive, and an arm64 Tauri DMG;
-- Windows x64: target `x86_64-pc-windows-msvc`, an x64 CLI archive, and an NSIS
-  installer carrying the x64 Tauri GUI.
+  arm64 CLI archive, and two arm64 GUI DMGs;
+- Windows x64: target `x86_64-pc-windows-msvc`, an x64 CLI archive, and two
+  NSIS installers carrying the x64 GUI.
+
+The GUI is the egui desktop GUI (`apps/macinmeter-desktop`, see
+[`desktop_egui.md`](desktop_egui.md)), shipped in both of its font builds:
+`bundled-fonts` embeds Noto Sans CJK SC and Source Serif 4 Semibold, so its
+window and exported images look the same on every host, and `system-fonts`
+embeds neither and draws with the host's fonts, at roughly half the size. The
+two are one application under the 0.3.x Tauri GUI's names: installing either
+replaces a Tauri install, or the other build, in place. The Tauri GUI's
+sources remain in the repository but are no longer packaged.
 
 Both slices are unsigned. macOS receives no Developer ID signature,
 notarization, or stapling; Windows receives no Authenticode signature. Users
@@ -40,12 +49,16 @@ invites readers to wait for a signed build that is not coming.
 - a clean Git worktree for a release candidate;
 - Python 3.11 or newer;
 - Rust 1.98 or newer and the locked Cargo graph;
-- Node.js for the shared version contract, plus the platform Tauri
-  prerequisites when including the GUI;
-- 7-Zip on Windows when staging or verifying the NSIS installer.
+- network access or `MACINMETER_UI_FONT_PATH` for the bundled-fonts GUI build's
+  checksum-pinned Noto Sans CJK SC (see [`desktop_egui.md`](desktop_egui.md));
+- NSIS 3 (`makensis`) and 7-Zip on Windows when staging the GUI, and 7-Zip when
+  verifying the installers;
+- Xcode's command-line tools (`codesign`, `hdiutil`, `lipo`, `otool`) on macOS.
 
-The script records the exact source commit/state, host target, Rust/Cargo
-versions, and both lockfile hashes. It refuses a dirty worktree by default.
+Node.js is no longer a staging requirement: no packaged artifact contains the
+Tauri frontend. The script records the exact source commit/state, host target,
+Rust/Cargo versions, and the Cargo lockfile hash. It refuses a dirty worktree
+by default.
 
 ## CLI artifact
 
@@ -80,24 +93,48 @@ payload hashes, then runs the extracted executable:
 
 ## Current-host GUI artifacts
 
-On a supported macOS or Windows host, explicitly include its Tauri installer:
+On a supported macOS or Windows host, explicitly include its GUI installers:
 
 ```bash
 python3 scripts/stage-release.py stage --include-gui
 ```
 
-The macOS path supports only `aarch64-apple-darwin`. The verifier:
+Staging builds `macinmeter-desktop` twice in release, once with its default
+`bundled-fonts` feature and once with `--no-default-features`, and packages each
+build. Every GUI artifact names its `fontBuild`, and the verifier reads the
+build from the executable's own bytes: the bundled build contains the two
+embedded fonts' PostScript names, the system build neither. It also requires
+the licence texts that build carries: `LICENSE` and `THIRD_PARTY_NOTICES.md`
+for both, plus the two SIL OFL texts for the bundled build.
+
+The macOS path supports only `aarch64-apple-darwin`. It assembles
+`MacinMeter DR GUI.app` (identifier `com.macinmeter.dr.gui`, executable
+`macinmeter-gui`, licences under `Contents/Resources/licenses`), seals it with
+an ad hoc signature that names no identity, and writes an HFS+ DMG beside an
+Applications link: `macinmeter-gui-<version>-aarch64-apple-darwin-<fontBuild>.dmg`.
+The verifier:
 
 - validates the DMG checksum structure with `hdiutil`;
-- mounts it read-only and requires exactly one top-level `.app`;
-- verifies the bundle version and identifier;
+- mounts it read-only and requires exactly one top-level `.app`, with the
+  expected name;
+- verifies the bundle version and identifier and the executable's name;
 - requires an executable with exactly the architecture named by the artifact;
-- requires `LSMinimumSystemVersion` to be macOS 11.0;
+- requires `LSMinimumSystemVersion` and the executable's own `LC_BUILD_VERSION`
+  deployment target to be macOS 11.0;
+- requires the executable to be the artifact's font build and the bundle to
+  carry exactly that build's licences;
 - records strict `codesign`, Developer ID, and other identified Apple-signature
   observations without treating ad-hoc metadata as developer identity;
 - detaches the image without launching the GUI.
 
-The Windows path supports only `x86_64-pc-windows-msvc`. It requires 7-Zip and:
+The Windows path supports only `x86_64-pc-windows-msvc`. Its executable embeds
+the icon, a version resource with a `FontBuild` value, and an application
+manifest (`asInvoker`, Common Controls 6). `makensis` compiles
+`apps/macinmeter-desktop/packaging/windows/installer.nsi` with warnings as
+errors into `macinmeter-gui-<version>-x86_64-pc-windows-msvc-<fontBuild>-setup.exe`.
+The installer installs for the current user into the Tauri GUI's directory,
+under its uninstall key, Start menu entry and `macinmeter-gui.exe` name. The
+verifier requires 7-Zip and:
 
 - validates the outer installer's DOS and PE headers and records its COFF
   machine type;
@@ -106,8 +143,10 @@ The Windows path supports only `x86_64-pc-windows-msvc`. It requires 7-Zip and:
 - validates that payload's DOS and PE headers and requires its observed COFF
   machine type to be x86_64;
 - reads its file-version resource and requires the workspace version;
-- queries Authenticode for both the installer and payload and requires each to
-  report `NotSigned` with no signer certificate;
+- requires the payload to be the artifact's font build and the installed
+  `licenses` directory to hold exactly that build's licences;
+- requires neither the installer nor the payload to carry an embedded
+  Authenticode certificate table;
 - records the extracted payload SHA-256 and cleans up without launching or
   installing it.
 
@@ -134,9 +173,9 @@ python scripts/stage-release.py stage \
 They write to
 `target/release-candidates/0.3.1/aarch64-apple-darwin` and
 `target/release-candidates/0.3.1/x86_64-pc-windows-msvc`. Each refuses a dirty
-source tree, a mismatched host, toolchains other than Rust 1.98 and Node.js 22,
-a missing GUI, `--allow-dirty`, or `--replace`. Their manifests record the full
-Rust/Cargo/Node/npm identity and use
+source tree, a mismatched host, a toolchain other than Rust 1.98, a missing
+GUI in either font build, `--allow-dirty`, or `--replace`. Their manifests
+record the full Rust/Cargo identity and use
 `unsigned_macos_arm64_release_candidate` or
 `unsigned_windows_x64_release_candidate`; neither claims signing,
 notarization, Gatekeeper/SmartScreen readiness, or completed publication.
@@ -178,7 +217,7 @@ and reruns every artifact smoke contract. Checksums establish byte identity;
 they are not signatures.
 
 The CLI tar container is deterministic for identical payload bytes and
-recorded identity. The process does not claim that Rust binaries, Tauri DMGs,
+recorded identity. The process does not claim that Rust binaries, DMGs,
 or NSIS installers are reproducible across toolchains, SDKs, machines, or
 signing environments.
 

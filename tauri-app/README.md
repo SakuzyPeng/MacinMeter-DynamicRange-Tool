@@ -115,16 +115,12 @@ Intel/universal macOS、Windows ARM64/32-bit 或 Linux GUI。workspace 模式下
 Rust/Tauri 产物位于仓库根目录的 `target/`。本地构建不会自动触发 GitHub Actions；
 macOS 26 arm64 与 Windows Server 2025 x64 clean runner 会执行同一 GUI 制品契约。
 
-仓库根目录的发行 staging 可以进一步验证当前 host 的实际 GUI installer：
-
-```bash
-python3 scripts/stage-release.py stage --include-gui
-```
-
-macOS 会校验并只读挂载 DMG；Windows 会解开 NSIS 并核对内层 executable。两条
-路径都会核对版本、架构与 SHA-256。当前制品仍明确未签名，macOS 也未 notarize；
-`main` CI 会丢弃这些字节，手动 CI 只保留 14 天 candidate，两者都不构成公开分发
-声明。详见
+发行版不再打包本 Tauri GUI。自
+[ADR-0018](../docs/adr/0018-egui-desktop-gui-release-artifacts.md) 起，
+`python3 scripts/stage-release.py stage --include-gui` 打包的是 egui 桌面 GUI
+（`apps/macinmeter-desktop`）的两种字体构建；它沿用本 GUI 的产品名、bundle
+identifier、安装目录与可执行文件名，因此会原地替换 0.3.x 的 Tauri 安装。
+`npm run tauri build` 仍可在本地产出 Tauri bundle，但不属于发行契约。详见
 [`docs/RELEASE_CN.md`](../docs/RELEASE_CN.md)。
 
 ## 版本同步

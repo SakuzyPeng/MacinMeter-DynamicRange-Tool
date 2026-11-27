@@ -4,8 +4,9 @@
 The default `stage` command builds the host CLI from locked sources, packages
 the actual distributed bytes, runs smoke checks after extraction, and writes a
 SHA-256 manifest. macOS and Windows GUI staging is explicit through
-`--include-gui`. Unsigned release candidates require the matching platform flag
-and a clean source tree.
+`--include-gui`: it packages the egui desktop GUI twice, once per font build,
+as a DMG on macOS and an NSIS installer on Windows. Unsigned release
+candidates require the matching platform flag and a clean source tree.
 
 This script never uploads, signs, or creates a GitHub release.
 """
@@ -41,7 +42,30 @@ MACOS_MINIMUM_SYSTEM_VERSION = "11.0"
 LOCAL_STAGING_SCOPE = "local_staging_only"
 UNSIGNED_MACOS_ARM64_SCOPE = "unsigned_macos_arm64_release_candidate"
 UNSIGNED_WINDOWS_X64_SCOPE = "unsigned_windows_x64_release_candidate"
+# The egui desktop GUI ships under the Tauri GUI's names, so an install of it
+# replaces a 0.3.x Tauri install in place (see its installer.nsi).
+GUI_PACKAGE = "macinmeter-desktop"
+GUI_PACKAGE_DIR = Path("apps/macinmeter-desktop")
+GUI_PRODUCT_NAME = "MacinMeter DR GUI"
+GUI_BUNDLE_IDENTIFIER = "com.macinmeter.dr.gui"
+GUI_ICON_ICNS = Path("tauri-app/src-tauri/icons/icon.icns")
+GUI_ICON_ICO = Path("tauri-app/src-tauri/icons/icon.ico")
+WINDOWS_INSTALLER_SCRIPT = GUI_PACKAGE_DIR / "packaging/windows/installer.nsi"
+MACOS_GUI_EXECUTABLE = "macinmeter-gui"
 WINDOWS_GUI_EXECUTABLE = "macinmeter-gui.exe"
+BUNDLED_FONTS = "bundled-fonts"
+SYSTEM_FONTS = "system-fonts"
+FONT_BUILDS = (BUNDLED_FONTS, SYSTEM_FONTS)
+GUI_LICENSE_DOCUMENTS = (Path("LICENSE"), Path("THIRD_PARTY_NOTICES.md"))
+# The SIL OFL requires its text to travel with the fonts the bundled build embeds.
+GUI_FONT_LICENSES = (
+    GUI_PACKAGE_DIR / "OFL-NotoSansCJK.txt",
+    GUI_PACKAGE_DIR / "OFL-SourceSerif4.txt",
+)
+# PostScript names inside the two embedded fonts' CFF tables. The bundled
+# build's executable carries both and the system build neither, which tells
+# the builds apart from their bytes rather than from a label beside them.
+EMBEDDED_FONT_MARKERS = (b"NotoSansCJKsc-Regular", b"SourceSerif4-Semibold")
 PE_MAGIC = b"MZ"
 PE_SIGNATURE = b"PE\0\0"
 PE_POINTER_OFFSET = 0x3C
@@ -70,20 +94,6 @@ MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 
 class ReleaseError(RuntimeError):
     pass
-
-
-def npm_executable() -> str:
-    """Resolve npm to a launchable path.
-
-    On Windows npm ships as `npm.CMD`, which cannot be started by bare name:
-    Windows process creation runs executables, not batch files, so the same
-    argv that works everywhere else fails there. Resolving through PATH keeps
-    one call shape for both hosts.
-    """
-    resolved = shutil.which("npm")
-    if resolved is None:
-        raise ReleaseError("npm is required for release staging but was not found")
-    return resolved
 
 
 def run(
@@ -154,14 +164,10 @@ def toolchain_identity(root: Path) -> dict:
     if not host or not release:
         raise ReleaseError("rustc -vV did not report host and release")
     cargo = run(["cargo", "-V"], cwd=root, capture=True).stdout.strip()
-    node = run(["node", "--version"], cwd=root, capture=True).stdout.strip()
-    npm = run([npm_executable(), "--version"], cwd=root, capture=True).stdout.strip()
     return {
         "host": host,
         "rustc": release,
         "cargo": cargo,
-        "node": node,
-        "npm": npm,
     }
 
 
@@ -199,7 +205,6 @@ def source_identity(root: Path, allow_dirty: bool) -> dict:
     identity.update(
         {
             "cargoLockSha256": sha256_file(root / "Cargo.lock"),
-            "npmLockSha256": sha256_file(root / "tauri-app/package-lock.json"),
         }
     )
     return identity
@@ -208,10 +213,6 @@ def source_identity(root: Path, allow_dirty: bool) -> dict:
 def ensure_release_inputs(root: Path) -> None:
     run(
         [sys.executable, "scripts/check-repository-contract.py"],
-        cwd=root,
-    )
-    run(
-        [npm_executable(), "--prefix", "tauri-app", "run", "check-version"],
         cwd=root,
     )
 
@@ -533,12 +534,24 @@ def hdiutil(command: list[str], root: Path, *, capture: bool = False):
     return run(["hdiutil", *command], cwd=root, capture=capture, timeout=120)
 
 
+def macho_minimum_system_version(executable: Path, root: Path) -> str:
+    """The deployment target the linker recorded in LC_BUILD_VERSION."""
+    load_commands = run(
+        ["otool", "-l", str(executable)], cwd=root, capture=True
+    ).stdout
+    match = re.search(r"cmd LC_BUILD_VERSION\n(?:.*\n)*?\s*minos (\S+)", load_commands)
+    if match is None:
+        raise ReleaseError(f"{executable.name} records no LC_BUILD_VERSION minos")
+    return match.group(1)
+
+
 def smoke_macos_dmg(
     dmg: Path,
     *,
     version: str,
     identifier: str,
     target: str,
+    font_build: str,
     root: Path,
 ) -> dict:
     if sys.platform != "darwin":
@@ -590,16 +603,39 @@ def smoke_macos_dmg(
         if info.get("CFBundleShortVersionString") != version:
             raise ReleaseError("GUI bundle version does not match the release")
         if info.get("CFBundleIdentifier") != identifier:
-            raise ReleaseError("GUI bundle identifier does not match tauri.conf.json")
+            raise ReleaseError("GUI bundle identifier does not match the release")
         if info.get("LSMinimumSystemVersion") != MACOS_MINIMUM_SYSTEM_VERSION:
             raise ReleaseError(
                 "GUI bundle minimum system version does not match the "
                 "Apple Silicon release contract"
             )
+        if app.name != f"{GUI_PRODUCT_NAME}.app":
+            raise ReleaseError(f"GUI bundle is named {app.name!r}")
         executable_name = info.get("CFBundleExecutable")
+        if executable_name != MACOS_GUI_EXECUTABLE:
+            raise ReleaseError(
+                f"GUI bundle executable is {executable_name!r}, expected "
+                f"{MACOS_GUI_EXECUTABLE!r}"
+            )
         executable = app / "Contents/MacOS" / str(executable_name)
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ReleaseError("GUI bundle executable is missing or not executable")
+        require_font_build(executable, font_build, "the GUI bundle executable")
+        licenses = app / "Contents/Resources/licenses"
+        installed_licenses = (
+            {path.name for path in licenses.iterdir()} if licenses.is_dir() else set()
+        )
+        if installed_licenses != gui_license_names(font_build):
+            raise ReleaseError(
+                f"GUI bundle licences are {sorted(installed_licenses)}, expected "
+                f"{sorted(gui_license_names(font_build))}"
+            )
+        minimum = macho_minimum_system_version(executable, root)
+        if version_tuple(minimum) != version_tuple(MACOS_MINIMUM_SYSTEM_VERSION):
+            raise ReleaseError(
+                f"GUI executable targets macOS {minimum}, expected "
+                f"{MACOS_MINIMUM_SYSTEM_VERSION}"
+            )
         architectures = run(
             ["lipo", "-archs", str(executable)],
             cwd=root,
@@ -646,6 +682,9 @@ def smoke_macos_dmg(
             "bundleVersion": version,
             "architecture": expected_architecture,
             "minimumSystemVersion": MACOS_MINIMUM_SYSTEM_VERSION,
+            "executableMinimumSystemVersion": minimum,
+            "fontBuild": font_build,
+            "licenses": sorted(installed_licenses),
             "strictCodeSignatureValid": signature.returncode == 0,
             "developerIdSigned": developer_id_signed,
             "identifiedAppleSignature": identified_apple_signature,
@@ -822,6 +861,7 @@ def smoke_windows_installer(
     *,
     version: str,
     target: str,
+    font_build: str,
     root: Path,
 ) -> dict:
     """Open the installer and inspect what it actually carries.
@@ -872,11 +912,23 @@ def smoke_windows_installer(
                 f"installer payload reports version {payload_version!r}; "
                 f"expected {version}"
             )
+        require_font_build(payload, font_build, "the installer payload")
+        licenses = payload.parent / "licenses"
+        installed_licenses = (
+            {path.name for path in licenses.iterdir()} if licenses.is_dir() else set()
+        )
+        if installed_licenses != gui_license_names(font_build):
+            raise ReleaseError(
+                f"installer licences are {sorted(installed_licenses)}, expected "
+                f"{sorted(gui_license_names(font_build))}"
+            )
         smoke = {
             "container": "nsis",
             "payload": WINDOWS_GUI_EXECUTABLE,
             "payloadVersion": payload_version,
             "payloadSha256": sha256_file(payload),
+            "fontBuild": font_build,
+            "licenses": sorted(installed_licenses),
             "installerMachine": windows_machine_name(installer_image.machine),
             "payloadMachine": windows_machine_name(payload_image.machine),
             "architecture": windows_machine_name(payload_image.machine),
@@ -887,6 +939,102 @@ def smoke_windows_installer(
     return smoke
 
 
+def font_build_of(executable: Path) -> str:
+    """Which font build an executable is, read from its own bytes."""
+    data = executable.read_bytes()
+    present = [marker in data for marker in EMBEDDED_FONT_MARKERS]
+    if all(present):
+        return BUNDLED_FONTS
+    if not any(present):
+        return SYSTEM_FONTS
+    raise ReleaseError(f"{executable.name} embeds only part of the bundled fonts")
+
+
+def require_font_build(executable: Path, font_build: str, label: str) -> None:
+    actual = font_build_of(executable)
+    if actual != font_build:
+        raise ReleaseError(f"{label} is the {actual} build; expected {font_build}")
+
+
+def require_known_font_build(font_build: object) -> str:
+    if font_build not in FONT_BUILDS:
+        raise ReleaseError(f"unknown GUI font build: {font_build!r}")
+    return str(font_build)
+
+
+def gui_license_paths(font_build: str) -> list[Path]:
+    """The licence texts that travel with one font build of the GUI."""
+    paths = list(GUI_LICENSE_DOCUMENTS)
+    if require_known_font_build(font_build) == BUNDLED_FONTS:
+        paths.extend(GUI_FONT_LICENSES)
+    return paths
+
+
+def gui_license_names(font_build: str) -> set[str]:
+    return {path.name for path in gui_license_paths(font_build)}
+
+
+def copy_gui_licenses(root: Path, destination: Path, font_build: str) -> None:
+    destination.mkdir(parents=True)
+    for relative in gui_license_paths(font_build):
+        source = root / relative
+        if not source.is_file():
+            raise ReleaseError(f"GUI licence document is missing: {relative}")
+        target = destination / relative.name
+        shutil.copyfile(source, target)
+        target.chmod(0o644)
+
+
+def copyright_line(root: Path) -> str:
+    for line in (root / "LICENSE").read_text(encoding="utf-8").splitlines():
+        if line.startswith("Copyright"):
+            return line.strip()
+    raise ReleaseError("LICENSE has no copyright line")
+
+
+def build_gui_executable(
+    root: Path, working: Path, *, target: str, font_build: str
+) -> Path:
+    """Build one font build of the desktop GUI and keep a copy of it.
+
+    Both builds share `target/release`, so each is copied out before the next
+    overwrites it.
+    """
+    command = ["cargo", "build", "--locked", "--release", "-p", GUI_PACKAGE]
+    if require_known_font_build(font_build) == SYSTEM_FONTS:
+        command.append("--no-default-features")
+    environment = None
+    if sys.platform == "darwin":
+        environment = dict(
+            os.environ, MACOSX_DEPLOYMENT_TARGET=MACOS_MINIMUM_SYSTEM_VERSION
+        )
+    run(command, cwd=root, environment=environment)
+    name = GUI_PACKAGE + (".exe" if target.endswith("-windows-msvc") else "")
+    built = root / "target/release" / name
+    if not built.is_file():
+        raise ReleaseError(f"release GUI was not produced at {built}")
+    destination = working / font_build / name
+    destination.parent.mkdir(parents=True)
+    shutil.copyfile(built, destination)
+    destination.chmod(0o755)
+    require_font_build(destination, font_build, "the built GUI")
+    return destination
+
+
+def makensis_executable() -> str:
+    """NSIS is an explicit Windows staging dependency, like 7-Zip."""
+    found = shutil.which("makensis")
+    if found is not None:
+        return found
+    for variable in ("ProgramFiles(x86)", "ProgramFiles"):
+        base = os.environ.get(variable)
+        if base:
+            candidate = Path(base) / "NSIS" / "makensis.exe"
+            if candidate.is_file():
+                return str(candidate)
+    raise ReleaseError("makensis is required to build the Windows installer; install NSIS 3")
+
+
 def build_windows_installer(
     root: Path,
     working: Path,
@@ -894,38 +1042,131 @@ def build_windows_installer(
     version: str,
     version_label: str,
     target: str,
-) -> tuple[Path, str]:
-    config = json.loads(
-        (root / "tauri-app/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+    font_build: str,
+) -> Path:
+    if target != WINDOWS_X64_TARGET:
+        raise ReleaseError(
+            f"Windows GUI staging supports {WINDOWS_X64_TARGET} only; found {target}"
+        )
+    executable = build_gui_executable(
+        root, working, target=target, font_build=font_build
     )
-    identifier = config["identifier"]
+    licenses = working / f"{font_build}-licenses"
+    copy_gui_licenses(root, licenses, font_build)
+    destination = (
+        working / f"macinmeter-gui-{version_label}-{target}-{font_build}-setup.exe"
+    )
     run(
         [
-            npm_executable(),
-            "--prefix",
-            "tauri-app",
-            "run",
-            "tauri",
-            "--",
-            "build",
-            "--bundles",
-            "nsis",
+            makensis_executable(),
+            "-V2",
+            # Any NSIS warning fails the stage.
+            "-WX",
+            f"-DVERSION={version}",
+            f"-DPAYLOAD={executable}",
+            f"-DLICENSES={licenses}",
+            f"-DICON={root / GUI_ICON_ICO}",
+            f"-DFONT_BUILD={font_build}",
+            f"-DCOPYRIGHT={copyright_line(root)}",
+            f"-DOUTFILE={destination}",
+            str(root / WINDOWS_INSTALLER_SCRIPT),
         ],
         cwd=root,
     )
-    candidates = sorted(
-        path
-        for path in (root / "target/release/bundle/nsis").glob("*-setup.exe")
-        if version in path.name
+    if not destination.is_file():
+        raise ReleaseError(f"makensis did not produce {destination.name}")
+    return destination
+
+
+def macos_info_plist(version: str, copyright: str) -> dict:
+    return {
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleDisplayName": GUI_PRODUCT_NAME,
+        "CFBundleExecutable": MACOS_GUI_EXECUTABLE,
+        "CFBundleIconFile": "icon.icns",
+        "CFBundleIdentifier": GUI_BUNDLE_IDENTIFIER,
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleName": GUI_PRODUCT_NAME,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": version,
+        "LSMinimumSystemVersion": MACOS_MINIMUM_SYSTEM_VERSION,
+        "NSHighResolutionCapable": True,
+        "NSHumanReadableCopyright": copyright,
+    }
+
+
+def make_macos_app(
+    root: Path,
+    parent: Path,
+    executable: Path,
+    *,
+    version: str,
+    font_build: str,
+) -> Path:
+    """Assemble the app bundle the Tauri bundler used to write.
+
+    Same bundle name and identifier as the Tauri GUI, so dragging it into
+    Applications replaces a 0.3.x copy. The ad hoc signature is what Apple
+    Silicon requires to launch an unsigned bundle at all; it names no identity.
+    """
+    app = parent / f"{GUI_PRODUCT_NAME}.app"
+    contents = app / "Contents"
+    (contents / "MacOS").mkdir(parents=True)
+    resources = contents / "Resources"
+    resources.mkdir()
+    bundled = contents / "MacOS" / MACOS_GUI_EXECUTABLE
+    shutil.copyfile(executable, bundled)
+    bundled.chmod(0o755)
+    shutil.copyfile(root / GUI_ICON_ICNS, resources / "icon.icns")
+    copy_gui_licenses(root, resources / "licenses", font_build)
+    with (contents / "Info.plist").open("wb") as file:
+        plistlib.dump(macos_info_plist(version, copyright_line(root)), file)
+    run(
+        ["codesign", "--force", "--sign", "-", "--timestamp=none", str(app)],
+        cwd=root,
     )
-    if len(candidates) != 1:
-        raise ReleaseError(
-            "Tauri must produce exactly one NSIS installer; found "
-            + (", ".join(path.name for path in candidates) or "none")
-        )
-    destination = working / f"macinmeter-gui-{version_label}-{target}-setup.exe"
-    shutil.copyfile(candidates[0], destination)
-    return destination, identifier
+    run(["codesign", "--verify", "--strict", str(app)], cwd=root)
+    return app
+
+
+def build_macos_dmg(
+    root: Path,
+    working: Path,
+    *,
+    version: str,
+    version_label: str,
+    target: str,
+    font_build: str,
+) -> Path:
+    macos_bundle_arch(target)
+    executable = build_gui_executable(
+        root, working, target=target, font_build=font_build
+    )
+    volume = working / f"{font_build}-volume"
+    volume.mkdir()
+    make_macos_app(
+        root, volume, executable, version=version, font_build=font_build
+    )
+    (volume / "Applications").symlink_to("/Applications")
+    destination = working / f"macinmeter-gui-{version_label}-{target}-{font_build}.dmg"
+    hdiutil(
+        [
+            "create",
+            "-volname",
+            GUI_PRODUCT_NAME,
+            "-srcfolder",
+            str(volume),
+            "-fs",
+            "HFS+",
+            "-format",
+            "UDZO",
+            "-ov",
+            str(destination),
+        ],
+        root,
+    )
+    return destination
 
 
 def build_gui_artifact(
@@ -935,7 +1176,8 @@ def build_gui_artifact(
     version: str,
     version_label: str,
     target: str,
-) -> tuple[Path, str]:
+    font_build: str,
+) -> Path:
     # The GUI is bundled by the host for the host: neither platform can produce
     # the other's installer, so the split is on where this runs rather than on a
     # requested target.
@@ -946,33 +1188,18 @@ def build_gui_artifact(
             version=version,
             version_label=version_label,
             target=target,
+            font_build=font_build,
         )
     if sys.platform != "darwin":
         raise ReleaseError("--include-gui supports macOS and Windows hosts only")
-    arch = macos_bundle_arch(target)
-    config = json.loads(
-        (root / "tauri-app/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+    return build_macos_dmg(
+        root,
+        working,
+        version=version,
+        version_label=version_label,
+        target=target,
+        font_build=font_build,
     )
-    identifier = config["identifier"]
-    run(
-        [npm_executable(), "--prefix", "tauri-app", "run", "tauri", "--", "build"],
-        cwd=root,
-    )
-    candidates = sorted(
-        path
-        for path in (root / "target/release/bundle/dmg").glob("*.dmg")
-        if version in path.name and path.stem.endswith(f"_{arch}")
-    )
-    if len(candidates) != 1:
-        raise ReleaseError(
-            "Tauri must produce exactly one current host DMG; found "
-            + ", ".join(path.name for path in candidates)
-        )
-    destination = (
-        working / f"macinmeter-gui-{version_label}-{target}.dmg"
-    )
-    shutil.copyfile(candidates[0], destination)
-    return destination, identifier
 
 
 def write_checksums(release_dir: Path, names: set[str]) -> None:
@@ -1079,10 +1306,6 @@ def validate_candidate_toolchain(
         raise ReleaseError(
             "unsigned release candidates require the exact Rust 1.98 toolchain"
         )
-    if version_tuple(toolchain["node"].removeprefix("v"))[0] != 22:
-        raise ReleaseError(
-            "unsigned release candidates require the pinned Node.js 22 toolchain"
-        )
 
 
 def validate_distribution_manifest(manifest: dict, artifacts: list[dict]) -> str:
@@ -1114,13 +1337,19 @@ def validate_distribution_manifest(manifest: dict, artifacts: list[dict]) -> str
         )
     if manifest.get("source", {}).get("state") != "clean":
         raise ReleaseError("unsigned release candidate source must be clean")
-    if len(artifacts) != 2 or {
-        artifact.get("kind") for artifact in artifacts
-    } != {"cli", gui_kind}:
-        raise ReleaseError("unsigned release candidate must contain CLI and GUI")
-    gui = next(artifact for artifact in artifacts if artifact.get("kind") == gui_kind)
-    if gui.get("publicationStatus") != "unsigned_release_candidate":
-        raise ReleaseError("unsigned GUI publication status drifted")
+    kinds = sorted(str(artifact.get("kind")) for artifact in artifacts)
+    if kinds != sorted(["cli", gui_kind, gui_kind]):
+        raise ReleaseError(
+            "unsigned release candidate must contain CLI and GUI in both font builds"
+        )
+    guis = [artifact for artifact in artifacts if artifact.get("kind") == gui_kind]
+    if sorted(str(gui.get("fontBuild")) for gui in guis) != sorted(FONT_BUILDS):
+        raise ReleaseError(
+            "unsigned release candidate must contain CLI and GUI in both font builds"
+        )
+    for gui in guis:
+        if gui.get("publicationStatus") != "unsigned_release_candidate":
+            raise ReleaseError("unsigned GUI publication status drifted")
     return scope
 
 
@@ -1206,6 +1435,7 @@ def verify_release_dir(
                 path,
                 version=version,
                 target=target,
+                font_build=require_known_font_build(artifact.get("fontBuild")),
                 root=root,
             )
         elif kind == "gui_macos_dmg":
@@ -1214,6 +1444,7 @@ def verify_release_dir(
                 version=version,
                 identifier=artifact["bundleIdentifier"],
                 target=target,
+                font_build=require_known_font_build(artifact.get("fontBuild")),
                 root=root,
             )
             if (
@@ -1337,49 +1568,57 @@ def stage_release(arguments: argparse.Namespace, root: Path) -> Path:
         ]
 
         if arguments.include_gui:
-            gui, identifier = build_gui_artifact(
-                root,
-                temporary_path,
-                version=version,
-                version_label=version_label,
-                target=target,
-            )
-            staged_gui = release_dir / gui.name
-            shutil.move(gui, staged_gui)
             windows_gui = sys.platform == "win32"
-            artifacts.append(
-                {
-                    "kind": "gui_windows_nsis" if windows_gui else "gui_macos_dmg",
-                    "file": staged_gui.name,
-                    "sha256": sha256_file(staged_gui),
-                    "sizeBytes": staged_gui.stat().st_size,
-                    "bundleIdentifier": identifier,
-                    "publicationStatus": (
-                        "unsigned_release_candidate"
-                        if unsigned_candidate
-                        else (
-                            "local_unsigned" if windows_gui else "local_unnotarized"
-                        )
-                    ),
-                    "smokeContract": [
-                        "installer_pe_identity",
-                        "installer_authenticode_absence",
-                        "extracted_payload_identity",
-                        "payload_x86_64_pe_identity",
-                        "payload_version_resource",
-                        "payload_authenticode_absence",
-                        "extracted_payload_sha256",
-                    ]
-                    if windows_gui
-                    else [
-                        "dmg_integrity",
-                        "mounted_bundle_identity",
-                        "bundle_executable",
-                        "binary_architecture",
-                        "code_signature_observation",
-                    ],
-                }
-            )
+            for font_build in FONT_BUILDS:
+                gui = build_gui_artifact(
+                    root,
+                    temporary_path,
+                    version=version,
+                    version_label=version_label,
+                    target=target,
+                    font_build=font_build,
+                )
+                staged_gui = release_dir / gui.name
+                shutil.move(gui, staged_gui)
+                artifacts.append(
+                    {
+                        "kind": "gui_windows_nsis" if windows_gui else "gui_macos_dmg",
+                        "file": staged_gui.name,
+                        "sha256": sha256_file(staged_gui),
+                        "sizeBytes": staged_gui.stat().st_size,
+                        "bundleIdentifier": GUI_BUNDLE_IDENTIFIER,
+                        "fontBuild": font_build,
+                        "publicationStatus": (
+                            "unsigned_release_candidate"
+                            if unsigned_candidate
+                            else (
+                                "local_unsigned" if windows_gui else "local_unnotarized"
+                            )
+                        ),
+                        "smokeContract": [
+                            "installer_pe_identity",
+                            "installer_authenticode_absence",
+                            "extracted_payload_identity",
+                            "payload_x86_64_pe_identity",
+                            "payload_version_resource",
+                            "payload_authenticode_absence",
+                            "payload_font_build",
+                            "installed_licenses",
+                            "extracted_payload_sha256",
+                        ]
+                        if windows_gui
+                        else [
+                            "dmg_integrity",
+                            "mounted_bundle_identity",
+                            "bundle_executable",
+                            "binary_architecture",
+                            "binary_minimum_system_version",
+                            "bundle_font_build",
+                            "bundle_licenses",
+                            "code_signature_observation",
+                        ],
+                    }
+                )
 
         release_manifest = {
             "schemaVersion": RELEASE_SCHEMA_VERSION,
@@ -1430,8 +1669,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-gui",
         action="store_true",
         help=(
-            "also build and verify the current-host Tauri bundle: a macOS DMG "
-            "or a Windows NSIS installer"
+            "also build and verify the current-host desktop GUI in both font "
+            "builds: two macOS DMGs or two Windows NSIS installers"
         ),
     )
     stage.add_argument(

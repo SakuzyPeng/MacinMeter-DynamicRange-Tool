@@ -16,9 +16,16 @@ arm64 job 中运行相同的 clean staging 契约。每个 job 的 CLI archive �
 0.3.1 包含两个平台 slice：
 
 - Apple Silicon macOS：target 为 `aarch64-apple-darwin`，最低 macOS 11.0，包含
-  arm64 CLI archive 与 arm64 Tauri DMG；
-- Windows x64：target 为 `x86_64-pc-windows-msvc`，包含 x64 CLI archive 与承载
-  x64 Tauri GUI 的 NSIS installer。
+  arm64 CLI archive 与两个 arm64 GUI DMG；
+- Windows x64：target 为 `x86_64-pc-windows-msvc`，包含 x64 CLI archive 与两个承载
+  x64 GUI 的 NSIS installer。
+
+GUI 是 egui 桌面 GUI（`apps/macinmeter-desktop`，见
+[`desktop_egui.md`](desktop_egui.md)），两种字体构建同时发布：`bundled-fonts` 内嵌
+Noto Sans CJK SC 与 Source Serif 4 Semibold，窗口和导出图片在任何机器上都一样；
+`system-fonts` 不内嵌这两款字体，使用系统字体，体积约为前者一半。两者是同一个应用，
+沿用 0.3.x Tauri GUI 的名称：安装任一版本都会原地替换 Tauri 安装或另一版本。Tauri
+GUI 的源码仍在仓库中，但不再打包。
 
 两个 slice 都未签名：macOS 不执行 Developer ID 签名、notarization 或 stapling，
 Windows 不执行 Authenticode 签名。因此用户可能需要在 macOS 上显式“打开”，或在
@@ -35,11 +42,14 @@ Windows ARM64/32-bit 或 Linux GUI 制品。
 - release candidate 必须来自干净的 Git 工作树；
 - Python 3.11 或更新版本；
 - Rust 1.98 或更新版本，以及 locked Cargo graph；
-- 共享版本契约需要 Node.js；纳入 GUI 时还需要当前平台的 Tauri prerequisites；
-- 在 Windows 上 staging 或验证 NSIS installer 时需要 7-Zip。
+- 构建 bundled-fonts GUI 时需要网络或 `MACINMETER_UI_FONT_PATH`，用于获取按校验和
+  固定的 Noto Sans CJK SC（见 [`desktop_egui.md`](desktop_egui.md)）；
+- 在 Windows 上 staging GUI 时需要 NSIS 3（`makensis`）与 7-Zip，验证 installer
+  时需要 7-Zip；
+- 在 macOS 上需要 Xcode 命令行工具（`codesign`、`hdiutil`、`lipo`、`otool`）。
 
-脚本会记录准确 source commit/state、host target、Rust/Cargo 版本及两个 lockfile
-hash；默认拒绝脏工作树。
+staging 不再需要 Node.js：任何打包制品都不含 Tauri 前端。脚本会记录准确 source
+commit/state、host target、Rust/Cargo 版本及 Cargo lockfile hash；默认拒绝脏工作树。
 
 ## CLI 制品
 
@@ -72,32 +82,49 @@ cargo build --locked --release -p macinmeter-cli
 
 ## 当前 host 的 GUI 制品
 
-在受支持的 macOS 或 Windows host 上，显式纳入当前平台的 Tauri installer：
+在受支持的 macOS 或 Windows host 上，显式纳入当前平台的 GUI installer：
 
 ```bash
 python3 scripts/stage-release.py stage --include-gui
 ```
 
-macOS 路径只支持 `aarch64-apple-darwin`。验证器会：
+staging 会以 release 方式构建两次 `macinmeter-desktop`：一次使用默认
+`bundled-fonts` feature，一次使用 `--no-default-features`，并分别打包。每个 GUI 制品
+都记录 `fontBuild`；验证器从 executable 自身的字节判断构建类型：bundled 构建含两款
+内嵌字体的 PostScript 名称，system 构建两者都不含。验证器还要求该构建随附的许可文本：
+两者都有 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，bundled 构建另有两份 SIL OFL 文本。
+
+macOS 路径只支持 `aarch64-apple-darwin`。脚本组装 `MacinMeter DR GUI.app`
+（identifier `com.macinmeter.dr.gui`，executable `macinmeter-gui`，许可文本位于
+`Contents/Resources/licenses`），用不带任何身份的 ad hoc 签名封装，并写出带
+Applications 链接的 HFS+ DMG：
+`macinmeter-gui-<version>-aarch64-apple-darwin-<fontBuild>.dmg`。验证器会：
 
 - 使用 `hdiutil` 校验 DMG 结构；
-- 只读挂载，并要求恰好一个顶层 `.app`；
-- 核对 bundle version 与 identifier；
+- 只读挂载，并要求恰好一个名称正确的顶层 `.app`；
+- 核对 bundle version、identifier 与 executable 名称；
 - 要求 executable 架构与制品名完全一致；
-- 要求 `LSMinimumSystemVersion` 为 macOS 11.0；
+- 要求 `LSMinimumSystemVersion` 与 executable 自身 `LC_BUILD_VERSION` 的部署目标都是
+  macOS 11.0；
+- 要求 executable 是制品记录的字体构建，且 bundle 恰好带有该构建的许可文本；
 - 记录严格 `codesign`、Developer ID 与其他 Apple identity signature 观察，并且
   不把 ad-hoc metadata 当作开发者身份；
 - 在不启动 GUI 的情况下卸载镜像。
 
-Windows 路径只支持 `x86_64-pc-windows-msvc`。它要求 7-Zip，并会：
+Windows 路径只支持 `x86_64-pc-windows-msvc`。executable 内嵌图标、带 `FontBuild`
+值的版本资源和 application manifest（`asInvoker`、Common Controls 6）。`makensis`
+以“警告即错误”编译 `apps/macinmeter-desktop/packaging/windows/installer.nsi`，输出
+`macinmeter-gui-<version>-x86_64-pc-windows-msvc-<fontBuild>-setup.exe`。installer
+按当前用户安装，沿用 Tauri GUI 的安装目录、卸载键、开始菜单项与 `macinmeter-gui.exe`
+名称。验证器要求 7-Zip，并会：
 
 - 验证外层 installer 的 DOS/PE header，并记录其 COFF machine type；
 - 把 NSIS 解到 candidate 目录之外的临时目录，并要求恰好一个
   `macinmeter-gui.exe` payload；
 - 验证 payload 的 DOS/PE header，并要求实测 COFF machine type 为 x86_64；
 - 读取其 file-version resource，并要求与 workspace version 相同；
-- 查询 installer 与 payload 的 Authenticode，要求两者均报告 `NotSigned` 且没有
-  signer certificate；
+- 要求 payload 是制品记录的字体构建，且安装后的 `licenses` 目录恰好是该构建的许可文本；
+- 要求 installer 与 payload 都不带内嵌 Authenticode certificate table；
 - 记录解包后 payload 的 SHA-256，清理临时目录，不启动也不安装程序。
 
 本地 GUI 构建都会标记为 `local_staging_only`；macOS 另标记
@@ -120,8 +147,8 @@ python scripts/stage-release.py stage \
 
 它们分别写入 `target/release-candidates/0.3.1/aarch64-apple-darwin` 与
 `target/release-candidates/0.3.1/x86_64-pc-windows-msvc`。每个 mode 都拒绝脏 source、
-不匹配的 host、Rust 1.98/Node.js 22 以外的工具链、缺少 GUI、`--allow-dirty` 或
-`--replace`。manifest 记录完整 Rust/Cargo/Node/npm identity，并分别标记为
+不匹配的 host、Rust 1.98 以外的工具链、缺少任一字体构建的 GUI、`--allow-dirty` 或
+`--replace`。manifest 记录完整 Rust/Cargo identity，并分别标记为
 `unsigned_macos_arm64_release_candidate` 或
 `unsigned_windows_x64_release_candidate`；两者都不会声称已经签名、公证、具备
 Gatekeeper/SmartScreen 条件或完成发布。
@@ -160,7 +187,7 @@ python scripts/stage-release.py verify \
 字节身份，不是签名。
 
 在 payload 字节与记录身份相同的条件下，CLI tar container 是确定性的；本流程不
-声称 Rust binary、Tauri DMG 或 NSIS installer 能跨 toolchain、SDK、机器或签名
+声称 Rust binary、DMG 或 NSIS installer 能跨 toolchain、SDK、机器或签名
 环境复现。
 
 ## 仅供开发的 staging

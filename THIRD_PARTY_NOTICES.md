@@ -13,7 +13,7 @@ The 0.3.1 source tree directly uses projects including:
 - Walkdir for deterministic filesystem discovery;
 - Tauri and its dialog plugin for the desktop adapter;
 - Vite and TypeScript for the frontend build;
-- eframe/egui, wgpu, rfd, arboard, resvg and skrifa for the egui desktop prototype
+- eframe/egui, wgpu, rfd, arboard, resvg and skrifa for the egui desktop GUI
   (`apps/macinmeter-desktop`).
 
 The application icon sets the letters "DR" in Source Serif 4 at weight 700,
@@ -26,7 +26,7 @@ Tauri GUI redistribute no font file.
 Source Serif 4 采用 SIL Open Font License 1.1，许可全文随源文件保存在
 `tauri-app/icons-src/OFL-SourceSerif4.txt`；CLI 与 Tauri GUI 不随附任何字体文件。
 
-The egui desktop prototype is the exception. Its binary embeds two unmodified
+The egui desktop GUI is the exception. Its binary embeds two unmodified
 fonts under the SIL Open Font License 1.1, which also lay out and rasterise its
 exported images: Noto Sans CJK SC 2.004, © 2014-2021 Adobe, and Source Serif 4
 Semibold 4.005, © 2014-2023 Adobe, with Reserved Font Name 'Source'. Their
@@ -34,13 +34,15 @@ licence texts are kept at `apps/macinmeter-desktop/OFL-NotoSansCJK.txt` and
 `apps/macinmeter-desktop/OFL-SourceSerif4.txt` and must accompany any build of
 that binary that is distributed. A desktop build without its default
 `bundled-fonts` feature embeds neither font and draws with the host's own.
-The prototype is not a release artifact yet.
-egui 桌面原型例外：其二进制原样内嵌两款 SIL Open Font License 1.1 字体，图片导出
+Releases ship both builds; the bundled build's installers carry both licence
+texts in their `licenses` directory.
+egui 桌面 GUI 例外：其二进制原样内嵌两款 SIL Open Font License 1.1 字体，图片导出
 也用它们排版和栅格化：Noto Sans CJK SC 2.004（© 2014-2021 Adobe）与 Source Serif 4
 Semibold 4.005（© 2014-2023 Adobe，保留字体名称 'Source'）。许可全文保存在
 `apps/macinmeter-desktop/OFL-NotoSansCJK.txt` 与
 `apps/macinmeter-desktop/OFL-SourceSerif4.txt`，分发该二进制时必须随附。关闭默认
-`bundled-fonts` 功能构建的桌面版不内嵌这两款字体，改用系统字体。原型目前不是发布制品。
+`bundled-fonts` 功能构建的桌面版不内嵌这两款字体，改用系统字体。两种构建都随发行版发布；
+bundled 构建的安装包在 `licenses` 目录中随附两份许可全文。
 
 The authoritative package versions are recorded in `Cargo.lock` and
 `tauri-app/package-lock.json`. Transitive dependencies change independently,

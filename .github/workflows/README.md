@@ -15,7 +15,7 @@ The repository has one bounded validation workflow:
 - The workflow uses explicit Ubuntu 24.04, Windows Server 2025 x64, and macOS
   26 arm64 jobs with read-only repository permissions. Linux and Windows have
   45-minute timeouts; macOS has 60 minutes for the release-profile GUI build.
-  Rust is pinned to the verified MSRV, 1.98, and Node.js is pinned to 22.
+  Rust is pinned to the verified MSRV, 1.98, and the Linux job's Node.js to 22.
 
 ## Standard automatic gate
 
@@ -29,14 +29,17 @@ Cargo always uses the root lockfile with `--locked`; npm uses
 
 The Linux release CLI build runs only for an explicit manual dispatch. After a
 `main` push, the Windows and macOS jobs each run clean local-only staging for
-their final CLI archive and current-host Tauri installer (NSIS or DMG), then
-discard those runner-local bytes. Windows staging requires 7-Zip, extracts the
-NSIS installer outside the candidate directory, validates the payload's x86_64
-PE identity and version, and requires both installer and payload to be
-Authenticode `NotSigned` without a signer certificate.
+their final CLI archive and the desktop GUI's current-host installers, one per
+font build (two NSIS installers or two DMGs), then discard those runner-local
+bytes. GUI staging needs no Node.js. Windows staging installs a pinned NSIS when
+the runner lacks `makensis`, requires 7-Zip, extracts each installer outside the
+candidate directory, validates the payload's x86_64 PE identity, version and font
+build, and requires both installer and payload to carry no Authenticode
+certificate table.
 
 An explicit manual dispatch must target `main`. It instead creates two stricter
-unsigned candidates: Windows x64 CLI plus NSIS and Apple Silicon CLI plus DMG,
+unsigned candidates: Windows x64 CLI plus both NSIS installers and Apple
+Silicon CLI plus both DMGs,
 both from the dispatched commit, with clean source, exact host architecture,
 and SHA-256 coverage. macOS retains its 11.0 minimum with no Developer ID or
 notarization claim; Windows retains no Authenticode or SmartScreen-reputation

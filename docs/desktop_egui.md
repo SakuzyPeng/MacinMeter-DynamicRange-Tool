@@ -1,8 +1,11 @@
-# MacinMeter desktop GUI on egui (prototype)
+# MacinMeter desktop GUI on egui
 
-`apps/macinmeter-desktop` is a prototype of the desktop GUI on the same egui
+`apps/macinmeter-desktop` is MacinMeter's packaged desktop GUI, on the same egui
 stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
-`rfd` 0.17.2 for native dialogs). The release workflow packages the Tauri GUI.
+`rfd` 0.17.2 for native dialogs). Releases ship it in both font builds
+([ADR-0018](adr/0018-egui-desktop-gui-release-artifacts.md),
+[Packaging](#packaging)); the Tauri GUI's sources remain but are no longer
+packaged.
 
 ## Decisions it is built on
 
@@ -11,7 +14,7 @@ stack as the MacinDecode Spatial Player (`eframe`/`egui` 0.36.1 on `wgpu`,
 | Toolchain | The whole workspace moves to Rust 1.98.0, pinned by `rust-toolchain.toml`, the same compiler as the player. eframe 0.36.1 itself needs 1.95. |
 | UI fonts | Two builds; see [Font builds](#font-builds). The default `bundled-fonts` build embeds the player's checksum-pinned Noto Sans CJK SC (16.4 MB) and Source Serif 4 Semibold 4.005 (253 KB). A build without that feature embeds neither and uses the host's fonts, as the Tauri WebView did. |
 | Complex scripts | egui 0.36 shapes text with HarfRust but has no bidi and no system font fallback. Arabic or Hebrew file names render in logical (reversed) order, and scripts outside the embedded font render as boxes. This is accepted. |
-| Windows installer | Stays NSIS when the Tauri bundler goes, so an install can replace a 0.3.x Tauri install in place. Not part of the prototype. |
+| Windows installer | Stays NSIS now that the Tauri bundler is gone, hand-written, so an install replaces a 0.3.x Tauri install in place. |
 | Image export | Drawn from report data as a real vector SVG, with PNG rasterised from that SVG; see [Image export](#image-export). |
 
 ### Font builds
@@ -54,10 +57,10 @@ miss it can download Noto from jsDelivr. `MACINMETER_UI_FONT_CACHE_DIR`
 selects an absolute cache directory shared across profiles and checkouts.
 
 jsDelivr sometimes answers the Noto request with a 403 that it caches for 60 s
-(`s-maxage=60`). That was observed while building this prototype. Each retry
+(`s-maxage=60`). That was observed while building this GUI. Each retry
 therefore waits 61 s rather than hitting the same cached refusal.
 
-## What the prototype covers
+## What the GUI covers
 
 - **Input**: file, directory and deep-scan selection, whole-window drops,
   command-line paths, and a cancellable discovery preview. A single ambiguous
@@ -163,20 +166,42 @@ locates the visible range and updates measured heights in logarithmic time.
 Selecting a summary borrows one detail from the batch store. Complete batch
 documents are materialized for explicit JSON operations.
 
+## Packaging
+
+`python3 scripts/stage-release.py stage --include-gui` builds the release
+binary twice, with and without `bundled-fonts`, and packages each build for the
+current host; [`RELEASE.md`](RELEASE.md) lists what its verifier checks. Both
+builds are one application under the 0.3.x Tauri GUI's names, so installing
+either replaces a Tauri install, or the other build, in place.
+
+| | macOS arm64 | Windows x64 |
+|---|---|---|
+| Container | `MacinMeter DR GUI.app` in an HFS+ DMG with an Applications link | NSIS installer, current user, no elevation |
+| Identity | `com.macinmeter.dr.gui`, executable `macinmeter-gui`, macOS 11.0+ | `%LOCALAPPDATA%\MacinMeter DR GUI\macinmeter-gui.exe`, uninstall key `MacinMeter DR GUI` |
+| Built by | `stage-release.py` (Info.plist, icon, ad hoc signature, `hdiutil`) | `build.rs` (icon, version resource with `FontBuild`, manifest) and `packaging/windows/installer.nsi` |
+| Licences | `Contents/Resources/licenses` | `licenses\` beside the executable |
+
+Both builds carry `LICENSE` and `THIRD_PARTY_NOTICES.md`; the bundled build
+also carries the two SIL OFL texts its fonts require. The installer reuses a
+directory a Tauri install recorded, recreates Tauri's shortcuts without its
+AppUserModelID, and asks for a running copy to be closed before replacing it.
+Settings live outside the install directory and survive an uninstall.
+
+The executable's manifest asks for Common Controls 6. `rfd` still runs without
+its `common-controls-v6` feature, because that feature imports
+`TaskDialogIndirect`, which only Common Controls 6 exports, and the manifest is
+linked into the GUI executable only: a test binary without it would fail to
+start.
+
 ## Not yet
 
-- Packaging. This needs:
-  - an `.app` bundle and DMG for macOS 11.0+ arm64;
-  - a hand-written NSIS installer for Windows x64;
-  - the icon and version resources;
-  - `stage-release.py` verification of both.
-- An embedded Windows application manifest. Until there is one, `rfd` runs
-  without `common-controls-v6` (that feature imports `TaskDialogIndirect`, which
-  only Common Controls v6 exports) and uses plain `MessageBoxW`.
-- Retiring the Tauri GUI, with an ADR that supersedes the GUI-adapter parts of
-  ADR-0004, ADR-0006, ADR-0010, ADR-0011 and ADR-0015.
-- The locale files still live under `tauri-app/src/i18n/locales/`, so both GUIs
-  read the same strings.
+- Launching the packaged GUI, and upgrading over a real Tauri install, on real
+  macOS and Windows hosts. Staging inspects the packages without installing or
+  running them.
+- Retiring the Tauri GUI's sources, with an ADR that supersedes the
+  GUI-adapter parts of ADR-0004 and ADR-0006.
+- The locale files and icons still live under `tauri-app/`, so both GUIs read
+  the same strings and the packages use the same icons.
 
 ## Running
 

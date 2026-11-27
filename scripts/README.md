@@ -132,7 +132,7 @@ python3 -m unittest discover -s reference/tools/tests -p 'test_*.py'
 The matching GitHub Actions workflow runs the full standard gate on Ubuntu and
 the Rust/CLI/Tauri gate on Windows Server 2025 x64 and macOS 26 arm64 for pull
 requests and pushes to `main`. Main/manual Windows and macOS runs stage and
-verify their final CLI archive plus current-host GUI installer. A main push
+verify their final CLI archive plus current-host GUI installers. A main push
 discards those bytes; manual dispatch from `main` retains one stricter unsigned
 candidate per platform for 14 days. Manual dispatch also adds the Linux release
 build. Performance, hostile-corpus, signing, notarization, and publishing
@@ -191,7 +191,8 @@ From a clean worktree, build and verify the current-host CLI artifact:
 python3 scripts/stage-release.py stage
 ```
 
-On a supported macOS or Windows host, explicitly include its Tauri installer:
+On a supported macOS or Windows host, explicitly include the desktop GUI's
+installers, one per font build (`bundled-fonts` and `system-fonts`):
 
 ```bash
 python3 scripts/stage-release.py stage --include-gui
@@ -211,12 +212,14 @@ python scripts/stage-release.py stage \
 
 All modes create `RELEASE_MANIFEST.json` and `SHA256SUMS`, then verify the final
 files. CLI verification extracts and runs the distributed binary. macOS GUI
-verification checks and mounts the DMG, validates bundle identity and
-architecture, and records code-signature observations. Windows GUI verification
-requires 7-Zip, extracts NSIS outside the candidate directory, validates one
-x86_64 PE payload and its version, and requires the installer and payload to be
-Authenticode `NotSigned` with no signer certificate. Neither route launches the
-GUI. No staging command uploads, signs, notarizes, or creates a GitHub release.
+verification checks and mounts each DMG, validates bundle identity,
+architecture and deployment target, and records code-signature observations.
+Windows GUI staging compiles `apps/macinmeter-desktop/packaging/windows/installer.nsi`
+with NSIS 3; verification requires 7-Zip, extracts each installer outside the
+candidate directory, validates one x86_64 PE payload and its version, and
+requires the installer and payload to carry no Authenticode certificate table.
+Both routes read the font build from the executable's bytes and require the
+licence texts that build carries. Neither route launches the GUI. No staging command uploads, signs, notarizes, or creates a GitHub release.
 The manual workflow may retain verified candidates after this script exits;
 that external retention does not change either manifest into a published
 release. Final 0.3.1 review requires both candidates to record the same source

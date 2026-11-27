@@ -522,6 +522,15 @@ def validate(root: Path) -> list[str]:
                 "the immutable candidate directory",
             )
             require(
+                "setup-node" not in windows_text and "npm " not in windows_text,
+                f"{path.relative_to(root)} Windows GUI staging packages the desktop "
+                "GUI and must not install Node.js or npm",
+            )
+            require(
+                "choco install nsis --version=" in windows_text,
+                f"{path.relative_to(root)} Windows GUI staging must install a pinned NSIS",
+            )
+            require(
                 unsigned_candidate_flag not in windows_text,
                 f"{path.relative_to(root)} the Windows job may not produce the macOS "
                 "candidate; one stage yields one platform",
@@ -546,7 +555,6 @@ def validate(root: Path) -> list[str]:
             required_macos_commands = (
                 "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings",
                 "cargo test --locked --workspace --all-targets",
-                "npm ci",
                 macos_stage_command,
                 unsigned_candidate_flag,
                 'test "$GITHUB_REF" = "refs/heads/main"',
@@ -563,9 +571,9 @@ def validate(root: Path) -> list[str]:
                     f"{path.relative_to(root)} macOS gate is missing: {command}",
                 )
             require(
-                macos_text.count("if: github.event_name != 'pull_request'") == 2,
-                f"{path.relative_to(root)} macOS Node and npm installs must remain "
-                "main/manual-only",
+                "setup-node" not in macos_text and "npm " not in macos_text,
+                f"{path.relative_to(root)} macOS GUI staging packages the desktop "
+                "GUI and must not install Node.js or npm",
             )
             require(
                 macos_text.count("if: github.event_name == 'push'") == 1,

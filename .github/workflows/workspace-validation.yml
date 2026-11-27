@@ -98,7 +98,7 @@ jobs:
         run: npm run build
 
   windows:
-    name: Windows Rust, CLI, and Tauri
+    name: Windows Rust, CLI, and GUI staging
     runs-on: windows-2025
     timeout-minutes: 75
 
@@ -160,18 +160,19 @@ jobs:
       # ADR-0015 puts Windows x64 in the 0.3.0 release scope alongside Apple
       # Silicon macOS, so this job mirrors the macOS one: a push stages and
       # verifies, and only a manual dispatch from main retains a candidate.
-      - name: Install Node.js for GUI staging
+      # The desktop GUI's installer is a hand-written NSIS script, so staging
+      # needs makensis where the Tauri bundler used to download its own.
+      - name: Install NSIS for GUI staging
         if: github.event_name != 'pull_request'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: tauri-app/package-lock.json
-
-      - name: Install GUI dependencies
-        if: github.event_name != 'pull_request'
-        working-directory: tauri-app
-        run: npm ci
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis --version=3.11 --no-progress -y
+            if ($LASTEXITCODE -ne 0) {
+              throw "NSIS installation failed"
+            }
+          }
 
       - name: Stage and verify Windows x64 CLI and GUI
         if: github.event_name == 'push'
@@ -202,7 +203,7 @@ jobs:
           compression-level: 0
 
   macos:
-    name: macOS arm64 Rust, CLI, Tauri, and GUI staging
+    name: macOS arm64 Rust, CLI, and GUI staging
     runs-on: macos-26
     timeout-minutes: 60
 
@@ -239,19 +240,6 @@ jobs:
 
       - name: Run macOS workspace tests
         run: cargo test --locked --workspace --all-targets
-
-      - name: Install Node.js for GUI staging
-        if: github.event_name != 'pull_request'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: tauri-app/package-lock.json
-
-      - name: Install GUI dependencies
-        if: github.event_name != 'pull_request'
-        working-directory: tauri-app
-        run: npm ci
 
       - name: Stage and verify macOS arm64 CLI and GUI
         if: github.event_name == 'push'

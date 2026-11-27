@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
 //! Supplies the desktop GUI's external Noto Sans CJK font for the default
-//! `bundled-fonts` build. A build without that feature embeds no font and
-//! fetches nothing.
+//! `bundled-fonts` build, and on Windows links the executable's icon, version
+//! resource and application manifest. A build without `bundled-fonts` embeds
+//! no font and fetches nothing.
 //!
 //! egui draws only the fonts it is given and has no system fallback, so a CJK
 //! file name needs a CJK face compiled in. The face is fetched once, pinned by
@@ -26,8 +27,19 @@ const FONT_CACHE_ENV: &str = "MACINMETER_UI_FONT_CACHE_DIR";
 const FONT_SHA256: &str = "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b";
 const FONT_URL: &str = "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@165c01b46ea533872e002e0785ff17e44f6d97d8c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf";
 
+// What the installers, the version resource and the window all call the
+// application: the names the Tauri GUI was installed under, so an install of
+// this one replaces a 0.3.x install in place.
+const PRODUCT_NAME: &str = "MacinMeter DR GUI";
+const INSTALLED_EXECUTABLE: &str = "macinmeter-gui.exe";
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && let Err(error) = embed_windows_resources()
+    {
+        panic!("failed to embed the Windows resources: {error}");
+    }
     // A system-font build embeds no font, so it fetches nothing.
     if env::var_os("CARGO_FEATURE_BUNDLED_FONTS").is_none() {
         return;
@@ -38,6 +50,95 @@ fn main() {
     if let Err(error) = prepare_ui_font() {
         panic!("failed to prepare the UI font: {error}");
     }
+}
+
+/// The resource script is generated so the version resource always carries
+/// the crate's own version, and its `FontBuild` value says which font build
+/// the binary is. It names no header: `rc` then needs no Windows SDK include
+/// path, so the constants below are winver.h's values written out.
+fn embed_windows_resources() -> Result<(), String> {
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Cargo did not provide CARGO_MANIFEST_DIR".to_owned())?;
+    let out_dir = env::var_os("OUT_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Cargo did not provide OUT_DIR".to_owned())?;
+    let icon = manifest_dir.join("../../tauri-app/src-tauri/icons/icon.ico");
+    let manifest = manifest_dir.join("packaging/windows/macinmeter-gui.manifest");
+    for input in [&icon, &manifest] {
+        println!("cargo:rerun-if-changed={}", input.display());
+        if !input.is_file() {
+            return Err(format!("{} is missing", input.display()));
+        }
+    }
+    let number = |name: &str| -> Result<u16, String> {
+        env::var(name)
+            .map_err(|error| format!("{name}: {error}"))?
+            .parse()
+            .map_err(|error| format!("{name}: {error}"))
+    };
+    let (major, minor, patch) = (
+        number("CARGO_PKG_VERSION_MAJOR")?,
+        number("CARGO_PKG_VERSION_MINOR")?,
+        number("CARGO_PKG_VERSION_PATCH")?,
+    );
+    let version = env::var("CARGO_PKG_VERSION").map_err(|error| error.to_string())?;
+    let font_build = if env::var_os("CARGO_FEATURE_BUNDLED_FONTS").is_some() {
+        "bundled-fonts"
+    } else {
+        "system-fonts"
+    };
+    let licence = manifest_dir.join("../../LICENSE");
+    println!("cargo:rerun-if-changed={}", licence.display());
+    let copyright = fs::read_to_string(&licence)
+        .map_err(|error| format!("could not read {}: {error}", licence.display()))?
+        .lines()
+        .find(|line| line.starts_with("Copyright"))
+        .map(|line| line.replace('"', "'"))
+        .ok_or_else(|| format!("{} has no copyright line", licence.display()))?;
+    let literal = |path: &Path| path.display().to_string().replace('\\', "\\\\");
+    let script = format!(
+        r#"1 ICON "{icon}"
+1 24 "{manifest}"
+1 VERSIONINFO
+FILEVERSION {major},{minor},{patch},0
+PRODUCTVERSION {major},{minor},{patch},0
+FILEFLAGSMASK 0x3F
+FILEFLAGS 0x0
+FILEOS 0x40004
+FILETYPE 0x1
+FILESUBTYPE 0x0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "MacinMeter"
+      VALUE "FileDescription", "{PRODUCT_NAME}"
+      VALUE "FileVersion", "{version}"
+      VALUE "FontBuild", "{font_build}"
+      VALUE "InternalName", "macinmeter-gui"
+      VALUE "LegalCopyright", "{copyright}"
+      VALUE "OriginalFilename", "{INSTALLED_EXECUTABLE}"
+      VALUE "ProductName", "{PRODUCT_NAME}"
+      VALUE "ProductVersion", "{version}"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
+"#,
+        icon = literal(&icon),
+        manifest = literal(&manifest),
+    );
+    let script_path = out_dir.join("macinmeter-gui.rc");
+    fs::write(&script_path, script)
+        .map_err(|error| format!("could not write {}: {error}", script_path.display()))?;
+    embed_resource::compile_for(&script_path, ["macinmeter-desktop"], embed_resource::NONE)
+        .manifest_required()
+        .map_err(|error| error.to_string())
 }
 
 fn prepare_ui_font() -> Result<(), String> {

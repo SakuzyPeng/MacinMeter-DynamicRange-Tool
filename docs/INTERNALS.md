@@ -176,7 +176,10 @@ bounded CI gate build and structurally verify the final artifact by opening it:
 the DMG is mounted and its `.app` inspected, and the installer is extracted
 outside the candidate directory and its `macinmeter-gui.exe` checked for an
 observed x86_64 PE machine, matching version resource, and unsigned Authenticode
-state. The outer installer must also be an unsigned PE.
+state. The outer installer must also be an unsigned PE. The packaged GUI is the
+egui desktop GUI, shipped in both its bundled-fonts and system-fonts builds, and
+the verifier reads which build each package carries from the executable's own
+bytes ([ADR-0018](adr/0018-egui-desktop-gui-release-artifacts.md)).
 
 Intel/universal macOS, ARM64 Windows, and Linux GUI packages are not part of the
 0.3.1 release. The current packaging picture is summarized in [release and

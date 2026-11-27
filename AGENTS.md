@@ -10,9 +10,10 @@ This repository is a virtual Cargo workspace targeting version 0.3.1:
   constrained MP4/M4A + ALAC are the stable routes
 - `crates/macinmeter` — application façade, discovery, batch, control, wire DTO
 - `apps/macinmeter-cli` — CLI adapter and renderers
-- `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`
-- `apps/macinmeter-desktop` — egui desktop GUI prototype on the player's stack;
-  see `docs/desktop_egui.md`
+- `tauri-app/src-tauri` — Tauri adapter; frontend is under `tauri-app/src`.
+  Its sources remain, but releases no longer package it (ADR-0018)
+- `apps/macinmeter-desktop` — egui desktop GUI on the player's stack, the GUI
+  releases package in two font builds; see `docs/desktop_egui.md`
 - `reference` — fixed targets, observations, static analysis, specifications,
   and conformance records
 
@@ -81,10 +82,13 @@ dependencies into lower layers.
 - Ordinary GUI build/dev commands only check version mirrors. Version changes
   are written only by the explicit `npm run sync-version` command.
 - Release staging must start clean unless it is explicitly marked dirty. It
-  verifies the extracted CLI and current-host GUI bytes plus SHA-256: DMG on
-  macOS, NSIS on Windows. Windows verification must inspect actual PE machine
-  fields and Authenticode absence for both installer and payload, with NSIS
-  extraction outside the candidate directory. The Windows x64 and macOS arm64
+  verifies the extracted CLI and current-host GUI bytes plus SHA-256: the egui
+  desktop GUI in both font builds, as DMGs on macOS and hand-written NSIS
+  installers on Windows. The Tauri GUI is no longer packaged. Windows
+  verification must inspect actual PE machine fields and Authenticode absence
+  for both installer and payload, with NSIS extraction outside the candidate
+  directory. Each GUI artifact's font build is read from its executable's
+  bytes, never only from its record. The Windows x64 and macOS arm64
   main CI gates may run the same contract as ephemeral validation. Manual
   dispatch may retain one clean unsigned candidate per platform for 14 days,
   but it never signs, notarizes, creates a tag/Release, or implies Gatekeeper
@@ -135,7 +139,8 @@ Local artifact staging is separate from ordinary verification:
 
 ```bash
 python3 scripts/stage-release.py stage
-# Supported current-host GUI: unsigned/unnotarized DMG or unsigned NSIS:
+# Supported current-host GUI, both font builds: unsigned/unnotarized DMGs or
+# unsigned NSIS installers:
 python3 scripts/stage-release.py stage --include-gui
 ```
 

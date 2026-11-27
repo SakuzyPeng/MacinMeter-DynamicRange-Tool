@@ -2,10 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
-//! MacinMeter's desktop GUI on egui: a prototype beside the Tauri GUI.
+//! MacinMeter's desktop GUI on egui, the GUI releases package.
 //!
 //! Like the Tauri GUI it only parses, renders and adapts I/O over the shared
-//! `macinmeter::Application`. Installers are not part of the prototype.
+//! `macinmeter::Application`. `scripts/stage-release.py` packages it.
 
 mod app;
 mod card_layout;

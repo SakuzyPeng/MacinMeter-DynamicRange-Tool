@@ -95,24 +95,16 @@ npm run tauri dev
 
 Rust 1.98+, Node.js 18/20/22+ (prefer an active LTS), and the platform-specific
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are required.
-Workspace Rust builds place artifacts under the root `target/` directory. The
-0.3.1 bundle targets are Apple Silicon macOS 11.0+ `.app`/`.dmg` and Windows
-x64 NSIS. Intel/universal macOS, Windows ARM64/32-bit, and Linux GUI packaging
-are outside the release contract.
+Workspace Rust builds place artifacts under the root `target/` directory.
 
-`python3 scripts/stage-release.py stage --include-gui` builds the current-host
-installer before adding it to the SHA-256 release manifest. On macOS it verifies
-DMG integrity, mounted bundle identity, executable architecture, minimum system
-version, and code-signature observations. On Windows it uses 7-Zip outside the
-candidate directory, requires one x86_64 PE payload with the workspace version,
-and confirms that both outer installer and payload are Authenticode `NotSigned`
-without a signer certificate. Neither route launches or installs the GUI.
-
-The bounded `main` Windows Server 2025 x64 and macOS 26 arm64 CI jobs run their
-matching clean contract and discard the artifacts. Manual dispatch creates one
-stricter unsigned candidate per platform and retains each for 14 days. No path
-signs, notarizes, tags, or publishes the app. A structural smoke pass is not a
-public-distribution, Gatekeeper, or SmartScreen-reputation claim.
+Releases no longer package this GUI. Since
+[ADR-0018](adr/0018-egui-desktop-gui-release-artifacts.md),
+`python3 scripts/stage-release.py stage --include-gui` packages the egui
+desktop GUI (`apps/macinmeter-desktop`) in both of its font builds, under this
+GUI's product name, bundle identifier, install directory and executable name,
+so an install of it replaces a 0.3.x Tauri install in place. `npm run tauri
+build` still produces a local Tauri bundle, outside the release contract; see
+[`RELEASE.md`](RELEASE.md) for the packaged artifacts.
 See [`RELEASE.md`](RELEASE.md).
 
 The backend performs admitted blocking analysis through Tauri's blocking task

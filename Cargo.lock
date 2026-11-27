@@ -3050,6 +3050,7 @@ version = "0.3.1"
 dependencies = [
  "arboard",
  "eframe",
+ "embed-resource",
  "epaint_default_fonts",
  "fontdb",
  "macinmeter",

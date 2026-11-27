@@ -137,9 +137,7 @@ jobs:
       - if: github.event_name != 'pull_request'
         run: .\\target\\release\\mdrmeter.exe analyze fixture.wav
       - if: github.event_name != 'pull_request'
-        uses: actions/setup-node@node-sha
-      - if: github.event_name != 'pull_request'
-        run: npm ci
+        run: choco install nsis --version=3.11 --no-progress -y
       - if: github.event_name == 'push'
         run: python scripts/stage-release.py stage --include-gui
       - if: github.event_name == 'workflow_dispatch'
@@ -161,10 +159,6 @@ jobs:
     steps:
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-targets
-      - if: github.event_name != 'pull_request'
-        uses: actions/setup-node@node-sha
-      - if: github.event_name != 'pull_request'
-        run: npm ci
       - if: github.event_name == 'push'
         run: python3 scripts/stage-release.py stage --include-gui
       - if: github.event_name == 'workflow_dispatch'

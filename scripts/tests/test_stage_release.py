@@ -111,6 +111,12 @@ def write_pe(
     path.write_bytes(bytes(contents))
 
 
+def write_licenses(directory: Path, font_build: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in stage_release.gui_license_names(font_build):
+        (directory / name).write_text("licence\n", encoding="utf-8")
+
+
 class StageReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -275,6 +281,7 @@ class StageReleaseTests(unittest.TestCase):
                 stage_release.PE_MACHINE_AMD64,
                 version=(0, 3, 0, 0),
             )
+            write_licenses(extraction / "nested" / "licenses", "system-fonts")
             return SimpleNamespace(stdout="")
 
         with mock.patch.object(stage_release, "seven_zip", side_effect=extract):
@@ -282,6 +289,7 @@ class StageReleaseTests(unittest.TestCase):
                 installer,
                 version="0.3.0",
                 target=stage_release.WINDOWS_X64_TARGET,
+                font_build="system-fonts",
                 root=self.root,
             )
 
@@ -293,38 +301,61 @@ class StageReleaseTests(unittest.TestCase):
         self.assertFalse(smoke["installerEmbeddedSignature"])
         self.assertFalse(smoke["payloadEmbeddedSignature"])
         self.assertEqual(smoke["payloadVersion"], "0.3.0.0")
+        self.assertEqual(smoke["fontBuild"], "system-fonts")
+        self.assertEqual(smoke["licenses"], ["LICENSE", "THIRD_PARTY_NOTICES.md"])
         self.assertEqual(len(extraction_paths), 1)
         self.assertFalse(extraction_paths[0].exists())
 
     def test_windows_installer_smoke_rejects_the_states_it_exists_to_catch(self) -> None:
         installer = self.root / "candidate" / "MacinMeter-setup.exe"
 
-        def payload_writer(machine: int, version: tuple[int, int, int, int] | None):
+        def payload_writer(
+            machine: int,
+            version: tuple[int, int, int, int] | None,
+            licenses: str | None = "system-fonts",
+        ):
             def extract(command: list[str], _root: Path) -> SimpleNamespace:
+                extraction = Path(
+                    next(part[2:] for part in command if part.startswith("-o"))
+                )
                 write_pe(
-                    Path(next(part[2:] for part in command if part.startswith("-o")))
-                    / stage_release.WINDOWS_GUI_EXECUTABLE,
+                    extraction / stage_release.WINDOWS_GUI_EXECUTABLE,
                     machine,
                     version=version,
                 )
+                if licenses is not None:
+                    write_licenses(extraction / "licenses", licenses)
                 return SimpleNamespace(stdout="")
 
             return extract
 
         write_pe(installer, 0x014C)
-        for machine, version, message in (
-            (0xAA64, (0, 3, 0, 0), "expected 'x86_64'"),
-            (stage_release.PE_MACHINE_AMD64, None, "no version resource"),
-            (stage_release.PE_MACHINE_AMD64, (0, 2, 0, 0), "expected 0.3.0"),
+        amd64 = stage_release.PE_MACHINE_AMD64
+        for writer, font_build, message in (
+            (payload_writer(0xAA64, (0, 3, 0, 0)), "system-fonts", "expected 'x86_64'"),
+            (payload_writer(amd64, None), "system-fonts", "no version resource"),
+            (payload_writer(amd64, (0, 2, 0, 0)), "system-fonts", "expected 0.3.0"),
+            # A payload without the embedded fonts is not the bundled build,
+            # whatever the artifact record says.
+            (
+                payload_writer(amd64, (0, 3, 0, 0), "bundled-fonts"),
+                "bundled-fonts",
+                "is the system-fonts build",
+            ),
+            (payload_writer(amd64, (0, 3, 0, 0), None), "system-fonts", "licences are"),
+            (
+                payload_writer(amd64, (0, 3, 0, 0), "bundled-fonts"),
+                "system-fonts",
+                "licences are",
+            ),
         ):
-            with mock.patch.object(
-                stage_release, "seven_zip", side_effect=payload_writer(machine, version)
-            ):
+            with mock.patch.object(stage_release, "seven_zip", side_effect=writer):
                 with self.assertRaisesRegex(stage_release.ReleaseError, message):
                     stage_release.smoke_windows_installer(
                         installer,
                         version="0.3.0",
                         target=stage_release.WINDOWS_X64_TARGET,
+                        font_build=font_build,
                         root=self.root,
                     )
 
@@ -336,8 +367,70 @@ class StageReleaseTests(unittest.TestCase):
                 installer,
                 version="0.3.0",
                 target=stage_release.WINDOWS_X64_TARGET,
+                font_build="system-fonts",
                 root=self.root,
             )
+
+    def test_font_build_is_read_from_the_executable_bytes(self) -> None:
+        executable = self.root / "gui"
+        executable.write_bytes(b"code" + b"".join(stage_release.EMBEDDED_FONT_MARKERS))
+        self.assertEqual(stage_release.font_build_of(executable), "bundled-fonts")
+        executable.write_bytes(b"code without fonts")
+        self.assertEqual(stage_release.font_build_of(executable), "system-fonts")
+        executable.write_bytes(b"code" + stage_release.EMBEDDED_FONT_MARKERS[0])
+        with self.assertRaisesRegex(stage_release.ReleaseError, "only part"):
+            stage_release.font_build_of(executable)
+        with self.assertRaisesRegex(stage_release.ReleaseError, "unknown GUI font build"):
+            stage_release.gui_license_names("fonts")
+        # The OFL texts travel with the build that embeds the fonts, and only it.
+        self.assertEqual(
+            stage_release.gui_license_names("bundled-fonts"),
+            {
+                "LICENSE",
+                "THIRD_PARTY_NOTICES.md",
+                "OFL-NotoSansCJK.txt",
+                "OFL-SourceSerif4.txt",
+            },
+        )
+
+    def test_gui_names_match_the_installer_build_script_and_tauri_install(self) -> None:
+        # An install replaces a 0.3.x Tauri install only while all four places
+        # agree on the names it was installed under.
+        repository = SCRIPT.parents[1]
+        installer = (repository / stage_release.WINDOWS_INSTALLER_SCRIPT).read_text(
+            encoding="utf-8"
+        )
+        build_script = (repository / stage_release.GUI_PACKAGE_DIR / "build.rs").read_text(
+            encoding="utf-8"
+        )
+        tauri = json.loads(
+            (repository / "tauri-app/src-tauri/tauri.conf.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        name = stage_release.GUI_PRODUCT_NAME
+        self.assertEqual(tauri["productName"], name)
+        self.assertEqual(tauri["identifier"], stage_release.GUI_BUNDLE_IDENTIFIER)
+        self.assertIn(f'!define PRODUCTNAME "{name}"', installer)
+        self.assertIn(
+            f'!define MAINBINARYNAME "{stage_release.WINDOWS_GUI_EXECUTABLE}"', installer
+        )
+        manufacturer = stage_release.GUI_BUNDLE_IDENTIFIER.split(".")[1]
+        self.assertIn(f'!define MANUFACTURER "{manufacturer}"', installer)
+        self.assertIn(f'const PRODUCT_NAME: &str = "{name}";', build_script)
+        self.assertIn(
+            f'const INSTALLED_EXECUTABLE: &str = "{stage_release.WINDOWS_GUI_EXECUTABLE}";',
+            build_script,
+        )
+        self.assertEqual(
+            stage_release.WINDOWS_GUI_EXECUTABLE,
+            stage_release.MACOS_GUI_EXECUTABLE + ".exe",
+        )
+        info = stage_release.macos_info_plist("0.3.1", "Copyright")
+        self.assertEqual(info["CFBundleIdentifier"], stage_release.GUI_BUNDLE_IDENTIFIER)
+        self.assertEqual(info["CFBundleExecutable"], stage_release.MACOS_GUI_EXECUTABLE)
+        self.assertEqual(info["LSMinimumSystemVersion"], "11.0")
+
     def test_unsigned_candidate_scope_requires_clean_immutable_arm64_gui(self) -> None:
         valid = {
             "unsigned_macos_arm64_candidate": True,
@@ -412,10 +505,14 @@ class StageReleaseTests(unittest.TestCase):
         }
         candidate_artifacts = [
             {"kind": "cli"},
-            {
-                "kind": "gui_macos_dmg",
-                "publicationStatus": "unsigned_release_candidate",
-            },
+            *(
+                {
+                    "kind": "gui_macos_dmg",
+                    "fontBuild": font_build,
+                    "publicationStatus": "unsigned_release_candidate",
+                }
+                for font_build in ("bundled-fonts", "system-fonts")
+            ),
         ]
         self.assertEqual(
             stage_release.validate_distribution_manifest(
@@ -424,15 +521,23 @@ class StageReleaseTests(unittest.TestCase):
             "unsigned_macos_arm64_release_candidate",
         )
 
+        # A candidate ships both font builds or neither.
+        for artifacts in (
+            candidate_artifacts[:2],
+            [candidate_artifacts[0], candidate_artifacts[1], candidate_artifacts[1]],
+        ):
+            with self.assertRaisesRegex(stage_release.ReleaseError, "both font builds"):
+                stage_release.validate_distribution_manifest(candidate, artifacts)
+
         candidate["source"]["state"] = "dirty"
         with self.assertRaisesRegex(stage_release.ReleaseError, "source must be clean"):
             stage_release.validate_distribution_manifest(
                 candidate, candidate_artifacts
             )
 
-    def test_unsigned_candidate_requires_pinned_rust_and_node_toolchains(self) -> None:
+    def test_unsigned_candidate_requires_the_pinned_rust_toolchain(self) -> None:
         package = {"msrv": "1.98"}
-        toolchain = {"rustc": "1.98.0", "node": "v22.18.0"}
+        toolchain = {"rustc": "1.98.0"}
         # Both platforms are pinned to the same toolchain, so a candidate from
         # either host is built with the versions the evidence names.
         for macos, windows in ((True, False), (False, True)):
@@ -443,10 +548,7 @@ class StageReleaseTests(unittest.TestCase):
                 toolchain=toolchain,
             )
 
-            for key, value, message in (
-                ("rustc", "1.99.0", "exact Rust 1.98"),
-                ("node", "v24.0.0", "Node.js 22"),
-            ):
+            for key, value, message in (("rustc", "1.99.0", "exact Rust 1.98"),):
                 changed = dict(toolchain)
                 changed[key] = value
                 with self.assertRaisesRegex(stage_release.ReleaseError, message):
@@ -461,7 +563,7 @@ class StageReleaseTests(unittest.TestCase):
             unsigned_macos_arm64_candidate=False,
             unsigned_windows_x64_candidate=False,
             package=package,
-            toolchain={"rustc": "1.99.0", "node": "v24.0.0"},
+            toolchain={"rustc": "1.99.0"},
         )
 
     def test_windows_distribution_manifest_requires_its_own_contract(self) -> None:
@@ -472,10 +574,14 @@ class StageReleaseTests(unittest.TestCase):
         }
         artifacts = [
             {"kind": "cli"},
-            {
-                "kind": "gui_windows_nsis",
-                "publicationStatus": "unsigned_release_candidate",
-            },
+            *(
+                {
+                    "kind": "gui_windows_nsis",
+                    "fontBuild": font_build,
+                    "publicationStatus": "unsigned_release_candidate",
+                }
+                for font_build in ("bundled-fonts", "system-fonts")
+            ),
         ]
         self.assertEqual(
             stage_release.validate_distribution_manifest(candidate, artifacts),
@@ -491,11 +597,8 @@ class StageReleaseTests(unittest.TestCase):
             stage_release.validate_distribution_manifest(
                 crossed,
                 [
-                    {"kind": "cli"},
-                    {
-                        "kind": "gui_macos_dmg",
-                        "publicationStatus": "unsigned_release_candidate",
-                    },
+                    artifacts[0],
+                    *({**gui, "kind": "gui_macos_dmg"} for gui in artifacts[1:]),
                 ],
             )
 
